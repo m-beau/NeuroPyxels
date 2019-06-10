@@ -3,6 +3,9 @@
 2018-07-20
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
+from ..utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
+                    npa, sign, minus_is_1, thresh, smooth, \
+                    _as_array, _unique, _index_of
 
 def get_channels(dp, units=None):
     if ~np.any(units):

@@ -19,11 +19,11 @@ import paq2py
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.decomposition import PCA
 
-from ..utils import seabornColorsDic, npa, thresh
+from rtn.utils import seabornColorsDic, npa, thresh
 
-from .spk_t import trn, trnb, isi
-from .corr import ccg
-from .plot import hist_MB
+from rtn.npix.spk_t import trn, trnb, isi
+from rtn.npix.corr import ccg
+from rtn.npix.plot import hist_MB
 
 
 def list_files(directory, extension):

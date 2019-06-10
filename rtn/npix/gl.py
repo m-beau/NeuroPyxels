@@ -6,7 +6,9 @@
 
 Dataset: Neuropixels dataset -> dp is phy directory (kilosort or spyking circus output)
 """
-from ..utils import *
+from ..utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
+                    npa, sign, minus_is_1, thresh, smooth, \
+                    _as_array, _unique, _index_of
 
 def get_units(dp):
     f1=dp+'/cluster_group.tsv'

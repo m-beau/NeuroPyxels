@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+"""
+2018-07-20
+@author: Maxime Beau, Neural Computations Lab, University College London
+"""
+
 def get_channels(dp, units=None):
     if ~np.any(units):
         units=get_units()

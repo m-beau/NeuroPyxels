@@ -10,4 +10,8 @@ setup(name='rtn',
       license='MIT',
       packages=['rtn', 'rtn.npix'],
       #package_dir={'rtn': 'rtn'},
+      install_requires=['numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
+      'six', 'elephant', 'vispy', 'statsmodels', 'progressbar',
+      'scikit-learn', 'umap-learn'],
+      dependency_links=['https://github.com/llerussell/paq2py.git'],
       keywords='phy,data analysis,electrophysiology,neuroscience')

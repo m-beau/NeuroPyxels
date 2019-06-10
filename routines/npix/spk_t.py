@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+2018-07-20
+@author: Maxime Beau, Neural Computations Lab, University College London
+"""
 
 def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
     '''Function to turn a spike train (array of time stamps)

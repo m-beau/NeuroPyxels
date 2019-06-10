@@ -2,6 +2,8 @@
 """
 2018-07-20
 @author: Maxime Beau, Neural Computations Lab, University College London
+
+Machine learning tools to cluster/classify cell types.
 """
 
 #%% General import

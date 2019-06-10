@@ -3,9 +3,17 @@
 2018-07-20
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
-from ..utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
+import os
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from .utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
+                    
 from .gl import get_good_units, get_channels
 from .corr import acg, ccg, gen_sfc, find_significant_hist_peak, make_cm
 from mpl_toolkits.mplot3d import axes3d

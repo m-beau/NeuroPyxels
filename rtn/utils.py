@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import numpy as np
+import seaborn as sns
+
 from six import integer_types
 from statsmodels.nonparametric.smoothers_lowess import lowess
 import logging

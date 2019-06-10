@@ -5,21 +5,49 @@
 Behavior analysis tools.
 """
 
+import os
+
+import numpy as np
+import scipy as sp
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 import sp.signal as sgnl
 import sp.stats as stats
 import paq2py
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.decomposition import PCA
 
-from ..utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
-                    npa, sign, minus_is_1, thresh, smooth, \
-                    _as_array, _unique, _index_of
+from ..utils import seabornColorsDic, npa, thresh
 
 from .spk_t import trn, trnb, isi
 from .corr import ccg
 from .plot import hist_MB
 
 
+def list_files(directory, extension):
+    return (f for f in os.listdir(directory) if f.endswith('.' + extension))
+
+def import_PAQdata(dp, variables='all'):
+    '''Used to align: Analog variables (wheel position...), noisy digital variables (piezo lick...).
+    If variables is not a list, all PackIO variables will be exported.'''
+    
+    vtypes = {'RECON':'digital', 'GAMEON':'digital', 'TRIALON':'digital', 
+              'REW':'digital', 'CUE':'digital', 'LICKS':'digital', 
+              'VRframes':'digital', 'REW_GHOST':'digital', 'ROT':'analog', 
+              'ROTreal':'analog', 'CameraFrames':'digital', 'LICKS_Piezo':'digital'}
+    paq_dp = dp+'/behavior'
+    paq_f = next(list_files(paq_dp, 'paq'))
+    paq = paq2py.paq_read(paq_dp+'/'+paq_f)
+    allVariables = np.array(paq['chan_names'])
+    if type(variables)==list:
+        variables=np.array(variables)
+        areIn = np.isin(variables, allVariables)
+        if not np.all(areIn):
+            print('WARNING: {} is not in the list of accepted variables {}. Exitting now.'.format(variables[~areIn], allVariables))
+            return
+    else:
         variables = allVariables
     variables = {variables[i]:vtypes[variables[i]] for i in range(len(variables))}
     

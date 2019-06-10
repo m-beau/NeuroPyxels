@@ -8,10 +8,16 @@ Input/output utilitaries to deal with Neuropixels files.
 """
 
 import psutil
-from ..utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
+import os
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from .utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
-                    
+
 #%% raw data extraction
 
 def extract_rawChunk(bp, times, channels=np.arange(384), fs=30000, ampFactor=500, Nchans=385, syncChan=384, save=0, ret=1):

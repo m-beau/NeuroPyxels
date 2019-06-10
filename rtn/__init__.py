@@ -3,6 +3,7 @@
 import os, sys
 
 import numpy as np
+import scipy as sp
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt

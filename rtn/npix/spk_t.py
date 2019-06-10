@@ -7,7 +7,7 @@ import os, sys
 
 import numpy as np
 
-from .utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
+from ..utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
 

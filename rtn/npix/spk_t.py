@@ -10,7 +10,7 @@ import numpy as np
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
-from rtn.gl import get_units
+from rtn.npix.gl import get_units
 
 def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
     '''Function to turn a spike train (array of time stamps)

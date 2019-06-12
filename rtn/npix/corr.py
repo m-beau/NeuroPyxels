@@ -125,7 +125,6 @@ def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, dic={}
     if dic=={}:
         for u in U:
             dic[u]=trn(dp, u, ret=True, sav=False, rec_section=rec_section, prnt=prnt) # trains in samples
-            print('TAKING CARE OF UNIT {}'.format(u))
     else:
         assert len(dic.items())>1
     spikes = np.empty((2, 0))
@@ -178,7 +177,7 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U='NeuropixFullDataset', fs=3
             if type(U)!=list:
                 U=list(U)
             
-            phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt)
+            phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, dic={})
             units = _unique(spike_clusters)
             n_units = len(units)
 
@@ -307,7 +306,7 @@ def crosscorrelate_maxime(dp, bin_size, win_size, U, trainBin=10, fs=30000, rec_
             if type(U)!=list:
                 U=list(U)
              
-            phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt)
+            phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, dic={})
             units = _unique(spike_clusters)
             n_units = len(units)
  
@@ -812,8 +811,8 @@ def find_significant_hist_peak(hist, hbin, threshold=3, n_consec_bins=3, ext_mn=
         flag0, flag1=False,False
         if cross_th_n[-1]>cross_th_p[-1]: flag1=True # if threshold+ is positively crossed at the end
         if cross_th_p[0]<cross_th_n[0]: flag0=True # if threshold+ is negatively crossed at the beginning
-        if flag1: cross_th_n=cross_th_n[:-1]
-        if flag0: cross_th_p=cross_th_p[1:]
+        if flag1: cross_th_n=cross_th_n[:-1] # remove aberrant last value
+        if flag0: cross_th_p=cross_th_p[1:] # remove aberrant first value
     
     try:
         assert len(cross_th_p)==len(cross_th_n) # Should be true because starts from and returns to baseline
@@ -842,7 +841,7 @@ def find_significant_hist_peak(hist, hbin, threshold=3, n_consec_bins=3, ext_mn=
     return ret # Concatenates (python list). Distinguish peaks and troughs with their peak value sign.
 
         
-def gen_sfc(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, rec_section='all', _format='peaks_infos', again=False):
+def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', _format='peaks_infos', again=False):
     '''
     Function generating a NxN functional correlation dataframe SFCDF and matrix SFCM
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -931,8 +930,15 @@ def gen_sfc(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, rec_section='al
                     if np.array(pks).any():
                         vsplit=len(pks)
                         if vsplit>1: print('MORE THAN ONE SIGNIFICANT PEAK:{}->{}'.format(u1,u2), end = '\r')
-                        heatpks=np.array([[p[2]]*int(12*1./vsplit) for p in pks]).flatten()
-                        heatpksT=np.array([[p[3]]*int(12*1./vsplit) for p in pks]).flatten()
+                        if 12%vsplit==0: # dividers of 12
+                            heatpks=np.array([[p[2]]*int(12*1./vsplit) for p in pks]).flatten()
+                            heatpksT=np.array([[p[3]]*int(12*1./vsplit) for p in pks]).flatten()
+                        else:
+                            if vsplit<=12: # not divider but still smaller
+                                heatpks=np.array([p[2] for p in pks]+[0]*(12-vsplit)).flatten()
+                                heatpksT=np.array([p[3] for p in pks]+[0]*(12-vsplit)).flatten()
+                            else:
+                                print('WARNING more than 12 peaks found - your threshold is too permissive or CCG f*cked up (units {} and {}), aborting.'.format(u1, u2))
                     else:
                         heatpks=np.array([0]*12)
                         heatpksT=np.array([np.nan]*12)

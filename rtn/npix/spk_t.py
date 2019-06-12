@@ -10,6 +10,7 @@ import numpy as np
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
+from rtn.gl import get_units
 
 def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
     '''Function to turn a spike train (array of time stamps)
@@ -119,6 +120,7 @@ def trn(dp, u, ret=True, sav=True, prnt=True, rec_section='all'):
     global train
     # Preformatpython how to save memory numpy array
     u, dp = int(u), str(dp)
+    assert u in get_units(dp)
     fs=30000
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'

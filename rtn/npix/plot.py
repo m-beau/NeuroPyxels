@@ -4,6 +4,7 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 import os
+import os.path as op
 
 import numpy as np
 import pandas as pd
@@ -147,17 +148,18 @@ def rotanimate(ax, width, height, angles, output, **kwargs):
     for f in files:
         os.remove(f)
 
-def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Desktop', title='movie', frmt='gif', axis=True):
+def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Downloads', title='movie', frmt='gif', axis=True):
     '''
     ax is the figure axes that you will make rotate along its vertical axis,
     on Nangles angles (default 300),
     separated by delay time units (default 2),
     at a resolution of widthxheight pixels (default 10x10),
-    saved in saveDir directory (default Desktop) with the title title (default movie) and format frmt (gif).
+    saved in saveDir directory (default Downloads) with the title title (default movie) and format frmt (gif).
     '''
     assert frmt in ['gif', 'mp4', 'ogv']
     if not axis: plt.axis('off') # remove axes for visual appeal
     oldDir=os.getcwd()
+    saveDir=op.expanduser(saveDir)
     os.chdir(saveDir)
     angles = np.linspace(0,360,Nangles)[:-1] # Take 20 angles between 0 and 360
     ttl='{}.{}'.format(title, frmt)
@@ -183,8 +185,9 @@ def plot_wvf_16(datam):
 
 def plot_wvf_setCh(data, chStart=179, title = 'Mother unit.', Nchannels=8, \
                    color=(0./255, 0./255, 0./255), ampFactor=500, fs=30000, 
-                   labels=True, saveDir='~/Desktop', saveFig=False, saveData=False, ylim=0):
+                   labels=True, saveDir='~/Downloads', saveFig=False, saveData=False, ylim=0):
     assert data.shape == (100, 82, 384)
+    saveDir=op.expanduser(saveDir)
     chStart = int(min(chStart-1, data.shape[2]-Nchannels-1))
     chEnd = int(chStart+Nchannels)
     fig, ax = plt.subplots(int(Nchannels*1./2), 2, figsize=(8, 16), dpi=80)
@@ -239,9 +242,10 @@ def plot_wvf_setCh(data, chStart=179, title = 'Mother unit.', Nchannels=8, \
     return fig
     
 def plot_wvf_mainCh(data, title = 'Merged units 19, 452, 555', color=(0./255, 0./255, 0./255), 
-                    ampFactor=500, fs=30000, plotRaw=False, channel=None, saveDir='~/Desktop', 
+                    ampFactor=500, fs=30000, plotRaw=False, channel=None, saveDir='~/Downloads', 
                     saveFig=False, saveData=False, ylim=0):
     assert data.ndim == 3# (100, 82, 384) or  data.shape == (100, 82, 373)
+    saveDir=op.expanduser(saveDir)
     data = data*(1.2e6/2**10/ampFactor) # Correct voltage
     fig, ax = plt.subplots()
     datam = np.rollaxis(data.mean(0),1)
@@ -277,7 +281,7 @@ def plot_wvf_mainCh(data, title = 'Merged units 19, 452, 555', color=(0./255, 0.
 
 #%% Correlograms
 
-def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Desktop', saveFig=True, 
+def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True, 
             show=True, pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, 
             saveData=False, ylim=0, normalize='Hertz'):
     '''Plots acg and saves it given the acg array.
@@ -325,6 +329,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Desktop
     fig.tight_layout()
     plt.close() if not show else plt.show()
     if saveFig or saveData:
+        saveDir=op.expanduser(saveDir)
         if not os.path.isdir(saveDir): os.mkdir(saveDir)
         if saveFig:
             if pdf: fig.savefig(saveDir+'/ccg%d-%d_%d_%.2f.pdf'%(uls[0], uls[1], cwin, cbin))
@@ -335,7 +340,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Desktop
         
     return fig
         
-def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Desktop', saveFig=True, 
+def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=True, 
             show=True, pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0, normalize='Hertz'):
     '''Plots acg and saves it given the acg array.
     unit: int.
@@ -376,6 +381,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     fig.tight_layout()
     plt.close() if not show else plt.show()
     if saveFig or saveData:
+        saveDir=op.expanduser(saveDir)
         if not os.path.isdir(saveDir): os.mkdir(saveDir)
         if saveFig:
             if pdf: fig.savefig(saveDir+'/acg%d_%d_%.2f.pdf'%(unit, cwin, cbin))
@@ -386,7 +392,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     return fig
         
     
-def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, saveDir='~/Desktop', 
+def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, saveDir='~/Downloads', 
                      saveFig=False, prnt=False, show=True, pdf=True, png=False, rec_section='all', 
                      labels=True, title=None, std_lines=True, ylim=0, normalize='Hertz'):
     colorsDic = {
@@ -445,15 +451,17 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.close() if not show else plt.show()
     if saveFig:
+        saveDir=op.expanduser(saveDir)
         if not os.path.isdir(saveDir): os.mkdir(saveDir)
         if pdf: fig.savefig(saveDir+'/ccg%s-%d_%.2f.pdf'%(str(units).replace(' ', ''), cwin, cbin))
         if png: fig.savefig(saveDir+'/ccg%s_%d_%.2f.png'%(str(units).replace(' ', ''), cwin, cbin))
         
     return fig
 
-def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Desktop', saveFig=True, prnt=False, show=True, 
+def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
              pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0):
     assert type(unit)==int
+    saveDir=op.expanduser(saveDir)
     bChs=None
     gu = get_good_units(dp) # get good units
     # sort them by depth
@@ -465,9 +473,10 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
     plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, pdf=pdf, png=png, 
             rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim=ylim)
     
-def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Desktop', saveFig=False, prnt=False, show=True, 
+def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
              pdf=False, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=0):
     assert type(units)==list
+    saveDir=op.expanduser(saveDir)
     bChs=None
     gu = get_good_units(dp) # get good units
     # sort them by depth
@@ -489,7 +498,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Desktop
 
 # Plot correlation matrix of variables x ovservations 2D arrray
     
-def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=0, cmap='viridis', rec_section='all', ret_cm=False):
+def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=0, cmap='viridis', rec_section='all', ret_cm=False, saveDir='~/Downloads', saveFig=False, pdf=1, png=0):
     '''Plot correlation matrix.
     dp: datapath
     units: units list of the same dataset
@@ -521,6 +530,12 @@ def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=
     fig = plt.gcf()
     plt.tight_layout()
     print(units)
+    
+    if saveFig:
+        saveDir=op.expanduser(saveDir)
+        if not os.path.isdir(saveDir): os.mkdir(saveDir)
+        if pdf: fig.savefig(saveDir+'/ccg%s-%d_%.2f.pdf'%(str(units).replace(' ', ''), cwin, cbin))
+        if png: fig.savefig(saveDir+'/ccg%s_%d_%.2f.png'%(str(units).replace(' ', ''), cwin, cbin))
     
     if ret_cm:
         return cm

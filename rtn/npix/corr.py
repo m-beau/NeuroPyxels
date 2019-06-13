@@ -841,7 +841,7 @@ def find_significant_hist_peak(hist, hbin, threshold=3, n_consec_bins=3, ext_mn=
     return ret # Concatenates (python list). Distinguish peaks and troughs with their peak value sign.
 
         
-def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', _format='peaks_infos', again=False):
+def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', _format='peaks_infos', again=False, graph=None):
     '''
     Function generating a NxN functional correlation dataframe SFCDF and matrix SFCM
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -928,6 +928,13 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 if _format=='peaks_infos':
                     SFCDF.loc[u1, u2]=pks if np.array(pks).any() else 0
                     if np.array(pks).any():
+                        # If called in the context of CircuitProphyler, add the connection to the graph
+                        for p in pks:
+                            graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
+                                           amp=p[2], t=p[3], sign=pkSgn, width=p[1]-p[0], label=None,
+                                           criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'n_consec_bins':n_consec_bins})
+                        
+                        # Then make the plottable sfcdf
                         vsplit=len(pks)
                         if vsplit>1: print('MORE THAN ONE SIGNIFICANT PEAK:{}->{}'.format(u1,u2), end = '\r')
                         if 12%vsplit==0: # dividers of 12

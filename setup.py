@@ -12,6 +12,6 @@ setup(name='rtn',
       #package_dir={'rtn': 'rtn'},
       install_requires=['numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'six', 'elephant', 'vispy', 'statsmodels', 'progressbar',
-      'scikit-learn', 'umap-learn'],
+      'scikit-learn', 'umap-learn', 'networkx'],
       dependency_links=['https://github.com/llerussell/paq2py.git'],
       keywords='phy,data analysis,electrophysiology,neuroscience')

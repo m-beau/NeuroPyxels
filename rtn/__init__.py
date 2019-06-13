@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from . import stats, utils
+from . import stats, utils, npix
 
 import os, sys
 

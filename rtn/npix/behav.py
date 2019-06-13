@@ -13,8 +13,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-import sp.signal as sgnl
-import sp.stats as stats
+import scipy.signal as sgnl
+import scipy.stats as stats
 import paq2py
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.decomposition import PCA

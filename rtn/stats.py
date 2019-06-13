@@ -76,6 +76,7 @@ def corrTest_pearson(data1, data2):
     corr, p = stt.pearsonr(data1, data2)
     return corr, p
 
+"""
 #### Spearman's rank correlation
 # ->> TEST WHETHER TWO SAMPLES HAVE A MONOTONIC RELATIONSHIP
 # <- Assumptions on observations in each sample: 1) iid, 2) observations can be ranked in each sample
@@ -164,3 +165,4 @@ stat, p = friedmanchisquare(data1, data2, ...)
 
 #%% MODERN STATISTICS: NO MORE TESTS BUT DATA MODELLING
 
+"""

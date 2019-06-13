@@ -204,7 +204,7 @@ def plot_raw(bp, times, channels=np.arange(385), offset=450, fs=30000, ampFactor
 
 
 
-
+"""
 
 import pandas as pd
 import numpy as np
@@ -393,3 +393,5 @@ df = pd.DataFrame(binsync[:,0:7], index=time)
 del time, binsync
 
 df = neuropixel_binary_to_steps(df)
+
+"""

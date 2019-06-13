@@ -4,6 +4,8 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 
+from . import *
+
 __doc__="""
 
 npix submodules:

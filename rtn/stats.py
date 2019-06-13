@@ -11,7 +11,7 @@ Inferential statistics tools.
 '''https://machinelearningmastery.com/statistical-hypothesis-tests-in-python-cheat-sheet/'''
 
 from numpy.random import seed, randn
-import sp.stats as stt
+import scipy.stats as stt
 import statsmodels as sttmdl
 
 '''Reminder: Observations < Samples < Population'''

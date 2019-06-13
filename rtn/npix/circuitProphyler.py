@@ -86,7 +86,7 @@ class Dataset:
     def print_graph(self):
         print(self.graph.adj)
     
-    def correlate_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', agail=False):
+    def correlate_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False):
         rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again)
         
         

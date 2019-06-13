@@ -4,7 +4,7 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 
-from . import *
+from . import io, gl, spk_t, spk_wvf, corr, plot, ml, behav, circuitProphyler
 
 __doc__="""
 

@@ -990,7 +990,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
             print('HAS NOT BEEN TESTED')
             for u1 in SFCDF.index:
                 for u2 in SFCDF.index:
-                    pks=SFCDF.loc[u1, str(u2)]
+                    pks=SFCDF.loc[u1, u2]
                     if u1<u2 and type(pks) is list:
                         for p in pks:
                             graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 

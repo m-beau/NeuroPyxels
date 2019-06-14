@@ -34,7 +34,7 @@ ux.print_connections(format=dataframe)
 ux.print_connections(format=graph)
 # For format=graph, a networkx style graph where nodes are unit INDICES and edges are connections whose weight is the SIGNED (+ or -) height in standard deviations from baseline.
 """
-import os
+import os, ast
 import os.path as op
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -48,6 +48,22 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     _as_array, _unique, _index_of
                     
 import networkx as nx
+
+def chan_map_3A():
+    chan_map_el = npa([[  43.,   20.],
+                           [  11.,   20.],
+                           [  59.,   40.],
+                           [  27.,   40.]])
+    vert=npa([[  0,   40.],
+              [  0,   40.],
+              [  0,   40.],
+              [  0,   40.]])
+    
+    chan_map=chan_map_el.copy()
+    for i in range(96-1):
+        chan_map = np.vstack((chan_map, chan_map_el+vert*(i+1)))
+        
+    return chan_map
 
 class Dataset:
     '''
@@ -88,7 +104,7 @@ class Dataset:
         if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             ft = pd.read_csv(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv'), sep=',', index_col=0)
             bestChs=np.array(ft["WVF-MainChannel"])
-            depthIdx = np.argsort(bestChs)[::-1] # From surface (high ch) to DCN (low ch)
+            depthIdx = np.argsort(bestChs) # From deep to shallow
             gu=np.array(ft.index, dtype=np.int64)[depthIdx]
             
             self.peak_channels = {gu[i]:bestChs[i] for i in range(len(gu))}
@@ -117,7 +133,6 @@ class Dataset:
     def label_nodes(self):
         
         for node in self.graph.nodes:
-            
             # Plot ACG
             rtn.npix.plot.plot_acg(self.dp, node, 0.2, 80)
             
@@ -159,11 +174,38 @@ class Dataset:
     def print_graph(self):
         print(self.graph.adj)
     
-    def plot_graph(self):
-        chan_pos=np.load(op.join(self.dp, 'channel_positions.npy'))
-        peak_pos = {u:chan_pos[c] for u,c in self.peak_channels.items()}
-        nx.draw_networkx(self.graph, pos=peak_pos, with_labels=True, alpha=0.6)
-    
+    def plot_graph(self, edge_labels=True, node_labels=True):
+        chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort
+        #chan_map=np.load(op.join(self.dp, 'channel_map.npy')).flatten()
+        peak_pos = {u:(chan_pos[c]+npa([-3+6*np.random.rand(),0])).flatten() for u,c in self.peak_channels.items()}
+        ec, ew = [], []
+        for e in self.graph.edges:
+            ec.append('r') if self.gea('sign')[e]==-1 else ec.append('b')
+            ew.append(self.gea('amp')[e])
+        e_labels={e[0:2]:str(np.round(self.gea('amp')[e], 2))+'@'+str(np.round(self.gea('t')[e], 1))+'ms' for e in self.graph.edges}
+        
+        fig, ax = plt.subplots(figsize=(6, 16))
+        if node_labels:
+            nx.draw_networkx(self.graph, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
+        nx.draw_networkx_nodes(self.graph, pos=peak_pos, node_color='grey', alpha=0.8)
+        nx.draw_networkx_edges(self.graph, pos=peak_pos, edge_color=ew, width=4, alpha=0.7, 
+                               edge_cmap=plt.cm.RdBu_r, edge_vmin=-5, edge_vmax=5)
+        if edge_labels:
+            nx.draw_networkx_edge_labels(self.graph, pos=peak_pos, edge_labels=e_labels,font_color='black', font_size=6, font_weight='bold')
+        ax.tick_params(axis='both', reset=True, labelsize=10)
+        #ax.invert_yaxis()
+        ax.set_ylabel('Depth (um)', fontsize=12)
+        ax.set_xlabel('Lat. position (um)', fontsize=12)
+        ax.set_ylim([3840,0])
+        ax.set_xlim([0,70])
+        criteria=self.gea('criteria')[list(self.graph.edges)[0]]
+        ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.dp.split('/')[-1], criteria))
+        plt.tight_layout()
+        
+    def export_graph(self, frmt='edgelist'):
+        assert frmt in ['edgelist', 'adjlist', 'gexf']
+        nx_exp={'edgelist':nx.write_edgelist, 'adjlist':nx.write_adjlist,'gexf':nx.write_gexf}
+        nx_exp[frmt](self.graph, op.join(self.dp, 'graph'))
 
     
     

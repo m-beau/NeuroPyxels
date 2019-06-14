@@ -883,6 +883,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
             print("File {} found in routines memory.".format(fn1))
             SFCDF = pd.read_csv(dprm+fn1, index_col='Unit')
             SFCDF.replace('0', 0, inplace=True) # Loading a csv turns all the values into strings - now only detected peaks are strings
+            SFCDF.replace(0.0, 0, inplace=True)
             SFCM1 = pd.read_csv(dprm+fn2, index_col='Unit')
             SFCMtime = np.load(dprm+fn3)
             # If called in the context of CircuitProphyler, add the connection to the graph
@@ -893,7 +894,8 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                         print(pks)
                         print(type(pks))
                         if u1<u2 and type(pks) is str:
-                            exec('pks='+pks)
+                            exec('a='+pks)
+                            print(a)
                             print('ADDING EDGE')
                             for p in pks:
                                 print(p)
@@ -942,7 +944,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 pkSgn='+' if i2>i1 else '-'
                 pks = find_significant_hist_peak(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn=pkSgn)
                 if _format=='peaks_infos':
-                    SFCDF.loc[u1, u2]=pks if np.array(pks).any() else 0
+                    SFCDF.loc[u1, u2]=pks if np.array(pks).any() else int(0)
                     if np.array(pks).any():
                         vsplit=len(pks)
                         if vsplit>1: print('MORE THAN ONE SIGNIFICANT PEAK:{}->{}'.format(u1,u2), end = '\r')

@@ -888,7 +888,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
             if graph is not None:
                 for u1 in SFCDF.index:
                     for u2 in SFCDF.index:
-                        p=SFCDF.loc[u1, u2]
+                        p=SFCDF.loc[u1, str(u2)]
                         if u1<u2 and (p != 0):
                             graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
                                            amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=None,
@@ -985,7 +985,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
         if graph is not None:
             for u1 in SFCDF.index:
                 for u2 in SFCDF.index:
-                    p=SFCDF.loc[u1, u2]
+                    p=SFCDF.loc[u1, str(u2)]
                     if u1<u2 and (p != 0):
                         graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
                                        amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=None,

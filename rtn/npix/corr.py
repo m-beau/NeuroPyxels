@@ -884,6 +884,15 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
             SFCDF = pd.read_csv(dprm+fn1, index_col='Unit')
             SFCM1 = pd.read_csv(dprm+fn2, index_col='Unit')
             SFCMtime = np.load(dprm+fn3)
+            # If called in the context of CircuitProphyler, add the connection to the graph
+            if graph is not None:
+                for u1 in SFCDF.index:
+                    for u2 in SFCDF.index:
+                        p=SFCDF.loc[u1, u2]
+                        if u1<u2 and (p != 0):
+                            graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
+                                           amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=None,
+                                           criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'n_consec_bins':n_consec_bins})
             return SFCDF, SFCM1, gu, np.sort(bestChs)[::-1], SFCMtime
             
     elif _format=='raw_ccgs':
@@ -928,14 +937,6 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 if _format=='peaks_infos':
                     SFCDF.loc[u1, u2]=pks if np.array(pks).any() else 0
                     if np.array(pks).any():
-                        # If called in the context of CircuitProphyler, add the connection to the graph
-                        if graph is not None:
-                            for p in pks:
-                                graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
-                                               amp=p[2], t=p[3], sign=pkSgn, width=p[1]-p[0], label=None,
-                                               criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'n_consec_bins':n_consec_bins})
-                        
-                        # Then make the plottable sfcdf
                         vsplit=len(pks)
                         if vsplit>1: print('MORE THAN ONE SIGNIFICANT PEAK:{}->{}'.format(u1,u2), end = '\r')
                         if 12%vsplit==0: # dividers of 12
@@ -980,6 +981,15 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
         SFCDF.to_csv(dprm+fn1)
         SFCM1.to_csv(dprm+fn2)
         np.save(dprm+fn3, SFCMtime)
+        # If called in the context of CircuitProphyler, add the connection to the graph
+        if graph is not None:
+            for u1 in SFCDF.index:
+                for u2 in SFCDF.index:
+                    p=SFCDF.loc[u1, u2]
+                    if u1<u2 and (p != 0):
+                        graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
+                                       amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=None,
+                                       criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'n_consec_bins':n_consec_bins})
         return SFCDF, SFCM1, gu, np.sort(bestChs)[::-1], SFCMtime
 
     elif _format=='raw_ccgs':

@@ -97,16 +97,49 @@ class Dataset:
             print('You need to export the features tables using phy first!!')
             return
     
-    def correlate_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False):
+    def connect_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False):
         rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again)
-        
+    
+    def gea(self, at):
+        return nx.get_edge_attributes(self.graph, at)
+    
+    def get_edge_attribute(self, u1, u2, attribute):
+        assert attribute in ['u_src','u_trg','amp','t','sign','width','label','criteria']
+        al=[]
+        for n in range(12): # cf. max 12 peaks by CCG (already too much)...
+            try:
+                al.append(self.gea(attribute)[(u1,u2,n)])
+            except:
+                break
+        return al
+    
+    def label_edges(self):
+        for edge in self.graph.edges:
+            u_src=self.gea('u_src')[edge]
+            u_trg=self.gea('u_trg')[edge]
+            amp=self.gea('amp')[edge]
+            t=self.gea('t')[edge]
+            width=self.gea('width')[edge]
+            criteria=self.gea('criteria')[edge]
+            
+            rtn.npix.plot.plot_ccg(self.dp, [u_src,u_trg], criteria['cbin'], criteria['cwin'])
+            
+            label=''
+            while label=='': # if enter is hit
+                label=input("\n\n || {}->{} sig. corr. of {}s.d., {}ms wide, @{}ms - label?(<n> to skip):".format(u_src, u_trg, amp, width, t))
+                if label=='n':
+                    label=0 # status quo
+                    break
+            nx.set_edge_attributes(self.graph, {edge:{'label':label}})
+            print("Label of edge {} was set to {}.\n".format(edge, label))
+    
     def print_graph(self):
         print(self.graph.adj)
     
     def plot_graph(self):
         chan_pos=np.load(op.join(self.dp, 'channel_positions.npy'))
         peak_pos = {u:chan_pos[c] for u,c in self.peak_channels.items()}
-        nx.draw_networkx(self.graph, pos=peak_pos, with_labels=True, font_weight='bold')
+        nx.draw_networkx(self.graph, pos=peak_pos, with_labels=True, alpha=0.6)
     
 
     

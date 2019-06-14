@@ -4,7 +4,7 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 
-import os, sys
+import os, sys, ast
 
 import numpy as np
 import pandas as pd
@@ -891,11 +891,9 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 for u1 in SFCDF.index:
                     for u2 in SFCDF.index:
                         pks=SFCDF.loc[u1, str(u2)]
-                        print(pks)
-                        print(type(pks))
+                        print(u1,u2,pks)
                         if u1<u2 and type(pks) is str:
-                            exec('a='+pks)
-                            print(a)
+                            pks=ast.literal_eval(pks)
                             print('ADDING EDGE')
                             for p in pks:
                                 print(p)

@@ -76,20 +76,37 @@ class Dataset:
         if not op.isdir(op.join(self.dp, 'graph')): os.mkdir(op.join(self.dp, 'graph'))
         self.graph=nx.MultiGraph() # Undirected multigraph - directionality is given by u_src and u_trg. Several peaks -> several edges -> multigraph.
         self.units = {u:Unit(self.dp,u, self.graph) for u in self.get_good_units()} # Units are added to the graph when inititalized
-        
+        self.get_peak_channels()
+
     def get_units(self):
         return rtn.npix.gl.get_units(self.dp)
     
     def get_good_units(self):
         return rtn.npix.gl.get_good_units(self.dp)
     
-    def print_graph(self):
-        print(self.graph.adj)
+    def get_peak_channels(self):
+        if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
+            ft = pd.read_csv(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv'), sep=',', index_col=0)
+            bestChs=np.array(ft["WVF-MainChannel"])
+            depthIdx = np.argsort(bestChs)[::-1] # From surface (high ch) to DCN (low ch)
+            gu=np.array(ft.index, dtype=np.int64)[depthIdx]
+            
+            self.peak_channels = {gu[i]:bestChs[i] for i in range(len(gu))}
+            
+        else:
+            print('You need to export the features tables using phy first!!')
+            return
     
     def correlate_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False):
         rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again)
         
-        
+    def print_graph(self):
+        print(self.graph.adj)
+    
+    def plot_graph(self):
+        chan_pos=np.load(op.join(self.dp, 'channel_positions.npy'))
+        peak_pos = {u:chan_pos[c] for u,c in self.peak_channels.items()}
+        nx.draw_networkx(self.graph, pos=peak_pos, with_labels=True, font_weight='bold')
     
 
     

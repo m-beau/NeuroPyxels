@@ -487,7 +487,6 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
 
     if CCG is None:
         CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section)
-    print(CCG.shape)
     if CCG.shape[0]==2:
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, pdf, png, rec_section=rec_section, 
                       labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim=ylim, normalize=normalize)

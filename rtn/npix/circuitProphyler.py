@@ -113,7 +113,30 @@ class Dataset:
                 break
         return al
     
+    
+    def label_nodes(self):
+        
+        for node in self.graph.nodes:
+            
+            # Plot ACG
+            rtn.npix.plot.plot_acg(self.dp, node, 0.2, 80)
+            
+            label=''
+            while label=='': # if enter is hit
+                label=input("\n\n || Unit {}- label?(<n> to skip):".format(node))
+                if label=='n':
+                    label=0 # status quo
+                    break
+            nx.set_node_attributes(self.graph, {node:{'putative_cell_type':label}}) # update graph
+            self.units[node].putative_cell_type=label # Update class
+            print("Label of edge {} was set to {}.\n".format(node, label))
+    
     def label_edges(self):
+        
+        if self.graph.number_of_edges==0:
+            print("No edge detected - connect the graph first by calling Dataset.connect_graph(cbin, cwin, threshold, n_consec_bins, rec_section, again)")
+            return
+        
         for edge in self.graph.edges:
             u_src=self.gea('u_src')[edge]
             u_trg=self.gea('u_trg')[edge]
@@ -155,8 +178,11 @@ class Unit:
     def __init__(self, datapath, index, graph):
         self.dp = datapath
         self.idx=index
+        self.putative_cell_type=''
+        self.classified_cell_type=''
         self.graph = graph
-        self.graph.add_node(self.idx, unit=self) # self refers to the instance not the graph
+        # self refers to the instance not the class, hehe
+        self.graph.add_node(self.idx, unit=self, putative_cell_type=self.putative_cell_type, classified_cell_type=self.classified_cell_type) 
         
     def trn(self, rec_section='all'):
         return rtn.npix.spk_t.trn(self.dp, self.idx, rec_section=rec_section)

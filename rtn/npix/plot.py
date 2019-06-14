@@ -21,6 +21,8 @@ from rtn.npix.corr import acg, ccg, gen_sfc, find_significant_hist_peak, make_cm
 from mpl_toolkits.mplot3d import axes3d
 from mpl_toolkits.mplot3d import Axes3D
 
+import networkx as nx
+
 #%% regular histogram
 def hist_MB(arr, a, b, s, title='MB hist', xlabel='', ylabel=''):
     hist=np.histogram(arr, bins=np.arange(a,b,s))
@@ -665,10 +667,10 @@ def network_plot_3D(G, angle, save=False):
     # Hide the axes
     ax.set_axis_off()
 
-     if save is not False:
-         plt.savefig("C:\scratch\\data\"+str(angle).zfill(3)+".png")
-         plt.close('all')
-     else:
-          plt.show()
+    if save is not False:
+        plt.savefig("C:\scratch\\data\ "+str(angle).zfill(3)+".png")
+        plt.close('all')
+    else:
+         plt.show()
     
     return

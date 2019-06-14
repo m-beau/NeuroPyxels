@@ -882,6 +882,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
         if os.path.exists(dprm+fn1) and not again:
             print("File {} found in routines memory.".format(fn1))
             SFCDF = pd.read_csv(dprm+fn1, index_col='Unit')
+            SFCDF.replace('0', 0, inplace=True)
             SFCM1 = pd.read_csv(dprm+fn2, index_col='Unit')
             SFCMtime = np.load(dprm+fn3)
             # If called in the context of CircuitProphyler, add the connection to the graph
@@ -889,6 +890,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 for u1 in SFCDF.index:
                     for u2 in SFCDF.index:
                         p=SFCDF.loc[u1, str(u2)]
+                        print(p)
                         if u1<u2 and type(p) is str:
                             exec('p='+p)
                             print('ADDING EDGE')

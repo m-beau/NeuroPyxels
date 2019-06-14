@@ -882,21 +882,22 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
         if os.path.exists(dprm+fn1) and not again:
             print("File {} found in routines memory.".format(fn1))
             SFCDF = pd.read_csv(dprm+fn1, index_col='Unit')
-            SFCDF.replace('0', 0, inplace=True)
+            SFCDF.replace('0', 0, inplace=True) # Loading a csv turns all the values into strings - now only detected peaks are strings
             SFCM1 = pd.read_csv(dprm+fn2, index_col='Unit')
             SFCMtime = np.load(dprm+fn3)
             # If called in the context of CircuitProphyler, add the connection to the graph
             if graph is not None:
                 for u1 in SFCDF.index:
                     for u2 in SFCDF.index:
-                        p=SFCDF.loc[u1, str(u2)]
-                        print(p)
-                        if u1<u2 and type(p) is str:
-                            exec('p='+p)
+                        pks=SFCDF.loc[u1, str(u2)]
+                        print(pks)
+                        if u1<u2 and type(pks) is str:
+                            exec('pks='+pks)
                             print('ADDING EDGE')
-                            graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
-                                           amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=None,
-                                           criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'n_consec_bins':n_consec_bins})
+                            for p in pks:
+                                graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
+                                               amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=None,
+                                               criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'n_consec_bins':n_consec_bins})
             return SFCDF, SFCM1, gu, np.sort(bestChs)[::-1], SFCMtime
             
     elif _format=='raw_ccgs':
@@ -989,12 +990,14 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
         if graph is not None:
             for u1 in SFCDF.index:
                 for u2 in SFCDF.index:
-                    p=SFCDF.loc[u1, str(u2)]
-                    if u1<u2 and type(p) is str:
-                        exec('p='+p)
-                        graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
-                                       amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=None,
-                                       criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'n_consec_bins':n_consec_bins})
+                    pks=SFCDF.loc[u1, str(u2)]
+                    print(pks)
+                    if u1<u2 and type(pks) is list:
+                        print('ADDING EDGE')
+                        for p in pks:
+                            graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
+                                           amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=None,
+                                           criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'n_consec_bins':n_consec_bins})
         return SFCDF, SFCM1, gu, np.sort(bestChs)[::-1], SFCMtime
 
     elif _format=='raw_ccgs':

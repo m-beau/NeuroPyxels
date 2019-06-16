@@ -35,6 +35,8 @@ ux.print_connections(format=graph)
 # For format=graph, a networkx style graph where nodes are unit INDICES and edges are connections whose weight is the SIGNED (+ or -) height in standard deviations from baseline.
 """
 import os, ast
+import time
+import imp
 import os.path as op
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -87,11 +89,15 @@ class Dataset:
     
     def __init__(self, datapath):
         self.dp = op.expanduser(datapath)
+        self.name=self.dp.split('/')[-1]
+        self.params = imp.load_source('params', op.join(self.dp,'params.py'))
+        self.fs=self.params.sample_rate
+        self.endTime=int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
         
         # Create a networkX graph whose nodes are Units()
         if not op.isdir(op.join(self.dp, 'graph')): os.mkdir(op.join(self.dp, 'graph'))
         self.graph=nx.MultiGraph() # Undirected multigraph - directionality is given by u_src and u_trg. Several peaks -> several edges -> multigraph.
-        self.units = {u:Unit(self.dp,u, self.graph) for u in self.get_good_units()} # Units are added to the graph when inititalized
+        self.units = {u:Unit(self, u, self.graph) for u in self.get_good_units()} # Units are added to the graph when inititalized
         self.get_peak_channels()
 
     def get_units(self):
@@ -113,8 +119,29 @@ class Dataset:
             print('You need to export the features tables using phy first!!')
             return
     
-    def connect_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False):
-        rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again)
+    def connect_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False):
+        self.graph.remove_edges_from(list(self.graph.edges))
+        graphs=[]
+        for f in os.listdir(op.join(self.dp, 'graph')):
+            if 'graph' in f:
+                graphs.append(f)
+        if len(graphs)>0:
+            while 1:
+                load_choice=input("""Saved graphs found in {}:{}.
+                              Dial a filename to load it, or <sfc> to build it from the significant functional correlations table.""")
+                if load_choice=='sfc':
+                    print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
+                    rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
+                    break
+                elif op.isfile(op.join(self.dp, 'graph', load_choice)):
+                    self.graph=nx.read_edgelist(op.join(self.dp, 'graph', load_choice))
+                    rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
+                    break
+                else:
+                    print("Filename or 'sfc' misspelled. Try again.")
+        else:
+            print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
+            rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
     
     def gea(self, at):
         return nx.get_edge_attributes(self.graph, at)
@@ -129,7 +156,15 @@ class Dataset:
                 break
         return al
     
+    def gna(self, at):
+        return nx.get_node_attributes(self.graph, at)
     
+    def get_node_attribute(self, u, attribute):
+        assert attribute in ['putative_cell_type', 'classified_cell_type']
+        
+        return self.gna(attribute)[u]
+
+
     def label_nodes(self):
         
         for node in self.graph.nodes:
@@ -145,6 +180,8 @@ class Dataset:
             nx.set_node_attributes(self.graph, {node:{'putative_cell_type':label}}) # update graph
             self.units[node].putative_cell_type=label # Update class
             print("Label of edge {} was set to {}.\n".format(node, label))
+            
+        
     
     def label_edges(self):
         
@@ -164,12 +201,42 @@ class Dataset:
             
             label=''
             while label=='': # if enter is hit
-                label=input("\n\n || {}->{} sig. corr. of {}s.d., {}ms wide, @{}ms - label?(<n> to skip):".format(u_src, u_trg, amp, width, t))
-                if label=='n':
-                    label=0 # status quo
+                print("\n\n || {}->{} (multiedge {}) sig. corr. of {}s.d., {}ms wide, @{}ms".format(u_src, u_trg, edge[2], amp, width, t))
+                label=input(" || Label? (<s> to skip, <del> to delete edge):")
+                if label=='del':
+                    self.graph.remove_edge(edge)
+                    print(" || Edge {} was deleted.".format(edge))
                     break
-            nx.set_edge_attributes(self.graph, {edge:{'label':label}})
-            print("Label of edge {} was set to {}.\n".format(edge, label))
+                elif label=='s':
+                    nx.set_edge_attributes(self.graph, {edge:{'label':0}}) # status quo
+                    break
+                elif label=='':
+                    print("Whoops, looks like you hit enter. You cannot leave unnamed edges. Try again.")
+                else:
+                    nx.set_edge_attributes(self.graph, {edge:{'label':label}})
+                    print(" || Label of edge {} was set to {}.\n".format(edge, label))
+                    break
+        while 1:
+            save=input("\n\n || Do you wish to save your graph with labeled edges? <any>|<enter> to save it, else <n>:")
+            if save=='n':
+                print(" || Not saving. You can still save the graph later by running ds.export_graph(name) (name does not need to comprise 'graph'.).")
+                break
+            else:
+                pass
+            name=input("|| Saving graph with newly labelled edges. Name (<t> for aaaa-mm-dd_hh:mm:ss format):")
+            if op.isfile(op.join(self.dp,'graph','graph_'+name)):
+                ow=input(" || Warning, name already taken - overwrite? <y>/<n>:")
+                if ow=='y':
+                    print(" || Overwriting graph {}.".format('graph_'+name))
+                    break
+                elif ow=='n':
+                    print(' || Ok, pick another name.')
+                    pass
+            else:
+                print(" || Saving graph {}.".format('graph_'+name))
+                break
+        
+        self.export_graph(name) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
     
     def print_graph(self):
         print(self.graph.adj)
@@ -186,26 +253,200 @@ class Dataset:
         
         fig, ax = plt.subplots(figsize=(6, 16))
         if node_labels:
-            nx.draw_networkx(self.graph, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
+            pos=nx.spring_layout(self.graph)
+            nlabs={}
+            for node in list(self.graph.nodes):
+                pct=self.get_node_attribute(node, 'classified_cell_type')
+                cct=self.get_node_attribute(node, 'classified_cell_type')
+                l="{}".format(node)
+                if pct!='':
+                    l+="\n{}".format(pct)
+                if cct!='':
+                    l+="\n{}".format(cct)
+                nlabs[node]=l
+            nx.draw_networkx_labels(self.graph,pos,nlabs, font_weight='bold', font_color='#000000FF', font_size=6)
+            #nx.draw_networkx(self.graph, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
         nx.draw_networkx_nodes(self.graph, pos=peak_pos, node_color='grey', alpha=0.8)
         nx.draw_networkx_edges(self.graph, pos=peak_pos, edge_color=ew, width=4, alpha=0.7, 
                                edge_cmap=plt.cm.RdBu_r, edge_vmin=-5, edge_vmax=5)
         if edge_labels:
             nx.draw_networkx_edge_labels(self.graph, pos=peak_pos, edge_labels=e_labels,font_color='black', font_size=6, font_weight='bold')
         ax.tick_params(axis='both', reset=True, labelsize=10)
-        #ax.invert_yaxis()
         ax.set_ylabel('Depth (um)', fontsize=12)
         ax.set_xlabel('Lat. position (um)', fontsize=12)
         ax.set_ylim([3840,0])
         ax.set_xlim([0,70])
         criteria=self.gea('criteria')[list(self.graph.edges)[0]]
-        ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.dp.split('/')[-1], criteria))
+        ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
         plt.tight_layout()
+    
         
-    def export_graph(self, frmt='edgelist'):
+    
+    def export_graph(self, name='', frmt='edgelist'):
+        '''
+        name: any srting. If 't': will be graph_aaaa-mm-dd_hh:mm:ss
+        frmt: any in ['edgelist', 'adjlist', 'gexf']'''
+        
         assert frmt in ['edgelist', 'adjlist', 'gexf']
         nx_exp={'edgelist':nx.write_edgelist, 'adjlist':nx.write_adjlist,'gexf':nx.write_gexf}
-        nx_exp[frmt](self.graph, op.join(self.dp, 'graph'))
+        if name=='t':
+            name=time.strftime("%Y-%m-%d_%H:%M:%S")
+        nx.write_edgelist(self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name)) # Always export in edges list for internal compatibility
+        if frmt!='edgelist':
+            nx_exp[frmt](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name))
+            
+            
+    def export_feat(self, rec_section='all'):
+        # TO SET HERE - RECORDING SECTIONS TO CONSIDER TO COMPUTE THE FEATURES TABLE
+        endTime = int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)# above max in seconds
+#                t1 = 0 # in seconds
+#                t2 = 2000 # in seconds
+#                rec_section = [(t1, t2)] # list of tuples (t1, t2) delimiting the recording sections in seconds
+        rec_section = 'all' # Whole recording
+        print('Recording sections used to perform units features extraction:{}'.format(rec_section))
+        # Select the relevant clusters, either the ones selected in phy or the ones sorted as good
+        allClusters = np.unique(controller.model.spike_clusters)
+        goodClusters = np.array([])
+        sortedClusters = np.array([])
+        for unt in allClusters:
+            quality = controller.supervisor.cluster_meta.get('group', unt)
+            if quality=='good':
+                goodClusters = np.append(goodClusters, unt)
+            if quality=='good' or quality=='mua':
+                sortedClusters = np.append(sortedClusters, unt)
+
+
+        # Create or load FeaturesTable
+        # All the Nans will be substituted by the mean of the axis at the end.
+        Features = OrderedDict()
+        
+        Features["ISI-mfr"] = "Mean firing rate (Hz)." 
+        Features["ISI-mifr"] = "Mean instantaneous firing rate (Hz)." 
+        Features["ISI-med"] = "Median of the interspike intervals distribution."
+        Features["ISI-mode"] = "Mode of the interspike intervals distribution."
+        Features["ISI-prct5"] = "5th percentile of the interspike intervals distribution - low 5th percentile -> more burstiness."
+        Features["ISI-entropy"] = "entropy (bits/ISI), see DugueTihyLena2017 or Dorval 2009 - large entropy -> neuron fires irregularly."
+        Features["ISI-cv2"] = "Average coefficient of variation for a sequence of 2 ISIs."
+        Features["ISI-cv"] = "Coefficient of variation of the interspike intervals distribution (sd in units of mean)."
+        Features["ISI-ir"] = "Instantaneous irregularity - average of the absolute diff between the natural log of consecutive ISIs."
+        Features["ISI-lv"] = "Local variation of ISIs."
+        Features["ISI-lvr"] = "Revised local variation of ISIs."
+        Features["ISI-lcv"] = "Coefficient of variation of the log ISIs."
+        Features["ISI-si"] = "Geometric average of the rescaled cross-correlation of ISIs."
+        Features["ISI-skew"] = "Skewness of the interspike intervals distribution (ms^3)"
+        Features["ISI-ra"] = "Refractory area of the max-normalized ISI distribution, from 0 to the mode (a.u.*ms)."
+        Features["ISI-rp"] = "Refractory period of the ISI distribution, from 0 to when it crosses 5% of max (ms)."
+
+        Features["ACG-burst"] = "Presence of burst or not (0 or 1)"
+        Features["ACG-mode"] = "Mode of the ACG, only if mode is found meaningful. Else, Nan."
+        Features["ACG-do_a"] = "Autocorrelogram dampened oscillation amplitude (AU)"
+        Features["ACG-do_t"] = "Autocorrelogram dampened oscillation decay constant (ms)"
+        Features["ACG-do_f"] = "Autocorrelogram dampened oscillation frequency (Hz)"
+        Features["ACG-Oscillatory"] = "Autocorrelogram considered oscillatory (do_a>=30 and do_t>=2 and do_f>=3) or not (0 or 1)"
+        Features["ACG-class"] = "..."
+        
+        Features["WVF-tpw"] = "Waveform trough to peak width (us)"
+        Features["WVF-ptr"] = "Waveform peak to trough ratio (unitless)"
+        Features["WVF-es"] = "Waveform end slope (uV/us)"
+        Features["WVF-MainChannel"] = "Channel where average waveform has max amplitude (Irrelevant for clustering unless coupled to histology)" # PSDpeaks
+        Features["WVF-spat.dis"] = "Waveform spatial distribution (um - range where amplitude undershoots 10% of maximum)"
+        
+        FeaturesList = Features.keys()
+        dp = controller.model.dir_path
+        direct = dp+"/FeaturesTable"
+        ft = load_featuresTable(direct, sortedClusters, FeaturesList)
+
+        if custom:
+            if os.path.isfile(direct+'featuresTable_custom.npy'):
+                pass
+            
+        # Set the features extractors parameters
+        # CAREFUL for ACG features: have to be calculated with window=80ms, binsize=0.1ms!!
+        # fs = float(controller.model.sample_rate)
+        acgw = 80 #ms, by definition to compute the acg features
+        acgb = 0.2 #ms, by definition to compute acg features
+        # max_waveforms_per_cluster=1e3
+
+        # Fill the table with all the features of relevant clusters
+        print("Start computing the features of all %d units."%len(sortedClusters))
+        bar = progressbar.ProgressBar(maxval=len(sortedClusters), \
+                widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
+        bar.start()
+        bar.update(0)
+        
+        # clustersSubset = sortedClusters[:10]
+        for i, clust in enumerate(sortedClusters):
+            print('WORKING ON CLUSTER %d...'%clust)
+            bar.update(i+1)
+            clust = int(clust)
+
+            try:
+                # InterSpike Intervals histogram features
+                isint = isi(dp, clust, ret=True, sav=True, prnt=False, rec_section=rec_section)
+                MFR, MIFR, medISI, modeISI, prct5ISI, entropyD, CV2, CV, IR, Lv, LvR, LcV, SI, SKW, ra, rp = compute_isi_features(isint)
+                ft.loc[clust, 'ISI-mfr':'ISI-rp'] = [MFR, MIFR, medISI, modeISI, prct5ISI, entropyD, CV2, CV, IR, Lv, LvR, LcV, SI, SKW, ra, rp]
+                #print(MFR, MIFR, medISI, modeISI, prct5ISI, entropyD, CV2, CV, IR, Lv, LvR, LcV, SI, SKW, ra, rp)
+            except:
+                print("    WARNING ISI Features of cluster %d could not be computed, and are set to NaN."%(clust))
+                ft.loc[clust, 'ISI-mfr':'ISI-rp']=[np.nan]*16
+            try:
+                # Autocorrelogram features
+#                        cluster_ids, bin_size, window_size = [clust], acgb*1./1000, acgw*1./1000
+#                        spike_ids = controller.selector.select_spikes(cluster_ids,
+#                                                                controller.n_spikes_correlograms,
+#                                                                subset='random',
+#                                                                )
+#                        st = controller.model.spike_times[spike_ids]
+#                        sc = controller.supervisor.clustering.spike_clusters[spike_ids]
+#                        acgr = correlograms(st,
+#                                            sc,
+#                                            sample_rate=controller.model.sample_rate,
+#                                            cluster_ids=cluster_ids,
+#                                            bin_size=bin_size,
+#                                            window_size=window_size,
+#                                            )
+                ACG=acg(dp, clust, acgb, acgw, fs=30000, normalize='Hertz', prnt=False, rec_section=rec_section)
+                modes, smoothCCG, ACGburst, sm_storage, modeType = find_modes(ACG, acgw*1./1000, acgb*1./1000)#acgr[0,0,:], acgw*1./1000, acgb*1./1000)
+                CCG_fitX, CCG_fitY, corParams, Oscillatory = evaluate_oscillation(smoothCCG, modes, acgb*1./1000, initial_guess=[2,2,2,2])
+                ACGburst = int(ACGburst)
+                ACGmode = max(modes) if (modeType=='Meaningful Mode' or Oscillatory) and max(modes)>4.5 else np.nan
+                if Oscillatory:
+                    ACGdo_a, ACGdo_t, ACGdo_f = corParams[0], corParams[1], corParams[2]
+                else:
+                    ACGdo_a, ACGdo_t, ACGdo_f = np.nan, np.nan, np.nan
+                Oscillatory=1 if Oscillatory else 0 # Takes into account the None case (no fit possible) and the False case (thoughtfully considered non oscilatory)
+                #print([ACGburst, ACGmode, ACGdo_a, ACGdo_t, ACGdo_f, Oscillatory, ACGrp])
+                ft.loc[clust, "ACG-burst":"ACG-class"] = [ACGburst, ACGmode, ACGdo_a, ACGdo_t, ACGdo_f, Oscillatory, np.nan]
+        
+            except:
+                print("    WARNING ACG Features of cluster %d could not be computed, and are set to NaN."%(clust))
+                ft.loc[clust, "ACG-burst":"ACG-class"]=[np.nan]*7
+            
+            try:
+                # Waveform features
+                '''spike_ids = controller.selector.select_spikes([clust],
+                                            max_waveforms_per_cluster,
+                                            controller.batch_size_waveforms)
+                channel_ids=np.arange(controller.model.n_channels_dat) #gets all channels
+                wave = controller.model.get_waveforms(spike_ids, channel_ids)'''
+                map_nchannels = np.load(op.join(dp, 'channel_map.npy'), mmap_mode='r').squeeze().shape[0]
+                bunchs_set = controller._get_waveforms(clust, channel_ids=np.arange(0, map_nchannels, 1)) ## HERE IT SHOULD BE 384 FOR REGULAR NEUROPIXELS RECORDINGS
+                wave = bunchs_set.data #
+                spl, peak, trough, sp_width, pt_ratio, endslope, ind_endslope, best_channel, wvf_amp = compute_waveforms_features(wave)
+                if np.isnan(sp_width):
+                    best_channel = int(np.squeeze(best_channel)) # They all remain nan except from best_channel
+                else:
+                    sp_width, pt_ratio, endslope, best_channel = float(np.squeeze(sp_width)), float(np.squeeze(pt_ratio)), float(np.squeeze(endslope)), int(np.squeeze(best_channel))
+                ft.loc[clust, "WVF-tpw":"WVF-spat.dis"] = sp_width, pt_ratio, endslope, best_channel, np.nan
+                #print('sp_width, pt_ratio, endslope' , sp_width, pt_ratio, endslope)
+            except:
+                print("    WARNING WVF Features of cluster %d could not be computed, and are set to NaN."%(clust))
+                ft.loc[clust, "WVF-tpw":"WVF-spat.dis"]=[np.nan]*5
+        bar.finish()
+
+
+        # Save the updated features table
+        save_featuresTable(direct, ft, goodClusters, Features)                              
 
     
     
@@ -215,10 +456,11 @@ class Unit:
     '''
     
     def __repr__(self):
-        return 'Unit {} from dataset {}.'.format(self.idx, self.dp.split('/')[-1])
+        return 'Unit {} from dataset {}.'.format(self.idx, self.ds.name)
     
-    def __init__(self, datapath, index, graph):
-        self.dp = datapath
+    def __init__(self, dataset, index, graph):
+        self.ds=dataset
+        self.dp = self.ds.dp
         self.idx=index
         self.putative_cell_type=''
         self.classified_cell_type=''
@@ -241,7 +483,7 @@ class Unit:
     def acg(self, cbin, cwin, normalize='Hertz', rec_section='all'):
         return rtn.npix.corr.acg(self.dp, self.idx, bin_size=cbin, win_size=cwin, normalize=normalize, rec_section=rec_section)
     
-    def correlations(self):
+    def connections(self):
         return dict(self.graph[self.idx])
     
     # def wvf(self):

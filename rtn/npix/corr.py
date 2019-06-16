@@ -481,7 +481,7 @@ def crosscorrelate_maxime2(dp, U, bin_size, win_size, trn_binsize=0.1, fs=30000,
 
 
              
-def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all'):
+def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all', again=False):
     '''
     ********
     routine from routines_spikes
@@ -518,7 +518,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         os.makedirs(dprm)
     
     fn='/ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(rec_section)[0:50].replace(' ', ''))
-    if os.path.exists(dprm+fn):
+    if os.path.exists(dprm+fn) and not again:
         if prnt: print("File {} found in routines memory.".format(fn))
         crosscorrelograms = np.load(dprm+fn)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
@@ -579,7 +579,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         # exec("{} = sortedC".format(fn), globals())
         del sortedC
 
-def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all'):
+def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all', again=False):
     '''
     dp, 
     u, 
@@ -613,7 +613,7 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     returns numpy array (win_size/bin_size)
     '''
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
-    autocorrelogram = ccg(dp, u, bin_size, win_size, fs, normalize, ret, sav, prnt, rec_section)
+    autocorrelogram = ccg(dp, u, bin_size, win_size, fs, normalize, ret, sav, prnt, rec_section, again)
     autocorrelogram = autocorrelogram[0,0,:]
     # Either return or draw to global namespace
     if ret:
@@ -841,7 +841,7 @@ def find_significant_hist_peak(hist, hbin, threshold=3, n_consec_bins=3, ext_mn=
     return ret # Concatenates (python list). Distinguish peaks and troughs with their peak value sign.
 
         
-def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', _format='peaks_infos', again=False, graph=None):
+def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', _format='peaks_infos', again=False, graph=None, againCCG=False):
     '''
     Function generating a NxN functional correlation dataframe SFCDF and matrix SFCM
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -933,7 +933,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 prct=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2)))
                 print('{}%...'.format(prct), end=end)
             if i1!=i2:
-                hist=ccg(dp, [u1, u2], cbin, cwin, normalize='Hertz', prnt=False, rec_section=rec_section)[0,1,:]
+                hist=ccg(dp, [u1, u2], cbin, cwin, normalize='Hertz', prnt=False, rec_section=rec_section, again=againCCG)[0,1,:]
                 #hist_wide=ccg(dp, [i,j], 0.5, 50, prnt=False)[0,1,:]
                 #mn=np.mean(hist); std=np.std(hist)
                 pkSgn='+' if i2>i1 else '-'

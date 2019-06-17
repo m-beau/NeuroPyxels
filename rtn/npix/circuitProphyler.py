@@ -330,7 +330,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         nx_exp={'edgelist':nx.write_edgelist, 'adjlist':nx.write_adjlist,'gexf':nx.write_gexf, 'gml':nx.write_gml, 'gpickle':nx.write_gpickle}
         if name=='t':
             name=time.strftime("%Y-%m-%d_%H:%M:%S")
-        nx_exp['gpickle'](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.gml')) # Always export in edges list for internal compatibility
+        nx_exp['gpickle'](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.gpickle')) # Always export in edges list for internal compatibility
         if frmt!='gpickle':
             if frmt=='gml':
                 print("GML files can only process elements convertable into strings. Getting rid of nodes 'unit' attributes.")

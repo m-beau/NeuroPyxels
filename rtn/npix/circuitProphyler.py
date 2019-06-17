@@ -332,8 +332,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             name=time.strftime("%Y-%m-%d_%H:%M:%S")
         nx_exp['gpickle'](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.gpickle')) # Always export in edges list for internal compatibility
         if frmt!='gpickle':
-            if frmt=='gml':
-                print("GML files can only process elements convertable into strings. Getting rid of nodes 'unit' attributes.")
+            if frmt=='gml' or frmt=='gexf':
+                print("GML or GEXF files can only process elements convertable into strings. Getting rid of nodes 'unit' attributes.")
                 g=self.graph.copy()
                 for n in g.nodes:
                     del g.nodes[n]['unit']

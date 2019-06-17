@@ -96,7 +96,7 @@ class Dataset:
         self.params={}; params=imp.load_source('params', op.join(self.dp,'params.py'))
         for p in dir(params):
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
-        self.fs=self.params.sample_rate
+        self.fs=self.params['sample_rate']
         self.endTime=int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
         
         # Create a networkX graph whose nodes are Units()

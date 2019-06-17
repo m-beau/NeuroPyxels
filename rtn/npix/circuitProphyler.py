@@ -34,6 +34,9 @@ ux.print_connections(format=dataframe)
 ux.print_connections(format=graph)
 # For format=graph, a networkx style graph where nodes are unit INDICES and edges are connections whose weight is the SIGNED (+ or -) height in standard deviations from baseline.
 """
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 import os, ast
 import time
 import imp
@@ -90,7 +93,9 @@ class Dataset:
     def __init__(self, datapath):
         self.dp = op.expanduser(datapath)
         self.name=self.dp.split('/')[-1]
-        self.params = imp.load_source('params', op.join(self.dp,'params.py'))
+        self.params={}; params=imp.load_source('params', op.join(self.dp,'params.py'))
+        for p in dir(params):
+            exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
         self.fs=self.params.sample_rate
         self.endTime=int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
         
@@ -131,7 +136,7 @@ class Dataset:
 Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(op.join(self.dp, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
                 try: # works if an int is inputted
                     load_choice=int(ast.literal_eval(load_choice))
-                    self.graph=nx.read_edgelist(op.join(self.dp, 'graph', graphs[load_choice]))
+                    self.graph=nx.read_gml(op.join(self.dp, 'graph', graphs[load_choice]))
                     break
                 except: # must be a normal or empty string
                     if load_choice=='sfc':
@@ -150,12 +155,17 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     def gea(self, at):
         return nx.get_edge_attributes(self.graph, at)
     
-    def get_edge_attribute(self, u1, u2, attribute):
-        assert attribute in ['u_src','u_trg','amp','t','sign','width','label','criteria']
+    def get_edge_attribute(self, u1, u2, attribute='all'):
+        e_attributes=['u_src','u_trg','amp','t','sign','width','label','criteria']
+        assert attribute in ['all']+e_attributes
+
         al=[]
         for n in range(12): # cf. max 12 peaks by CCG (already too much)...
             try:
-                al.append(self.gea(attribute)[(u1,u2,n)])
+                if attribute=='all':
+                    al.append({(u1,u2,n):self.gea(at)[(u1,u2,n)] for at in e_attributes})
+                else:
+                    al.append(self.gea(attribute)[(u1,u2,n)])
             except:
                 break
         return al
@@ -163,8 +173,12 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     def gna(self, at):
         return nx.get_node_attributes(self.graph, at)
     
-    def get_node_attribute(self, u, attribute):
-        assert attribute in ['putative_cell_type', 'classified_cell_type']
+    def get_node_attribute(self, u, attribute='all'):
+        n_attributes=['all', 'unit', 'putative_cell_type', 'classified_cell_type']
+        assert attribute in ['all']+n_attributes
+        
+        if attribute=='all':
+            return self.graph.nodes(data=True)[u]
         
         return self.gna(attribute)[u]
 
@@ -307,18 +321,25 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     
         
     
-    def export_graph(self, name='', frmt='edgelist'):
+    def export_graph(self, name='', frmt='gpickle'):
         '''
         name: any srting. If 't': will be graph_aaaa-mm-dd_hh:mm:ss
-        frmt: any in ['edgelist', 'adjlist', 'gexf']'''
+        frmt: any in ['edgelist', 'adjlist', 'gexf', 'gml'] (default gpickle)'''
         
-        assert frmt in ['edgelist', 'adjlist', 'gexf']
-        nx_exp={'edgelist':nx.write_edgelist, 'adjlist':nx.write_adjlist,'gexf':nx.write_gexf}
+        assert frmt in ['edgelist', 'adjlist', 'gexf', 'gml', 'gpickle']
+        nx_exp={'edgelist':nx.write_edgelist, 'adjlist':nx.write_adjlist,'gexf':nx.write_gexf, 'gml':nx.write_gml, 'gpickle':nx.write_gpickle}
         if name=='t':
             name=time.strftime("%Y-%m-%d_%H:%M:%S")
-        nx.write_edgelist(self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.edgelist')) # Always export in edges list for internal compatibility
-        if frmt!='edgelist':
-            nx_exp[frmt](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.'+frmt))
+        nx_exp['gpickle'](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.gml')) # Always export in edges list for internal compatibility
+        if frmt!='gpickle':
+            if frmt=='gml':
+                print("GML files can only process elements convertable into strings. Getting rid of nodes 'unit' attributes.")
+                g=self.graph.copy()
+                for n in g.nodes:
+                    del g.nodes[n]['unit']
+                nx_exp[frmt](g, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.'+frmt))
+            else:
+                nx_exp[frmt](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.'+frmt))
             
             
     def export_feat(self, rec_section='all'):

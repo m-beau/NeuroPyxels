@@ -1,4 +1,4 @@
-n# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 2019-06-13
 @author: Maxime Beau, Neural Computations Lab, University College London

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+n# -*- coding: utf-8 -*-
 """
 2019-06-13
 @author: Maxime Beau, Neural Computations Lab, University College London
@@ -155,17 +155,19 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     def gea(self, at):
         return nx.get_edge_attributes(self.graph, at)
     
-    def get_edge_attribute(self, u1, u2, attribute='all'):
+    def get_edge_attributes(self, u1, u2):
         e_attributes=['u_src','u_trg','amp','t','sign','width','label','criteria']
-        assert attribute in ['all']+e_attributes
-
-        al=[]
+        
+        try: # check that nodes are in the right order - multi directed graph
+            a=self.gea(e_attributes[0])[(u1,u2,0)]
+        except:
+            u1,u2=u2,u1
+        del a
+        
+        al={}
         for n in range(12): # cf. max 12 peaks by CCG (already too much)...
             try:
-                if attribute=='all':
-                    al.append({(u1,u2,n):self.gea(at)[(u1,u2,n)] for at in e_attributes})
-                else:
-                    al.append(self.gea(attribute)[(u1,u2,n)])
+                al[(u1,u2,n)]={at:self.gea(at)[(u1,u2,n)] for at in e_attributes}
             except:
                 break
         return al
@@ -173,14 +175,9 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     def gna(self, at):
         return nx.get_node_attributes(self.graph, at)
     
-    def get_node_attribute(self, u, attribute='all'):
-        n_attributes=['all', 'unit', 'putative_cell_type', 'classified_cell_type']
-        assert attribute in ['all']+n_attributes
-        
-        if attribute=='all':
-            return self.graph.nodes(data=True)[u]
-        
-        return self.gna(attribute)[u]
+    def get_node_attributes(self, u):
+        n_attributes=['unit', 'putative_cell_type', 'classified_cell_type']
+        return self.graph.nodes(data=True)[u]
 
     def get_node_edges(self, u):
         return dict(self.graph[u])
@@ -233,23 +230,28 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 print(" \n\n || Edge {}/{} ({} deleted so far)...".format(ei, n_edges_init, n_edges_init-self.graph.number_of_edges()))
                 print(" || {0}->{1} (multiedge {2}) sig. corr. of {3:.2f}s.d., {4:.2f}ms wide, @{5:.2f}ms".format(u_src, u_trg, edge[2], amp, width, t))
                 print(" || Total edges of source unit: {}".format(["{}: {} edges".format(ut,len(e_ut)) for ut, e_ut in self.get_node_edges(u_src).items()]))
-                label=input(" || Label? (<s> to skip, <del> to delete edge, <done> to exit):")
-                if label=='del':
-                    self.graph.remove_edge(*edge)
-                    print(" || Edge {} was deleted.".format(edge))
-                    break
-                elif label=='s':
-                    nx.set_edge_attributes(self.graph, {edge:{'label':0}}) # status quo
-                    break
-                elif label=='':
-                    print("Whoops, looks like you hit enter. You cannot leave unnamed edges. Try again.")
-                elif label=="done":
-                    print(" || Done - exitting.")
-                    break
-                else:
-                    nx.set_edge_attributes(self.graph, {edge:{'label':label}})
+                label=input(" || Label? (<x> for type x of {},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(edges_types))
+                try: # Will only work if integer is inputted
+                    label=ast.literal_eval(label)
+                    label=edges_types[label]
                     print(" || Label of edge {} was set to {}.\n".format(edge, label))
-                    break
+                except:
+                    if label=='del':
+                        self.graph.remove_edge(*edge)
+                        print(" || Edge {} was deleted.".format(edge))
+                        break
+                    elif label=='s':
+                        nx.set_edge_attributes(self.graph, {edge:{'label':0}}) # status quo
+                        break
+                    elif label=='':
+                        print("Whoops, looks like you hit enter. You cannot leave unnamed edges. Try again.")
+                    elif label=="done":
+                        print(" || Done - exitting.")
+                        break
+                    else:
+                        nx.set_edge_attributes(self.graph, {edge:{'label':label}})
+                        print(" || Label of edge {} was set to {}.\n".format(edge, label))
+                        break
             if label=="done":
                 break
         

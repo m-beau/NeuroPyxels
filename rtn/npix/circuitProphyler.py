@@ -128,17 +128,21 @@ class Dataset:
         if len(graphs)>0:
             while 1:
                 load_choice=input("""Saved graphs found in {}:{}.
-                              Dial a filename to load it, or <sfc> to build it from the significant functional correlations table.""")
-                if load_choice=='sfc':
-                    print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
-                    rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
+Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(op.join(self.dp, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
+                try: # works if an int is inputted
+                    load_choice=int(ast.literal_eval(load_choice))
+                    self.graph=nx.read_edgelist(op.join(self.dp, 'graph', graphs[load_choice]))
                     break
-                elif op.isfile(op.join(self.dp, 'graph', load_choice)):
-                    self.graph=nx.read_edgelist(op.join(self.dp, 'graph', load_choice))
-                    rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
-                    break
-                else:
-                    print("Filename or 'sfc' misspelled. Try again.")
+                except: # must be a normal or empty string
+                    if load_choice=='sfc':
+                        print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
+                        rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
+                        break
+                    elif op.isfile(op.join(self.dp, 'graph', load_choice)):
+                        self.graph=nx.read_edgelist(op.join(self.dp, 'graph', load_choice))
+                        break
+                    else:
+                        print("Filename or 'sfc' misspelled. Try again.")
         else:
             print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
             rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
@@ -164,12 +168,18 @@ class Dataset:
         
         return self.gna(attribute)[u]
 
-
+    def get_node_edges(self, u):
+        return dict(self.graph[u])
+    
     def label_nodes(self):
         
         for node in self.graph.nodes:
             # Plot ACG
-            rtn.npix.plot.plot_acg(self.dp, node, 0.2, 80)
+            #rtn.npix.plot.plot_acg(self.dp, node, 0.2, 80)
+            # Plot Waveform
+            
+            # Pull up features
+            
             
             label=''
             while label=='': # if enter is hit
@@ -179,17 +189,22 @@ class Dataset:
                     break
             nx.set_node_attributes(self.graph, {node:{'putative_cell_type':label}}) # update graph
             self.units[node].putative_cell_type=label # Update class
-            print("Label of edge {} was set to {}.\n".format(node, label))
+            print("Label of node {} was set to {}.\n".format(node, label))
             
         
     
     def label_edges(self):
         
+        edges_types=['asym_inh', 'sym_inh', 'asym_exc', 'sym_exc', 'inh_exc', 'PC_CNC', 'CS_SS', 'oscill']
+        
         if self.graph.number_of_edges==0:
-            print("No edge detected - connect the graph first by calling Dataset.connect_graph(cbin, cwin, threshold, n_consec_bins, rec_section, again)")
+            print("""No edge detected - connect the graph first by calling
+                  Dataset.connect_graph(cbin, cwin, threshold, n_consec_bins, rec_section, again)
+                  You will be offered to load a pre-labelled graph if you ever saved one.""")
             return
         
-        for edge in self.graph.edges:
+        n_edges_init=self.graph.number_of_edges()
+        for ei, edge in enumerate(list(self.graph.edges)):
             u_src=self.gea('u_src')[edge]
             u_trg=self.gea('u_trg')[edge]
             amp=self.gea('amp')[edge]
@@ -201,10 +216,12 @@ class Dataset:
             
             label=''
             while label=='': # if enter is hit
-                print("\n\n || {}->{} (multiedge {}) sig. corr. of {}s.d., {}ms wide, @{}ms".format(u_src, u_trg, edge[2], amp, width, t))
-                label=input(" || Label? (<s> to skip, <del> to delete edge):")
+                print(" \n\n || Edge {}/{} ({} deleted so far)...".format(ei, n_edges_init, n_edges_init-self.graph.number_of_edges()))
+                print(" || {0}->{1} (multiedge {2}) sig. corr. of {3:.2f}s.d., {4:.2f}ms wide, @{5:.2f}ms".format(u_src, u_trg, edge[2], amp, width, t))
+                print(" || Total edges of source unit: {}".format(["{}: {} edges".format(ut,len(e_ut)) for ut, e_ut in self.get_node_edges(u_src).items()]))
+                label=input(" || Label? (<s> to skip, <del> to delete edge, <done> to exit):")
                 if label=='del':
-                    self.graph.remove_edge(edge)
+                    self.graph.remove_edge(*edge)
                     print(" || Edge {} was deleted.".format(edge))
                     break
                 elif label=='s':
@@ -212,10 +229,16 @@ class Dataset:
                     break
                 elif label=='':
                     print("Whoops, looks like you hit enter. You cannot leave unnamed edges. Try again.")
+                elif label=="done":
+                    print(" || Done - exitting.")
+                    break
                 else:
                     nx.set_edge_attributes(self.graph, {edge:{'label':label}})
                     print(" || Label of edge {} was set to {}.\n".format(edge, label))
                     break
+            if label=="done":
+                break
+        
         while 1:
             save=input("\n\n || Do you wish to save your graph with labeled edges? <any>|<enter> to save it, else <n>:")
             if save=='n':
@@ -223,7 +246,7 @@ class Dataset:
                 break
             else:
                 pass
-            name=input("|| Saving graph with newly labelled edges. Name (<t> for aaaa-mm-dd_hh:mm:ss format):")
+            name=input(" || Saving graph with newly labelled edges. Name (<t> for aaaa-mm-dd_hh:mm:ss format):")
             if op.isfile(op.join(self.dp,'graph','graph_'+name)):
                 ow=input(" || Warning, name already taken - overwrite? <y>/<n>:")
                 if ow=='y':
@@ -241,6 +264,9 @@ class Dataset:
     def print_graph(self):
         print(self.graph.adj)
     
+    def get_node(self, node):
+        return dict(self.graph.nodes)[node]
+    
     def plot_graph(self, edge_labels=True, node_labels=True):
         chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort
         #chan_map=np.load(op.join(self.dp, 'channel_map.npy')).flatten()
@@ -253,18 +279,17 @@ class Dataset:
         
         fig, ax = plt.subplots(figsize=(6, 16))
         if node_labels:
-            pos=nx.spring_layout(self.graph)
             nlabs={}
             for node in list(self.graph.nodes):
-                pct=self.get_node_attribute(node, 'classified_cell_type')
+                pct=self.get_node_attribute(node, 'putative_cell_type')
                 cct=self.get_node_attribute(node, 'classified_cell_type')
                 l="{}".format(node)
                 if pct!='':
-                    l+="\n{}".format(pct)
+                    l+="\nput:{}".format(pct)
                 if cct!='':
-                    l+="\n{}".format(cct)
+                    l+="\ncla:{}".format(cct)
                 nlabs[node]=l
-            nx.draw_networkx_labels(self.graph,pos,nlabs, font_weight='bold', font_color='#000000FF', font_size=6)
+            nx.draw_networkx_labels(self.graph,peak_pos,nlabs, font_weight='bold', font_color='#000000FF', font_size=6)
             #nx.draw_networkx(self.graph, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
         nx.draw_networkx_nodes(self.graph, pos=peak_pos, node_color='grey', alpha=0.8)
         nx.draw_networkx_edges(self.graph, pos=peak_pos, edge_color=ew, width=4, alpha=0.7, 
@@ -291,9 +316,9 @@ class Dataset:
         nx_exp={'edgelist':nx.write_edgelist, 'adjlist':nx.write_adjlist,'gexf':nx.write_gexf}
         if name=='t':
             name=time.strftime("%Y-%m-%d_%H:%M:%S")
-        nx.write_edgelist(self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name)) # Always export in edges list for internal compatibility
+        nx.write_edgelist(self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.edgelist')) # Always export in edges list for internal compatibility
         if frmt!='edgelist':
-            nx_exp[frmt](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name))
+            nx_exp[frmt](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.'+frmt))
             
             
     def export_feat(self, rec_section='all'):

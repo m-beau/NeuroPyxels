@@ -136,7 +136,9 @@ class Dataset:
 Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(op.join(self.dp, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
                 try: # works if an int is inputted
                     load_choice=int(ast.literal_eval(load_choice))
-                    self.graph=nx.read_gml(op.join(self.dp, 'graph', graphs[load_choice]))
+                    self.graph=self.import_graph(op.join(self.dp, 'graph', graphs[load_choice]))
+                    if graphs[load_choice].split('.')[-1]!='gpickle':
+                        print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
                     break
                 except: # must be a normal or empty string
                     if load_choice=='sfc':
@@ -144,7 +146,9 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                         rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
                         break
                     elif op.isfile(op.join(self.dp, 'graph', load_choice)):
-                        self.graph=nx.read_edgelist(op.join(self.dp, 'graph', load_choice))
+                        self.graph=self.import_graph(op.join(self.dp, 'graph', load_choice))
+                        if load_choice.split('.')[-1]!='gpickle':
+                            print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
                         break
                     else:
                         print("Filename or 'sfc' misspelled. Try again.")
@@ -230,7 +234,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 print(" \n\n || Edge {}/{} ({} deleted so far)...".format(ei, n_edges_init, n_edges_init-self.graph.number_of_edges()))
                 print(" || {0}->{1} (multiedge {2}) sig. corr. of {3:.2f}s.d., {4:.2f}ms wide, @{5:.2f}ms".format(u_src, u_trg, edge[2], amp, width, t))
                 print(" || Total edges of source unit: {}".format(["{}: {} edges".format(ut,len(e_ut)) for ut, e_ut in self.get_node_edges(u_src).items()]))
-                label=input(" || Label? (<x> for type x of {},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(edges_types))
+                label=input(" || Label? ({},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(['<{}>:{}'.format(i,v) for i,v in enumerate(edges_types)]))
                 try: # Will only work if integer is inputted
                     label=ast.literal_eval(label)
                     label=edges_types[label]
@@ -262,20 +266,31 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 break
             else:
                 pass
-            name=input(" || Saving graph with newly labelled edges. Name (<t> for aaaa-mm-dd_hh:mm:ss format):")
-            if op.isfile(op.join(self.dp,'graph','graph_'+name)):
+            name=input(" || Saving graph with newly labelled edges as graph_<name>. Name (<t> for aaaa-mm-dd_hh:mm:ss format):")
+            while 1:
+                formats=['edgelist', 'adjlist', 'gexf', 'gml', 'gpickle']
+                frmt=input(" || In which format? {}".format(['<{}>:{}'.format(i,v) for i,v in enumerate(formats)]))
+                try: # Will only work if integer is inputted
+                    frmt=ast.literal_eval(frmt)
+                    frmt=formats[frmt]
+                except:
+                    print(" || Pick an integer between {} and {}!".format(0, len(formats)-1))
+                    pass
+            
+            file='graph_{}.{}'.format(name, frmt)
+            if op.isfile(op.join(self.dp,'graph',file)):
                 ow=input(" || Warning, name already taken - overwrite? <y>/<n>:")
                 if ow=='y':
-                    print(" || Overwriting graph {}.".format('graph_'+name))
+                    print(" || Overwriting graph {}.".format(file))
                     break
                 elif ow=='n':
                     print(' || Ok, pick another name.')
                     pass
             else:
-                print(" || Saving graph {}.".format('graph_'+name))
+                print(" || Saving graph {}.".format(file))
                 break
         
-        self.export_graph(name) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
+        self.export_graph(name, frmt) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
     
     def print_graph(self):
         print(self.graph.adj)
@@ -343,7 +358,16 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             else:
                 nx_exp[frmt](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.'+frmt))
             
-            
+    def import_graph(self, name):
+        '''
+        name: path to file to import, ending in '.edgelist', '.adjlist', '.gexf', '.gml' or '.gpickle'
+        '''
+        frmt=name.split('.')[-1]
+        assert frmt in ['edgelist', 'adjlist', 'gexf', 'gml', 'gpickle']
+        nx_exp={'edgelist':nx.read_edgelist, 'adjlist':nx.read_adjlist,'gexf':nx.read_gexf, 'gml':nx.read_gml, 'gpickle':nx.read_gpickle}
+        
+        return nx_exp[frmt](name)
+                
     def export_feat(self, rec_section='all'):
         # TO SET HERE - RECORDING SECTIONS TO CONSIDER TO COMPUTE THE FEATURES TABLE
         endTime = int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)# above max in seconds

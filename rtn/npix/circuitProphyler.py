@@ -137,6 +137,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 try: # works if an int is inputted
                     load_choice=int(ast.literal_eval(load_choice))
                     self.graph=self.import_graph(op.join(self.dp, 'graph', graphs[load_choice]))
+                    print("Building Dataset.graph from file {}.".format(graphs[load_choice]))
                     if graphs[load_choice].split('.')[-1]!='gpickle':
                         print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
                     break
@@ -147,6 +148,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                         break
                     elif op.isfile(op.join(self.dp, 'graph', load_choice)):
                         self.graph=self.import_graph(op.join(self.dp, 'graph', load_choice))
+                        print("Building Dataset.graph from file {}.".format(load_choice))
                         if load_choice.split('.')[-1]!='gpickle':
                             print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
                         break

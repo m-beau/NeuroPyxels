@@ -165,7 +165,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         e_attributes=['u_src','u_trg','amp','t','sign','width','label','criteria']
         
         try: # check that nodes are in the right order - multi directed graph
-            a=self.gea((u1,u2,0), e_attributes[0])
+            a=self.gea((u1,u2,0), e_attributes[0]) if i is None else self.gea((u1,u2,i), e_attributes[i])
             del a
         except:
             u1,u2=u2,u1

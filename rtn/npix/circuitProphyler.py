@@ -263,7 +263,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         while 1:
             save=input("\n\n || Do you wish to save your graph with labeled edges? <any>|<enter> to save it, else <n>:")
             if save=='n':
-                print(" || Not saving. You can still save the graph later by running ds.export_graph(name) (name does not need to comprise 'graph'.).")
+                print(" || Not saving. You can still save the graph later by running ds.export_graph(name, frmt) with frmt in ['edgelist', 'adjlist', 'gexf', 'gml'] (default gpickle).")
                 break
             else:
                 pass

@@ -895,7 +895,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                             pks=ast.literal_eval(pks)
                             for p in pks:
                                 graph.add_edge(u1, u2, u_src=u1, u_trg=u2, 
-                                               amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=None,
+                                               amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=0,
                                                criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'n_consec_bins':n_consec_bins})
             return SFCDF, SFCM1, gu, np.sort(bestChs)[::-1], SFCMtime
             

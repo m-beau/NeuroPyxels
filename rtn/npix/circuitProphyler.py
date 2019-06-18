@@ -160,6 +160,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         else:
             print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
             rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
+            rtn.npix.plot.plot_sfcdf(self.dp, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
+                                                     rec_section=rec_section, ticks=False, again = again, saveFig=True, saveDir=self.dpnet)
 
     def get_nodes(self, attributes=False):
         if attributes:

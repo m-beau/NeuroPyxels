@@ -263,7 +263,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             label=''
             while label=='': # if enter is hit
                 print(" \n\n || Edge {}/{} ({} deleted so far)...".format(ei, n_edges_init, n_edges_init-self.graph.number_of_edges()))
-                print(" || {0}->{1} (multiedge {2}) sig. corr. of {3:.2f}s.d., {4:.2f}ms wide, @{5:.2f}ms".format(ea['u_src'], ea['u_trg'], edge[2], ea['amp'], ea['width'], ea['t']))
+                print(" || {0}->{1} (multiedge {2}) sig. corr.: \x1b[1m\x1b[36m{3:.2f}\x1b[0msd high, \x1b[1m\x1b[36m{4:.2f}\x1b[0mms wide, @\x1b[1m\x1b[36m{5:.2f}\x1b[0mms".format(ea['u_src'], ea['u_trg'], edge[2], ea['amp'], ea['width'], ea['t']))
                 print(" || Total edges of source unit: {}".format(self.get_node_edges(ea['u_src'])))
                 label=input(" || Current label: {}. New label? ({},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(self.get_edge_attribute(edge,'label'), ['<{}>:{}'.format(i,v) for i,v in enumerate(edges_types)]))
                 try: # Will only work if integer is inputted

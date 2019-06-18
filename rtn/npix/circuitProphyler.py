@@ -166,9 +166,9 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         try: # check that nodes are in the right order - multi directed graph
             a=self.gea((u1,u2,0), e_attributes[0])
+            del a
         except:
             u1,u2=u2,u1
-        del a
         
         al={}
         for n in range(12): # cf. max 12 peaks by CCG (already too much)...

@@ -125,7 +125,7 @@ class Dataset:
             print('You need to export the features tables using phy first!!')
             return
     
-    def connect_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False):
+    def connect_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False, plotsfcdf=True):
         self.graph.remove_edges_from(list(self.graph.edges))
         graphs=[]
         for f in os.listdir(self.dpnet):
@@ -146,7 +146,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                     if load_choice=='sfc':
                         print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
                         rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
-                        rtn.npix.plot.plot_sfcdf(self.dp, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
+                        if plotsfcdf:rtn.npix.plot.plot_sfcdf(self.dp, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
                                                      rec_section=rec_section, ticks=False, again = again, saveFig=True, saveDir=self.dpnet)
                         break
                     elif op.isfile(op.join(self.dpnet, load_choice)):
@@ -160,8 +160,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         else:
             print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
             rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
-            rtn.npix.plot.plot_sfcdf(self.dp, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
-                                                     rec_section=rec_section, ticks=False, again = again, saveFig=True, saveDir=self.dpnet)
+            if plotsfcdf: rtn.npix.plot.plot_sfcdf(self.dp, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
+                                                     rec_section=rec_section, ticks=False, again=again, saveFig=True, saveDir=self.dpnet)
 
     def get_nodes(self, attributes=False):
         if attributes:
@@ -304,11 +304,12 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 pass
             name=input(" || Saving graph with newly labelled edges as graph_<name>. Name (<t> for aaaa-mm-dd_hh:mm:ss format):")
             while 1:
-                formats=['edgelist', 'adjlist', 'gexf', 'gml', 'gpickle']
+                formats=['gpickle', 'gexf', 'edgelist', 'adjlist', 'gml']
                 frmt=input(" || In which format? {}".format(['<{}>:{}'.format(i,v) for i,v in enumerate(formats)]))
                 try: # Will only work if integer is inputted
                     frmt=ast.literal_eval(frmt)
                     frmt=formats[frmt]
+                    break
                 except:
                     print(" || Pick an integer between {} and {}!".format(0, len(formats)-1))
                     pass

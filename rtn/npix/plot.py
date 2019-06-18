@@ -546,14 +546,14 @@ def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=
 #%% Connectivity inferred from correlograms
     
 def plot_sfcdf(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, text=True, markers=False, rec_section='all', 
-               ticks=True, again = False, saveFig=True, saveDir=None):
+               ticks=True, again = False, saveFig=True, saveDir=None, graph=None, againCCG=False):
     '''
     Visually represents the connectivity datafrane otuputted by 'gen_cdf'.
     Each line/row is a good unit.
     Each intersection is a square split in a varying amount of columns,
     each column representing a positive or negatively significant peak collored accordingly to its size s.
     '''
-    df, hmm, gu, bestChs, hmmT = gen_sfc(dp, cbin, cwin, threshold, n_consec_bins, rec_section=rec_section, _format='peaks_infos', again=again)
+    df, hmm, gu, bestChs, hmmT = gen_sfc(dp, cbin, cwin, threshold, n_consec_bins, rec_section=rec_section, _format='peaks_infos', again=again, graph=graph, againCCG=againCCG)
     plt.figure()
     hm = sns.heatmap(hmm, yticklabels=True, xticklabels=True, cmap="RdBu_r", center=0, vmin=-5, vmax=5, cbar_kws={'label': 'Crosscorrelogram peak (s.d.)'})
     #hm = sns.heatmap(hmmT, yticklabels=False, xticklabels=False, alpha=0.0)

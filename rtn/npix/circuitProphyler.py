@@ -185,23 +185,42 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         return self.get_nodes(True)[n][at]
 
     def get_edge_attribute(self, e, at):
-        assert len(e)==3
         assert at in ['u_src','u_trg','amp','t','sign','width','label','criteria']
-        try: # check that nodes are in the right order - multi directed graph
-            return self.get_edges(True)[e][at]
-        except:
-            return self.get_edges(True)[(e[1],e[0],e[2])][at]
+        if len(e)==3:
+            try: # check that nodes are in the right order - multi directed graph
+                return self.get_edges(True)[e][at]
+            except:
+                return self.get_edges(True)[(e[1],e[0],e[2])][at]
+        elif len(e)==2:
+            npe=npa(self.get_edges())
+            keys=npe[(npe[:,0]==1183)&(npe[:,1]==1187)][:,2]
+            edges={}
+            for k in keys:
+                try: # check that nodes are in the right order - multi directed graph
+                    edges[k]=self.get_edges(True)[(e[0],e[1],k)][at]
+                except:
+                    edges[k]=self.get_edges(True)[(e[1],e[0],k)][at]
+            return edges
     
     def get_edge_attributes(self, e):
-        assert len(e)==3 or len(e)==2
-        keys=True if len(e)==3 else False
-        try: # check that nodes are in the right order - multi directed graph
-            return self.get_edges(True, keys)[e]
-        except:
-            return self.get_edges(True, keys)[(e[1],e[0],e[2])]
-
+        if len(e)==3:
+            try: # check that nodes are in the right order - multi directed graph
+                return self.get_edges(True)[e]
+            except:
+                return self.get_edges(True)[(e[1],e[0],e[2])]
+        elif len(e)==2:
+            npe=npa(self.get_edges())
+            keys=npe[(npe[:,0]==1183)&(npe[:,1]==1187)][:,2]
+            edges={}
+            for k in keys:
+                try: # check that nodes are in the right order - multi directed graph
+                    edges[k]=self.get_edges(True)[(e[0],e[1],k)]
+                except:
+                    edges[k]=self.get_edges(True)[(e[1],e[0],k)]
+            return edges
+                
     def get_node_edges(self, u):
-        return dict(self.graph[u])
+        return {unt:len(e_unt) for unt, e_unt in self.graph[u].items()}
     
     def label_nodes(self):
         
@@ -245,8 +264,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             while label=='': # if enter is hit
                 print(" \n\n || Edge {}/{} ({} deleted so far)...".format(ei, n_edges_init, n_edges_init-self.graph.number_of_edges()))
                 print(" || {0}->{1} (multiedge {2}) sig. corr. of {3:.2f}s.d., {4:.2f}ms wide, @{5:.2f}ms".format(ea['u_src'], ea['u_trg'], edge[2], ea['amp'], ea['width'], ea['t']))
-                print(" || Total edges of source unit: {}".format(["{}: {} edge(s)".format(ut,len(e_ut)) for ut, e_ut in self.get_node_edges(ea['u_src']).items()]))
-                label=input(" || Current label: {}. New label? ({},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(self.gea(edge,'label'), ['<{}>:{}'.format(i,v) for i,v in enumerate(edges_types)]))
+                print(" || Total edges of source unit: {}".format(self.get_node_edges(ea['u_src'])))
+                label=input(" || Current label: {}. New label? ({},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(self.get_edge_attribute(edge,'label'), ['<{}>:{}'.format(i,v) for i,v in enumerate(edges_types)]))
                 try: # Will only work if integer is inputted
                     label=ast.literal_eval(label)
                     label=edges_types[label]
@@ -310,9 +329,9 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         peak_pos = {u:(chan_pos[c]+npa([-3+6*np.random.rand(),0])).flatten() for u,c in self.peak_channels.items()}
         ec, ew = [], []
         for e in self.graph.edges:
-            ec.append('r') if self.gea(e, 'sign')==-1 else ec.append('b')
-            ew.append(self.gea(e, 'amp'))
-        e_labels={e[0:2]:str(np.round(self.gea(e, 'amp'), 2))+'@'+str(np.round(self.gea(e, 't'), 1))+'ms' for e in self.graph.edges}
+            ec.append('r') if self.get_edge_attribute(e, 'sign')==-1 else ec.append('b')
+            ew.append(self.get_edge_attribute(e, 'amp'))
+        e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp'), 2))+'@'+str(np.round(self.get_edge_attribute(e, 't'), 1))+'ms' for e in self.graph.edges}
         
         fig, ax = plt.subplots(figsize=(6, 16))
         if node_labels:
@@ -338,7 +357,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         ax.set_xlabel('Lat. position (um)', fontsize=12)
         ax.set_ylim([3840,0])
         ax.set_xlim([0,70])
-        criteria=self.gea(list(self.graph.edges)[0], 'criteria')
+        criteria=self.get_edge_attribute(list(self.graph.edges)[0], 'criteria')
         ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
         plt.tight_layout()
     

@@ -545,7 +545,8 @@ def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=
 
 #%% Connectivity inferred from correlograms
     
-def plot_sfcdf(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, text=True, markers=False, rec_section='all', ticks=True, again = False, saveFig=True):
+def plot_sfcdf(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, text=True, markers=False, rec_section='all', 
+               ticks=True, again = False, saveFig=True, saveDir=None):
     '''
     Visually represents the connectivity datafrane otuputted by 'gen_cdf'.
     Each line/row is a good unit.
@@ -585,7 +586,9 @@ def plot_sfcdf(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, text=True, m
                 if i!=j and (min(pkT)<=0 or max(pkT)>0):
                     hm.axes.text(x=j*12+2, y=i, s=str(pkT), size=6)
     fig = hm.get_figure()
-    if saveFig: fig.savefig(dp+'/heatmap_{}_{}_{}_{}.pdf'.format(cbin, cwin, threshold, n_consec_bins))
+    if saveFig:
+        if saveDir is None: saveDir=dp
+        fig.savefig(op.join(saveDir,'heatmap_{}_{}_{}_{}.pdf'.format(cbin, cwin, threshold, n_consec_bins)))
     
     return fig
 

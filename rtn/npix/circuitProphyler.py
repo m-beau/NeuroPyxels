@@ -100,7 +100,8 @@ class Dataset:
         self.endTime=int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
         
         # Create a networkX graph whose nodes are Units()
-        if not op.isdir(op.join(self.dp, 'graph')): os.mkdir(op.join(self.dp, 'graph'))
+        self.dpnet=op.join(self.dp, 'network')
+        if not op.isdir(self.dpnet): os.mkdir(self.dpnet)
         self.graph=nx.MultiGraph() # Undirected multigraph - directionality is given by u_src and u_trg. Several peaks -> several edges -> multigraph.
         self.units = {u:Unit(self, u, self.graph) for u in self.get_good_units()} # Units are added to the graph when inititalized
         self.get_peak_channels()
@@ -127,7 +128,7 @@ class Dataset:
     def connect_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False):
         self.graph.remove_edges_from(list(self.graph.edges))
         graphs=[]
-        for f in os.listdir(op.join(self.dp, 'graph')):
+        for f in os.listdir(self.dpnet):
             if 'graph' in f:
                 graphs.append(f)
         if len(graphs)>0:
@@ -136,7 +137,7 @@ class Dataset:
 Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(op.join(self.dp, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
                 try: # works if an int is inputted
                     load_choice=int(ast.literal_eval(load_choice))
-                    self.graph=self.import_graph(op.join(self.dp, 'graph', graphs[load_choice]))
+                    self.graph=self.import_graph(op.join(self.dpnet, graphs[load_choice]))
                     print("Building Dataset.graph from file {}.".format(graphs[load_choice]))
                     if graphs[load_choice].split('.')[-1]!='gpickle':
                         print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
@@ -145,9 +146,11 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                     if load_choice=='sfc':
                         print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
                         rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
+                        rtn.npix.plot.plot_sfcdf(self.dp, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
+                                                     rec_section=rec_section, ticks=False, again = again, saveFig=True, saveDir=self.dpnet)
                         break
-                    elif op.isfile(op.join(self.dp, 'graph', load_choice)):
-                        self.graph=self.import_graph(op.join(self.dp, 'graph', load_choice))
+                    elif op.isfile(op.join(self.dpnet, load_choice)):
+                        self.graph=self.import_graph(op.join(self.dpnet, load_choice))
                         print("Building Dataset.graph from file {}.".format(load_choice))
                         if load_choice.split('.')[-1]!='gpickle':
                             print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
@@ -309,7 +312,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                     pass
             
             file='graph_{}.{}'.format(name, frmt)
-            if op.isfile(op.join(self.dp,'graph',file)):
+            if op.isfile(op.join(self.dpnet,file)):
                 ow=input(" || Warning, name already taken - overwrite? <y>/<n>:")
                 if ow=='y':
                     print(" || Overwriting graph {}.".format(file))
@@ -372,21 +375,22 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         nx_exp={'edgelist':nx.write_edgelist, 'adjlist':nx.write_adjlist,'gexf':nx.write_gexf, 'gml':nx.write_gml, 'gpickle':nx.write_gpickle}
         if name=='t':
             name=time.strftime("%Y-%m-%d_%H:%M:%S")
-        nx_exp['gpickle'](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.gpickle')) # Always export in edges list for internal compatibility
+        nx_exp['gpickle'](self.graph, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.gpickle')) # Always export in edges list for internal compatibility
         if frmt!='gpickle':
             if frmt=='gml' or frmt=='gexf':
                 print("GML or GEXF files can only process elements convertable into strings. Getting rid of nodes 'unit' attributes.")
                 g=self.graph.copy()
                 for n in g.nodes:
                     del g.nodes[n]['unit']
-                nx_exp[frmt](g, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.'+frmt))
+                nx_exp[frmt](g, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt))
             else:
-                nx_exp[frmt](self.graph, op.join(self.dp, 'graph', 'graph_'+name+'_'+self.name+'.'+frmt))
+                nx_exp[frmt](self.graph, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt))
             
     def import_graph(self, name):
         '''
         name: path to file to import, ending in '.edgelist', '.adjlist', '.gexf', '.gml' or '.gpickle'
         '''
+        assert op.isfile(name)
         frmt=name.split('.')[-1]
         assert frmt in ['edgelist', 'adjlist', 'gexf', 'gml', 'gpickle']
         nx_exp={'edgelist':nx.read_edgelist, 'adjlist':nx.read_adjlist,'gexf':nx.read_gexf, 'gml':nx.read_gml, 'gpickle':nx.read_gpickle}

@@ -256,7 +256,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         n_edges_init=self.graph.number_of_edges()
         for ei, edge in enumerate(list(self.graph.edges)):
-            ea=self.get_edge_attributes(*edge) # u1, u2, i unpacked
+            ea=self.get_edge_attributes(edge) # u1, u2, i unpacked
             
             rtn.npix.plot.plot_ccg(self.dp, [ea['u_src'],ea['u_trg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
             

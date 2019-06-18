@@ -158,14 +158,14 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
             rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
     
-    def gea(self, at):
-        return nx.get_edge_attributes(self.graph, at)
+    def gea(self, edge, at):
+        return nx.get_edge_attributes(self.graph, at)[edge] # edge is a tuple (u1, u2, i)
     
-    def get_edge_attributes(self, u1, u2):
+    def get_edge_attributes(self, u1, u2, i=None):
         e_attributes=['u_src','u_trg','amp','t','sign','width','label','criteria']
         
         try: # check that nodes are in the right order - multi directed graph
-            a=self.gea(e_attributes[0])[(u1,u2,0)]
+            a=self.gea((u1,u2,0), e_attributes[0])
         except:
             u1,u2=u2,u1
         del a
@@ -173,16 +173,20 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         al={}
         for n in range(12): # cf. max 12 peaks by CCG (already too much)...
             try:
-                al[(u1,u2,n)]={at:self.gea(at)[(u1,u2,n)] for at in e_attributes}
+                al[(u1,u2,n)]={at:self.gea((u1,u2,n), at) for at in e_attributes}
             except:
                 break
-        return al
+            
+        if i is None:
+            return al
+        else:
+            return {at:self.gea((u1,u2,i), at) for at in e_attributes}
     
-    def gna(self, at):
-        return nx.get_node_attributes(self.graph, at)
+    def gna(self, node, at):
+        return nx.get_node_attributes(self.graph, at)[node]
     
     def get_node_attributes(self, u):
-        n_attributes=['unit', 'putative_cell_type', 'classified_cell_type']
+        #n_attributes=['unit', 'putative_cell_type', 'classified_cell_type']
         return self.graph.nodes(data=True)[u]
 
     def get_node_edges(self, u):
@@ -222,21 +226,16 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         n_edges_init=self.graph.number_of_edges()
         for ei, edge in enumerate(list(self.graph.edges)):
-            u_src=self.gea('u_src')[edge]
-            u_trg=self.gea('u_trg')[edge]
-            amp=self.gea('amp')[edge]
-            t=self.gea('t')[edge]
-            width=self.gea('width')[edge]
-            criteria=self.gea('criteria')[edge]
+            ea=self.get_edge_attributes(*edge) # u1, u2, i unpacked
             
-            rtn.npix.plot.plot_ccg(self.dp, [u_src,u_trg], criteria['cbin'], criteria['cwin'])
+            rtn.npix.plot.plot_ccg(self.dp, [ea['u_src'],ea['u_trg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
             
             label=''
             while label=='': # if enter is hit
                 print(" \n\n || Edge {}/{} ({} deleted so far)...".format(ei, n_edges_init, n_edges_init-self.graph.number_of_edges()))
-                print(" || {0}->{1} (multiedge {2}) sig. corr. of {3:.2f}s.d., {4:.2f}ms wide, @{5:.2f}ms".format(u_src, u_trg, edge[2], amp, width, t))
-                print(" || Total edges of source unit: {}".format(["{}: {} edges".format(ut,len(e_ut)) for ut, e_ut in self.get_node_edges(u_src).items()]))
-                label=input(" || Label? ({},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(['<{}>:{}'.format(i,v) for i,v in enumerate(edges_types)]))
+                print(" || {0}->{1} (multiedge {2}) sig. corr. of {3:.2f}s.d., {4:.2f}ms wide, @{5:.2f}ms".format(ea['u_src'], ea['u_trg'], edge[2], ea['amp'], ea['width'], ea['t']))
+                print(" || Total edges of source unit: {}".format(["{}: {} edge(s)".format(ut,len(e_ut)) for ut, e_ut in self.get_node_edges(ea['u_src']).items()]))
+                label=input(" || Current label: {}. New label? ({},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(self.gea(edge,'label'), ['<{}>:{}'.format(i,v) for i,v in enumerate(edges_types)]))
                 try: # Will only work if integer is inputted
                     label=ast.literal_eval(label)
                     label=edges_types[label]
@@ -284,15 +283,16 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 ow=input(" || Warning, name already taken - overwrite? <y>/<n>:")
                 if ow=='y':
                     print(" || Overwriting graph {}.".format(file))
+                    self.export_graph(name, frmt) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                     break
                 elif ow=='n':
                     print(' || Ok, pick another name.')
                     pass
             else:
                 print(" || Saving graph {}.".format(file))
+                self.export_graph(name, frmt) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                 break
         
-        self.export_graph(name, frmt) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
     
     def print_graph(self):
         print(self.graph.adj)
@@ -306,9 +306,9 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         peak_pos = {u:(chan_pos[c]+npa([-3+6*np.random.rand(),0])).flatten() for u,c in self.peak_channels.items()}
         ec, ew = [], []
         for e in self.graph.edges:
-            ec.append('r') if self.gea('sign')[e]==-1 else ec.append('b')
-            ew.append(self.gea('amp')[e])
-        e_labels={e[0:2]:str(np.round(self.gea('amp')[e], 2))+'@'+str(np.round(self.gea('t')[e], 1))+'ms' for e in self.graph.edges}
+            ec.append('r') if self.gea(e, 'sign')==-1 else ec.append('b')
+            ew.append(self.gea(e, 'amp'))
+        e_labels={e[0:2]:str(np.round(self.gea(e, 'amp'), 2))+'@'+str(np.round(self.gea(e, 't'), 1))+'ms' for e in self.graph.edges}
         
         fig, ax = plt.subplots(figsize=(6, 16))
         if node_labels:
@@ -334,7 +334,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         ax.set_xlabel('Lat. position (um)', fontsize=12)
         ax.set_ylim([3840,0])
         ax.set_xlim([0,70])
-        criteria=self.gea('criteria')[list(self.graph.edges)[0]]
+        criteria=self.gea(list(self.graph.edges)[0], 'criteria')
         ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
         plt.tight_layout()
     

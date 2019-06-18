@@ -157,37 +157,48 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         else:
             print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
             rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
-    
-    def gea(self, edge, at):
-        return nx.get_edge_attributes(self.graph, at)[edge] # edge is a tuple (u1, u2, i)
-    
-    def get_edge_attributes(self, u1, u2, i=None):
-        e_attributes=['u_src','u_trg','amp','t','sign','width','label','criteria']
-        
-        try: # check that nodes are in the right order - multi directed graph
-            a=self.gea((u1,u2,0), e_attributes[0]) if i is None else self.gea((u1,u2,i), e_attributes[i])
-            del a
-        except:
-            u1,u2=u2,u1
-        
-        al={}
-        for n in range(12): # cf. max 12 peaks by CCG (already too much)...
-            try:
-                al[(u1,u2,n)]={at:self.gea((u1,u2,n), at) for at in e_attributes}
-            except:
-                break
-            
-        if i is None:
-            return al
+
+    def get_nodes(self, attributes=False):
+        if attributes:
+            nodes={}
+            for n, na in self.graph.nodes(data=True):
+                nodes[n]=na
         else:
-            return {at:self.gea((u1,u2,i), at) for at in e_attributes}
+            nodes=list(self.graph.nodes())
+        
+        return nodes
     
-    def gna(self, node, at):
-        return nx.get_node_attributes(self.graph, at)[node]
+    def get_edges(self, attributes=False, keys=True):
+        if attributes:
+            edges={}
+            for e in self.graph.edges(data=True, keys=keys):
+                edges[e[0:-1]]=e[-1]
+        else:
+            edges=list(self.graph.edges(keys=keys))
+        return edges
     
-    def get_node_attributes(self, u):
-        #n_attributes=['unit', 'putative_cell_type', 'classified_cell_type']
-        return self.graph.nodes(data=True)[u]
+    def get_node_attributes(self, n):
+        return self.get_nodes(True)[n]
+    
+    def get_node_attribute(self, n, at):
+        assert at in ['unit', 'putative_cell_type', 'classified_cell_type']
+        return self.get_nodes(True)[n][at]
+
+    def get_edge_attribute(self, e, at):
+        assert len(e)==3
+        assert at in ['u_src','u_trg','amp','t','sign','width','label','criteria']
+        try: # check that nodes are in the right order - multi directed graph
+            return self.get_edges(True)[e][at]
+        except:
+            return self.get_edges(True)[(e[1],e[0],e[2])][at]
+    
+    def get_edge_attributes(self, e):
+        assert len(e)==3 or len(e)==2
+        keys=True if len(e)==3 else False
+        try: # check that nodes are in the right order - multi directed graph
+            return self.get_edges(True, keys)[e]
+        except:
+            return self.get_edges(True, keys)[(e[1],e[0],e[2])]
 
     def get_node_edges(self, u):
         return dict(self.graph[u])
@@ -292,13 +303,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 print(" || Saving graph {}.".format(file))
                 self.export_graph(name, frmt) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                 break
-        
-    
-    def print_graph(self):
-        print(self.graph.adj)
-    
-    def get_node(self, node):
-        return dict(self.graph.nodes)[node]
     
     def plot_graph(self, edge_labels=True, node_labels=True):
         chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort

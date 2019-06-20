@@ -431,7 +431,10 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 g=self.graph.copy()
                 for n in g.nodes:
                     del g.nodes[n]['unit']
-                nx_exp[frmt](g, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt))
+                if frmt=='gml':
+                    nx_exp[frmt](g, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt), stringizer=str)
+                elif frmt=='gexf':
+                    nx_exp[frmt](g, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt))
             else:
                 nx_exp[frmt](self.graph, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt))
             

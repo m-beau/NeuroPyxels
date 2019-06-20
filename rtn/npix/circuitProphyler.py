@@ -102,7 +102,7 @@ class Dataset:
         # Create a networkX graph whose nodes are Units()
         self.dpnet=op.join(self.dp, 'network')
         if not op.isdir(self.dpnet): os.mkdir(self.dpnet)
-        self.graph=nx.MultiGraph() # Undirected multigraph - directionality is given by u_src and u_trg. Several peaks -> several edges -> multigraph.
+        self.graph=nx.MultiGraph() # Undirected multigraph - directionality is given by uSrc and uTrg. Several peaks -> several edges -> multigraph.
         self.units = {u:Unit(self, u, self.graph) for u in self.get_good_units()} # Units are added to the graph when inititalized
         self.get_peak_positions()
 
@@ -217,7 +217,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         return self.get_nodes(True)[n][at]
 
     def get_edge_attribute(self, e, at):
-        assert at in ['u_src','u_trg','amp','t','sign','width','label','criteria']
+        assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
         if len(e)==3:
             try: # check that nodes are in the right order - multi directed graph
                 return self.get_edges(True)[e][at]
@@ -290,13 +290,13 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         for ei, edge in enumerate(list(self.graph.edges)):
             ea=self.get_edge_attributes(edge) # u1, u2, i unpacked
             
-            rtn.npix.plot.plot_ccg(self.dp, [ea['u_src'],ea['u_trg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
+            rtn.npix.plot.plot_ccg(self.dp, [ea['uSrc'],ea['uTrg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
             
             label=''
             while label=='': # if enter is hit
                 print(" \n\n || Edge {}/{} ({} deleted so far)...".format(ei, n_edges_init, n_edges_init-self.graph.number_of_edges()))
-                print(" || {0}->{1} (multiedge {2}) sig. corr.: \x1b[1m\x1b[36m{3:.2f}\x1b[0msd high, \x1b[1m\x1b[36m{4:.2f}\x1b[0mms wide, @\x1b[1m\x1b[36m{5:.2f}\x1b[0mms".format(ea['u_src'], ea['u_trg'], edge[2], ea['amp'], ea['width'], ea['t']))
-                print(" || Total edges of source unit: {}".format(self.get_node_edges(ea['u_src'])))
+                print(" || {0}->{1} (multiedge {2}) sig. corr.: \x1b[1m\x1b[36m{3:.2f}\x1b[0msd high, \x1b[1m\x1b[36m{4:.2f}\x1b[0mms wide, @\x1b[1m\x1b[36m{5:.2f}\x1b[0mms".format(ea['uSrc'], ea['uTrg'], edge[2], ea['amp'], ea['width'], ea['t']))
+                print(" || Total edges of source unit: {}".format(self.get_node_edges(ea['uSrc'])))
                 label=input(" || Current label: {}. New label? ({},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(self.get_edge_attribute(edge,'label'), ['<{}>:{}'.format(i,v) for i,v in enumerate(edges_types)]))
                 try: # Will only work if integer is inputted
                     label=ast.literal_eval(label)
@@ -405,14 +405,14 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         '''
         Should be called once the edges have been manually curated:
         - if several edges remain between pairs of nodes, the one with the biggest standard deviation is kept
-        - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use u_src and u_trg to figure out who's a and b)
+        - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
         '''
         # A directed graph with the same name, same nodes, 
         # and with each edge (u,v,data) replaced by two directed edges (u,v,data) and (v,u,data).
         self.digraph=self.graph.to_directed()
         
         # - if several edges remain between pairs of nodes, the one with the biggest standard deviation is kept
-        # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use u_src and u_trg to figure out who's a and b)
+        # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
         #for 
     
     def export_graph(self, name='', frmt='gpickle'):

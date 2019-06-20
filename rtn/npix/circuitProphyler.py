@@ -626,7 +626,10 @@ class Unit:
         if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             ft = pd.read_csv(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv'), sep=',', index_col=0)
             bestChs=np.array(ft["WVF-MainChannel"])
-            self.peak_channel = bestChs[self.idx]
+            depthIdx = np.argsort(bestChs) # From deep to shallow
+            gu=np.array(ft.index, dtype=np.int64)[depthIdx][depthIdx]
+            peak_channels = {gu[i]:bestChs[i] for i in range(len(gu))}
+            self.peak_channel=peak_channels[self.idx]
             
         else:
             print('You need to export the features tables using phy first!!')

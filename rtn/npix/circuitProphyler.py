@@ -628,7 +628,7 @@ class Unit:
         self.graph = graph
         self.get_peak_position()
         # self refers to the instance not the class, hehe
-        self.graph.add_node(self.idx, unit=self, posReal=self.peak_position_real, putativeCellType=self.putativeCellType, classifiedCellType=self.classifiedCellType) 
+        self.graph.add_node(self.idx, unit=self, X=self.peak_position_real[0], Y=self.peak_position_real[1], posReal=self.peak_position_real, putativeCellType=self.putativeCellType, classifiedCellType=self.classifiedCellType) 
     
     def get_peak_channel(self):
         if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):

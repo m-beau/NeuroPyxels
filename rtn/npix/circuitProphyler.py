@@ -432,7 +432,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 for n in g.nodes:
                     del g.nodes[n]['unit']
                 if frmt=='gml':
-                    nx_exp[frmt](g, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt), stringizer=str)
+                    nx_exp[frmt](g, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt), stringizer=str) # np.int not handled... Need to explicitely tell it to use str() for non native python data types...
                 elif frmt=='gexf':
                     nx_exp[frmt](g, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt))
             else:
@@ -621,24 +621,45 @@ class Unit:
         # self refers to the instance not the class, hehe
         self.graph.add_node(self.idx, unit=self, putativeCellType=self.putativeCellType, classifiedCellType=self.classifiedCellType) 
     
-    def get_units_positions(self):
-        chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort
-        #chan_map=np.load(op.join(self.dp, 'channel_map.npy')).flatten()
+    def get_peak_channels(self):
+        if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
+            ft = pd.read_csv(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv'), sep=',', index_col=0)
+            bestChs=np.array(ft["WVF-MainChannel"])
+            depthIdx = np.argsort(bestChs) # From deep to shallow
+            gu=np.array(ft.index, dtype=np.int64)[depthIdx]
+            
+            self.peak_channels = {gu[i]:bestChs[i] for i in range(len(gu))}
+            
+        else:
+            print('You need to export the features tables using phy first!!')
+            return
         
-        # Homogeneously distributes neurons on same channels around mother channel to prevent overlap
-        peak_pos = npa(zeros=(len(self.peak_channels), 3))
-        for i, (u,c) in enumerate(self.peak_channels.items()): # find peak positions in x,y
-            peak_pos[i,:]=np.append([u], (chan_pos[c]).flatten())
-        
-        for pp in np.unique(peak_pos[:,1:], axis=0): # space positions if several units per channel
-            boolarr=(pp[0]==peak_pos[:,1])&(pp[1]==peak_pos[:,2])
-            n1=sum(x > 0 for x in boolarr)
-            if n1>1:
-                for i in range(n1):
-                    x_spacing=16# x spacing is 32um
-                    spacing=x_spacing*1./(n1+1) 
-                    boolidx=np.nonzero(boolarr)[0][i]
-                    peak_pos[boolidx,1]=peak_pos[boolidx,1]-x_spacing*1./2+(i+1)*spacing # 1 is index of x value
+    def get_peak_positions(self):
+        if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
+            self.get_peak_channels()
+            
+            # Get peak channel xy positions
+            chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
+            peak_pos = npa(zeros=(len(self.peak_channels), 3))
+            for i, (u,c) in enumerate(self.peak_channels.items()): # find peak positions in x,y
+                peak_pos[i,:]=np.append([u], (chan_pos[c]).flatten())
+            self.peak_positions_real=peak_pos
+            
+            # Homogeneously distributes neurons on same channels around mother channel to prevent overlap
+            for pp in np.unique(peak_pos[:,1:], axis=0): # space positions if several units per channel
+                boolarr=(pp[0]==peak_pos[:,1])&(pp[1]==peak_pos[:,2])
+                n1=sum(x > 0 for x in boolarr)
+                if n1>1:
+                    for i in range(n1):
+                        x_spacing=16# x spacing is 32um
+                        spacing=x_spacing*1./(n1+1) 
+                        boolidx=np.nonzero(boolarr)[0][i]
+                        peak_pos[boolidx,1]=peak_pos[boolidx,1]-x_spacing*1./2+(i+1)*spacing # 1 is index of x value
+            self.peak_positions={int(pp[0]):pp[1:] for pp in peak_pos}
+
+        else:
+            print('You need to export the features tables using phy first!!')
+            return
                     
     def trn(self, rec_section='all'):
         return rtn.npix.spk_t.trn(self.dp, self.idx, rec_section=rec_section)

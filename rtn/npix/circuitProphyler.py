@@ -213,7 +213,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         return self.get_nodes(True)[n]
     
     def get_node_attribute(self, n, at):
-        assert at in ['unit', 'putative_cell_type', 'classified_cell_type']
+        assert at in ['unit', 'putativeCellType', 'classifiedCellType']
         return self.get_nodes(True)[n][at]
 
     def get_edge_attribute(self, e, at):
@@ -270,8 +270,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 if label=='n':
                     label=0 # status quo
                     break
-            nx.set_node_attributes(self.graph, {node:{'putative_cell_type':label}}) # update graph
-            self.units[node].putative_cell_type=label # Update class
+            nx.set_node_attributes(self.graph, {node:{'putativeCellType':label}}) # update graph
+            self.units[node].putativeCellType=label # Update class
             print("Label of node {} was set to {}.\n".format(node, label))
             
         
@@ -373,8 +373,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if node_labels:
             nlabs={}
             for node in list(self.graph.nodes):
-                pct=self.get_node_attribute(node, 'putative_cell_type')
-                cct=self.get_node_attribute(node, 'classified_cell_type')
+                pct=self.get_node_attribute(node, 'putativeCellType')
+                cct=self.get_node_attribute(node, 'classifiedCellType')
                 l="{}".format(node)
                 if pct!='':
                     l+="\nput:{}".format(pct)
@@ -612,11 +612,11 @@ class Unit:
         self.ds=dataset
         self.dp = self.ds.dp
         self.idx=index
-        self.putative_cell_type=''
-        self.classified_cell_type=''
+        self.putativeCellType=''
+        self.classifiedCellType=''
         self.graph = graph
         # self refers to the instance not the class, hehe
-        self.graph.add_node(self.idx, unit=self, putative_cell_type=self.putative_cell_type, classified_cell_type=self.classified_cell_type) 
+        self.graph.add_node(self.idx, unit=self, putativeCellType=self.putativeCellType, classifiedCellType=self.classifiedCellType) 
     
     def get_units_positions(self):
         chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort

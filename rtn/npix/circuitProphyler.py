@@ -641,9 +641,7 @@ class Unit:
             
             # Get peak channel xy positions
             chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
-            peak_pos = npa(zeros=(1, 3))
-            peak_pos[0,:]=np.append([self.idx], (chan_pos[self.peak_channel]).flatten()) # find peak positions in x,y
-            self.peak_position_real=peak_pos
+            self.peak_position_real=chan_pos[self.peak_channel].flatten() # find peak positions in x,y
 
         else:
             print('You need to export the features tables using phy first!!')

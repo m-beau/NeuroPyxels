@@ -125,7 +125,7 @@ class Dataset:
             print('You need to export the features tables using phy first!!')
             return
     
-    def connect_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False, plotsfcdf=True):
+    def connect_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False, plotsfcdf=False):
         self.graph.remove_edges_from(list(self.graph.edges))
         graphs=[]
         for f in os.listdir(self.dpnet):
@@ -274,6 +274,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 try: # Will only work if integer is inputted
                     label=ast.literal_eval(label)
                     label=edges_types[label]
+                    nx.set_edge_attributes(self.graph, {edge:{'label':label}})
                     print(" || Label of edge {} was set to {}.\n".format(edge, label))
                 except:
                     if label=='del':
@@ -332,7 +333,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     def plot_graph(self, edge_labels=True, node_labels=True):
         chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort
         #chan_map=np.load(op.join(self.dp, 'channel_map.npy')).flatten()
-        peak_pos = {u:(chan_pos[c]+npa([-3+6*np.random.rand(),0])).flatten() for u,c in self.peak_channels.items()}
+        peak_pos = {u:(chan_pos[c]).flatten() for u,c in self.peak_channels.items()}
         ec, ew = [], []
         for e in self.graph.edges:
             ec.append('r') if self.get_edge_attribute(e, 'sign')==-1 else ec.append('b')
@@ -351,13 +352,13 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 if cct!='':
                     l+="\ncla:{}".format(cct)
                 nlabs[node]=l
-            nx.draw_networkx_labels(self.graph,peak_pos,nlabs, font_weight='bold', font_color='#000000FF', font_size=6)
+            nx.draw_networkx_labels(self.graph,peak_pos,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
             #nx.draw_networkx(self.graph, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
         nx.draw_networkx_nodes(self.graph, pos=peak_pos, node_color='grey', alpha=0.8)
         nx.draw_networkx_edges(self.graph, pos=peak_pos, edge_color=ew, width=4, alpha=0.7, 
                                edge_cmap=plt.cm.RdBu_r, edge_vmin=-5, edge_vmax=5)
         if edge_labels:
-            nx.draw_networkx_edge_labels(self.graph, pos=peak_pos, edge_labels=e_labels,font_color='black', font_size=6, font_weight='bold')
+            nx.draw_networkx_edge_labels(self.graph, pos=peak_pos, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
         ax.tick_params(axis='both', reset=True, labelsize=10)
         ax.set_ylabel('Depth (um)', fontsize=12)
         ax.set_xlabel('Lat. position (um)', fontsize=12)
@@ -368,6 +369,20 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         plt.tight_layout()
     
         
+    
+    def make_graph_directed(self):
+        '''
+        Should be called once the edges have been manually curated:
+        - if several edges remain between pairs of nodes, the one with the biggest standard deviation is kept
+        - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use u_src and u_trg to figure out who's a and b)
+        '''
+        # A directed graph with the same name, same nodes, 
+        # and with each edge (u,v,data) replaced by two directed edges (u,v,data) and (v,u,data).
+        self.digraph=self.graph.to_directed()
+        
+        # - if several edges remain between pairs of nodes, the one with the biggest standard deviation is kept
+        # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use u_src and u_trg to figure out who's a and b)
+        #for 
     
     def export_graph(self, name='', frmt='gpickle'):
         '''

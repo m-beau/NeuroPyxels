@@ -347,7 +347,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 ow=input(" || Warning, name already taken - overwrite? <y>/<n>:")
                 if ow=='y':
                     print(" || Overwriting graph {}.".format(file))
-                    self.export_graph(name, frmt) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
+                    self.export_graph(name, frmt, ow=True) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                     break
                 elif ow=='n':
                     print(' || Ok, pick another name.')
@@ -359,7 +359,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     
     def plot_graph(self, edge_labels=True, node_labels=True):
 
-        if ~op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
+        if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')
             return
         
@@ -415,16 +415,24 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
         #for 
     
-    def export_graph(self, name='', frmt='gpickle'):
+    def export_graph(self, name='', frmt='gpickle', ow=False):
         '''
         name: any srting. If 't': will be graph_aaaa-mm-dd_hh:mm:ss
         frmt: any in ['edgelist', 'adjlist', 'gexf', 'gml'] (default gpickle)'''
         
         assert frmt in ['edgelist', 'adjlist', 'gexf', 'gml', 'gpickle']
+        file=op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt)
+        filePickle=op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.gpickle')
+        
+        if op.isfile(filePickle) and not ow:
+            print("File name {} already taken. PIck another name or run the function with ow=True to overwrite file.")
+            return
+        
         nx_exp={'edgelist':nx.write_edgelist, 'adjlist':nx.write_adjlist,'gexf':nx.write_gexf, 'gml':nx.write_gml, 'gpickle':nx.write_gpickle}
         if name=='t':
             name=time.strftime("%Y-%m-%d_%H:%M:%S")
-        nx_exp['gpickle'](self.graph, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.gpickle')) # Always export in edges list for internal compatibility
+        nx_exp['gpickle'](self.graph, filePickle) # Always export in edges list for internal compatibility
+        
         if frmt!='gpickle':
             if frmt=='gml' or frmt=='gexf':
                 print("GML or GEXF files can only process elements convertable into strings. Getting rid of nodes 'unit' attributes.")
@@ -432,11 +440,11 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 for n in g.nodes:
                     del g.nodes[n]['unit']
                 if frmt=='gml':
-                    nx_exp[frmt](g, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt), stringizer=str) # np.int not handled... Need to explicitely tell it to use str() for non native python data types...
+                    nx_exp[frmt](g, file, stringizer=str) # np.int not handled... Need to explicitely tell it to use str() for non native python data types...
                 elif frmt=='gexf':
-                    nx_exp[frmt](g, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt))
+                    nx_exp[frmt](g, file)
             else:
-                nx_exp[frmt](self.graph, op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt))
+                nx_exp[frmt](self.graph, file)
             
     def import_graph(self, name):
         '''

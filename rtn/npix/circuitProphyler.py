@@ -56,9 +56,9 @@ import networkx as nx
 
 def chan_map_3A():
     chan_map_el = npa([[  43.,   20.],
-                           [  11.,   20.],
-                           [  59.,   40.],
-                           [  27.,   40.]])
+                       [  11.,   20.],
+                       [  59.,   40.],
+                       [  27.,   40.]])
     vert=npa([[  0,   40.],
               [  0,   40.],
               [  0,   40.],
@@ -104,7 +104,7 @@ class Dataset:
         if not op.isdir(self.dpnet): os.mkdir(self.dpnet)
         self.graph=nx.MultiGraph() # Undirected multigraph - directionality is given by u_src and u_trg. Several peaks -> several edges -> multigraph.
         self.units = {u:Unit(self, u, self.graph) for u in self.get_good_units()} # Units are added to the graph when inititalized
-        self.get_peak_channels()
+        self.get_peak_positions()
 
     def get_units(self):
         return rtn.npix.gl.get_units(self.dp)
@@ -121,6 +121,33 @@ class Dataset:
             
             self.peak_channels = {gu[i]:bestChs[i] for i in range(len(gu))}
             
+        else:
+            print('You need to export the features tables using phy first!!')
+            return
+        
+    def get_peak_positions(self):
+        if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
+            self.get_peak_channels()
+            
+            # Get peak channel xy positions
+            chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
+            peak_pos = npa(zeros=(len(self.peak_channels), 3))
+            for i, (u,c) in enumerate(self.peak_channels.items()): # find peak positions in x,y
+                peak_pos[i,:]=np.append([u], (chan_pos[c]).flatten())
+            self.peak_positions_real=peak_pos
+            
+            # Homogeneously distributes neurons on same channels around mother channel to prevent overlap
+            for pp in np.unique(peak_pos[:,1:], axis=0): # space positions if several units per channel
+                boolarr=(pp[0]==peak_pos[:,1])&(pp[1]==peak_pos[:,2])
+                n1=sum(x > 0 for x in boolarr)
+                if n1>1:
+                    for i in range(n1):
+                        x_spacing=16# x spacing is 32um
+                        spacing=x_spacing*1./(n1+1) 
+                        boolidx=np.nonzero(boolarr)[0][i]
+                        peak_pos[boolidx,1]=peak_pos[boolidx,1]-x_spacing*1./2+(i+1)*spacing # 1 is index of x value
+            self.peak_positions={int(pp[0]):pp[1:] for pp in peak_pos}
+
         else:
             print('You need to export the features tables using phy first!!')
             return
@@ -331,9 +358,11 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 break
     
     def plot_graph(self, edge_labels=True, node_labels=True):
-        chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort
-        #chan_map=np.load(op.join(self.dp, 'channel_map.npy')).flatten()
-        peak_pos = {u:(chan_pos[c]).flatten() for u,c in self.peak_channels.items()}
+
+        if ~op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
+            print('You need to export the features tables using phy first!!')
+            return
+        
         ec, ew = [], []
         for e in self.graph.edges:
             ec.append('r') if self.get_edge_attribute(e, 'sign')==-1 else ec.append('b')
@@ -352,13 +381,13 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 if cct!='':
                     l+="\ncla:{}".format(cct)
                 nlabs[node]=l
-            nx.draw_networkx_labels(self.graph,peak_pos,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
+            nx.draw_networkx_labels(self.graph,self.peak_positions,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
             #nx.draw_networkx(self.graph, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
-        nx.draw_networkx_nodes(self.graph, pos=peak_pos, node_color='grey', alpha=0.8)
-        nx.draw_networkx_edges(self.graph, pos=peak_pos, edge_color=ew, width=4, alpha=0.7, 
+        nx.draw_networkx_nodes(self.graph, pos=self.peak_positions, node_color='grey', alpha=0.8)
+        nx.draw_networkx_edges(self.graph, pos=self.peak_positions, edge_color=ew, width=4, alpha=0.7, 
                                edge_cmap=plt.cm.RdBu_r, edge_vmin=-5, edge_vmax=5)
         if edge_labels:
-            nx.draw_networkx_edge_labels(self.graph, pos=peak_pos, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
+            nx.draw_networkx_edge_labels(self.graph, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
         ax.tick_params(axis='both', reset=True, labelsize=10)
         ax.set_ylabel('Depth (um)', fontsize=12)
         ax.set_xlabel('Lat. position (um)', fontsize=12)
@@ -367,6 +396,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         criteria=self.get_edge_attribute(list(self.graph.edges)[0], 'criteria')
         ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
         plt.tight_layout()
+        
+        return fig
     
         
     
@@ -586,7 +617,26 @@ class Unit:
         self.graph = graph
         # self refers to the instance not the class, hehe
         self.graph.add_node(self.idx, unit=self, putative_cell_type=self.putative_cell_type, classified_cell_type=self.classified_cell_type) 
+    
+    def get_units_positions(self):
+        chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort
+        #chan_map=np.load(op.join(self.dp, 'channel_map.npy')).flatten()
         
+        # Homogeneously distributes neurons on same channels around mother channel to prevent overlap
+        peak_pos = npa(zeros=(len(self.peak_channels), 3))
+        for i, (u,c) in enumerate(self.peak_channels.items()): # find peak positions in x,y
+            peak_pos[i,:]=np.append([u], (chan_pos[c]).flatten())
+        
+        for pp in np.unique(peak_pos[:,1:], axis=0): # space positions if several units per channel
+            boolarr=(pp[0]==peak_pos[:,1])&(pp[1]==peak_pos[:,2])
+            n1=sum(x > 0 for x in boolarr)
+            if n1>1:
+                for i in range(n1):
+                    x_spacing=16# x spacing is 32um
+                    spacing=x_spacing*1./(n1+1) 
+                    boolidx=np.nonzero(boolarr)[0][i]
+                    peak_pos[boolidx,1]=peak_pos[boolidx,1]-x_spacing*1./2+(i+1)*spacing # 1 is index of x value
+                    
     def trn(self, rec_section='all'):
         return rtn.npix.spk_t.trn(self.dp, self.idx, rec_section=rec_section)
     

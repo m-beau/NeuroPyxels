@@ -393,7 +393,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # ax.set_yticklabels(ax.get_yticklabels(), fontsize=12, fontweight='bold')
         ax.set_ylabel('Depth (um)', fontsize=16, fontweight='bold')
         ax.set_xlabel('Lat. position (um)', fontsize=16, fontweight='bold')
-        ax.set_ylim([3840,0])
+        ax.set_ylim([4000,0])
         ax.set_xlim([0,70])
         criteria=self.get_edge_attribute(list(self.graph.edges)[0], 'criteria')
         ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))

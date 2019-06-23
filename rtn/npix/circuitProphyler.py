@@ -388,15 +388,22 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                                edge_cmap=plt.cm.RdBu_r, edge_vmin=-5, edge_vmax=5)
         if edge_labels:
             nx.draw_networkx_edge_labels(self.graph, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
-        ax.tick_params(axis='both', reset=True, labelsize=12)
-        # ax.set_xticklabels(ax.get_xticklabels(), fontsize=12, fontweight='bold')
-        # ax.set_yticklabels(ax.get_yticklabels(), fontsize=12, fontweight='bold')
+
         ax.set_ylabel('Depth (um)', fontsize=16, fontweight='bold')
         ax.set_xlabel('Lat. position (um)', fontsize=16, fontweight='bold')
         ax.set_ylim([4000,0])
         ax.set_xlim([0,70])
-        criteria=self.get_edge_attribute(list(self.graph.edges)[0], 'criteria')
-        ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
+        ax.tick_params(axis='both', reset=True, labelsize=12)
+        ax2 = ax.twinx()
+        ax2.set_ylabel('Channel #', fontsize=16, fontweight='bold')
+        ax2.set_yticks(ax.get_yticks())
+        ax2.set_yticklabels([int(yt/10 - 16) for yt in ax.get_yticks()], fontsize=12)
+        ax2.set_ylim([0,4000])
+        try:
+            criteria=self.get_edge_attribute(list(self.graph.edges)[0], 'criteria')
+            ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
+        except:
+            print('Graph not connected! Run ds.connect_graph()')
         plt.tight_layout()
         
         return fig

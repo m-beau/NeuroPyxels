@@ -116,10 +116,10 @@ class Dataset:
         if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             ft = pd.read_csv(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv'), sep=',', index_col=0)
             bestChs=np.array(ft["WVF-MainChannel"])
+            gu=np.array(ft.index, dtype=np.int64)
             depthIdx = np.argsort(bestChs) # From deep to shallow
-            gu=np.array(ft.index, dtype=np.int64)[depthIdx]
             
-            self.peak_channels = {gu[i]:bestChs[i] for i in range(len(gu))}
+            self.peak_channels = {gu[depthIdx][i]:bestChs[depthIdx][i] for i in range(len(gu))}
             
         else:
             print('You need to export the features tables using phy first!!')
@@ -633,11 +633,7 @@ class Unit:
     def get_peak_channel(self):
         if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             ft = pd.read_csv(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv'), sep=',', index_col=0)
-            bestChs=np.array(ft["WVF-MainChannel"])
-            depthIdx = np.argsort(bestChs) # From deep to shallow
-            gu=np.array(ft.index, dtype=np.int64)[depthIdx][depthIdx]
-            peak_channels = {gu[i]:bestChs[i] for i in range(len(gu))}
-            self.peak_channel=peak_channels[self.idx]
+            self.peak_channel=ft.loc[self.idx, "WVF-MainChannel"]
             
         else:
             print('You need to export the features tables using phy first!!')

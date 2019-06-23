@@ -130,7 +130,7 @@ class Dataset:
             self.get_peak_channels()
             
             # Get peak channel xy positions
-            chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
+            chan_pos=chan_map_3A()[::-1] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
             peak_pos = npa(zeros=(len(self.peak_channels), 3))
             for i, (u,c) in enumerate(self.peak_channels.items()): # find peak positions in x,y
                 peak_pos[i,:]=np.append([u], (chan_pos[c]).flatten())
@@ -388,9 +388,11 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                                edge_cmap=plt.cm.RdBu_r, edge_vmin=-5, edge_vmax=5)
         if edge_labels:
             nx.draw_networkx_edge_labels(self.graph, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
-        ax.tick_params(axis='both', reset=True, labelsize=10)
-        ax.set_ylabel('Depth (um)', fontsize=12)
-        ax.set_xlabel('Lat. position (um)', fontsize=12)
+        ax.tick_params(axis='both', reset=True, labelsize=12)
+        # ax.set_xticklabels(ax.get_xticklabels(), fontsize=12, fontweight='bold')
+        # ax.set_yticklabels(ax.get_yticklabels(), fontsize=12, fontweight='bold')
+        ax.set_ylabel('Depth (um)', fontsize=16, fontweight='bold')
+        ax.set_xlabel('Lat. position (um)', fontsize=16, fontweight='bold')
         ax.set_ylim([3840,0])
         ax.set_xlim([0,70])
         criteria=self.get_edge_attribute(list(self.graph.edges)[0], 'criteria')
@@ -644,7 +646,7 @@ class Unit:
             self.get_peak_channel()
             
             # Get peak channel xy positions
-            chan_pos=chan_map_3A() # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
+            chan_pos=chan_map_3A()[::-1] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
             self.peak_position_real=chan_pos[self.peak_channel].flatten() # find peak positions in x,y
 
         else:

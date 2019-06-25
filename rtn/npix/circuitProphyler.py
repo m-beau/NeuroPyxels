@@ -152,8 +152,17 @@ class Dataset:
             print('You need to export the features tables using phy first!!')
             return
     
-    def connect_graph(self, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False, plotsfcdf=False):
-        self.graph.remove_edges_from(list(self.graph.edges))
+    def connect_graph(self, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False, plotsfcdf=False, graph='undigraph'):
+        
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
+        
+        g.remove_edges_from(list(g.edges))
         graphs=[]
         for f in os.listdir(self.dpnet):
             if 'graph' in f:
@@ -164,7 +173,7 @@ class Dataset:
 Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(op.join(self.dp, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
                 try: # works if an int is inputted
                     load_choice=int(ast.literal_eval(load_choice))
-                    self.graph=self.import_graph(op.join(self.dpnet, graphs[load_choice]))
+                    g=self.import_graph(op.join(self.dpnet, graphs[load_choice]))
                     print("Building Dataset.graph from file {}.".format(graphs[load_choice]))
                     if graphs[load_choice].split('.')[-1]!='gpickle':
                         print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
@@ -172,12 +181,12 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 except: # must be a normal or empty string
                     if load_choice=='sfc':
                         print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
-                        rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
+                        rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=g, again=again, againCCG=againCCG)
                         if plotsfcdf:rtn.npix.plot.plot_sfcdf(self.dp, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
                                                      rec_section=rec_section, ticks=False, again = again, saveFig=True, saveDir=self.dpnet)
                         break
                     elif op.isfile(op.join(self.dpnet, load_choice)):
-                        self.graph=self.import_graph(op.join(self.dpnet, load_choice))
+                        g=self.import_graph(op.join(self.dpnet, load_choice))
                         print("Building Dataset.graph from file {}.".format(load_choice))
                         if load_choice.split('.')[-1]!='gpickle':
                             print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
@@ -186,89 +195,162 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                         print("Filename or 'sfc' misspelled. Try again.")
         else:
             print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
-            rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=self.graph, again=again, againCCG=againCCG)
+            rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=g, again=again, againCCG=againCCG)
             if plotsfcdf: rtn.npix.plot.plot_sfcdf(self.dp, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
                                                      rec_section=rec_section, ticks=False, again=again, saveFig=True, saveDir=self.dpnet)
 
-    def get_nodes(self, attributes=False):
+    def get_nodes(self, attributes=False, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
+        
         if attributes:
             nodes={}
-            for n, na in self.graph.nodes(data=True):
+            for n, na in g.nodes(data=True):
                 nodes[n]=na
         else:
-            nodes=list(self.graph.nodes())
+            nodes=list(g.nodes())
         
         return nodes
     
-    def get_edges(self, attributes=False, keys=True):
+    def get_edges(self, attributes=False, keys=True, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
+        
         if attributes:
             edges={}
-            for e in self.graph.edges(data=True, keys=keys):
+            for e in g.edges(data=True, keys=keys):
                 edges[e[0:-1]]=e[-1]
         else:
-            edges=list(self.graph.edges(keys=keys))
+            edges=list(g.edges(keys=keys))
         return edges
     
-    def get_node_attributes(self, n):
-        return self.get_nodes(True)[n]
+    def get_node_attributes(self, n, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
+        
+        return self.get_nodes(True, graph=graph)[n]
     
-    def get_node_attribute(self, n, at):
+    def get_node_attribute(self, n, at, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
+        
         assert at in ['unit', 'putativeCellType', 'classifiedCellType']
-        return self.get_nodes(True)[n][at]
+        return self.get_nodes(True, graph=graph)[n][at]
 
-    def set_node_attribute(self, n, at, at_val):
+    def set_node_attribute(self, n, at, at_val, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
+        
         assert at in ['unit', 'putativeCellType', 'classifiedCellType']
-        nx.set_node_attributes(self.graph, {n:{at:at_val}})
+        nx.set_node_attributes(g, {n:{at:at_val}})
 
-    def get_edge_attribute(self, e, at):
+    def get_edge_attribute(self, e, at, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
+        
         assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
         if len(e)==3:
             try: # check that nodes are in the right order - multi directed graph
-                return self.get_edges(True)[e][at]
+                return self.get_edges(True, graph=graph)[e][at]
             except:
-                return self.get_edges(True)[(e[1],e[0],e[2])][at]
+                return self.get_edges(True, graph=graph)[(e[1],e[0],e[2])][at]
         elif len(e)==2:
-            npe=npa(self.get_edges())
+            npe=npa(self.get_edges(graph=graph))
             keys=npe[(npe[:,0]==1183)&(npe[:,1]==1187)][:,2]
             edges={}
             for k in keys:
                 try: # check that nodes are in the right order - multi directed graph
-                    edges[k]=self.get_edges(True)[(e[0],e[1],k)][at]
+                    edges[k]=self.get_edges(True, graph=graph)[(e[0],e[1],k)][at]
                 except:
-                    edges[k]=self.get_edges(True)[(e[1],e[0],k)][at]
+                    edges[k]=self.get_edges(True, graph=graph)[(e[1],e[0],k)][at]
             return edges
     
-    def get_edge_attributes(self, e):
+    def get_edge_attributes(self, e, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
+        
         if len(e)==3:
             try: # check that nodes are in the right order - multi directed graph
-                return self.get_edges(True)[e]
+                return self.get_edges(True, graph=graph)[e]
             except:
-                return self.get_edges(True)[(e[1],e[0],e[2])]
+                return self.get_edges(True, graph=graph)[(e[1],e[0],e[2])]
         elif len(e)==2:
-            npe=npa(self.get_edges())
+            npe=npa(self.get_edges(graph=graph))
             keys=npe[(npe[:,0]==1183)&(npe[:,1]==1187)][:,2]
             edges={}
             for k in keys:
                 try: # check that nodes are in the right order - multi directed graph
-                    edges[k]=self.get_edges(True)[(e[0],e[1],k)]
+                    edges[k]=self.get_edges(True, graph=graph)[(e[0],e[1],k)]
                 except:
-                    edges[k]=self.get_edges(True)[(e[1],e[0],k)]
+                    edges[k]=self.get_edges(True, graph=graph)[(e[1],e[0],k)]
             return edges
         
-    def set_edge_attribute(self, e, at, at_val):
+    def set_edge_attribute(self, e, at, at_val, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
+        
         assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
-        nx.set_edge_attributes(self.graph, {e:{at:at_val}})
+        nx.set_edge_attributes(g, {e:{at:at_val}})
         
-    def get_node_edges(self, u):
-        return {unt:len(e_unt) for unt, e_unt in self.graph[u].items()}
-    
-
+    def get_node_edges(self, u, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
         
-
+        return {unt:len(e_unt) for unt, e_unt in g[u].items()}
         
-        
-        
-    def label_nodes(self):
+    def label_nodes(self, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
         
         for node in self.graph.nodes:
             # Plot ACG
@@ -284,46 +366,53 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 if label=='n':
                     label=0 # status quo
                     break
-            self.set_node_attribute(node, 'putativeCellType', label) # update graph
+            self.set_node_attribute(node, 'putativeCellType', label, graph=graph) # update graph
             self.units[node].putativeCellType=label # Update class
             print("Label of node {} was set to {}.\n".format(node, label))
             
         
     
-    def label_edges(self):
+    def label_edges(self, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
         
         edges_types=['asym_inh', 'sym_inh', 'asym_exc', 'sym_exc', 'inh_exc', 'PC_CNC', 'CS_SS', 'oscill']
         
-        if self.graph.number_of_edges==0:
+        if g.number_of_edges==0:
             print("""No edge detected - connect the graph first by calling
                   Dataset.connect_graph(cbin, cwin, threshold, n_consec_bins, rec_section, again)
                   You will be offered to load a pre-labelled graph if you ever saved one.""")
             return
         
-        n_edges_init=self.graph.number_of_edges()
-        for ei, edge in enumerate(list(self.graph.edges)):
-            ea=self.get_edge_attributes(edge) # u1, u2, i unpacked
+        n_edges_init=g.number_of_edges()
+        for ei, edge in enumerate(list(g.edges)):
+            ea=self.get_edge_attributes(edge, graph=graph) # u1, u2, i unpacked
             
             rtn.npix.plot.plot_ccg(self.dp, [ea['uSrc'],ea['uTrg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
             
             label=''
             while label=='': # if enter is hit
-                print(" \n\n || Edge {}/{} ({} deleted so far)...".format(ei, n_edges_init, n_edges_init-self.graph.number_of_edges()))
+                print(" \n\n || Edge {}/{} ({} deleted so far)...".format(ei, n_edges_init, n_edges_init-g.number_of_edges()))
                 print(" || {0}->{1} (multiedge {2}) sig. corr.: \x1b[1m\x1b[36m{3:.2f}\x1b[0msd high, \x1b[1m\x1b[36m{4:.2f}\x1b[0mms wide, @\x1b[1m\x1b[36m{5:.2f}\x1b[0mms".format(ea['uSrc'], ea['uTrg'], edge[2], ea['amp'], ea['width'], ea['t']))
-                print(" || Total edges of source unit: {}".format(self.get_node_edges(ea['uSrc'])))
+                print(" || Total edges of source unit: {}".format(self.get_node_edges(ea['uSrc'], graph=graph)))
                 label=input(" || Current label: {}. New label? ({},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(self.get_edge_attribute(edge,'label'), ['<{}>:{}'.format(i,v) for i,v in enumerate(edges_types)]))
                 try: # Will only work if integer is inputted
                     label=ast.literal_eval(label)
                     label=edges_types[label]
-                    self.set_edge_attribute(edge, 'label', label)
+                    self.set_edge_attribute(edge, 'label', label, graph=graph)
                     print(" || Label of edge {} was set to {}.\n".format(edge, label))
                 except:
                     if label=='del':
-                        self.graph.remove_edge(*edge)
+                        g.remove_edge(*edge)
                         print(" || Edge {} was deleted.".format(edge))
                         break
                     elif label=='s':
-                        self.set_edge_attribute(edge, 'label', 0) # status quo
+                        self.set_edge_attribute(edge, 'label', 0, graph=graph) # status quo
                         break
                     elif label=='':
                         print("Whoops, looks like you hit enter. You cannot leave unnamed edges. Try again.")
@@ -331,7 +420,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                         print(" || Done - exitting.")
                         break
                     else:
-                        self.set_edge_attribute(edge, 'label', label)
+                        self.set_edge_attribute(edge, 'label', label, graph=graph)
                         print(" || Label of edge {} was set to {}.\n".format(edge, label))
                         break
             if label=="done":
@@ -361,47 +450,54 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 ow=input(" || Warning, name already taken - overwrite? <y>/<n>:")
                 if ow=='y':
                     print(" || Overwriting graph {}.".format(file))
-                    self.export_graph(name, frmt, ow=True) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
+                    self.export_graph(name, frmt, ow=True, graph=graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                     break
                 elif ow=='n':
                     print(' || Ok, pick another name.')
                     pass
             else:
                 print(" || Saving graph {}.".format(file))
-                self.export_graph(name, frmt) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
+                self.export_graph(name, frmt, graph=graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                 break
     
-    def plot_graph(self, edge_labels=True, node_labels=True):
-
+    def plot_graph(self, edge_labels=True, node_labels=True, graph='undigraph'):
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
+        
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')
             return
         
         ec, ew = [], []
-        for e in self.graph.edges:
-            ec.append('r') if self.get_edge_attribute(e, 'sign')==-1 else ec.append('b')
-            ew.append(self.get_edge_attribute(e, 'amp'))
-        e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp'), 2))+'@'+str(np.round(self.get_edge_attribute(e, 't'), 1))+'ms' for e in self.graph.edges}
+        for e in g.edges:
+            ec.append('r') if self.get_edge_attribute(e, 'sign', graph=graph)==-1 else ec.append('b')
+            ew.append(self.get_edge_attribute(e, 'amp', graph=graph))
+        e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', graph=graph), 2))+'@'+str(np.round(self.get_edge_attribute(e, 't', graph=graph), 1))+'ms' for e in g.edges}
         
         fig, ax = plt.subplots(figsize=(6, 16))
         if node_labels:
             nlabs={}
-            for node in list(self.graph.nodes):
-                pct=self.get_node_attribute(node, 'putativeCellType')
-                cct=self.get_node_attribute(node, 'classifiedCellType')
+            for node in list(g.nodes):
+                pct=self.get_node_attribute(node, 'putativeCellType', graph=graph)
+                cct=self.get_node_attribute(node, 'classifiedCellType', graph=graph)
                 l="{}".format(node)
                 if pct!='':
                     l+="\nput:{}".format(pct)
                 if cct!='':
                     l+="\ncla:{}".format(cct)
                 nlabs[node]=l
-            nx.draw_networkx_labels(self.graph,self.peak_positions,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
-            #nx.draw_networkx(self.graph, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
-        nx.draw_networkx_nodes(self.graph, pos=self.peak_positions, node_color='grey', alpha=0.8)
-        nx.draw_networkx_edges(self.graph, pos=self.peak_positions, edge_color=ew, width=4, alpha=0.7, 
+            nx.draw_networkx_labels(g,self.peak_positions,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
+            #nx.draw_networkx(g, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
+        nx.draw_networkx_nodes(g, pos=self.peak_positions, node_color='grey', alpha=0.8)
+        nx.draw_networkx_edges(g, pos=self.peak_positions, edge_color=ew, width=4, alpha=0.7, 
                                edge_cmap=plt.cm.RdBu_r, edge_vmin=-5, edge_vmax=5)
         if edge_labels:
-            nx.draw_networkx_edge_labels(self.graph, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
+            nx.draw_networkx_edge_labels(g, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 
         ax.set_ylabel('Depth (um)', fontsize=16, fontweight='bold')
         ax.set_xlabel('Lat. position (um)', fontsize=16, fontweight='bold')
@@ -414,7 +510,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         ax2.set_yticklabels([int(yt/10 - 16) for yt in ax.get_yticks()], fontsize=12)
         ax2.set_ylim([0,4000])
         try:
-            criteria=self.get_edge_attribute(list(self.graph.edges)[0], 'criteria')
+            criteria=self.get_edge_attribute(list(g.edges, graph=graph)[0], 'criteria')
             ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
         except:
             print('Graph not connected! Run ds.connect_graph()')
@@ -422,7 +518,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         return fig
     
-        
     
     def make_graph_directed(self):
         '''
@@ -430,22 +525,46 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         - if several edges remain between pairs of nodes, the one with the biggest standard deviation is kept
         - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
         '''
-        # A directed graph with the same name, same nodes, 
-        # and with each edge (u,v,data) replaced by two directed edges (u,v,data) and (v,u,data).
-        self.digraph=self.graph.to_directed()
+        # self.graph becomes a directed graph, its undirected version is saved as self.undigraph
+        self.digraph=nx.MultiDiGraph()
+        self.digraph.add_nodes_from(self.graph.nodes())
         
-        # - if several edges remain between pairs of nodes, the one with the biggest standard deviation is kept
+        # - if several edges between pairs of nodes, keep the one with the biggest standard deviation
         # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
-        #for 
-    
-    def export_graph(self, name='', frmt='gpickle', ow=False):
+        for edge in self.undigraph.edges():
+            uSrc=self.get_edge_attribute(edge, 'uSrc', graph='undigraph')
+            uTrg=self.get_edge_attribute(edge, 'uTrg', graph='undigraph')
+            t=self.get_edge_attribute(edge, 't', graph='undigraph')
+            amp=self.get_edge_attribute(edge, 'amp', graph='undigraph')
+            width=self.get_edge_attribute(edge, 'width', graph='undigraph')
+            label=self.get_edge_attribute(edge, 'label', graph='undigraph')
+            criteria=self.get_edge_attribute(edge, 'criteria', graph='undigraph')
+            
+            # If <-1 or >1ms: unidirectional, if between -1 and 1: bidirectional
+            if t>-1: # if close to 0 bidirectional, if >1 
+                self.digraph.add_edge(uSrc, uTrg, uSrc=uSrc, uTrg=uTrg, 
+                                                   amp=amp, t=t, sign=sign(amp), width=width, label=label,
+                                                   criteria=criteria)
+            if t<1:
+                self.digraph.add_edge(uTrg, uSrc, uSrc=uTrg, uTrg=uSrc, 
+                                                   amp=amp, t=t, sign=sign(amp), width=width, label=label,
+                                                   criteria=criteria)
+        
+    def export_graph(self, name='', frmt='gpickle', ow=False, graph='undigraph'):
         '''
         name: any srting. If 't': will be graph_aaaa-mm-dd_hh:mm:ss
         frmt: any in ['edgelist', 'adjlist', 'gexf', 'gml'] (default gpickle)'''
+        if graph=='undigraph':
+            g=self.graph
+        elif graph=='digraph':
+            g=self.digraph
+        else:
+            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
+            return
         
         assert frmt in ['edgelist', 'adjlist', 'gexf', 'gml', 'gpickle']
-        file=op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.'+frmt)
-        filePickle=op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.gpickle')
+        file=op.join(self.dpnet, graph+'_'+name+'_'+self.name+'.'+frmt)
+        filePickle=op.join(self.dpnet, graph+'_'+name+'_'+self.name+'.gpickle')
         
         if op.isfile(filePickle) and not ow:
             print("File name {} already taken. Pick another name or run the function with ow=True to overwrite file.")
@@ -456,22 +575,23 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if name=='t':
             name=time.strftime("%Y-%m-%d_%H:%M:%S")
             print(2, name)
-        nx_exp['gpickle'](self.graph, filePickle) # Always export in edges list for internal compatibility
+        nx_exp['gpickle'](g, filePickle) # Always export in edges list for internal compatibility
         
         if frmt!='gpickle':
             if frmt=='gml' or frmt=='gexf':
                 print("GML or GEXF files can only process elements convertable into strings. Getting rid of nodes 'unit' attributes.")
-                g=self.graph.copy()
+                gc=g.copy()
                 for n in g.nodes:
-                    del g.nodes[n]['unit']
+                    del gc.nodes[n]['unit']
                 if frmt=='gml':
-                    nx_exp[frmt](g, file, stringizer=str) # np.int not handled... Need to explicitely tell it to use str() for non native python data types...
+                    nx_exp[frmt](gc, file, stringizer=str) # np.int not handled... Need to explicitely tell it to use str() for non native python data types...
                 elif frmt=='gexf':
-                    nx_exp[frmt](g, file)
+                    nx_exp[frmt](gc, file)
             else:
-                nx_exp[frmt](self.graph, file)
-            
-    def import_graph(self, name):
+                nx_exp[frmt](g, file)
+    
+    @staticmethod
+    def import_graph(name):
         '''
         name: path to file to import, ending in '.edgelist', '.adjlist', '.gexf', '.gml' or '.gpickle'
         '''

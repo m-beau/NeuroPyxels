@@ -891,7 +891,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 for u1 in SFCDF.index:
                     for u2 in SFCDF.index:
                         pks=SFCDF.loc[u1, str(u2)]
-                        if u1==181 or u2==181:
+                        if (u1==181 and u2==165) or (u2==181 and u1==165):
                             print(pks)
                         if u1<u2 and type(pks) is str:
                             pks=ast.literal_eval(pks)

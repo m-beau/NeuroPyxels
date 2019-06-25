@@ -152,7 +152,7 @@ class Dataset:
             print('You need to export the features tables using phy first!!')
             return
     
-    def connect_graph(self, cbin=0.2, cwin=80, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False, plotsfcdf=False):
+    def connect_graph(self, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False, plotsfcdf=False):
         self.graph.remove_edges_from(list(self.graph.edges))
         graphs=[]
         for f in os.listdir(self.dpnet):
@@ -216,6 +216,10 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         assert at in ['unit', 'putativeCellType', 'classifiedCellType']
         return self.get_nodes(True)[n][at]
 
+    def set_node_attribute(self, n, at, at_val):
+        assert at in ['unit', 'putativeCellType', 'classifiedCellType']
+        nx.set_node_attributes(self.graph, {n:{at:at_val}})
+
     def get_edge_attribute(self, e, at):
         assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
         if len(e)==3:
@@ -250,10 +254,20 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 except:
                     edges[k]=self.get_edges(True)[(e[1],e[0],k)]
             return edges
-                
+        
+    def set_edge_attribute(self, e, at, at_val):
+        assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
+        nx.set_edge_attributes(self.graph, {e:{at:at_val}})
+        
     def get_node_edges(self, u):
         return {unt:len(e_unt) for unt, e_unt in self.graph[u].items()}
     
+
+        
+
+        
+        
+        
     def label_nodes(self):
         
         for node in self.graph.nodes:
@@ -270,7 +284,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 if label=='n':
                     label=0 # status quo
                     break
-            nx.set_node_attributes(self.graph, {node:{'putativeCellType':label}}) # update graph
+            self.set_node_attribute(node, 'putativeCellType', label) # update graph
             self.units[node].putativeCellType=label # Update class
             print("Label of node {} was set to {}.\n".format(node, label))
             
@@ -301,7 +315,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 try: # Will only work if integer is inputted
                     label=ast.literal_eval(label)
                     label=edges_types[label]
-                    nx.set_edge_attributes(self.graph, {edge:{'label':label}})
+                    self.set_edge_attribute(edge, 'label', label)
                     print(" || Label of edge {} was set to {}.\n".format(edge, label))
                 except:
                     if label=='del':
@@ -309,7 +323,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                         print(" || Edge {} was deleted.".format(edge))
                         break
                     elif label=='s':
-                        nx.set_edge_attributes(self.graph, {edge:{'label':0}}) # status quo
+                        self.set_edge_attribute(edge, 'label', 0) # status quo
                         break
                     elif label=='':
                         print("Whoops, looks like you hit enter. You cannot leave unnamed edges. Try again.")
@@ -317,7 +331,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                         print(" || Done - exitting.")
                         break
                     else:
-                        nx.set_edge_attributes(self.graph, {edge:{'label':label}})
+                        self.set_edge_attribute(edge, 'label', label)
                         print(" || Label of edge {} was set to {}.\n".format(edge, label))
                         break
             if label=="done":
@@ -434,12 +448,14 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         filePickle=op.join(self.dpnet, 'graph_'+name+'_'+self.name+'.gpickle')
         
         if op.isfile(filePickle) and not ow:
-            print("File name {} already taken. PIck another name or run the function with ow=True to overwrite file.")
+            print("File name {} already taken. Pick another name or run the function with ow=True to overwrite file.")
             return
         
         nx_exp={'edgelist':nx.write_edgelist, 'adjlist':nx.write_adjlist,'gexf':nx.write_gexf, 'gml':nx.write_gml, 'gpickle':nx.write_gpickle}
+        print(1, name)
         if name=='t':
             name=time.strftime("%Y-%m-%d_%H:%M:%S")
+            print(2, name)
         nx_exp['gpickle'](self.graph, filePickle) # Always export in edges list for internal compatibility
         
         if frmt!='gpickle':
@@ -674,6 +690,21 @@ class Unit:
     
     def acg(self, cbin, cwin, normalize='Hertz', rec_section='all'):
         return rtn.npix.corr.acg(self.dp, self.idx, bin_size=cbin, win_size=cwin, normalize=normalize, rec_section=rec_section)
+    
+    def ccg(self, U, cbin, cwin, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all', again=False):
+        return rtn.npix.corr.ccg(self.dp, [self.idx]+list(U), cbin, cwin, fs, normalize, ret, sav, prnt, rec_section, again)
+        
+    def plot_acg(self, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
+             pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0):
+        
+        rtn.npix.plot.plot_acg(self.dp, self.idx, cbin, cwin, normalize, color, saveDir, saveFig, prnt, show, 
+             pdf, png, rec_section, labels, title, ref_per, saveData, ylim)
+    
+    def plot_ccg(self, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True,
+             pdf=False, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=0):
+        
+        rtn.npix.plot.plot_ccg(self.dp, [self.idx]+list(units), cbin, cwin, normalize, saveDir, saveFig, prnt, show,
+                 pdf, png, rec_section, labels, std_lines, title, color, CCG, saveData, ylim)
     
     def connections(self):
         return dict(self.graph[self.idx])

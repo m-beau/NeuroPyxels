@@ -772,7 +772,7 @@ def make_cm(dp, units, b=5, cbin=1, cwin=100, corrEvaluator='corrcoeff_eleph', v
  
 def find_significant_hist_peak(hist, hbin, threshold=3, n_consec_bins=3, ext_mn=None, ext_std=None, pkSgn=None):
     '''CCG is a 1d array, 
-    cbin is in ms, 
+    hbin is in ms, 
     threshold is in standard deviations,
     baseline is a list of two floats framing the window on which it is calculated (millisecond),
     n_consec_bins is an int (amount of consecutive bins below/above threshold to consider a bin significant).
@@ -891,6 +891,8 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 for u1 in SFCDF.index:
                     for u2 in SFCDF.index:
                         pks=SFCDF.loc[u1, str(u2)]
+                        if u1==181 or u2==181:
+                            print(pks)
                         if u1<u2 and type(pks) is str:
                             pks=ast.literal_eval(pks)
                             for p in pks:

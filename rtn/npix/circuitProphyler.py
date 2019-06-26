@@ -115,7 +115,7 @@ class Dataset:
     def get_peak_channels(self):
         if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             ft = pd.read_csv(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv'), sep=',', index_col=0)
-            bestChs=np.array(ft["WVF-MainChannel"])
+            bestChs=np.array(ft["WVF-MainChannel"], dtype=np.int64)
             gu=np.array(ft.index, dtype=np.int64)
             depthIdx = np.argsort(bestChs) # From deep to shallow
             

@@ -341,7 +341,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
             return
         
-        return {unt:len(e_unt) for unt, e_unt in g[u].items()}
+        return {unt:[len(e_unt), '@{}'.format(self.peak_channels[unt])] for unt, e_unt in g[u].items()}
         
     def label_nodes(self, graph='undigraph'):
         if graph=='undigraph':

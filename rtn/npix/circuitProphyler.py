@@ -231,28 +231,16 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             for e in g.edges(data=True, keys=keys):
                 edges[e[0:-1]]=e[-1]
         else:
-            edges=list(g.edges(keys=keys))
+            edges=npa(list(g.edges(keys=keys)))
         return edges
     
     def get_node_attributes(self, n, graph='undigraph'):
-        if graph=='undigraph':
-            g=self.graph
-        elif graph=='digraph':
-            g=self.digraph
-        else:
-            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
-            return
+        assert graph in ['undigraph', 'digraph']
         
         return self.get_nodes(True, graph=graph)[n]
     
     def get_node_attribute(self, n, at, graph='undigraph'):
-        if graph=='undigraph':
-            g=self.graph
-        elif graph=='digraph':
-            g=self.digraph
-        else:
-            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
-            return
+        assert graph in ['undigraph', 'digraph']
         
         assert at in ['unit', 'putativeCellType', 'classifiedCellType']
         return self.get_nodes(True, graph=graph)[n][at]
@@ -269,14 +257,15 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         assert at in ['unit', 'putativeCellType', 'classifiedCellType']
         nx.set_node_attributes(g, {n:{at:at_val}})
 
+    def get_edge_keys(self, e, graph='undigraph'):
+        assert graph in ['undigraph', 'digraph']
+        assert len(e)==2
+        npe=self.get_edges(graph=graph)
+        keys=npe[((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))][:,2]
+        return keys
+
     def get_edge_attribute(self, e, at, graph='undigraph'):
-        if graph=='undigraph':
-            g=self.graph
-        elif graph=='digraph':
-            g=self.digraph
-        else:
-            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
-            return
+        assert graph in ['undigraph', 'digraph']
         
         assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
         if len(e)==3:
@@ -285,8 +274,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             except:
                 return self.get_edges(True, graph=graph)[(e[1],e[0],e[2])][at]
         elif len(e)==2:
-            npe=npa(self.get_edges(graph=graph))
-            keys=npe[(npe[:,0]==1183)&(npe[:,1]==1187)][:,2]
+            keys=self.get_edge_keys(e, graph=graph)
             edges={}
             for k in keys:
                 try: # check that nodes are in the right order - multi directed graph
@@ -296,13 +284,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             return edges
     
     def get_edge_attributes(self, e, graph='undigraph'):
-        if graph=='undigraph':
-            g=self.graph
-        elif graph=='digraph':
-            g=self.digraph
-        else:
-            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
-            return
+        assert graph in ['undigraph', 'digraph']
         
         if len(e)==3:
             try: # check that nodes are in the right order - multi directed graph
@@ -310,8 +292,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             except:
                 return self.get_edges(True, graph=graph)[(e[1],e[0],e[2])]
         elif len(e)==2:
-            npe=npa(self.get_edges(graph=graph))
-            keys=npe[(npe[:,0]==1183)&(npe[:,1]==1187)][:,2]
+            keys=self.get_edge_keys(e, graph=graph)
             edges={}
             for k in keys:
                 try: # check that nodes are in the right order - multi directed graph
@@ -344,13 +325,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         return {unt:[len(e_unt), '@{}'.format(self.peak_channels[unt])] for unt, e_unt in g[u].items()}
         
     def label_nodes(self, graph='undigraph'):
-        if graph=='undigraph':
-            g=self.graph
-        elif graph=='digraph':
-            g=self.digraph
-        else:
-            print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
-            return
+        assert graph in ['undigraph', 'digraph']
         
         for node in self.graph.nodes:
             # Plot ACG
@@ -460,7 +435,10 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 self.export_graph(name, frmt, graph=graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                 break
     
-    def plot_graph(self, edge_labels=True, node_labels=True, graph='undigraph'):
+    def plot_graph(self, edge_labels=True, node_labels=True, graph='undigraph', edges_type='all', edges_list=None):
+        '''
+        
+        '''
         if graph=='undigraph':
             g=self.graph
         elif graph=='digraph':
@@ -469,6 +447,26 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             print("WARNING graph should be either 'undigraph' to pick self.graph or 'digraph' to pick self.digaph. Aborting.")
             return
         
+        g_plt=g.copy()
+        
+        assert edges_type in ['all', '+', '-', '0']
+        # Remove edges not in edges_list if provided.
+        # edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
+        # If 3 elements, the key is ignored and all edges between u1 and u2 already present in self.graph are kept.
+        if edges_list is not None:
+            npe=npa(self.get_edges(keys=True, graph=graph))
+            edges_list_idx=npa([])
+            for e in edges_list:
+                try:
+                    #keys=self.get_edge_keys(e, graph=graph)
+                    #assert np.any((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))
+                    edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))[0])
+                except:
+                    print('WARNING edge {} does not exist in graph {}! Abort.'.format(e, graph))
+            edges_list_idx=npa(edges_list_idx, dtype=np.int64).flatten()
+            edges_to_remove=npe[~np.isin(np.arange(len(npe)),edges_list_idx)]
+            g_plt.remove_edges_from(edges_to_remove)
+                    
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')
             return
@@ -833,5 +831,3 @@ class Unit:
     #     return rtn.npix.spk_t.wvf(self.dp,self.idx)
     #     # TODO make the average waveform lodable by fixing io.py
         
-
-    

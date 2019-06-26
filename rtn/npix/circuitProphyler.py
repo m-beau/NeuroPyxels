@@ -38,6 +38,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import os, ast
+import operator
 import time
 import imp
 import os.path as op
@@ -217,7 +218,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         return nodes
     
-    def get_edges(self, attributes=False, keys=True, graph='undigraph'):
+    def get_edges(self, attributes=False, keys=True, graph='undigraph', dataframe=False):
         if graph=='undigraph':
             g=self.graph
         elif graph=='digraph':
@@ -230,6 +231,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             edges={}
             for e in g.edges(data=True, keys=keys):
                 edges[e[0:-1]]=e[-1]
+            if dataframe:
+                edges=pd.DataFrame(data=edges) # multiIndexed dataframe where lines are attributes and collumns edges
         else:
             edges=npa(list(g.edges(keys=keys)))
         return edges
@@ -313,6 +316,15 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
         nx.set_edge_attributes(g, {e:{at:at_val}})
         
+        
+    def get_edges_with_attribute(self, at, at_val, logical='=='):
+        edges=self.get_edges(attributes=True, keys=True, graph='undigraph', dataframe=True) # raws are attributes, columns indices
+        assert at in edges.index
+        ops={'==':operator.eq, '!=':operator.ne, '<':operator.lt, '<=':operator.le, '>':operator.gt, '>=':operator.ge}
+        assert logical in ops.keys()
+        return edges.columns[ops[logical](edges.loc[at,:]==at_val)].to_list()
+    
+    
     def get_node_edges(self, u, graph='undigraph'):
         if graph=='undigraph':
             g=self.graph
@@ -323,7 +335,27 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             return
         
         return {unt:[len(e_unt), '@{}'.format(self.peak_channels[unt])] for unt, e_unt in g[u].items()}
-        
+    
+    def remove_edges_list(self, g, edges_list, sourcegraph='undigraph'):
+        '''
+        Remove edges not in edges_list if provided.
+        edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
+        If 3 elements, the key is ignored and all edges between u1 and u2 already present in self.graph are kept.
+        '''
+        npe=npa(self.get_edges(keys=True, graph=sourcegraph))
+        edges_list_idx=npa([])
+        for e in edges_list:
+            try:
+                #keys=self.get_edge_keys(e, graph=graph)
+                #assert np.any((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))
+                edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))[0])
+            except:
+                print('WARNING edge {} does not exist in graph {}! Abort.'.format(e, sourcegraph))
+        edges_list_idx=npa(edges_list_idx, dtype=np.int64).flatten()
+        edges_to_remove=npe[~np.isin(np.arange(len(npe)),edges_list_idx)]
+        g.remove_edges_from(edges_to_remove)
+        return g
+    
     def label_nodes(self, graph='undigraph'):
         assert graph in ['undigraph', 'digraph']
         
@@ -437,7 +469,14 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     
     def plot_graph(self, edge_labels=True, node_labels=True, graph='undigraph', edges_type='all', edges_list=None):
         '''
+        2 ways to select edges:
+            - Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val)
+            - Pick a edges_type (predefined groups of edges): 'all' for everyone (default)
+              '+': edges whose t is >1ms or <-1ms and sign is 1,
+              '-': edges whose t is >1ms or <-1ms and sign is -1,
+              'sync': edges whose t is >1ms or <-1ms and sign is 1
         
+        edges_list has the priority over edges_types.
         '''
         if graph=='undigraph':
             g=self.graph
@@ -449,24 +488,22 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         g_plt=g.copy()
         
-        assert edges_type in ['all', '+', '-', '0']
         # Remove edges not in edges_list if provided.
         # edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
         # If 3 elements, the key is ignored and all edges between u1 and u2 already present in self.graph are kept.
         if edges_list is not None:
-            npe=npa(self.get_edges(keys=True, graph=graph))
-            edges_list_idx=npa([])
-            for e in edges_list:
-                try:
-                    #keys=self.get_edge_keys(e, graph=graph)
-                    #assert np.any((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))
-                    edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))[0])
-                except:
-                    print('WARNING edge {} does not exist in graph {}! Abort.'.format(e, graph))
-            edges_list_idx=npa(edges_list_idx, dtype=np.int64).flatten()
-            edges_to_remove=npe[~np.isin(np.arange(len(npe)),edges_list_idx)]
-            g_plt.remove_edges_from(edges_to_remove)
-                    
+            g_plt=self.remove_edges_list(g_plt, edges_list, sourcegraph=graph)
+
+        # Among edges of edges_list (or all edges if None),
+        # Select a given edge type
+        assert edges_type in ['all', '-', '+', 'ci']
+
+        edges_list=[]
+        for e in self.get_edges(keys+True, graph=graph):
+            
+        
+        g_plt=self.remove_edges_list(g_plt, edges_list, sourcegraph=graph)
+        
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')
             return

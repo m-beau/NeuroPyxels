@@ -778,7 +778,7 @@ class Unit:
     def get_peak_channel(self):
         if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             ft = pd.read_csv(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv'), sep=',', index_col=0)
-            self.peak_channel=ft.loc[self.idx, "WVF-MainChannel"]
+            self.peak_channel=int(ft.loc[self.idx, "WVF-MainChannel"])
             
         else:
             print('You need to export the features tables using phy first!!')

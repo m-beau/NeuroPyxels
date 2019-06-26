@@ -510,7 +510,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         ax2.set_yticklabels([int(yt/10 - 16) for yt in ax.get_yticks()], fontsize=12)
         ax2.set_ylim([0,4000])
         try:
-            criteria=self.get_edge_attribute(list(g.edges, graph=graph)[0], 'criteria')
+            criteria=self.get_edge_attribute(list(g.edges)[0], 'criteria', graph=graph)
             ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
         except:
             print('Graph not connected! Run ds.connect_graph()')

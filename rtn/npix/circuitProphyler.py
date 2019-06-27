@@ -317,12 +317,13 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         nx.set_edge_attributes(g, {e:{at:at_val}})
         
         
-    def get_edges_with_attribute(self, at, at_val, logical='=='):
+    def get_edges_with_attribute(self, at, at_val, logical='==', tolist=True):
         edges=self.get_edges(attributes=True, keys=True, graph='undigraph', dataframe=True) # raws are attributes, columns indices
         assert at in edges.index
         ops={'==':operator.eq, '!=':operator.ne, '<':operator.lt, '<=':operator.le, '>':operator.gt, '>=':operator.ge}
         assert logical in ops.keys()
-        return edges.columns[ops[logical](edges.loc[at,:]==at_val)].to_list()
+        ewa=edges.columns[ops[logical](edges.loc[at,:], at_val)]
+        return ewa.to_list() if tolist else ewa
     
     
     def get_node_edges(self, u, graph='undigraph'):
@@ -342,6 +343,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
         If 3 elements, the key is ignored and all edges between u1 and u2 already present in self.graph are kept.
         '''
+        if len(edges_list)==0:
+            return g
         npe=npa(self.get_edges(keys=True, graph=sourcegraph))
         edges_list_idx=npa([])
         for e in edges_list:
@@ -497,11 +500,15 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # Among edges of edges_list (or all edges if None),
         # Select a given edge type
         assert edges_type in ['all', '-', '+', 'ci']
-
-        edges_list=[]
-        for e in self.get_edges(keys+True, graph=graph):
-            
-        
+        edges=self.get_edges(attributes=True, keys=True, graph='undigraph', dataframe=True) # raws are attributes, columns indices
+        if edges_type=='-':
+            edges_list=edges.columns[(edges.loc['sign',:]==1)|((edges.loc['t',:]>=-1)&(edges.loc['t',:]<=1))].tolist()
+        elif edges_type=='+':
+            edges_list=edges.columns[(edges.loc['sign',:]==-1)|((edges.loc['t',:]>=-1)&(edges.loc['t',:]<=1))].tolist()
+        elif edges_type=='ci':
+            edges_list=edges.columns[((edges.loc['t',:]<-1)|(edges.loc['t',:]>1))|(edges.loc['sign',:]==-1)].tolist()
+        else:
+            edges_list=[] # includes 'all'
         g_plt=self.remove_edges_list(g_plt, edges_list, sourcegraph=graph)
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):

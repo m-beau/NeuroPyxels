@@ -337,7 +337,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         return {unt:[len(e_unt), '@{}'.format(self.peak_channels[unt])] for unt, e_unt in g[u].items()}
     
-    def remove_edges_list(self, g, edges_list, sourcegraph='undigraph'):
+    def keep_edges_list(self, g, edges_list, sourcegraph='undigraph'):
         '''
         Remove edges not in edges_list if provided.
         edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
@@ -499,19 +499,21 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
 
         # Among edges of edges_list (or all edges if None),
         # Select a given edge type
+        print(1, g_plt.number_of_edges())
         assert edges_type in ['all', '-', '+', 'ci']
         edges=self.get_edges(attributes=True, keys=True, graph='undigraph', dataframe=True) # raws are attributes, columns indices
         amp=edges.loc['amp',:]
         t=edges.loc['t',:]
         if edges_type=='-':
-            edges_list=edges.columns[(amp>0)|((t>=-1)&(t<=1))].tolist()
+            edges_list=edges.columns[(amp<0)&((t<-1)|(t>1))].tolist()
         elif edges_type=='+':
-            edges_list=edges.columns[(amp<0)|((t>=-1)&(t<=1))].tolist()
+            edges_list=edges.columns[(amp<0)&((t<-1)|(t>1))].tolist()
         elif edges_type=='ci':
-            edges_list=edges.columns[(amp<0)|(t<=-1)|(t>=1)].tolist()
+            edges_list=edges.columns[(amp>0)&(t>-1)&(t<1)].tolist()
         else: # includes 'all'
             edges_list=[]
         g_plt=self.remove_edges_list(g_plt, edges_list, sourcegraph=graph)
+        print(2, g_plt.number_of_edges())
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')

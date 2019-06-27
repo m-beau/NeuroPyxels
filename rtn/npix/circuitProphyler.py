@@ -501,30 +501,29 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # Select a given edge type
         assert edges_type in ['all', '-', '+', 'ci']
         edges=self.get_edges(attributes=True, keys=True, graph='undigraph', dataframe=True) # raws are attributes, columns indices
+        amp=edges.loc['amp',:]
+        t=edges.loc['t',:]
         if edges_type=='-':
-            edges_list=edges.columns[(edges.loc['sign',:]==1)|((edges.loc['t',:]>=-1)&(edges.loc['t',:]<=1))].tolist()
+            edges_list=edges.columns[(amp>0)|((t>=-1)&(t<=1))].tolist()
         elif edges_type=='+':
-            edges_list=edges.columns[(edges.loc['sign',:]==-1)|((edges.loc['t',:]>=-1)&(edges.loc['t',:]<=1))].tolist()
+            edges_list=edges.columns[(amp<0)|((t>=-1)&(t<=1))].tolist()
         elif edges_type=='ci':
-            edges_list=edges.columns[((edges.loc['t',:]<-1)|(edges.loc['t',:]>1))|(edges.loc['sign',:]==-1)].tolist()
-        else:
-            edges_list=[] # includes 'all'
+            edges_list=edges.columns[(amp<0)|(t<=-1)|(t>=1)].tolist()
+        else: # includes 'all'
+            edges_list=[]
         g_plt=self.remove_edges_list(g_plt, edges_list, sourcegraph=graph)
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')
             return
         
-        ec, ew = [], []
-        for e in g.edges:
-            ec.append('r') if self.get_edge_attribute(e, 'sign', graph=graph)==-1 else ec.append('b')
-            ew.append(self.get_edge_attribute(e, 'amp', graph=graph))
-        e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', graph=graph), 2))+'@'+str(np.round(self.get_edge_attribute(e, 't', graph=graph), 1))+'ms' for e in g.edges}
+        ew = [self.get_edge_attribute(e, 'amp', graph=graph) for e in g_plt.edges]
+        e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', graph=graph), 2))+'@'+str(np.round(self.get_edge_attribute(e, 't', graph=graph), 1))+'ms' for e in g_plt.edges}
         
         fig, ax = plt.subplots(figsize=(6, 16))
         if node_labels:
             nlabs={}
-            for node in list(g.nodes):
+            for node in list(g_plt.nodes):
                 pct=self.get_node_attribute(node, 'putativeCellType', graph=graph)
                 cct=self.get_node_attribute(node, 'classifiedCellType', graph=graph)
                 l="{}".format(node)
@@ -533,13 +532,13 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 if cct!='':
                     l+="\ncla:{}".format(cct)
                 nlabs[node]=l
-            nx.draw_networkx_labels(g,self.peak_positions,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
+            nx.draw_networkx_labels(g_plt,self.peak_positions,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
             #nx.draw_networkx(g, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
-        nx.draw_networkx_nodes(g, pos=self.peak_positions, node_color='grey', alpha=0.8)
-        nx.draw_networkx_edges(g, pos=self.peak_positions, edge_color=ew, width=4, alpha=0.7, 
+        nx.draw_networkx_nodes(g_plt, pos=self.peak_positions, node_color='grey', alpha=0.8)
+        nx.draw_networkx_edges(g_plt, pos=self.peak_positions, edge_color=ew, width=4, alpha=0.7, 
                                edge_cmap=plt.cm.RdBu_r, edge_vmin=-5, edge_vmax=5)
         if edge_labels:
-            nx.draw_networkx_edge_labels(g, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
+            nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 
         ax.set_ylabel('Depth (um)', fontsize=16, fontweight='bold')
         ax.set_xlabel('Lat. position (um)', fontsize=16, fontweight='bold')
@@ -552,7 +551,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         ax2.set_yticklabels([int(yt/10 - 16) for yt in ax.get_yticks()], fontsize=12)
         ax2.set_ylim([0,4000])
         try:
-            criteria=self.get_edge_attribute(list(g.edges)[0], 'criteria', graph=graph)
+            criteria=self.get_edge_attribute(list(g_plt.edges)[0], 'criteria', graph=graph)
             ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
         except:
             print('Graph not connected! Run ds.connect_graph()')

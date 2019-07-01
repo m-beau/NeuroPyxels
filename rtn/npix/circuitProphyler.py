@@ -507,12 +507,12 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if edges_type=='-':
             edges_list=edges.columns[(amp<0)&((t<-1)|(t>1))].tolist()
         elif edges_type=='+':
-            edges_list=edges.columns[(amp<0)&((t<-1)|(t>1))].tolist()
+            edges_list=edges.columns[(amp>0)&((t<-1)|(t>1))].tolist()
         elif edges_type=='ci':
             edges_list=edges.columns[(amp>0)&(t>-1)&(t<1)].tolist()
         else: # includes 'all'
             edges_list=[]
-        g_plt=self.remove_edges_list(g_plt, edges_list, sourcegraph=graph)
+        g_plt=self.keep_edges_list(g_plt, edges_list, sourcegraph=graph) # will ignore edges keys, careful! If g_plt is a multiedge graph, all the edges of the pair of node with at least one edge meeting the criterion will be kept.
         print(2, g_plt.number_of_edges())
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):

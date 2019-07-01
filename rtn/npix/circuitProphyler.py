@@ -512,11 +512,9 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             edges_list=edges.columns[(amp>0)&(t>-1)&(t<1)].tolist()
         else: # includes 'all'
             edges_list=[]
-<<<<<<< HEAD
+
         g_plt=self.keep_edges_list(g_plt, edges_list, sourcegraph=graph) # will ignore edges keys, careful! If g_plt is a multiedge graph, all the edges of the pair of node with at least one edge meeting the criterion will be kept.
-=======
-        g_plt=self.keep_edges_list(g_plt, edges_list, sourcegraph=graph)
->>>>>>> 9c0c885ae65cf4cba320e0ffad9d37cce7c7cc3e
+
         print(2, g_plt.number_of_edges())
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):

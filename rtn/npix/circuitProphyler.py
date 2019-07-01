@@ -495,7 +495,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
         # If 3 elements, the key is ignored and all edges between u1 and u2 already present in self.graph are kept.
         if edges_list is not None:
-            g_plt=self.remove_edges_list(g_plt, edges_list, sourcegraph=graph)
+            g_plt=self.keep_edges_list(g_plt, edges_list, sourcegraph=graph)
 
         # Among edges of edges_list (or all edges if None),
         # Select a given edge type
@@ -512,7 +512,11 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             edges_list=edges.columns[(amp>0)&(t>-1)&(t<1)].tolist()
         else: # includes 'all'
             edges_list=[]
+<<<<<<< HEAD
         g_plt=self.keep_edges_list(g_plt, edges_list, sourcegraph=graph) # will ignore edges keys, careful! If g_plt is a multiedge graph, all the edges of the pair of node with at least one edge meeting the criterion will be kept.
+=======
+        g_plt=self.keep_edges_list(g_plt, edges_list, sourcegraph=graph)
+>>>>>>> 9c0c885ae65cf4cba320e0ffad9d37cce7c7cc3e
         print(2, g_plt.number_of_edges())
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):

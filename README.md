@@ -8,10 +8,4 @@ Formal Definition of a "routine" -> a python function with the following propert
   the dataset. If not found, the routine saves the variable after having computed it.
 ***************************************************************************************************
 
-List of routines:
-
-- /routines_utils.py: lists general purpose python utilitaries
-  - /npix:
-    - gl.py:
-    - spk_t.py:
-    - spk_wvf.py:
+Python version has to be >3.7 ot there will be imports issues!

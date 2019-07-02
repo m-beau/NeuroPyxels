@@ -337,6 +337,28 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         return {unt:[len(e_unt), '@{}'.format(self.peak_channels[unt])] for unt, e_unt in g[u].items()}
     
+    def keep_nodes_list(self, g, nodes_list, sourcegraph='undigraph'):
+        '''
+        Remove edges not in edges_list if provided.
+        edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
+        If 3 elements, the key is ignored and all edges between u1 and u2 already present in self.graph are kept.
+        '''
+        if len(nodes_list)==0:
+            return g
+        npn=npa(self.get_nodes(graph=sourcegraph))
+        nodes_list_idx=npa([])
+        for n in nodes_list:
+            try:
+                #keys=self.get_edge_keys(e, graph=graph)
+                #assert np.any((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))
+                nodes_list_idx=np.append(nodes_list_idx, np.nonzero(npn==n)[0])
+            except:
+                print('WARNING edge {} does not exist in graph {}! Abort.'.format(n, sourcegraph))
+        nodes_list_idx=npa(nodes_list_idx, dtype=np.int64)
+        nodes_to_remove=npn[~np.isin(np.arange(len(npn)),nodes_list_idx)]
+        g.remove_nodes_from(nodes_to_remove)
+        return g
+    
     def keep_edges_list(self, g, edges_list, sourcegraph='undigraph'):
         '''
         Remove edges not in edges_list if provided.

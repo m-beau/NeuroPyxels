@@ -340,7 +340,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         nodes_list_idx=npa([])
         for n in nodes_list:
             try:
-                #keys=self.get_edge_keys(e, graph=graph)
+                #keys=self.get_edge_keys(e, prophylerGraph=graph)
                 #assert np.any((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))
                 nodes_list_idx=np.append(nodes_list_idx, np.nonzero(npn==n)[0])
             except:
@@ -372,7 +372,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         edges_list_idx=npa([])
         for e in edges_list:
             try:
-                #keys=self.get_edge_keys(e, graph=graph)
+                #keys=self.get_edge_keys(e, prophylerGraph=graph)
                 #assert np.any((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))
                 edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))[0])
             except:
@@ -521,7 +521,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # Select a given edge type
         print(1, g_plt.number_of_edges())
         assert edges_type in ['all', '-', '+', 'ci']
-        edges=self.get_edges(attributes=True, keys=True, graph='undigraph', dataframe=True, src_graph=g_plt) # raws are attributes, columns indices
+        edges=self.get_edges(attributes=True, keys=True, prophylerGraph=prophylerGraph, dataframe=True, src_graph=g_plt) # raws are attributes, columns indices
         amp=edges.loc['amp',:]
         t=edges.loc['t',:]
         if edges_type=='-':

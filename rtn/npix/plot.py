@@ -295,9 +295,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     save: boolean, to save the figure or not.
     '''
     global phyColorsDic
-    # CCGsides=np.append(CCG[:int(1*len(CCG)*1./3)], CCG[int(2*len(CCG)*1./3):])
-    mn = np.mean(np.append(CCG[:int(len(CCG)*2./5)], CCG[int(len(CCG)*3./5):]))
-    std = np.std(np.append(CCG[:int(len(CCG)*2./5)], CCG[int(len(CCG)*3./5):]))
+
     cbin = np.clip(cbin, 1000*1./fs, 1e8)
     if type(color)==int: # else, an actual color is passed
         color=phyColorsDic[color]
@@ -308,17 +306,32 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     if ylim==0:
         if normalize=='Hertz':
             yl=max(CCG); ylim=int(yl)+5-(yl%5);
+            ax.set_ylim([0, ylim])
         elif normalize=='Pearson':
             yl=max(CCG); ylim=yl+0.01-(yl%0.01);
-    ax.set_ylim([0, ylim])
+            ax.set_ylim([0, ylim])
+        elif normalize=='zscore':
+            yl1=min(CCG);yl2=max(CCG)
+            ylim1=yl1-0.1+(abs(yl1)%0.1);ylim2=yl2+0.1-(yl2%0.1)
+            ax.set_ylim([ylim1, ylim2])
     ax.plot([0,0], ax.get_ylim(), ls="--", c=[0,0,0], lw=2)
     if labels:
         if std_lines:
-            ax.plot([x[0], x[-1]], [mn,mn], ls="--", c=[0,0,0], lw=2)
-            for st in [1,2,3]:
-                ax.plot([x[0], x[-1]], [mn+st*std,mn+st*std], ls="--", c=[0.5,0,0], lw=0.5)
-                ax.plot([x[0], x[-1]], [mn-st*std,mn-st*std], ls="--", c=[0,0,0.5], lw=0.5)
-        ax.set_ylabel("Crosscorrelation (Hz)", size=20)
+            if (normalize!='zscore'):
+                mn = np.mean(np.append(CCG[:int(len(CCG)*2./5)], CCG[int(len(CCG)*3./5):]))
+                std = np.std(np.append(CCG[:int(len(CCG)*2./5)], CCG[int(len(CCG)*3./5):]))
+                ax.plot([x[0], x[-1]], [mn,mn], ls="--", c=[0,0,0], lw=2)
+                for st in [1,2,3]:
+                    ax.plot([x[0], x[-1]], [mn+st*std,mn+st*std], ls="--", c=[0.5,0,0], lw=0.5)
+                    ax.plot([x[0], x[-1]], [mn-st*std,mn-st*std], ls="--", c=[0,0,0.5], lw=0.5)
+            else:
+                ax.plot([x[0], x[-1]], [0,0], ls="--", c=[0,0,0], lw=2)
+        if normalize=='Hertz':
+            ax.set_ylabel("Crosscorrelation (Hz)", size=20)
+        elif normalize=='Pearson':
+            ax.set_ylabel("Crosscorrelation (Pearson)", size=20)
+        elif normalize=='zscore':
+            ax.set_ylabel("Crosscorrelation (z-score)", size=20)
         ax.set_xlabel('Time (ms)', size=20)
         ax.set_xlim([-cwin*1./2, cwin*1./2])
         if type(title)!=str:
@@ -363,11 +376,21 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     if ylim==0:
         if normalize=='Hertz':
             yl=max(ACG); ylim=int(yl)+5-(yl%5);
+            ax.set_ylim([0, ylim])
         elif normalize=='Pearson':
             yl=max(ACG); ylim=yl+0.01-(yl%0.01);
-    ax.set_ylim([0, ylim])
+            ax.set_ylim([0, ylim])
+        elif normalize=='zscore':
+            yl1=min(ACG);yl2=max(ACG)
+            ylim1=yl1-0.1+(abs(yl1)%0.1);ylim2=yl2+0.1-(yl2%0.1)
+            ax.set_ylim([ylim1, ylim2])
     if labels:
-        ax.set_ylabel("Autocorrelation (Hz)", size=20)
+        if normalize=='Hertz':
+            ax.set_ylabel("Autocorrelation (Hz)", size=20)
+        elif normalize=='Pearson':
+            ax.set_ylabel("Autocorrelation (Pearson)", size=20)
+        elif normalize=='zscore':
+            ax.set_ylabel("Autocorrelation (z-score)", size=20)
         ax.set_xlabel('Time (ms)', size=20)
         ax.set_xlim([-cwin*1./2, cwin*1./2])
         if type(title)!=str:
@@ -423,12 +446,22 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
             if ylim==0:
                 if normalize=='Hertz':
                     yl=max(y); ylim=int(yl)+5-(yl%5);
+                    ax[r, c].set_ylim([0, ylim])
                 elif normalize=='Pearson':
                     yl=max(y); ylim=yl+0.01-(yl%0.01);
-            ax[r, c].set_ylim([0, ylim])
+                    ax[r, c].set_ylim([0, ylim])
+                elif normalize=='zscore':
+                    yl1=min(y);yl2=max(y)
+                    ylim1=yl1-0.1+(abs(yl1)%0.1);ylim2=yl2+0.1-(yl2%0.1)
+                    ax[r, c].set_ylim([ylim1, ylim2])
             if labels:
                 if j==0:
-                    ax[r, c].set_ylabel("Crosscorr. (Hz)", size=12)
+                    if normalize=='Hertz':
+                        ax[r, c].set_ylabel("Crosscorr. (Hz)", size=12)
+                    elif normalize=='Pearson':
+                        ax[r, c].set_ylabel("Crosscorr. (Pearson)", size=12)
+                    elif normalize=='zscore':
+                        ax[r, c].set_ylabel("Crosscorr. (z-score)", size=12)
                 if i==len(units)-1:
                     ax[r, c].set_xlabel('Time (ms)', size=12)
                 ax[r, c].set_xlim([-cwin*1./2, cwin*1./2])
@@ -476,7 +509,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
             rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim=ylim)
     
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
-             pdf=False, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=0):
+             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=0):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
     bChs=None

@@ -234,12 +234,16 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
         
-        if attributes:
+        if attributes or dataframe:
             edges={}
             for e in g.edges(data=True, keys=keys):
                 edges[e[0:-1]]=e[-1]
             if dataframe:
                 edges=pd.DataFrame(data=edges) # multiIndexed dataframe where lines are attributes and collumns edges
+                edges=edges.T
+                edges.columns=list(edges.iloc[0])
+                edges.drop(edges.index[0], inplace=True)
+                edges.index.names=['node1', 'node2', 'key']
         else:
             edges=npa(list(g.edges(keys=keys)))
         return edges
@@ -340,7 +344,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         nodes_list_idx=npa([])
         for n in nodes_list:
             try:
-                #keys=self.get_edge_keys(e, prophylerGraph=graph)
+                #keys=self.get_edge_keys(e, prophylerGraph=prophylerGraph)
                 #assert np.any((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))
                 nodes_list_idx=np.append(nodes_list_idx, np.nonzero(npn==n)[0])
             except:
@@ -354,7 +358,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if src_graph is not None:
             return g
     
-    def keep_edges_list(self, edges_list, prophylerGraph='undigraph', src_graph=None):
+    def keep_edges_list(self, edges_list, prophylerGraph='undigraph', src_graph=None, use_edge_key=False):
         '''
         Remove edges not in edges_list if provided.
         edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
@@ -366,15 +370,21 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
         
+        if use_edge_key and len(edges_list[0])!=3:
+            print('WARNING use_edge_key is set to True but edges of provided edges_list do not contain any key. Setting use_edge_key to False-> every edges between given pairs of nodes will be kept.')
+            use_edge_key=False
         if len(edges_list)==0:
             return g
-        npe=npa(self.get_edges(keys=True, prophylerGraph=prophylerGraph, src_graph=src_graph))
+        npe=self.get_edges(keys=True, prophylerGraph=prophylerGraph, src_graph=src_graph)
         edges_list_idx=npa([])
         for e in edges_list:
             try:
-                #keys=self.get_edge_keys(e, prophylerGraph=graph)
+                #keys=self.get_edge_keys(e, prophylerGraph=prophylerGraph)
                 #assert np.any((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))
-                edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))[0])
+                if use_edge_key:
+                    edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1])&(npe[:,2]==e[2]))|((npe[:,0]==e[1])&(npe[:,1]==e[0])&(npe[:,2]==e[2]))))[0])
+                else:
+                    edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))[0])
             except:
                 print('WARNING edge {} does not exist in graph {}! Abort.'.format(e, g))
         edges_list_idx=npa(edges_list_idx, dtype=np.int64).flatten()
@@ -495,7 +505,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 self.export_graph(name, frmt, prophylerGraph=prophylerGraph, src_graph=src_graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                 break
     
-    def plot_graph(self, edge_labels=True, node_labels=True, prophylerGraph='undigraph', edges_type='all', edges_list=None, src_graph=None):
+    def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', edges_type='all', edges_list=None, src_graph=None, t_asym=2):
         '''
         2 ways to select edges:
             - Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val)
@@ -519,23 +529,20 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
 
         # Among edges of edges_list (or all edges if None),
         # Select a given edge type
-        print(1, g_plt.number_of_edges())
-        assert edges_type in ['all', '-', '+', 'ci']
+        assert edges_type in ['all', '-', '+', 'ci'] # t_asym is in ms
         edges=self.get_edges(attributes=True, keys=True, prophylerGraph=prophylerGraph, dataframe=True, src_graph=g_plt) # raws are attributes, columns indices
-        amp=edges.loc['amp',:]
-        t=edges.loc['t',:]
+        amp=edges.loc[:,'amp']
+        t=edges.loc[:, 't']
         if edges_type=='-':
-            edges_list=edges.columns[(amp<0)&((t<-1)|(t>1))].tolist()
+            edges_list=edges.index[(amp<0)&((t<-t_asym)|(t>t_asym))].tolist()
         elif edges_type=='+':
-            edges_list=edges.columns[(amp>0)&((t<-1)|(t>1))].tolist()
+            edges_list=edges.index[(amp>0)&((t<-t_asym)|(t>t_asym))].tolist()
         elif edges_type=='ci':
-            edges_list=edges.columns[(amp>0)&(t>-1)&(t<1)].tolist()
+            edges_list=edges.index[(amp>0)&(t>-t_asym)&(t<t_asym)].tolist()
         else: # includes 'all'
             edges_list=[]
 
-        g_plt=self.keep_edges_list(edges_list, src_graph=g_plt) # will ignore edges keys, careful! If g_plt is a multiedge graph, all the edges of the pair of node with at least one edge meeting the criterion will be kept.
-
-        print(2, g_plt.number_of_edges())
+        g_plt=self.keep_edges_list(edges_list, src_graph=g_plt, use_edge_key=True) # will ignore edges keys, careful! If g_plt is a multiedge graph, all the edges of the pair of node with at least one edge meeting the criterion will be kept.
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')
@@ -579,42 +586,64 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             criteria=self.get_edge_attribute(list(g_plt.edges)[0], 'criteria', prophylerGraph=prophylerGraph, src_graph=src_graph)
             ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
         except:
-            print('Graph not connected! Run ds.connect_graph()')
+            print('Graph not connected! Run self.connect_graph()')
         plt.tight_layout()
         
         return fig
     
     
-    def make_directed_graph(self, prophylerGraph='undigraph', src_graph=None):
+    def make_directed_graph(self, src_graph=None, only_main_edge=False, t_asym=2, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3,):
         '''
         Should be called once the edges have been manually curated:
-        - if several edges remain between pairs of nodes, the one with the biggest standard deviation is kept
-        - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
+        - if several edges remain between pairs of nodes and only_main_edge is set to True, the one with the biggest standard deviation is kept
+        - if the edge a->b has t<-t_asym ms: directed b->a, >t_asym ms: directed a->b, -t_asym ms<t<t_asym ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
+        
+        The directed graph is built on the basis of the undirected graph hence no amplitude criteria (except from the case where only_main_edge is True)is used to build it, only time asymmetry criteria.
+        To modify the 'significance' criteria of modulated crosscorrelograms, use self.connect_graph() parameters.
         '''
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+        g=self.get_graph('undigraph') if src_graph is None else src_graph
         if g is None: return
         
+        # Select relevant edges
+        dfe=self.get_edges(keys=True, dataframe=True, prophylerGraph='undigraph', src_graph=src_graph)
+        if not np.any(dfe):
+            self.connect_graph(cbin, cwin, threshold, n_consec_bins, rec_section='all', again=False, againCCG=False, plotsfcdf=False, prophylerGraph='undigraph', src_graph=src_graph)
+            dfe=self.get_edges(keys=True, dataframe=True, prophylerGraph='undigraph', src_graph=src_graph)
+        if only_main_edge:
+            #dfe.reset_index(inplace=True) # turn node1, node 2 and key in columns
+            keys=dfe.index.get_level_values('key')
+            # multiedges are rows where key is 1 or more - to get the list of edges with more than 1 edge, get unit couples with key=1
+            multiedges=dfe.index[keys==1].tolist()
+            npe=self.get_edges(keys=True, dataframe=False, prophylerGraph='undigraph', src_graph=src_graph)
+            for me in multiedges:
+                me_subedges=npe[(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0])))]
+                me_subedges=[tuple(mese) for mese in me_subedges]
+                me_amps=dfe['amp'][me_subedges]
+                subedge_to_keep=me_amps.index[me_amps==me_amps.max()]
+                subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()
+                dfe.drop(subedges_to_drop, inplace=True)            
+            
         # self.undigraph becomes a directed graph, its undirected version is saved as self.undigraph
         self.digraph=nx.MultiDiGraph()
         self.digraph.add_nodes_from(g.nodes())
         
         # - if several edges between pairs of nodes, keep the one with the biggest standard deviation
         # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
-        for edge in g.edges():
-            uSrc=self.get_edge_attribute(edge, 'uSrc', prophylerGraph=prophylerGraph, src_graph=src_graph)
-            uTrg=self.get_edge_attribute(edge, 'uTrg', prophylerGraph=prophylerGraph, src_graph=src_graph)
-            t=self.get_edge_attribute(edge, 't', prophylerGraph=prophylerGraph, src_graph=src_graph)
-            amp=self.get_edge_attribute(edge, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph)
-            width=self.get_edge_attribute(edge, 'width', prophylerGraph=prophylerGraph, src_graph=src_graph)
-            label=self.get_edge_attribute(edge, 'label', prophylerGraph=prophylerGraph, src_graph=src_graph)
-            criteria=self.get_edge_attribute(edge, 'criteria', prophylerGraph=prophylerGraph, src_graph=src_graph)
+        for edge in dfe.index.list():
+            uSrc=self.get_edge_attribute(edge, 'uSrc', prophylerGraph='undigraph', src_graph=src_graph)
+            uTrg=self.get_edge_attribute(edge, 'uTrg', prophylerGraph='undigraph', src_graph=src_graph)
+            t=self.get_edge_attribute(edge, 't', prophylerGraph='undigraph', src_graph=src_graph)
+            amp=self.get_edge_attribute(edge, 'amp', prophylerGraph='undigraph', src_graph=src_graph)
+            width=self.get_edge_attribute(edge, 'width', prophylerGraph='undigraph', src_graph=src_graph)
+            label=self.get_edge_attribute(edge, 'label', prophylerGraph='undigraph', src_graph=src_graph)
+            criteria=self.get_edge_attribute(edge, 'criteria', prophylerGraph='undigraph', src_graph=src_graph)
             
             # If <-1 or >1ms: unidirectional, if between -1 and 1: bidirectional
-            if t>-1: # if close to 0 bidirectional, if >1 
+            if t>-t_asym: # if close to 0 bidirectional, if >1 
                 self.digraph.add_edge(uSrc, uTrg, uSrc=uSrc, uTrg=uTrg, 
                                                    amp=amp, t=t, sign=sign(amp), width=width, label=label,
                                                    criteria=criteria)
-            if t<1:
+            if t<t_asym:
                 self.digraph.add_edge(uTrg, uSrc, uSrc=uTrg, uTrg=uSrc, 
                                                    amp=amp, t=t, sign=sign(amp), width=width, label=label,
                                                    criteria=criteria)

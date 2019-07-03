@@ -503,8 +503,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     returns numpy array (Nunits, Nunits, win_size/bin_size)
 
     '''
-    if type(normalize) != str or (normalize not in ['Counts', 'Hertz', 'Pearson']):
-        print("WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson']. Exitting now.")
+    if type(normalize) != str or (normalize not in ['Counts', 'Hertz', 'Pearson', 'zscore']):
+        print("WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore']. Exitting now.")
         return None
     # Preformat
     dp=str(dp)
@@ -539,17 +539,23 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
             from params import sample_rate as fs
             crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, rec_section=rec_section, prnt=prnt)
             crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
-            if normalize in ['Hertz', 'Pearson']:
+            if normalize in ['Hertz', 'Pearson', 'zscore']:
                 for i1,u1 in enumerate(sortedU):
                     Nspikes1=len(trn(dp, u1, ret=True, prnt=prnt))
                     #imfr1=np.mean(1000./isi(dp, u1)[isi(dp, u1)>0])
                     for i2,u2 in enumerate(sortedU):
                         Nspikes2=len(trn(dp, u2, ret=True, prnt=prnt))
                         #imfr2=np.mean(1000./isi(dp, u2)[isi(dp, u2)>0])
+                        arr=crosscorrelograms[i1,i2,:]
                         if normalize == 'Hertz':
-                            crosscorrelograms[i1,i2,:]=crosscorrelograms[i1,i2,:]*1./(Nspikes1*bin_size*1./1000)
+                            crosscorrelograms[i1,i2,:]=arr*1./(Nspikes1*bin_size*1./1000)
                         elif normalize == 'Pearson':
-                            crosscorrelograms[i1,i2,:]=crosscorrelograms[i1,i2,:]*1./np.sqrt(Nspikes1*Nspikes2)
+                            crosscorrelograms[i1,i2,:]=arr*1./np.sqrt(Nspikes1*Nspikes2)
+                        elif normalize=='zscore':
+                            arr=crosscorrelograms[i1,i2,:]
+                            mn = np.mean(np.append(arr[:int(len(arr)*2./5)], arr[int(len(arr)*3./5):]))
+                            std = np.std(np.append(arr[:int(len(arr)*2./5)], arr[int(len(arr)*3./5):]))
+                            crosscorrelograms[i1,i2,:]=(arr-mn)*1./std
                         
 
         # Save it

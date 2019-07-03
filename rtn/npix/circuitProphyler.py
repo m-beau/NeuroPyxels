@@ -620,8 +620,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 dfe.drop(subedges_to_drop, inplace=True)            
             
         # self.undigraph becomes a directed graph, its undirected version is saved as self.undigraph
-        self.digraph=nx.MultiDiGraph()
-        self.digraph.add_nodes_from(g.nodes(data=True))
+        digraph=nx.MultiDiGraph()
+        digraph.add_nodes_from(g.nodes(data=True))
         
         # - if several edges between pairs of nodes, keep the one with the biggest standard deviation
         # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
@@ -636,14 +636,19 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             
             # If <-1 or >1ms: unidirectional, if between -1 and 1: bidirectional
             if t>-t_asym: # if close to 0 bidirectional, if >1 
-                self.digraph.add_edge(uSrc, uTrg, uSrc=uSrc, uTrg=uTrg, 
+                digraph.add_edge(uSrc, uTrg, uSrc=uSrc, uTrg=uTrg, 
                                                    amp=amp, t=t, sign=sign(amp), width=width, label=label,
                                                    criteria=criteria)
             if t<t_asym:
-                self.digraph.add_edge(uTrg, uSrc, uSrc=uTrg, uTrg=uSrc, 
+                digraph.add_edge(uTrg, uSrc, uSrc=uTrg, uTrg=uSrc, 
                                                    amp=amp, t=t, sign=sign(amp), width=width, label=label,
                                                    criteria=criteria)
         
+        if src_graph is None:
+            self.digraph=digraph.copy()
+        else:
+            src_graph=digraph.copy()
+            
     def export_graph(self, name='', frmt='gpickle', ow=False, prophylerGraph='undigraph', src_graph=None):
         '''
         name: any srting. If 't': will be graph_aaaa-mm-dd_hh:mm:ss

@@ -588,7 +588,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         return fig
     
     
-    def make_directed_graph(self, src_graph=None, only_main_edge=False, t_asym=2, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3,):
+    def make_directed_graph(self, src_graph=None, only_main_edge=False, t_asym=2, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3):
         '''
         Should be called once the edges have been manually curated:
         - if several edges remain between pairs of nodes and only_main_edge is set to True, the one with the biggest standard deviation is kept
@@ -621,7 +621,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             
         # self.undigraph becomes a directed graph, its undirected version is saved as self.undigraph
         self.digraph=nx.MultiDiGraph()
-        self.digraph.add_nodes_from(g.nodes())
+        self.digraph.add_nodes_from(g.nodes(data=True))
         
         # - if several edges between pairs of nodes, keep the one with the biggest standard deviation
         # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)

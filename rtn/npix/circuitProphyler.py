@@ -564,7 +564,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             #nx.draw_networkx(g, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
         nx.draw_networkx_nodes(g_plt, pos=self.peak_positions, node_color='grey', alpha=0.8)
         nx.draw_networkx_edges(g_plt, pos=self.peak_positions, edge_color=ew, width=4, alpha=0.7, 
-                               edge_cmap=plt.cm.RdBu_r, edge_vmin=-5, edge_vmax=5)
+                               edge_cmap=plt.cm.RdBu_r, edge_vmin=-5, edge_vmax=5, arrowsize=30, arrowstyle='-|>')
         if edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 

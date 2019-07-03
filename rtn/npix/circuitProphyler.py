@@ -241,8 +241,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             if dataframe:
                 edges=pd.DataFrame(data=edges) # multiIndexed dataframe where lines are attributes and collumns edges
                 edges=edges.T
-                edges.columns=list(edges.iloc[0])
-                edges.drop(edges.index[0], inplace=True)
                 edges.index.names=['node1', 'node2', 'key']
         else:
             edges=npa(list(g.edges(keys=keys)))

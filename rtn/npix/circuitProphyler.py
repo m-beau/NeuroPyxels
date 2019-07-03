@@ -366,7 +366,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         else, nothing is returned since operations are performed on self attribute undigraph or digraph.
         '''
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
-        if g is None: return
+        if g is None or len(edges_list)==0: return
         
         if use_edge_key and len(edges_list[0])!=3:
             print('WARNING use_edge_key is set to True but edges of provided edges_list do not contain any key. Setting use_edge_key to False-> every edges between given pairs of nodes will be kept.')
@@ -389,8 +389,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         edges_to_remove=npe[~np.isin(np.arange(len(npe)),edges_list_idx)]
         g.remove_edges_from(edges_to_remove)
 
-        if src_graph is not None:
-            return g
     
     def label_nodes(self, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
@@ -523,7 +521,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
         # If 3 elements, the key is ignored and all edges between u1 and u2 already present in self.undigraph are kept.
         if edges_list is not None:
-            g_plt=self.keep_edges_list(edges_list, src_graph=g_plt)
+            self.keep_edges_list(edges_list, src_graph=g_plt)
 
         # Among edges of edges_list (or all edges if None),
         # Select a given edge type
@@ -540,7 +538,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         else: # includes 'all'
             edges_list=[]
 
-        g_plt=self.keep_edges_list(edges_list, src_graph=g_plt, use_edge_key=True) # will ignore edges keys, careful! If g_plt is a multiedge graph, all the edges of the pair of node with at least one edge meeting the criterion will be kept.
+        self.keep_edges_list(edges_list, src_graph=g_plt, use_edge_key=True) # will ignore edges keys, careful! If g_plt is a multiedge graph, all the edges of the pair of node with at least one edge meeting the criterion will be kept.
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')

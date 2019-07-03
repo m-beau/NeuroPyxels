@@ -625,7 +625,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         # - if several edges between pairs of nodes, keep the one with the biggest standard deviation
         # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
-        for edge in dfe.index.list():
+        for edge in dfe.index.tolist():
             uSrc=self.get_edge_attribute(edge, 'uSrc', prophylerGraph='undigraph', src_graph=src_graph)
             uTrg=self.get_edge_attribute(edge, 'uTrg', prophylerGraph='undigraph', src_graph=src_graph)
             t=self.get_edge_attribute(edge, 't', prophylerGraph='undigraph', src_graph=src_graph)

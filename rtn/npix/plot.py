@@ -313,6 +313,8 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         elif normalize=='zscore':
             yl1=min(CCG);yl2=max(CCG)
             ylim1=yl1-0.1+(abs(yl1)%0.1);ylim2=yl2+0.1-(yl2%0.1)
+            ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
+            ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
             ax.set_ylim([ylim1, ylim2])
     ax.plot([0,0], ax.get_ylim(), ls="--", c=[0,0,0], lw=2)
     if labels:
@@ -383,6 +385,8 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         elif normalize=='zscore':
             yl1=min(ACG);yl2=max(ACG)
             ylim1=yl1-0.1+(abs(yl1)%0.1);ylim2=yl2+0.1-(yl2%0.1)
+            ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
+            ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
             ax.set_ylim([ylim1, ylim2])
     if labels:
         if normalize=='Hertz':

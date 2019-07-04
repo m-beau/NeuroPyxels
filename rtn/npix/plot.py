@@ -285,7 +285,7 @@ def plot_wvf_mainCh(data, title = 'Merged units 19, 452, 555', color=(0./255, 0.
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True, 
             show=True, pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, 
-            saveData=False, ylim=0, normalize='Hertz'):
+            saveData=False, ylim1=0, ylim2=0,normalize='Hertz'):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -302,26 +302,26 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     fig, ax = plt.subplots(figsize=(10,8))
     x=np.linspace(-cwin*1./2, cwin*1./2, CCG.shape[0])
     assert x.shape==CCG.shape
-    if ylim==0:
+    if ylim1==0 and ylim2==0:
         if normalize=='Hertz':
             ylim1=0
             yl=max(CCG); ylim2=int(yl)+5-(yl%5);
-            ax.set_ylim([ylim1, ylim2])
-            y=CCG.copy()
         elif normalize=='Pearson':
             ylim1=0
             yl=max(CCG); ylim2=yl+0.01-(yl%0.01);
-            ax.set_ylim([ylim1, ylim2])
-            y=CCG.copy()
         elif normalize=='zscore':
             yl1=min(CCG);yl2=max(CCG)
-            ylim1=yl1-0.1+(abs(yl1)%0.1);ylim2=yl2+0.1-(yl2%0.1)
+            ylim1=yl1-0.5+(abs(yl1)%0.5);ylim2=yl2+0.5-(yl2%0.5)
             ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
             ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
-            ax.set_ylim([ylim1, ylim2])
-            y=CCG.copy()+abs(ylim1)
-            
+    ax.set_ylim([ylim1, ylim2])
+    
+    if normalize=='Hertz' or normalize=='Pearson':
+        y=CCG.copy()
+    elif normalize=='zscore':
+        y=CCG.copy()+abs(ylim1)
     ax.bar(x=x, height=y, width=cbin, color=color, edgecolor=color, bottom=ylim1) # Potentially: set bottom=0 for zscore
+    
     ax.plot([0,0], ax.get_ylim(), ls="--", c=[0,0,0], lw=2)
     if labels:
         if std_lines:

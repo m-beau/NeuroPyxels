@@ -307,17 +307,21 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
             ylim1=0
             yl=max(CCG); ylim2=int(yl)+5-(yl%5);
             ax.set_ylim([ylim1, ylim2])
+            y=CCG.copy()
         elif normalize=='Pearson':
             ylim1=0
             yl=max(CCG); ylim2=yl+0.01-(yl%0.01);
             ax.set_ylim([ylim1, ylim2])
+            y=CCG.copy()
         elif normalize=='zscore':
             yl1=min(CCG);yl2=max(CCG)
             ylim1=yl1-0.1+(abs(yl1)%0.1);ylim2=yl2+0.1-(yl2%0.1)
             ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
             ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
             ax.set_ylim([ylim1, ylim2])
-    ax.bar(x=x, height=CCG, width=cbin, color=color, edgecolor=color, bottom=ylim1) # Potentially: set bottom=0 for zscore
+            y=CCG.copy()+ylim1
+            
+    ax.bar(x=x, height=y, width=cbin, color=color, edgecolor=color, bottom=ylim1) # Potentially: set bottom=0 for zscore
     ax.plot([0,0], ax.get_ylim(), ls="--", c=[0,0,0], lw=2)
     if labels:
         if std_lines:

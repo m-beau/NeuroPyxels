@@ -364,7 +364,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     return fig
         
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=True, 
-            show=True, pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0, normalize='Hertz'):
+            show=True, pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0, normalize='Hertz'):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -380,20 +380,26 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     fig, ax = plt.subplots(figsize=(10,8))
     x=np.linspace(-cwin*1./2, cwin*1./2, ACG.shape[0])
     assert x.shape==ACG.shape
-    ax.bar(x=x, height=ACG, width=cbin, color=color, edgecolor=color)
-    if ylim==0:
+    if ylim1==0 and ylim2==0:
         if normalize=='Hertz':
-            yl=max(ACG); ylim=int(yl)+5-(yl%5);
-            ax.set_ylim([0, ylim])
+            ylim1=0
+            yl=max(ACG); ylim2=int(yl)+5-(yl%5);
         elif normalize=='Pearson':
-            yl=max(ACG); ylim=yl+0.01-(yl%0.01);
-            ax.set_ylim([0, ylim])
+            ylim1=0
+            yl=max(ACG); ylim2=yl+0.01-(yl%0.01);
         elif normalize=='zscore':
             yl1=min(ACG);yl2=max(ACG)
-            ylim1=yl1-0.1+(abs(yl1)%0.1);ylim2=yl2+0.1-(yl2%0.1)
+            ylim1=yl1-0.5+(abs(yl1)%0.5);ylim2=yl2+0.5-(yl2%0.5)
             ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
             ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
-            ax.set_ylim([ylim1, ylim2])
+    ax.set_ylim([ylim1, ylim2])
+    
+    if normalize=='Hertz' or normalize=='Pearson':
+        y=ACG.copy()
+    elif normalize=='zscore':
+        y=ACG.copy()+abs(ylim1)
+    ax.bar(x=x, height=y, width=cbin, color=color, edgecolor=color, bottom=ylim1) # Potentially: set bottom=0 for zscore
+    
     if labels:
         if normalize=='Hertz':
             ax.set_ylabel("Autocorrelation (Hz)", size=20)
@@ -429,7 +435,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     
 def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, saveDir='~/Downloads', 
                      saveFig=False, prnt=False, show=True, pdf=True, png=False, rec_section='all', 
-                     labels=True, title=None, std_lines=True, ylim=0, normalize='Hertz'):
+                     labels=True, title=None, std_lines=True, ylim1=0, ylim2=0, normalize='Hertz'):
     colorsDic = {
     0:(53./255, 127./255, 255./255),
     1:(255./255, 0./255, 0./255),
@@ -453,17 +459,26 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
             x=np.linspace(-cwin*1./2, cwin*1./2, CCGs.shape[2])
             y=CCGs[i,j,:]
             ax[r, c].bar(x=x, height=y, width=cbin, color=color, edgecolor=color)
-            if ylim==0:
+            if ylim1==0 and ylim2==0:
                 if normalize=='Hertz':
-                    yl=max(y); ylim=int(yl)+5-(yl%5);
-                    ax[r, c].set_ylim([0, ylim])
+                    ylim1=0
+                    yl=max(y); ylim2=int(yl)+5-(yl%5);
                 elif normalize=='Pearson':
-                    yl=max(y); ylim=yl+0.01-(yl%0.01);
-                    ax[r, c].set_ylim([0, ylim])
+                    ylim1=0
+                    yl=max(y); ylim2=yl+0.01-(yl%0.01);
                 elif normalize=='zscore':
                     yl1=min(y);yl2=max(y)
-                    ylim1=yl1-0.1+(abs(yl1)%0.1);ylim2=yl2+0.1-(yl2%0.1)
-                    ax[r, c].set_ylim([ylim1, ylim2])
+                    ylim1=yl1-0.5+(abs(yl1)%0.5);ylim2=yl2+0.5-(yl2%0.5)
+                    ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
+                    ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
+            ax[r, c].set_ylim([ylim1, ylim2])
+            
+            if normalize=='Hertz' or normalize=='Pearson':
+                yy=y.copy()
+            elif normalize=='zscore':
+                yy=y.copy()+abs(ylim1)
+            ax[r, c].bar(x=x, height=yy, width=cbin, color=color, edgecolor=color, bottom=ylim1) # Potentially: set bottom=0 for zscore
+            
             if labels:
                 if j==0:
                     if normalize=='Hertz':
@@ -504,7 +519,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
     return fig
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0):
+             pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0):
     assert type(unit)==int
     saveDir=op.expanduser(saveDir)
     bChs=None
@@ -516,10 +531,10 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
         bChs=[bestChs[np.isin(gu, unit)][0]]
     ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section)
     plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, pdf=pdf, png=png, 
-            rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim=ylim)
+            rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2)
     
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=0):
+             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim1=0, ylim2=0):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
     bChs=None
@@ -534,9 +549,9 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
         CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section)
     if CCG.shape[0]==2:
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, pdf, png, rec_section=rec_section, 
-                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim=ylim, normalize=normalize)
+                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
     else:
-        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, pdf, png, rec_section=rec_section, labels=labels, title=title, std_lines=std_lines, ylim=ylim, normalize=normalize)
+        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, pdf, png, rec_section=rec_section, labels=labels, title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
         
     return fig
 

@@ -487,9 +487,15 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         for e in edges_list:
             try:
                 if use_edge_key:
-                    edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1])&(npe[:,2]==e[2]))|((npe[:,0]==e[1])&(npe[:,1]==e[0])&(npe[:,2]==e[2]))))[0])
+                    if g.__class__ is nx.classes.multidigraph.MultiDiGraph:
+                        edges_list_idx=np.append(edges_list_idx, np.nonzero(((npe[:,0]==e[0])&(npe[:,1]==e[1])&(npe[:,2]==e[2])))[0])
+                    elif g.__class__ is nx.classes.multigraph.MultiGraph:
+                        edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1])&(npe[:,2]==e[2]))|((npe[:,0]==e[1])&(npe[:,1]==e[0])&(npe[:,2]==e[2]))))[0])
                 else:
-                    edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))[0])
+                    if g.__class__ is nx.classes.multidigraph.MultiDiGraph:
+                        edges_list_idx=np.append(edges_list_idx, np.nonzero(((npe[:,0]==e[0])&(npe[:,1]==e[1])))[0])
+                    elif g.__class__ is nx.classes.multigraph.MultiGraph:
+                        edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))[0])
             except:
                 print('WARNING edge {} does not exist in graph {}! Abort.'.format(e, g))
         edges_list_idx=npa(edges_list_idx, dtype=np.int64).flatten()

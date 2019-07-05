@@ -607,7 +607,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 self.export_graph(name, frmt, prophylerGraph=prophylerGraph, src_graph=src_graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                 break
 
-    def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', keep_edges_types=None, edges_list=None, src_graph=None, t_asym=2):
+    def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', keep_edges_types=None, edges_list=None, src_graph=None, t_asym=1):
         '''
         2 ways to select edges:
             - Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val)
@@ -630,10 +630,10 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if edges_list is not None:
             self.keep_edges(edges_list=edges_list, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
         if keep_edges_types is not None:
-            if type(keep_edges_types)!=list: keep_edges_types = list(keep_edges_types)
+            if type(keep_edges_types)!=list: keep_edges_types = [keep_edges_types]
             for et in keep_edges_types:
                 assert et in ['-', '+', 'ci', 'main']
-                self.keep_edges(edges_type=et, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
+                self.keep_edges(edges_type=et, src_graph=g_plt, use_edge_key=False, t_asym=t_asym)
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')

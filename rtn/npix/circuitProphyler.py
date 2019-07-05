@@ -217,7 +217,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                                                      rec_section=rec_section, ticks=False, again=again, saveFig=True, saveDir=self.dpnet)
 
     
-    def make_directed_graph(self, src_graph=None, only_main_edges=False, t_asym=1, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3):
+    def make_directed_graph(self, src_graph=None, only_main_edges=False, t_asym=1):
         '''
         Should be called once the edges have been manually curated:
         - if several edges remain between pairs of nodes and only_main_edge is set to True, the one with the biggest standard deviation is kept
@@ -281,20 +281,24 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         return nodes
     
-    def get_edges(self, attributes=False, keys=True, prophylerGraph='undigraph', dataframe=False, src_graph=None):
+    def get_edges(self, frmt='array', keys=True, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
         
-        if attributes or dataframe:
+        assert frmt in ['list', 'array', 'dict', 'dataframe']
+        
+        if frmt in ['dict', 'dataframe']:
             edges={}
             for e in g.edges(data=True, keys=keys):
                 edges[e[0:-1]]=e[-1]
-            if dataframe:
+            if frmt=='dataframe':
                 edges=pd.DataFrame(data=edges) # multiIndexed dataframe where lines are attributes and collumns edges
                 edges=edges.T
                 edges.index.names=['node1', 'node2', 'key']
         else:
-            edges=npa(list(g.edges(keys=keys)))
+            edges=list(g.edges(keys=keys))
+            if frmt=='array':
+                edges=npa(edges)
         return edges
     
     def get_node_attributes(self, n, prophylerGraph='undigraph', src_graph=None):
@@ -323,17 +327,17 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         assert len(e)==2 or len(e)==3
         if len(e)==3:
             try: # check that nodes are in the right order - multi directed graph
-                return self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[e][at]
+                return self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[e][at]
             except:
-                return self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],e[2])][at]
+                return self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],e[2])][at]
         elif len(e)==2:
             keys=self.get_edge_keys(e, prophylerGraph=prophylerGraph, src_graph=src_graph)
             edges={}
             for k in keys:
                 try: # check that nodes are in the right order - multi directed graph
-                    edges[k]=self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[0],e[1],k)][at]
+                    edges[k]=self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[0],e[1],k)][at]
                 except:
-                    edges[k]=self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],k)][at]
+                    edges[k]=self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],k)][at]
             return edges
     
     def get_edge_attributes(self, e, prophylerGraph='undigraph', src_graph=None):
@@ -341,17 +345,17 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         assert len(e)==2 or len(e)==3
         if len(e)==3:
             try: # check that nodes are in the right order - multi directed graph
-                return self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[e]
+                return self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[e]
             except:
-                return self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],e[2])]
+                return self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],e[2])]
         elif len(e)==2:
             keys=self.get_edge_keys(e, prophylerGraph=prophylerGraph, src_graph=src_graph)
             edges={}
             for k in keys:
                 try: # check that nodes are in the right order - multi directed graph
-                    edges[k]=self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[0],e[1],k)]
+                    edges[k]=self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[0],e[1],k)]
                 except:
-                    edges[k]=self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],k)]
+                    edges[k]=self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],k)]
             return edges
         
     def set_edge_attribute(self, e, at, at_val, prophylerGraph='undigraph', src_graph=None):
@@ -362,7 +366,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         nx.set_edge_attributes(g, {e:{at:at_val}})
         
     def get_edges_with_attribute(self, at, at_val, logical='==', tolist=True, prophylerGraph='undigraph', src_graph=None):
-        edges=self.get_edges(attributes=True, keys=True, prophylerGraph=prophylerGraph, dataframe=True, src_graph=src_graph) # raws are attributes, columns indices
+        edges=self.get_edges(frmt='dataframe', keys=True, prophylerGraph=prophylerGraph, src_graph=src_graph) # raws are attributes, columns indices
         assert at in edges.index
         ops={'==':operator.eq, '!=':operator.ne, '<':operator.lt, '<=':operator.le, '>':operator.gt, '>=':operator.ge}
         assert logical in ops.keys()
@@ -425,7 +429,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             use_edge_key=False
         if len(edges_list)==0:
             return g
-        npe=self.get_edges(keys=True, prophylerGraph=prophylerGraph, src_graph=src_graph)
+        npe=self.get_edges(prophylerGraph=prophylerGraph, src_graph=src_graph)
         edges_list_idx=npa([])
         for e in edges_list:
             try:
@@ -452,7 +456,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if g is None: return
         
         # Select main edges
-        dfe=self.get_edges(keys=True, dataframe=True, prophylerGraph='undigraph', src_graph=src_graph)
+        dfe=self.get_edges(frmt='dataframe', prophylerGraph='undigraph', src_graph=src_graph)
         if not np.any(dfe):
             print('WARNING no edges found in graph{}! Use the method connect_graph() first. aborting.')
             return
@@ -460,7 +464,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         keys=dfe.index.get_level_values('key')
         # multiedges are rows where key is 1 or more - to get the list of edges with more than 1 edge, get unit couples with key=1
         multiedges=dfe.index[keys==1].tolist()
-        npe=self.get_edges(keys=True, dataframe=False, prophylerGraph='undigraph', src_graph=src_graph)
+        npe=self.get_edges(prophylerGraph='undigraph', src_graph=src_graph)
         for me in multiedges:
             me_subedges=npe[(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0])))]
             me_subedges=[tuple(mese) for mese in me_subedges]
@@ -608,7 +612,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # Among edges of edges_list (or all edges if None),
         # Select a given edge type
         assert edges_type in ['all', '-', '+', 'ci'] # t_asym is in ms
-        edges=self.get_edges(attributes=True, keys=True, prophylerGraph=prophylerGraph, dataframe=True, src_graph=g_plt) # raws are attributes, columns indices
+        edges=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=g_plt) # raws are attributes, columns indices
         amp=edges.loc[:,'amp']
         t=edges.loc[:, 't']
         if edges_type=='-':

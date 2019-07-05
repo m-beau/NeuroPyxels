@@ -470,7 +470,10 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         #dfe.reset_index(inplace=True) # turn node1, node 2 and key in columns
         keys=dfe.index.get_level_values('key')
         # multiedges are rows where key is 1 or more - to get the list of edges with more than 1 edge, get unit couples with key=1
-        multiedges=dfe.index[keys==1].tolist()
+        multiedges=npa(dfe.index[keys==1].tolist())
+        multiedges[:,:2]=np.sort(multiedges[:,:2], axis=1)
+        multiedges=np.unique(multiedges, axis=0)
+        multiedges=[tuple(me) for me in multiedges]
         npe=self.get_edges(prophylerGraph='undigraph', src_graph=src_graph)
         for me in multiedges:
             me_subedges=npe[(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0])))]

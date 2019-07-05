@@ -472,9 +472,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()
             dfe.drop(subedges_to_drop, inplace=True)
         
-        edges_list_idx=npa(dfe.index.tolist(), dtype=np.int64).flatten()
-        edges_to_remove=npe[~np.isin(np.arange(len(npe)),edges_list_idx)]
-        g.remove_edges_from(edges_to_remove)
+        self.keep_edges_list(dfe.index.tolist(), src_graph=g, use_edge_key=True)
     
     def label_nodes(self, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph

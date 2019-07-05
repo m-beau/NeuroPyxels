@@ -217,7 +217,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                                                      rec_section=rec_section, ticks=False, again=again, saveFig=True, saveDir=self.dpnet)
 
     
-    def make_directed_graph(self, src_graph=None, only_main_edges=False, t_asym=1):
+    def make_directed_graph(self, src_graph=None, only_main_edges=False):
         '''
         Should be called once the edges have been manually curated:
         - if several edges remain between pairs of nodes and only_main_edge is set to True, the one with the biggest standard deviation is kept
@@ -252,11 +252,11 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             criteria=self.get_edge_attribute(edge, 'criteria', prophylerGraph='undigraph', src_graph=src_graph)
             
             # NOT ANYMORE If <-1 or >1ms: unidirectional, if between -1 and 1: bidirectional
-            if t>t_asym: # if close to 0 bidirectional, if >1 
+            if t>0: # if close to 0 bidirectional, if >1 
                 digraph.add_edge(uSrc, uTrg, uSrc=uSrc, uTrg=uTrg, 
                                                    amp=amp, t=t, sign=sign(amp), width=width, label=label,
                                                    criteria=criteria)
-            if t<-t_asym:
+            if t<0:
                 digraph.add_edge(uTrg, uSrc, uSrc=uTrg, uTrg=uSrc, 
                                                    amp=amp, t=t, sign=sign(amp), width=width, label=label,
                                                    criteria=criteria)

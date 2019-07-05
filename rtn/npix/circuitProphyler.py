@@ -31,7 +31,7 @@ pro.plot_graph()
 pro.get_node_edges(node)
 
 # Only keep a set of relevant nodes or edges and plot it again
-pro.keep_edges_list(edges_list)
+pro.keep_edges(edges_list)
 pro.keep_nodes_list(nodes_list)
 pro.plot_graph()
 
@@ -241,7 +241,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
         
         if only_main_edges:
-            self.keep_main_edges(src_graph=g)
+            self.keep_edges(prophylerGraph='undigraph', src_graph=g, edges_type='main')
         for edge in self.get_edges(frmt='list', src_graph=g):
             uSrc=self.get_edge_attribute(edge, 'uSrc', prophylerGraph='undigraph', src_graph=src_graph)
             uTrg=self.get_edge_attribute(edge, 'uTrg', prophylerGraph='undigraph', src_graph=src_graph)
@@ -419,7 +419,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if src_graph is not None:
             return g
     
-    def keep_edges_list(self, edges_list, prophylerGraph='undigraph', src_graph=None, use_edge_key=False):
+    def keep_edges(self, edges_list=None, edges_type='main', prophylerGraph='undigraph', src_graph=None, use_edge_key=False, t_asym=1):
         '''
         Remove edges not in edges_list if provided.
         edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
@@ -427,10 +427,54 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         if src_graph is provided, operations are performed on it and the resulting graph is returned.
         else, nothing is returned since operations are performed on self attribute undigraph or digraph.
+        
+        edges_type must be in ['main', '-', '+', 'ci']# ci stands for common input.
+        If edges_list is not None, the edges_list is kept and edges_type argument is ignored.
         '''
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None or len(edges_list)==0: return
         
+        assert edges_type in ['main', '-', '+', 'ci']# ci stands for common input
+        
+        # Select edges to keep if necessary
+        if edges_list is None:
+            dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=src_graph)
+            amp=dfe.loc[:,'amp']
+            t=dfe.loc[:, 't']
+            if edges_type=='main':
+                if not np.any(dfe):
+                    print('WARNING no edges found in graph{}! Use the method connect_graph() first. aborting.')
+                    return
+                #dfe.reset_index(inplace=True) # turn node1, node 2 and key in columns
+                keys=dfe.index.get_level_values('key')
+                # multiedges are rows where key is 1 or more - to get the list of edges with more than 1 edge, get unit couples with key=1
+                multiedges=npa(dfe.index[keys==1].tolist())
+                multiedges[:,:2]=np.sort(multiedges[:,:2], axis=1)
+                multiedges=np.unique(multiedges, axis=0)
+                multiedges=[tuple(me) for me in multiedges]
+                npe=self.get_edges(prophylerGraph='undigraph', src_graph=src_graph)
+                for me in multiedges:
+                    me_subedges=npe[(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0])))]
+                    me_subedges=[tuple(mese) for mese in me_subedges]
+                    me_amps=dfe['amp'][me_subedges]
+                    subedge_to_keep=me_amps.index[me_amps==me_amps.max()]
+                    subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()
+                    dfe.drop(subedges_to_drop, inplace=True)
+                edges_list=dfe.index.tolist()
+                
+            elif edges_type=='-':
+                edges_list=dfe.index[(amp<0)&((t<-t_asym)|(t>t_asym))].tolist()
+                
+            elif edges_type=='+':
+                edges_list=dfe.index[(amp>0)&((t<-t_asym)|(t>t_asym))].tolist()
+                
+            elif edges_type=='ci':
+                edges_list=dfe.index[(amp>0)&(t>-t_asym)&(t<t_asym)].tolist()
+                
+            else: # includes 'all'
+                edges_list=[]
+        
+        # Drop edges not in the list of edges to keep
         if use_edge_key and len(edges_list[0])!=3:
             print('WARNING use_edge_key is set to True but edges of provided edges_list do not contain any key. Setting use_edge_key to False-> every edges between given pairs of nodes will be kept.')
             use_edge_key=False
@@ -440,8 +484,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         edges_list_idx=npa([])
         for e in edges_list:
             try:
-                #keys=self.get_edge_keys(e, prophylerGraph=prophylerGraph)
-                #assert np.any((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))
                 if use_edge_key:
                     edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1])&(npe[:,2]==e[2]))|((npe[:,0]==e[1])&(npe[:,1]==e[0])&(npe[:,2]==e[2]))))[0])
                 else:
@@ -451,39 +493,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         edges_list_idx=npa(edges_list_idx, dtype=np.int64).flatten()
         edges_to_remove=npe[~np.isin(np.arange(len(npe)),edges_list_idx)]
         g.remove_edges_from(edges_to_remove)
-
-    def keep_main_edges(self, prophylerGraph='undigraph', src_graph=None):
-        '''
-        Only keep edge with the biggest amplitude between every pair of nodes.
-        
-        if src_graph is provided, operations are performed on it.
-        else, nothing is returned since operations are performed on self attribute undigraph or digraph.
-        '''
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
-        if g is None: return
-        
-        # Select main edges
-        dfe=self.get_edges(frmt='dataframe', prophylerGraph='undigraph', src_graph=src_graph)
-        if not np.any(dfe):
-            print('WARNING no edges found in graph{}! Use the method connect_graph() first. aborting.')
-            return
-        #dfe.reset_index(inplace=True) # turn node1, node 2 and key in columns
-        keys=dfe.index.get_level_values('key')
-        # multiedges are rows where key is 1 or more - to get the list of edges with more than 1 edge, get unit couples with key=1
-        multiedges=npa(dfe.index[keys==1].tolist())
-        multiedges[:,:2]=np.sort(multiedges[:,:2], axis=1)
-        multiedges=np.unique(multiedges, axis=0)
-        multiedges=[tuple(me) for me in multiedges]
-        npe=self.get_edges(prophylerGraph='undigraph', src_graph=src_graph)
-        for me in multiedges:
-            me_subedges=npe[(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0])))]
-            me_subedges=[tuple(mese) for mese in me_subedges]
-            me_amps=dfe['amp'][me_subedges]
-            subedge_to_keep=me_amps.index[me_amps==me_amps.max()]
-            subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()
-            dfe.drop(subedges_to_drop, inplace=True)
-        
-        self.keep_edges_list(dfe.index.tolist(), src_graph=g, use_edge_key=True)
     
     def label_nodes(self, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
@@ -596,7 +605,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 self.export_graph(name, frmt, prophylerGraph=prophylerGraph, src_graph=src_graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                 break
 
-    def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', edges_type='all', edges_list=None, src_graph=None, t_asym=2, only_main_edges=False):
+    def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', keep_edges_types=None, edges_list=None, src_graph=None, t_asym=2):
         '''
         2 ways to select edges:
             - Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val)
@@ -606,6 +615,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
               'sync': edges whose t is >1ms or <-1ms and sign is 1
         
         edges_list has the priority over edges_types.
+        edges_type must be '-', '+', 'main', 'ci' or a list of either combination of these. Edges will be filtered ('kept') sequentially with respect to the order of these categories.
         '''
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
@@ -616,25 +626,12 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
         # If 3 elements, the key is ignored and all edges between u1 and u2 already present in self.undigraph are kept.
         if edges_list is not None:
-            self.keep_edges_list(edges_list, src_graph=g_plt)
-        if only_main_edges:
-            self.keep_main_edges(src_graph=g_plt)
-        # Among edges of edges_list (or all edges if None),
-        # Select a given edge type
-        assert edges_type in ['all', '-', '+', 'ci'] # t_asym is in ms
-        edges=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=g_plt) # raws are attributes, columns indices
-        amp=edges.loc[:,'amp']
-        t=edges.loc[:, 't']
-        if edges_type=='-':
-            edges_list=edges.index[(amp<0)&((t<-t_asym)|(t>t_asym))].tolist()
-        elif edges_type=='+':
-            edges_list=edges.index[(amp>0)&((t<-t_asym)|(t>t_asym))].tolist()
-        elif edges_type=='ci':
-            edges_list=edges.index[(amp>0)&(t>-t_asym)&(t<t_asym)].tolist()
-        else: # includes 'all'
-            edges_list=[]
-
-        self.keep_edges_list(edges_list, src_graph=g_plt, use_edge_key=True) # will ignore edges keys, careful! If g_plt is a multiedge graph, all the edges of the pair of node with at least one edge meeting the criterion will be kept.
+            self.keep_edges(edges_list=edges_list, src_graph=g_plt, use_edge_key=True)
+        if keep_edges_types is not None:
+            if type(keep_edges_types)!=list: keep_edges_types = list(keep_edges_types)
+            for et in keep_edges_types:
+                assert et in ['-', '+', 'ci', 'main']
+                self.keep_edges(edges_type=et, src_graph=g_plt, use_edge_key=True)
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')

@@ -242,7 +242,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         if only_main_edges:
             self.keep_main_edges(src_graph=g)
-        for edge in self.get_edges(src_graph=g):
+        for edge in self.get_edges(frmt='list', src_graph=g):
             uSrc=self.get_edge_attribute(edge, 'uSrc', prophylerGraph='undigraph', src_graph=src_graph)
             uTrg=self.get_edge_attribute(edge, 'uTrg', prophylerGraph='undigraph', src_graph=src_graph)
             t=self.get_edge_attribute(edge, 't', prophylerGraph='undigraph', src_graph=src_graph)
@@ -268,16 +268,23 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             
 
 
-    def get_nodes(self, attributes=False, prophylerGraph='undigraph', src_graph=None):
+    def get_nodes(self, frmt='array', prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
         
-        if attributes:
+        assert frmt in ['list', 'array', 'dict', 'dataframe']
+        
+        if frmt=='dict':
             nodes={}
             for n, na in g.nodes(data=True):
                 nodes[n]=na
+            if frmt=='dataframe':
+                nodes=pd.DataFrame(data=nodes) # multiIndexed dataframe where lines are attributes and collumns edges
+                nodes=nodes.T
         else:
             nodes=list(g.nodes())
+            if frmt=='array':
+                nodes=npa(nodes)
         
         return nodes
     
@@ -302,11 +309,11 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         return edges
     
     def get_node_attributes(self, n, prophylerGraph='undigraph', src_graph=None):
-        return self.get_nodes(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[n]
+        return self.get_nodes(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[n]
     
     def get_node_attribute(self, n, at, prophylerGraph='undigraph', src_graph=None):        
         assert at in ['unit', 'putativeCellType', 'classifiedCellType']
-        return self.get_nodes(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[n][at]
+        return self.get_nodes(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[n][at]
 
     def set_node_attribute(self, n, at, at_val, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph

@@ -419,7 +419,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if src_graph is not None:
             return g
     
-    def keep_edges(self, edges_list=None, edges_type='main', prophylerGraph='undigraph', src_graph=None, use_edge_key=False, t_asym=1):
+    def keep_edges(self, edges_list=None, edges_type=None, prophylerGraph='undigraph', src_graph=None, use_edge_key=False, t_asym=1):
         '''
         Remove edges not in edges_list if provided.
         edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
@@ -432,8 +432,10 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         If edges_list is not None, the edges_list is kept and edges_type argument is ignored.
         '''
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
-        if g is None or len(edges_list)==0: return
-        
+        if g is None: return
+        if edges_list is None and edges_type is None:
+            print('WARNING you should not call keep_edges() without providing any edges_list or edges_type to keep. Aborting.')
+            return
         assert edges_type in ['main', '-', '+', 'ci']# ci stands for common input
         
         # Select edges to keep if necessary

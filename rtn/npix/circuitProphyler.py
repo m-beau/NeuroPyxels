@@ -57,7 +57,6 @@ import numpy as np
 import pandas as pd
 
 import rtn
-import rtn.npix as npix
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
@@ -321,6 +320,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     def get_edge_attribute(self, e, at, prophylerGraph='undigraph', src_graph=None):
         
         assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
+        assert len(e)==2 or len(e)==3
         if len(e)==3:
             try: # check that nodes are in the right order - multi directed graph
                 return self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[e][at]
@@ -334,11 +334,11 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                     edges[k]=self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[0],e[1],k)][at]
                 except:
                     edges[k]=self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],k)][at]
-            return edges        if only_main_edges:
-            self.keep_main_edges(src_graph=g)
+            return edges
     
     def get_edge_attributes(self, e, prophylerGraph='undigraph', src_graph=None):
         
+        assert len(e)==2 or len(e)==3
         if len(e)==3:
             try: # check that nodes are in the right order - multi directed graph
                 return self.get_edges(True, prophylerGraph=prophylerGraph, src_graph=src_graph)[e]
@@ -361,8 +361,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
         nx.set_edge_attributes(g, {e:{at:at_val}})
         
-                if only_main_edges:
-            self.keep_main_edges(src_graph=g)
     def get_edges_with_attribute(self, at, at_val, logical='==', tolist=True, prophylerGraph='undigraph', src_graph=None):
         edges=self.get_edges(attributes=True, keys=True, prophylerGraph=prophylerGraph, dataframe=True, src_graph=src_graph) # raws are attributes, columns indices
         assert at in edges.index
@@ -387,8 +385,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if src_graph is provided, operations are performed on it and the resulting graph is returned.
         else, nothing is returned since operations are performed on self attribute undigraph or digraph.
         '''
-        g=self.get_graph(prophylerGrap        if only_main_edges:
-            self.keep_main_edges(src_graph=g)h) if src_graph is None else src_graph
+        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
         
         if len(nodes_list)==0:

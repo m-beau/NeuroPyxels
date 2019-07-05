@@ -251,13 +251,13 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             label=self.get_edge_attribute(edge, 'label', prophylerGraph='undigraph', src_graph=src_graph)
             criteria=self.get_edge_attribute(edge, 'criteria', prophylerGraph='undigraph', src_graph=src_graph)
             
-            # NOT ANYMORE If <-1 or >1ms: unidirectional, if between -1 and 1: bidirectional
+            # Just make all the edges directed
             if t>0: # if close to 0 bidirectional, if >1 
                 digraph.add_edge(uSrc, uTrg, uSrc=uSrc, uTrg=uTrg, 
                                                    amp=amp, t=t, sign=sign(amp), width=width, label=label,
                                                    criteria=criteria)
             if t<0:
-                digraph.add_edge(uTrg, uSrc, uSrc=uTrg, uTrg=uSrc, 
+                digraph.add_edge(uTrg, uSrc, uSrc=uSrc, uTrg=uTrg, 
                                                    amp=amp, t=t, sign=sign(amp), width=width, label=label,
                                                    criteria=criteria)
         

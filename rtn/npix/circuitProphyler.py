@@ -419,7 +419,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if src_graph is not None:
             return g
     
-    def keep_edges(self, edges_list=None, edges_type=None, prophylerGraph='undigraph', src_graph=None, use_edge_key=False, t_asym=1):
+    def keep_edges(self, edges_list=None, edges_type=None, prophylerGraph='undigraph', src_graph=None, use_edge_key=True, t_asym=1):
         '''
         Remove edges not in edges_list if provided.
         edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
@@ -633,7 +633,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             if type(keep_edges_types)!=list: keep_edges_types = [keep_edges_types]
             for et in keep_edges_types:
                 assert et in ['-', '+', 'ci', 'main']
-                self.keep_edges(edges_type=et, src_graph=g_plt, use_edge_key=False, t_asym=t_asym)
+                self.keep_edges(edges_type=et, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
         
         if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
             print('You need to export the features tables using phy first!!')

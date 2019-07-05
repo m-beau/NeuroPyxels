@@ -459,7 +459,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                     me_subedges=npe[(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0])))]
                     me_subedges=[tuple(mese) for mese in me_subedges]
                     me_amps=dfe['amp'][me_subedges]
-                    subedge_to_keep=me_amps.index[me_amps==me_amps.max()]
+                    subedge_to_keep=me_amps.index[me_amps.abs()==me_amps.abs().max()]
                     subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()
                     dfe.drop(subedges_to_drop, inplace=True)
                 edges_list=dfe.index.tolist()
@@ -628,9 +628,9 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
         # If 3 elements, the key is ignored and all edges between u1 and u2 already present in self.undigraph are kept.
         if edges_list is not None:
-            self.keep_edges(edges_list=edges_list, src_graph=g_plt, use_edge_key=True)
+            self.keep_edges(edges_list=edges_list, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
         if keep_edges_types is not None:
-            if type(keep_edges_types)!=list: keep_edges_types = list(keep_edges_types)
+            if type(keep_edges_types)!=list: keep_edges_types = list(keep_edges_types, t_asym=t_asym)
             for et in keep_edges_types:
                 assert et in ['-', '+', 'ci', 'main']
                 self.keep_edges(edges_type=et, src_graph=g_plt, use_edge_key=True)

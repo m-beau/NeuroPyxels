@@ -614,7 +614,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 break
 
     def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', keep_edges_types=None, edges_list=None, src_graph=None, t_asym=1,
-                   edge_vmin=-5, edge_vmax=5, arrowsize=30, arrowstyle='-|>'):
+                   edges_width=4, edge_vmin=-5, edge_vmax=5, arrowsize=30, arrowstyle='-|>'):
         '''
         2 ways to select edges:
             - Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val)
@@ -650,7 +650,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph), 2))\
                   +'@'+str(np.round(self.get_edge_attribute(e, 't', prophylerGraph=prophylerGraph, src_graph=src_graph), 1))+'ms' for e in g_plt.edges}
         
-        fig, ax = plt.subplots(figsize=(6, 16))
+        fig, ax = plt.subplots(figsize=(8, 24))
         if node_labels:
             nlabs={}
             for node in list(g_plt.nodes):
@@ -665,7 +665,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             nx.draw_networkx_labels(g_plt,self.peak_positions,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
             #nx.draw_networkx(g, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
         nx.draw_networkx_nodes(g_plt, pos=self.peak_positions, node_color='grey', alpha=0.8)
-        nx.draw_networkx_edges(g_plt, pos=self.peak_positions, edge_color=ew, width=4, alpha=0.7, 
+        nx.draw_networkx_edges(g_plt, pos=self.peak_positions, edge_color=ew, width=edges_width, alpha=0.7, 
                                edge_cmap=plt.cm.RdBu_r, edge_vmin=edge_vmin, edge_vmax=edge_vmax, arrowsize=arrowsize, arrowstyle=arrowstyle)
         if edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')

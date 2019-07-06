@@ -679,7 +679,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         ax2.set_ylabel('Channel #', fontsize=16, fontweight='bold')
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels([int(yt/10 - 16) for yt in ax.get_yticks()], fontsize=12)
-        ax2.set_ylim([0,4000])
+        ax2.set_ylim(ylim)
         try:
             criteria=self.get_edge_attribute(list(g_plt.edges)[0], 'criteria', prophylerGraph=prophylerGraph, src_graph=src_graph)
             ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))

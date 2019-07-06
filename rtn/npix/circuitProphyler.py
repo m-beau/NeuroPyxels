@@ -614,7 +614,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 break
 
     def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', keep_edges_types=None, edges_list=None, src_graph=None, t_asym=1,
-                   edges_width=4, edge_vmin=-5, edge_vmax=5, arrowsize=30, arrowstyle='-|>'):
+                   edges_width=4, edge_vmin=-5, edge_vmax=5, arrowsize=30, arrowstyle='-|>', ylim=[4000, 0]):
         '''
         2 ways to select edges:
             - Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val)
@@ -672,7 +672,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
 
         ax.set_ylabel('Depth (um)', fontsize=16, fontweight='bold')
         ax.set_xlabel('Lat. position (um)', fontsize=16, fontweight='bold')
-        ax.set_ylim([4000,0])
+        ax.set_ylim(ylim)
         ax.set_xlim([0,70])
         ax.tick_params(axis='both', reset=True, labelsize=12)
         ax2 = ax.twinx()

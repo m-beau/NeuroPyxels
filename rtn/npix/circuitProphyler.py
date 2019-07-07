@@ -614,7 +614,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 break
 
     def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', keep_edges_types=None, edges_list=None, src_graph=None, t_asym=1,
-                   nodes_size=300, nodes_color='grey', nodes_outline_color='k', edges_width=4, edge_vmin=-5, edge_vmax=5, arrowsize=30, arrowstyle='-|>', ylim=[4000, 0]):
+                   nodes_size=300, nodes_color='grey', nodes_outline_color='k', edges_width=4, edge_vmin=-5, edge_vmax=5, arrowsize=30, arrowstyle='-|>',
+                   ylim=[4000, 0], figsize=(8, 24)):
         '''
         2 ways to select edges:
             - Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val)
@@ -650,7 +651,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph), 2))\
                   +'@'+str(np.round(self.get_edge_attribute(e, 't', prophylerGraph=prophylerGraph, src_graph=src_graph), 1))+'ms' for e in g_plt.edges}
         
-        fig, ax = plt.subplots(figsize=(8, 24))
+        fig, ax = plt.subplots(figsize=figsize)
         if node_labels:
             nlabs={}
             for node in list(g_plt.nodes):

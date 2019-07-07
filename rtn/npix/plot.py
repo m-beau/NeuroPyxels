@@ -556,7 +556,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
             rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, acg_mn=acg_mn, acg_std=acg_std)
     
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim1=0, ylim2=0, ccg_std=None):
+             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim1=0, ylim2=0, ccg_mn=None, ccg_std=None):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
     bChs=None

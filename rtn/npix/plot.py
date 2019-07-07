@@ -434,8 +434,8 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         ax.set_title(title, size=22)
         ax.tick_params(labelsize=20)
         if ref_per:
-            ax.plot([-1, -1], [0, max(ACG)], color='black', linestyle='--', linewidth=1)
-            ax.plot([1, 1], [0, max(ACG)], color='black', linestyle='--', linewidth=1)
+            ax.plot([-1, -1], [ylim1, ylim2], color='black', linestyle='--', linewidth=1)
+            ax.plot([1, 1], [ylim1, ylim2], color='black', linestyle='--', linewidth=1)
     fig.tight_layout()
     plt.close() if not show else plt.show()
     if saveFig or saveData:

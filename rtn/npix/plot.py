@@ -286,7 +286,7 @@ def plot_wvf_mainCh(data, title = 'Merged units 19, 452, 555', color=(0./255, 0.
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True, 
             show=True, pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, 
-            saveData=False, ylim1=0, ylim2=0,normalize='Hertz', ccg_std=None):
+            saveData=False, ylim1=0, ylim2=0,normalize='Hertz', ccg_mn=None, ccg_std=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -319,8 +319,8 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
 
     if ccg_std is not None:
         ax2 = ax.twinx()
-        ax2.set_ylabel('Crosscorr. (Hz)', fontsize=20, fontweight='bold')
-        ax2ticks=[ast.literal_eval(str(tick))*ccg_std for tick in ax.get_yticks()]
+        ax2.set_ylabel('Crosscorrelation (Hz)', fontsize=20)
+        ax2ticks=[np.round(ccg_mn+tick*ccg_std,2) for tick in ax.get_yticks()]
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels(ax2ticks, fontsize=20)
         ax2.set_ylim([ylim1, ylim2])
@@ -373,7 +373,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     return fig
         
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=True, 
-            show=True, pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0, normalize='Hertz', acg_std=None):
+            show=True, pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -405,8 +405,8 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
 
     if acg_std is not None:
         ax2 = ax.twinx()
-        ax2.set_ylabel('Autocorr. (Hz)', fontsize=20, fontweight='bold')
-        ax2ticks=[ast.literal_eval(str(tick))*acg_std for tick in ax.get_yticks()]
+        ax2.set_ylabel('Autocorrelation (Hz)', fontsize=20)
+        ax2ticks=[np.round(acg_mn+tick*acg_std,2) for tick in ax.get_yticks()]
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels(ax2ticks, fontsize=20)
         ax2.set_ylim([ylim1, ylim2])

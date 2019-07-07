@@ -678,7 +678,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                    width="5%",  # width = 5% of parent_bbox width
                    height="10%",  # height : 50%
                    loc='lower left',
-                   bbox_to_anchor=(1.1, 0., 1, 1),
+                   bbox_to_anchor=(1.15, 0., 1, 1),
                    bbox_transform=ax.transAxes,
                    borderpad=0,
                    )

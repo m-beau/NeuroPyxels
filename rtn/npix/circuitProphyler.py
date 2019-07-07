@@ -614,7 +614,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 break
 
     def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', keep_edges_types=None, edges_list=None, src_graph=None, t_asym=1,
-                   edges_width=4, edge_vmin=-5, edge_vmax=5, arrowsize=30, arrowstyle='-|>', ylim=[4000, 0]):
+                   nodes_size=300, nodes_color='grey', nodes_outline_color='k', edges_width=4, edge_vmin=-5, edge_vmax=5, arrowsize=30, arrowstyle='-|>', ylim=[4000, 0]):
         '''
         2 ways to select edges:
             - Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val)
@@ -664,9 +664,14 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 nlabs[node]=l
             nx.draw_networkx_labels(g_plt,self.peak_positions,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
             #nx.draw_networkx(g, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
-        nx.draw_networkx_nodes(g_plt, pos=self.peak_positions, node_color='grey', alpha=0.8)
+        nx.draw_networkx_nodes(g_plt, pos=self.peak_positions, node_color=nodes_color, edgecolors=nodes_outline_color, alpha=0.8, node_size=nodes_size)
+        
+        edges_cmap=plt.cm.RdBu_r
         nx.draw_networkx_edges(g_plt, pos=self.peak_positions, edge_color=ew, width=edges_width, alpha=1, 
-                               edge_cmap=plt.cm.RdBu_r, edge_vmin=edge_vmin, edge_vmax=edge_vmax, arrowsize=arrowsize, arrowstyle=arrowstyle)
+                               edge_cmap=edges_cmap, edge_vmin=edge_vmin, edge_vmax=edge_vmax, arrowsize=arrowsize, arrowstyle=arrowstyle)
+        sm = plt.cm.ScalarMappable(cmap=edges_cmap, norm=plt.Normalize(vmin = edge_vmin, vmax=edge_vmax))
+        sm._A = []
+        plt.colorbar(sm)
         if edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 
@@ -679,7 +684,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         ax2.set_ylabel('Channel #', fontsize=16, fontweight='bold')
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels([int(yt/10 - 16) for yt in ax.get_yticks()], fontsize=12)
-        ax2.set_ylim(ylim)
+        ax2.set_ylim(ylim[::-1])
         try:
             criteria=self.get_edge_attribute(list(g_plt.edges)[0], 'criteria', prophylerGraph=prophylerGraph, src_graph=src_graph)
             ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))

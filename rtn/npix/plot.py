@@ -5,6 +5,7 @@
 """
 import os
 import os.path as op
+import ast
 
 import numpy as np
 import pandas as pd
@@ -285,7 +286,7 @@ def plot_wvf_mainCh(data, title = 'Merged units 19, 452, 555', color=(0./255, 0.
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True, 
             show=True, pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, 
-            saveData=False, ylim1=0, ylim2=0,normalize='Hertz'):
+            saveData=False, ylim1=0, ylim2=0,normalize='Hertz', ccg_std=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -315,7 +316,15 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
             ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
             ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
     ax.set_ylim([ylim1, ylim2])
-    
+
+    if ccg_std is not None:
+        ax2 = ax.twinx()
+        ax2.set_ylabel('Crosscorr. (Hz)', fontsize=20, fontweight='bold')
+        ax2ticks=[ast.literal_eval(tick)*ccg_std for tick in ax.get_yticks()]
+        ax2.set_yticks(ax.get_yticks())
+        ax2.set_yticklabels(ax2ticks, fontsize=20)
+        ax2.set_ylim([ylim1, ylim2])
+        
     if normalize=='Hertz' or normalize=='Pearson':
         y=CCG.copy()
     elif normalize=='zscore':
@@ -364,7 +373,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     return fig
         
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=True, 
-            show=True, pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0, normalize='Hertz'):
+            show=True, pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0, normalize='Hertz', acg_std=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -393,7 +402,15 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
             ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
             ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
     ax.set_ylim([ylim1, ylim2])
-    
+
+    if acg_std is not None:
+        ax2 = ax.twinx()
+        ax2.set_ylabel('Autocorr. (Hz)', fontsize=20, fontweight='bold')
+        ax2ticks=[ast.literal_eval(tick)*acg_std for tick in ax.get_yticks()]
+        ax2.set_yticks(ax.get_yticks())
+        ax2.set_yticklabels(ax2ticks, fontsize=20)
+        ax2.set_ylim([ylim1, ylim2])
+
     if normalize=='Hertz' or normalize=='Pearson':
         y=ACG.copy()
     elif normalize=='zscore':
@@ -519,7 +536,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
     return fig
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0):
+             pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0, acg_std=None):
     assert type(unit)==int
     saveDir=op.expanduser(saveDir)
     bChs=None
@@ -529,12 +546,15 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
         ft = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_good.csv', sep=',', index_col=0)
         bestChs=np.array(ft["WVF-MainChannel"])
         bChs=[bestChs[np.isin(gu, unit)][0]]
-    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section)
+    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section)
+    if normalize=='zscore':
+        ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section)
+        acg_std=np.std(np.append(ACG_hertz[:int(len(ACG_hertz)*2./5)], ACG_hertz[int(len(ACG_hertz)*3./5):]))
     plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, pdf=pdf, png=png, 
-            rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2)
+            rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, acg_std=acg_std)
     
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim1=0, ylim2=0):
+             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim1=0, ylim2=0, ccg_std=None):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
     bChs=None
@@ -547,9 +567,12 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
 
     if CCG is None:
         CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section)
+        if normalize=='zscore':
+            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section)[0,1,:]
+            ccg_std=np.std(np.append(CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]))
     if CCG.shape[0]==2:
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, pdf, png, rec_section=rec_section, 
-                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
+                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, ccg_std=ccg_std)
     else:
         fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, pdf, png, rec_section=rec_section, labels=labels, title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
         

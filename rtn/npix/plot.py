@@ -570,7 +570,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
     if CCG is None:
         CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section)
         if normalize=='zscore':
-            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section)
+            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section)[0,1,:]
             ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
             ccg_std=np.std(np.append(ccg25, ccg35))
             ccg_mn=np.mean(np.append(ccg25, ccg35))

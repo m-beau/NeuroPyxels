@@ -319,7 +319,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
 
     if ccg_mn is not None and ccg_std is not None:
         ax2 = ax.twinx()
-        ax2.set_ylabel('Crosscorrelation (Hz)', fontsize=20)
+        ax2.set_ylabel('Crosscorrelation (Hz)', fontsize=20, rotation=270)
         ax2ticks=[np.round(ccg_mn+tick*ccg_std,2) for tick in ax.get_yticks()]
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels(ax2ticks, fontsize=20)
@@ -405,7 +405,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
 
     if acg_mn is not None and acg_std is not None:
         ax2 = ax.twinx()
-        ax2.set_ylabel('Autocorrelation (Hz)', fontsize=20)
+        ax2.set_ylabel('Autocorrelation (Hz)', fontsize=20, rotation=270)
         ax2ticks=[np.round(acg_mn+tick*acg_std,2) for tick in ax.get_yticks()]
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels(ax2ticks, fontsize=20)

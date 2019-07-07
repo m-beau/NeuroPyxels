@@ -677,7 +677,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             axins = inset_axes(ax,
                    width="5%",  # width = 5% of parent_bbox width
                    height="10%",  # height : 50%
-                   loc='lower right',
+                   loc='lower left',
                    bbox_to_anchor=(1.05, 0., 1, 1),
                    bbox_transform=ax.transAxes,
                    borderpad=0,

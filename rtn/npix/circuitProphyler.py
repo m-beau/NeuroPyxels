@@ -708,8 +708,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if saveFig:
             saveDir=op.expanduser(saveDir)
             if not os.path.isdir(saveDir): os.mkdir(saveDir)
-            if pdf: fig.savefig(saveDir+'/{}_graph_{}'.format(self.name, criteria))
-            if png: fig.savefig(saveDir+'/{}_graph_{}'.format(self.name, criteria))
+            if pdf: fig.savefig(saveDir+'/{}_graph_{}.pdf'.format(self.name, criteria))
+            if png: fig.savefig(saveDir+'/{}_graph_{}.png'.format(self.name, criteria))
         
         return fig
     

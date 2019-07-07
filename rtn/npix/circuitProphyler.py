@@ -615,7 +615,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
 
     def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', keep_edges_types=None, edges_list=None, src_graph=None, t_asym=1,
                    nodes_size=300, nodes_color='grey', nodes_outline_color='k', edges_width=4, edge_vmin=-5, edge_vmax=5, arrowsize=30, arrowstyle='-|>',
-                   ylim=[4000, 0], figsize=(8, 24)):
+                   ylim=[4000, 0], figsize=(8, 24), show_cmap=True):
         '''
         2 ways to select edges:
             - Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val)
@@ -670,9 +670,10 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         edges_cmap=plt.cm.RdBu_r
         nx.draw_networkx_edges(g_plt, pos=self.peak_positions, edge_color=ew, width=edges_width, alpha=1, 
                                edge_cmap=edges_cmap, edge_vmin=edge_vmin, edge_vmax=edge_vmax, arrowsize=arrowsize, arrowstyle=arrowstyle)
-        sm = plt.cm.ScalarMappable(cmap=edges_cmap, norm=plt.Normalize(vmin = edge_vmin, vmax=edge_vmax))
-        sm._A = []
-        plt.colorbar(sm)
+        if show_cmap:
+            sm = plt.cm.ScalarMappable(cmap=edges_cmap, norm=plt.Normalize(vmin = edge_vmin, vmax=edge_vmax))
+            sm._A = []
+            fig.colorbar(sm, ax=ax, aspect=20, anchor=(0,0))
         if edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 

@@ -682,8 +682,9 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                    bbox_transform=ax.transAxes,
                    borderpad=0,
                    )
-            axins.set_ylabel(r"$\bf{y_label}$",  labelpad=20, rotation=270)
             fig.colorbar(sm, cax=axins)#, ticks=np.arange(edge_vmin, edge_vmax, 2))
+            axins.set_ylabel(r"$\bf{y_label}$",  labelpad=20, rotation=270)
+
         if edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 

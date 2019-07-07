@@ -673,7 +673,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if show_cmap:
             sm = plt.cm.ScalarMappable(cmap=edges_cmap, norm=plt.Normalize(vmin = edge_vmin, vmax=edge_vmax))
             sm._A = []
-            fig.colorbar(sm, ax=ax, aspect=20, anchor=(0,0))
+            fig.colorbar(sm, ax=ax, aspect=10, anchor=(0,0), fraction=0.1)
         if edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 

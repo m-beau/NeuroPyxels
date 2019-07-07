@@ -52,6 +52,7 @@ import time
 import imp
 import os.path as op
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -673,7 +674,15 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if show_cmap:
             sm = plt.cm.ScalarMappable(cmap=edges_cmap, norm=plt.Normalize(vmin = edge_vmin, vmax=edge_vmax))
             sm._A = []
-            fig.colorbar(sm, ax=ax, aspect=10, anchor=(0,0), fraction=0.1)
+            axins = inset_axes(ax,
+                   width="5%",  # width = 5% of parent_bbox width
+                   height="10%",  # height : 50%
+                   loc='lower right',
+                   bbox_to_anchor=(1.05, 0., 1, 1),
+                   bbox_transform=ax.transAxes,
+                   borderpad=0,
+                   )
+            fig.colorbar(sm, cax=axins, ticks=np.arange(edge_vmin, edge_vmax, 1))
         if edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 

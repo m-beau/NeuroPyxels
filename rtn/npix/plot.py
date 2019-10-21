@@ -186,10 +186,13 @@ def plot_wvf_16(datam):
     
     return fig
 
-def plot_wvf_setCh(data, chStart=179, title = 'Mother unit.', Nchannels=8, \
+def plot_wvf_setCh(data, chStart=176, title = 'Probe 3B', Nchannels=12, \
                    color=(0./255, 0./255, 0./255), ampFactor=500, fs=30000, 
                    labels=True, saveDir='~/Downloads', saveFig=False, saveData=False, ylim=0):
-    assert data.shape == (100, 82, 384)
+    try:
+        assert data.shape == (100, 82, 384)
+    except:
+        data=np.reshape(data, data.shape[0:3])
     saveDir=op.expanduser(saveDir)
     chStart = int(min(chStart-1, data.shape[2]-Nchannels-1))
     chEnd = int(chStart+Nchannels)
@@ -237,10 +240,14 @@ def plot_wvf_setCh(data, chStart=179, title = 'Mother unit.', Nchannels=8, \
         ax[i1, i2].spines['left'].set_visible(False)
         ax[i1, i2].spines['bottom'].set_visible(False)
 
-    if labels:
-        fig.suptitle(title, size=20, weight='bold')
+    # if labels:
+    #     fig.suptitle(title, size=20, weight='bold')
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     fig.subplots_adjust(left=0.2, bottom=0.05, right=0.8, top=0.95, wspace=0.1, hspace=0.05)
+    plt.tight_layout()
+    
+    if saveFig:
+        fig.savefig(op.join(saveDir, title+'.pdf'), format='pdf')
     
     return fig
     

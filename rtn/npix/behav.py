@@ -25,7 +25,7 @@ from rtn.npix.spk_t import trn, trnb, isi
 from rtn.npix.corr import ccg
 from rtn.npix.plot import hist_MB
 
-
+#%%
 def list_files(directory, extension):
     return (f for f in os.listdir(directory) if f.endswith('.' + extension))
 
@@ -34,9 +34,9 @@ def import_PAQdata(dp, variables='all'):
     If variables is not a list, all PackIO variables will be exported.'''
     
     vtypes = {'RECON':'digital', 'GAMEON':'digital', 'TRIALON':'digital', 
-              'REW':'digital', 'CUE':'digital', 'LICKS':'digital', 
+              'REW':'digital', 'GHOST_REW':'digital', 'CUE':'digital', 'LICKS':'digital', 
               'VRframes':'digital', 'REW_GHOST':'digital', 'ROT':'analog', 
-              'ROTreal':'analog', 'CameraFrames':'digital', 'LICKS_Piezo':'digital'}
+              'ROTreal':'analog', 'CameraFrames':'digital', 'LICKS_Piezo':'digital', 'LICKS_elec':'digital'}
     paq_dp = dp+'/behavior'
     paq_f = next(list_files(paq_dp, 'paq'))
     paq = paq2py.paq_read(paq_dp+'/'+paq_f)
@@ -101,6 +101,12 @@ def mk_PAQtriggersDic(dp):
     
     return PAQtriggersDic
 
+def mk_PAQtriggersDf(dp):
+    
+    rawPAQVariables = import_PAQdata(dp, 'all')
+    
+    paqdf=pd.DataFrame(columns=['clipOn', 'trialOn', 'movementOn', 'trialOff', 'Reward', 'clipOff'])
+    return paqdf
 #%% 2) Neuropixels sync channel binary variables onsets and offsets, extracted with Nick's and my scripts in matlab 
 ### (/home/ms047/Documents/cortex-git/spikes/preprocessing/extractSyncChannel.m
 ###  and /home/ms047/Dropbox/Science/PhD/Data_Analysis/MatLab_scripts/exportSyncdataToNumpy.m)
@@ -171,8 +177,8 @@ def mk_GLXtriggersDic(dp):
 ### (/home/ms047/Dropbox/Science/PhD/Data_Analysis/5_EncodingDetermination/Rot2p analysis/Rot2p_main.m)
 importVIRMEN=False
 if __name__=='__main__' and importVIRMEN:
-    fd='/media/ms047/DK_probes_backup/DK105_day2'
-    df='/behavior/aligned_data.mat'
+    fd='/media/maxime/Npxl_data2/DK152-153/DK153_190416day1_Probe2_run1'
+    df='/behavior/DK153_2019-04-16.mat'
     aligned_data = sp.io.loadmat(fd+df)['aligned_data']
     trials, summaries = aligned_data['trials'][0,0], aligned_data['summaries'][0,0]
     del aligned_data

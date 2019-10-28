@@ -117,7 +117,7 @@ def extract_syncChan(bp, syncChan=384, fs=30000, ampFactor=500, Nchans=385, save
     if os.path.isfile(rcp):
         return np.load(rcp)
     
-    # Get sync channel, formatted as an string of Nsamples bytes
+    # Get sync channel, formatted as a string of Nsamples bytes
     sc=b''
     with open(bp, 'rb') as f_src:
         # each sample for each channel is encoded on 16 bits = 2 bytes: samples*Nchannels*2.

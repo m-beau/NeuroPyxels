@@ -14,7 +14,7 @@ Commands to properly push modifications to your github repo, packed as a bash fu
 
 # TO BE RUN IN A GIVEN CONDA ENVIRONMENT
 
-`RTNinstall(){
+```RTNinstall(){
     pip install git+https://www.github.com/m-beau/routines.git
 }
 
@@ -32,4 +32,4 @@ RTNpush(){
         git push origin master
         RTNinstall
     fi
-}`
+}```

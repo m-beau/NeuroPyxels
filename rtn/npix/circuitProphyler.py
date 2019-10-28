@@ -64,28 +64,20 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
                     
+from rtn.npix.gl import chan_map
+                    
 import networkx as nx
-
-def chan_map_3A():
-    chan_map_el = npa([[  43.,   20.],
-                       [  11.,   20.],
-                       [  59.,   40.],
-                       [  27.,   40.]])
-    vert=npa([[  0,   40.],
-              [  0,   40.],
-              [  0,   40.],
-              [  0,   40.]])
-    
-    chan_map=chan_map_el.copy()
-    for i in range(96-1):
-        chan_map = np.vstack((chan_map, chan_map_el+vert*(i+1)))
-        
-    return chan_map
 
 class Prophyler:
     '''
+    For single probe recording:
     >>> dp = path/to/kilosort/output
-    >>> ds = Dataset(dp)
+    >>> probe_type = '3A' # default '3A' - probe_type can be: '3A', '3B', '1.0', '2.0_singleshank', 'local' (will use channel map from dp)
+    >>> ds = Dataset(dp, probe_type)
+    
+    For multi probes recordings:
+    >>> dps = {'name_probe_1':[path/to/kilosort/output, 'probe_type'], ...
+            }
     
     Structure of ds: ds generated a networkx graph whose nodes correspond to the dataset units labeled as good.
     Bear in mind that the graph nodes are actual objects, instances of Unit(), making this structure more powerful
@@ -102,7 +94,19 @@ class Prophyler:
     def __repr__(self):
         return 'Neuropixels dataset at {}.'.format(self.dp)
     
-    def __init__(self, datapath):
+    def __init__(self, datapath, probe_version='3A'):
+        # typ_e=TypeError('''datapath should either be a string 'path/to/kilosort/output',
+        #                        or a dict of above-mentioned strings {'name_probe_1':'path/to/kilosort/output', ...}''')
+        # if type(datapaths) is not dict and type(datapaths) is not str:
+        #     raise typ_e
+        # if type(datapaths) is dict:
+        #     for i, v in datapaths.items():
+        #         if type(i) is not str or type(v) is not str:
+        #             raise typ_e
+        # if type(datapaths) is str:
+        #     datapaths={'Probe':datapaths}
+        
+        # for prb, datapath in datapaths.items():
         self.dp = op.expanduser(datapath)
         self.name=self.dp.split('/')[-1]
         self.params={}; params=imp.load_source('params', op.join(self.dp,'params.py'))
@@ -110,6 +114,7 @@ class Prophyler:
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
         self.fs=self.params['sample_rate']
         self.endTime=int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
+        self.chan_map=chan_map(probe_version, self.dp)
         
         # Create a networkX graph whose nodes are Units()
         self.dpnet=op.join(self.dp, 'network')
@@ -142,7 +147,7 @@ class Prophyler:
             self.get_peak_channels()
             
             # Get peak channel xy positions
-            chan_pos=chan_map_3A()[::-1] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
+            chan_pos=self.chan_map[:,1:] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
             peak_pos = npa(zeros=(len(self.peak_channels), 3))
             for i, (u,c) in enumerate(self.peak_channels.items()): # find peak positions in x,y
                 peak_pos[i,:]=np.append([u], (chan_pos[c]).flatten())
@@ -950,7 +955,7 @@ class Unit:
             self.get_peak_channel()
             
             # Get peak channel xy positions
-            chan_pos=chan_map_3A()[::-1] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
+            chan_pos=self.chan_map[:,1:] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
             self.peak_position_real=chan_pos[self.peak_channel].flatten() # find peak positions in x,y
 
         else:

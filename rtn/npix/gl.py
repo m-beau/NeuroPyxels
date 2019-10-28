@@ -7,9 +7,53 @@
 Dataset: Neuropixels dataset -> dp is phy directory (kilosort or spyking circus output)
 """
 import os
+import os.path as op
 
 import numpy as np
 import pandas as pd
+
+from rtn.utils import npa
+
+def chan_map(probe_version='3A', dp=None):
+    assert probe_version in ['3A', '3B', '1.0', '2.0_singleshank', 'local']
+    
+    if probe_version in probe_version in ['3A', '3B', '1.0']:
+        Nchan=384
+        chan_map_el = npa([[  27,   0],
+                           [  59,   0],
+                           [  11,   20],
+                           [  43,   20]])
+        vert=npa([[  0,   40],
+                  [  0,   40],
+                  [  0,   40],
+                  [  0,   40]])
+        
+        chan_map=chan_map_el.copy()
+        for i in range(int(Nchan/chan_map_el.shape[0])-1):
+            chan_map = np.vstack((chan_map, chan_map_el+vert*(i+1)))
+        chan_map=np.hstack([np.arange(Nchan)])
+        
+    elif probe_version=='2.0_singleshank':
+        Nchan=384
+        chan_map_el = npa([[  0,   0],
+                           [  32,   0]])
+        vert=npa([[  0,   15],
+                  [  0,   15]])
+        
+        chan_map=chan_map_el.copy()
+        for i in range(int(Nchan/chan_map_el.shape[0])-1):
+            chan_map = np.vstack((chan_map, chan_map_el+vert*(i+1)))
+        chan_map=np.hstack([np.arange(Nchan)])
+    
+    elif probe_version=='local':
+        if dp is None:
+            raise ValueError("dp argument is not provided - when channel map is \
+                             atypical and probe_version is hence called 'local', \
+                             the datapath needs to be provided to load the channel map.")
+        cm=np.load(op.join(dp, 'channel_map.npy'));cp=np.load(op.join(dp, 'channel_positions.npy'));
+        chan_map=npa(np.hstack([cm, cp]), dtype=np.int32)
+        
+    return chan_map
 
 def get_units(dp):
     f1=dp+'/cluster_group.tsv'

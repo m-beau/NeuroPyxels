@@ -955,7 +955,7 @@ class Unit:
             self.get_peak_channel()
             
             # Get peak channel xy positions
-            chan_pos=self.chan_map[:,1:] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
+            chan_pos=self.ds.chan_map[:,1:] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
             self.peak_position_real=chan_pos[self.peak_channel].flatten() # find peak positions in x,y
 
         else:

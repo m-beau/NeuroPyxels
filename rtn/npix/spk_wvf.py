@@ -82,7 +82,7 @@ def get_best_chan(dp, unit):
     best_chan = np.argwhere(np.max(abs(wvf_m),1) == np.max(np.max(abs(wvf_m),1)))
     return best_chan
 
-def get_channels(dp, units=None):
+def get_depthSorted_channels(dp, units=None):
     if ~np.any(units):
         units=get_units(dp)
     

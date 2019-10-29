@@ -7,19 +7,34 @@ import os.path as op
 import imp
 
 import numpy as np
+from math import ceil
 from scipy import signal
 
-from rtn.npix import spk_t
-from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice, Selector
+from rtn.npix.spk_t import ids
+from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice
 from rtn.utils import _as_array
 
 dp='/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1'
 
 #%% Concise home made function
-def get_wvf(dp, unit, n_samples_waveforms=100, n_channels_around=384, batch_size_waveforms=10):
+def get_wvf(dp, unit, n_waveforms=200, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10):
+    '''Function to extract a subset of waveforms from a given unit.
+    Parameters:
+        - dp:
+        - unit:
+        - n_waveforms:
+        - t_waveforms:
+        - wvf_subset_selection: either 'regular' (homogeneous selection or in batches) or 'random'
+        - wvf_batch_size: if >1 and 'regular' selection, selects ids as batches of spikes.
     
+    Returns:
+        waveforms: numpy array of shape (n_waveforms, t_waveforms, n_channels) where n_channels is defined by the channel map.
+    
+    WARNING: waveforms are neither whitened nor common average referenced.
+    '''
     # Extract metadata
-    channel_ids = np.load(op.join(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
+    channel_ids_abs = np.load(op.join(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
+    channel_ids_rel = np.arange(channel_ids_abs.shape[0])
     params={}; par=imp.load_source('params', op.join(dp,'params.py'))
     for p in dir(par):
         exec("if '__'not in '{}': params['{}']=par.{}".format(p, p, p))
@@ -31,39 +46,85 @@ def get_wvf(dp, unit, n_samples_waveforms=100, n_channels_around=384, batch_size
     n_samples = (op.getsize(dat_path) - params['offset']) // (item_size * params['n_channels_dat'])
     traces = np.memmap(dat_path, dtype=params['dtype'], shape=(n_samples, params['n_channels_dat']),
                          offset=params['offset'])
-    traces = ConcatenatedArrays([traces], channel_ids, scaling=None)
+    traces = ConcatenatedArrays([traces], channel_ids_abs, scaling=None) # Here, the ABSOLUTE channel indices must be used to extract the correct channels
     
-    # Get spike times
+    # Get spike times subset
     spike_samples = np.load(op.join(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
+    spike_ids_subset=get_ids_subset(dp, unit, n_waveforms, wvf_batch_size, wvf_subset_selection)
     
-    # Get sample of spike ids and relevant channel bank of unit
-    # def _set_supervisor(self):
-    #     # Load the new cluster id.
-    #     new_cluster_id = self.context.load('new_cluster_id'). \
-    #         get('new_cluster_id', None)
-    #     cluster_groups = self.model.get_metadata('group')
-    #     supervisor = Supervisor(self.model.spike_clusters,
-    #                             similarity=self.similarity,
-    #                             cluster_groups=cluster_groups,
-    #                             new_cluster_id=new_cluster_id,
-    #                             context=self.context,
-    #                             )
-    # spikes_per_cluster=supervisor.clustering.spikes_per_cluster[cluster_id]
-    
-    spikes_per_cluster=spk_t.ids(dp, unit)
-    spike_ids = Selector(spikes_per_cluster).select_spikes([unit], n_samples_waveforms,batch_size_waveforms)
-        
-    # Extract waveforms i.e. bits of traces at the right spike times
+    # Extract waveforms i.e. bits of traces at spike times subset
     waveform_loader=WaveformLoader(traces=traces,
                                       spike_samples=spike_samples,
-                                      n_samples_waveforms=n_samples_waveforms,
+                                      n_samples_waveforms=t_waveforms,
                                       filter_order=params['filter_order'],
-                                      sample_rate=params['sample_rate'],
-                                      )
+                                      sample_rate=params['sample_rate'])
     
-    waveforms = waveform_loader.get(spike_ids, channel_ids)
+    waveforms = waveform_loader.get(spike_ids_subset, channel_ids_rel) # Here, the relative indices must be used since only n_channel traces were extracted.
     
     return  waveforms
+
+def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, subset):
+    assert subset in ['regular', 'random']
+    if n_waveforms in (None, 0):
+        ids_subset = ids(dp, unit)
+    else:
+        assert n_waveforms > 0
+        spike_ids = ids(dp, unit)
+        if subset == 'regular':
+            # Regular subselection.
+            if batch_size_waveforms is None or len(spike_ids) <= max(batch_size_waveforms, n_waveforms):
+                step = ceil(np.clip(1. / n_waveforms * len(spike_ids),
+                             1, len(spike_ids)))
+                ids_subset = spike_ids[0::step][:n_waveforms] #regular_subset(spike_ids, n_spikes_max=n_samples_waveforms)
+            else:
+                # Batch selections of spikes.
+                n_excerpts=n_waveforms // batch_size_waveforms
+                excerpt_size=batch_size_waveforms
+                ids_subset = np.concatenate([data_chunk(spike_ids, chunk)
+                          for chunk in excerpts(len(spike_ids),
+                                                n_excerpts=n_excerpts,
+                                                excerpt_size=excerpt_size)]) #get_excerpts(spike_ids, n_samples_waveforms // batch_size_waveforms, batch_size_waveforms)
+        elif subset == 'random' and len(spike_ids) > n_waveforms:
+            # Random subselection.
+            ids_subset = np.unique(np.random.choice(spike_ids, n_waveforms, replace=False))
+            
+    return ids_subset
+
+def data_chunk(data, chunk, with_overlap=False):
+    """Get a data chunk."""
+    assert isinstance(chunk, tuple)
+    if len(chunk) == 2:
+        i, j = chunk
+    elif len(chunk) == 4:
+        if with_overlap:
+            i, j = chunk[:2]
+        else:
+            i, j = chunk[2:]
+    else:
+        raise ValueError("'chunk' should have 2 or 4 elements, "
+                         "not {0:d}".format(len(chunk)))
+    return data[i:j, ...]
+
+def excerpts(n_samples, n_excerpts=None, excerpt_size=None):
+    """Yield (start, end) where start is included and end is excluded."""
+    assert n_excerpts >= 2
+    step = _excerpt_step(n_samples,
+                         n_excerpts=n_excerpts,
+                         excerpt_size=excerpt_size)
+    for i in range(n_excerpts):
+        start = i * step
+        if start >= n_samples:
+            break
+        end = min(start + excerpt_size, n_samples)
+        yield start, end
+
+def _excerpt_step(n_samples, n_excerpts=None, excerpt_size=None):
+    """Compute the step of an excerpt set as a function of the number
+    of excerpts or their sizes."""
+    assert n_excerpts >= 2
+    step = max((n_samples - excerpt_size) // (n_excerpts - 1),
+               excerpt_size)
+    return step
 
 #%% Waveform loader from phy
 
@@ -158,6 +219,7 @@ class WaveformLoader(object):
 
     def get(self, spike_ids, channels=None):
         """Load the waveforms of the specified spikes."""
+        
         if isinstance(spike_ids, slice):
             spike_ids = _range_from_slice(spike_ids,
                                           start=0,
@@ -176,7 +238,7 @@ class WaveformLoader(object):
         # Ensure a list of time samples are being requested.
         spike_ids = _as_array(spike_ids)
         n_spikes = len(spike_ids)
-
+        
         # Initialize the array.
         # NOTE: last dimension is time to simplify things.
         shape = (n_spikes, nc, self._n_samples_extract)

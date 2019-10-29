@@ -3,6 +3,7 @@
 2018-07-20
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
+
 import os.path as op
 import imp
 
@@ -11,13 +12,15 @@ from math import ceil
 from scipy import signal
 
 from rtn.npix.spk_t import ids
+from rtn.npix.gl import get_units
 from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice
-from rtn.utils import _as_array
+from rtn.utils import _as_array, npa
 
 dp='/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1'
 
 #%% Concise home made function
-def get_wvf(dp, unit, n_waveforms=200, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10):
+
+def get_wvf(dp, unit, n_waveforms=200, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, ampFactor=500, probe_type='3A'):
     '''Function to extract a subset of waveforms from a given unit.
     Parameters:
         - dp:
@@ -61,8 +64,55 @@ def get_wvf(dp, unit, n_waveforms=200, t_waveforms=82, wvf_subset_selection='reg
     
     waveforms = waveform_loader.get(spike_ids_subset, channel_ids_rel) # Here, the relative indices must be used since only n_channel traces were extracted.
     
+    # Correct voltage values
+    assert probe_type in ['3A', '3B', '1.0', '2.0', '2.0singleshank']
+    if probe_type in ['3A', '3B', '1.0']:
+        Vrange=1.2e6
+        bits_encoding=10
+    elif probe_type in ['2.0', '2.0singleshank']:
+        Vrange=1.2e6
+        bits_encoding=14
+    waveforms*=(Vrange/2**bits_encoding/ampFactor) # (voltageRange/2^10bitsEncoding/amplification_gain, typically 500)
+    
     return  waveforms
 
+def get_best_chan(dp, unit):
+    waveforms=get_wvf(dp, unit, 1000)
+    wvf_m = np.rollaxis(waveforms.mean(0),1)
+    best_chan = np.argwhere(np.max(abs(wvf_m),1) == np.max(np.max(abs(wvf_m),1)))
+    return best_chan
+
+def get_channels(dp, units=None):
+    if ~np.any(units):
+        units=get_units(dp)
+    
+    bestChs=[]
+    for u in units:
+        bestChs.append(get_best_chan(dp, u))
+    depthIdx = np.argsort(npa(bestChs))[::-1] # From surface (high ch) to DCN (low ch)
+    
+    units = units[depthIdx]
+    channels = bestChs[depthIdx]
+
+    return units, channels
+
+
+def get_chDis(dp, ch1, ch2):
+    '''dp: datapath to dataset
+    ch1, ch2: channel indices (1 to 384)
+    returns distance in um.'''
+    assert 1<=ch1<=384
+    assert 1<=ch2<=384
+    ch_pos = np.load(op.join(dp,'channel_positions.npy')) # positions in um	
+    ch_pos1=ch_pos[ch1-1] # convert from ch number to ch relative index	
+    ch_pos2=ch_pos[ch2-1] # convert from ch number to ch relative index	
+    chDis=np.sqrt((ch_pos1[0]-ch_pos2[0])**2+(ch_pos1[1]-ch_pos2[1])**2)
+    return chDis
+
+
+
+#%% get_wvf utilities
+    
 def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, subset):
     assert subset in ['regular', 'random']
     if n_waveforms in (None, 0):

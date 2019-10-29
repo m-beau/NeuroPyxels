@@ -11,12 +11,14 @@ import psutil
 import os
 
 import numpy as np
-import pandas as pd
+import math
+from math import floor, exp
+
 import matplotlib.pyplot as plt
 
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
                     npa, sign, minus_is_1, thresh, smooth, \
-                    _as_array, _unique, _index_of
+                    _as_array, _unique, _index_of, _is_array_like
 
 #%% raw data extraction
 
@@ -202,7 +204,322 @@ def plot_raw(bp, times, channels=np.arange(385), offset=450, fs=30000, ampFactor
     
     return fig
 
+#%% I/O array functions from phy
+    
+def _start_stop(item):
+    """Find the start and stop indices of a __getitem__ item.
 
+    This is used only by ConcatenatedArrays.
+
+    Only two cases are supported currently:
+
+    * Single integer.
+    * Contiguous slice in the first dimension only.
+
+    """
+    if isinstance(item, tuple):
+        item = item[0]
+    if isinstance(item, slice):
+        # Slice.
+        if item.step not in (None, 1):
+            raise NotImplementedError()
+        return item.start, item.stop
+    elif isinstance(item, (list, np.ndarray)):
+        # List or array of indices.
+        return np.min(item), np.max(item)
+    else:
+        # Integer.
+        return item, item + 1
+
+def _fill_index(arr, item):
+    if isinstance(item, tuple):
+        item = (slice(None, None, None),) + item[1:]
+        return arr[item]
+    else:
+        return arr
+
+class ConcatenatedArrays(object):
+    """This object represents a concatenation of several memory-mapped
+    arrays. Coming from phy.io.array.py"""
+    def __init__(self, arrs, cols=None, scaling=None):
+        assert isinstance(arrs, list)
+        self.arrs = arrs
+        # Reordering of the columns.
+        self.cols = cols
+        self.offsets = np.concatenate([[0], np.cumsum([arr.shape[0]
+                                                       for arr in arrs])],
+                                      axis=0)
+        self.dtype = arrs[0].dtype if arrs else None
+        self.scaling = scaling
+
+    @property
+    def shape(self):
+        if self.arrs[0].ndim == 1:
+            return (self.offsets[-1],)
+        ncols = (len(self.cols) if self.cols is not None
+                 else self.arrs[0].shape[1])
+        return (self.offsets[-1], ncols)
+
+    def _get_recording(self, index):
+        """Return the recording that contains a given index."""
+        assert index >= 0
+        recs = np.nonzero((index - self.offsets[:-1]) >= 0)[0]
+        if len(recs) == 0:  # pragma: no cover
+            # If the index is greater than the total size,
+            # return the last recording.
+            return len(self.arrs) - 1
+        # Return the last recording such that the index is greater than
+        # its offset.
+        return recs[-1]
+
+    def _get(self, item):
+        cols = self.cols if self.cols is not None else slice(None, None, None)
+        # Get the start and stop indices of the requested item.
+        start, stop = _start_stop(item)
+        # Return the concatenation of all arrays.
+        if start is None and stop is None:
+            return np.concatenate(self.arrs, axis=0)[..., cols]
+        if start is None:
+            start = 0
+        if stop is None:
+            stop = self.offsets[-1]
+        if stop < 0:
+            stop = self.offsets[-1] + stop
+        # Get the recording indices of the first and last item.
+        rec_start = self._get_recording(start)
+        rec_stop = self._get_recording(stop)
+        assert 0 <= rec_start <= rec_stop < len(self.arrs)
+        # Find the start and stop relative to the arrays.
+        start_rel = start - self.offsets[rec_start]
+        stop_rel = stop - self.offsets[rec_stop]
+        # Single array case.
+        if rec_start == rec_stop:
+            # Apply the rest of the index.
+            out = _fill_index(self.arrs[rec_start][start_rel:stop_rel], item)
+            out = out[..., cols]
+            return out
+        chunk_start = self.arrs[rec_start][start_rel:]
+        chunk_stop = self.arrs[rec_stop][:stop_rel]
+        # Concatenate all chunks.
+        l = [chunk_start]
+        if rec_stop - rec_start >= 2:
+            print("Loading a full virtual array: this might be slow "
+                        "and something might be wrong.")
+            l += [self.arrs[r][...] for r in range(rec_start + 1,
+                                                   rec_stop)]
+        l += [chunk_stop]
+        # Apply the rest of the index.
+        return _fill_index(np.concatenate(l, axis=0), item)[..., cols]
+
+    def __getitem__(self, item):
+        out = self._get(item)
+        assert out is not None
+        if self.scaling is not None and self.scaling != 1:
+            out = out * self.scaling
+        return out
+
+    def __len__(self):
+        return self.shape[0]
+
+def _pad(arr, n, dir='right'):
+    """Pad an array with zeros along the first axis.
+
+    Parameters
+    ----------
+
+    n : int
+        Size of the returned array in the first axis.
+    dir : str
+        Direction of the padding. Must be one 'left' or 'right'.
+
+    """
+    assert dir in ('left', 'right')
+    if n < 0:
+        raise ValueError("'n' must be positive: {0}.".format(n))
+    elif n == 0:
+        return np.zeros((0,) + arr.shape[1:], dtype=arr.dtype)
+    n_arr = arr.shape[0]
+    shape = (n,) + arr.shape[1:]
+    if n_arr == n:
+        assert arr.shape == shape
+        return arr
+    elif n_arr < n:
+        out = np.zeros(shape, dtype=arr.dtype)
+        if dir == 'left':
+            out[-n_arr:, ...] = arr
+        elif dir == 'right':
+            out[:n_arr, ...] = arr
+        assert out.shape == shape
+        return out
+    else:
+        if dir == 'left':
+            out = arr[-n:, ...]
+        elif dir == 'right':
+            out = arr[:n, ...]
+        assert out.shape == shape
+        return out
+    
+def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
+    """Convert a slice to an array of integers."""
+    assert isinstance(myslice, slice)
+    # Find 'step'.
+    step = myslice.step if myslice.step is not None else step
+    if step is None:
+        step = 1
+    # Find 'start'.
+    start = myslice.start if myslice.start is not None else start
+    if start is None:
+        start = 0
+    # Find 'stop' as a function of length if 'stop' is unspecified.
+    stop = myslice.stop if myslice.stop is not None else stop
+    if length is not None:
+        stop_inferred = floor(start + step * length)
+        if stop is not None and stop < stop_inferred:
+            raise ValueError("'stop' ({stop}) and ".format(stop=stop) +
+                             "'length' ({length}) ".format(length=length) +
+                             "are not compatible.")
+        stop = stop_inferred
+    if stop is None and length is None:
+        raise ValueError("'stop' and 'length' cannot be both unspecified.")
+    myrange = np.arange(start, stop, step)
+    # Check the length if it was specified.
+    if length is not None:
+        assert len(myrange) == length
+    return myrange
+
+class Selector(object):
+    """This object is passed with the `select` event when clusters are
+    selected. It allows to make selections of spikes."""
+    def __init__(self, spikes_per_cluster):
+        # NOTE: spikes_per_cluster is a function.
+        self.spikes_per_cluster = spikes_per_cluster
+
+    def select_spikes(self, cluster_ids=None,
+                      max_n_spikes_per_cluster=None,
+                      batch_size=None,
+                      subset=None,
+                      ):
+        if cluster_ids is None or not len(cluster_ids):
+            return None
+        ns = max_n_spikes_per_cluster
+        assert len(cluster_ids) >= 1
+        # Select a subset of the spikes.
+        return select_spikes(cluster_ids,
+                             spikes_per_cluster=self.spikes_per_cluster,
+                             max_n_spikes_per_cluster=ns,
+                             batch_size=batch_size,
+                             subset=subset,
+                             )
+
+def select_spikes(cluster_ids=None,
+                  max_n_spikes_per_cluster=None,
+                  spikes_per_cluster=None,
+                  batch_size=None,
+                  subset=None,
+                  ):
+    """Return a selection of spikes belonging to the specified clusters."""
+    subset = subset or 'regular'
+    assert _is_array_like(cluster_ids)
+    if not len(cluster_ids):
+        return np.array([], dtype=np.int64)
+    if max_n_spikes_per_cluster in (None, 0):
+        selection = {c: spikes_per_cluster(c) for c in cluster_ids}
+    else:
+        assert max_n_spikes_per_cluster > 0
+        selection = {}
+        n_clusters = len(cluster_ids)
+        for cluster in cluster_ids:
+            # Decrease the number of spikes per cluster when there
+            # are more clusters.
+            n = int(max_n_spikes_per_cluster * exp(-.1 * (n_clusters - 1)))
+            n = max(1, n)
+            spike_ids = spikes_per_cluster(cluster)
+            if subset == 'regular':
+                # Regular subselection.
+                if batch_size is None or len(spike_ids) <= max(batch_size, n):
+                    spike_ids = regular_subset(spike_ids, n_spikes_max=n)
+                else:
+                    # Batch selections of spikes.
+                    spike_ids = get_excerpts(spike_ids,
+                                             n // batch_size,
+                                             batch_size)
+            elif subset == 'random' and len(spike_ids) > n:
+                # Random subselection.
+                spike_ids = np.random.choice(spike_ids, n, replace=False)
+                spike_ids = np.unique(spike_ids)
+            selection[cluster] = spike_ids
+    return _flatten_per_cluster(selection)
+
+def regular_subset(spikes, n_spikes_max=None, offset=0):
+    """Prune the current selection to get at most n_spikes_max spikes."""
+    assert spikes is not None
+    # Nothing to do if the selection already satisfies n_spikes_max.
+    if n_spikes_max is None or len(spikes) <= n_spikes_max:  # pragma: no cover
+        return spikes
+    step = math.ceil(np.clip(1. / n_spikes_max * len(spikes),
+                             1, len(spikes)))
+    step = int(step)
+    # Note: randomly-changing selections are confusing...
+    my_spikes = spikes[offset::step][:n_spikes_max]
+    assert len(my_spikes) <= len(spikes)
+    assert len(my_spikes) <= n_spikes_max
+    return my_spikes
+
+def _flatten_per_cluster(per_cluster):
+    """Convert a dictionary {cluster: spikes} to a spikes array."""
+    return np.sort(np.concatenate(list(per_cluster.values()))).astype(np.int64)
+
+def get_excerpts(data, n_excerpts=None, excerpt_size=None):
+    assert n_excerpts is not None
+    assert excerpt_size is not None
+    if len(data) < n_excerpts * excerpt_size:
+        return data
+    elif n_excerpts == 0:
+        return data[:0]
+    elif n_excerpts == 1:
+        return data[:excerpt_size]
+    out = np.concatenate([data_chunk(data, chunk)
+                          for chunk in excerpts(len(data),
+                                                n_excerpts=n_excerpts,
+                                                excerpt_size=excerpt_size)])
+    assert len(out) <= n_excerpts * excerpt_size
+    return out
+
+def data_chunk(data, chunk, with_overlap=False):
+    """Get a data chunk."""
+    assert isinstance(chunk, tuple)
+    if len(chunk) == 2:
+        i, j = chunk
+    elif len(chunk) == 4:
+        if with_overlap:
+            i, j = chunk[:2]
+        else:
+            i, j = chunk[2:]
+    else:
+        raise ValueError("'chunk' should have 2 or 4 elements, "
+                         "not {0:d}".format(len(chunk)))
+    return data[i:j, ...]
+
+def excerpts(n_samples, n_excerpts=None, excerpt_size=None):
+    """Yield (start, end) where start is included and end is excluded."""
+    assert n_excerpts >= 2
+    step = _excerpt_step(n_samples,
+                         n_excerpts=n_excerpts,
+                         excerpt_size=excerpt_size)
+    for i in range(n_excerpts):
+        start = i * step
+        if start >= n_samples:
+            break
+        end = min(start + excerpt_size, n_samples)
+        yield start, end
+
+def _excerpt_step(n_samples, n_excerpts=None, excerpt_size=None):
+    """Compute the step of an excerpt set as a function of the number
+    of excerpts or their sizes."""
+    assert n_excerpts >= 2
+    step = max((n_samples - excerpt_size) // (n_excerpts - 1),
+               excerpt_size)
+    return step
 
 """
 

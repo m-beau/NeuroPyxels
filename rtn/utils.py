@@ -1109,7 +1109,8 @@ def _test_graph_cross(window = 11):
     pylab.plot(crossings, y_cross, "b+")
     pylab.show()
     
-    
+def _is_array_like(arr):
+    return isinstance(arr, (list, np.ndarray))
     
 if __name__ == "__main__":
     from math import pi

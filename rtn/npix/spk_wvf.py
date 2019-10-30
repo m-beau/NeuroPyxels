@@ -18,7 +18,8 @@ from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice
 from rtn.utils import _as_array, npa
 
 dp='/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1'
-
+unit=1820
+n_waveforms=100;t_waveforms=82;wvf_subset_selection='regular';wvf_batch_size=10;ampFactor=500;probe_type='3A'
 #%% Concise home made function
 
 def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, ampFactor=500, probe_type='3A', sav=True, prnt=True):
@@ -95,14 +96,10 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     # Compute traces from binary file
     item_size = np.dtype(params['dtype']).itemsize
     n_samples = (op.getsize(dat_path) - params['offset']) // (item_size * params['n_channels_dat'])
-    traces = np.memmap(dat_path, dtype=params['dtype'], shape=(n_samples, params['n_channels_dat']),
+    trc = np.memmap(dat_path, dtype=params['dtype'], shape=(n_samples, params['n_channels_dat']),
                          offset=params['offset'])
-    traces = ConcatenatedArrays([traces], channel_ids_abs, scaling=None) # Here, the ABSOLUTE channel indices must be used to extract the correct channels
-    
-    # Common average referencing
-    
-    
-    
+    traces = ConcatenatedArrays([trc], channel_ids_abs, scaling=None) # Here, the ABSOLUTE channel indices must be used to extract the correct channels
+
     # Get spike times subset
     spike_samples = np.load(op.join(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
     spike_ids_subset=get_ids_subset(dp, unit, n_waveforms, wvf_batch_size, wvf_subset_selection)
@@ -116,8 +113,15 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     
     waveforms = waveform_loader.get(spike_ids_subset, channel_ids_rel) # Here, the relative indices must be used since only n_channel traces were extracted.
     
+    # Common average referencing: substract median for each channel, then median for each time point
+    medians_chan=np.median(traces[:1000000, :], 0).reshape((1,1)+(waveforms.shape[2],)) # across time for each channel
+    medians_chan=np.repeat(medians_chan, waveforms.shape[0], axis=0)
+    medians_chan=np.repeat(medians_chan, waveforms.shape[1], axis=1)
+    medians_t = np.median(waveforms, axis=2).reshape(waveforms.shape[:2]+(1,)) # across channels for each time point
+    medians_t = np.repeat(medians_t, waveforms.shape[2], axis=2)
+    waveforms=waveforms-medians_chan-medians_t
     
-    # Correct voltage values
+    # Correct voltage scaling
     assert probe_type in ['3A', '3B', '1.0', '2.0', '2.0singleshank']
     if probe_type in ['3A', '3B', '1.0']:
         Vrange=1.2e6

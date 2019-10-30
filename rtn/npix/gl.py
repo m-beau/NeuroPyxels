@@ -55,7 +55,8 @@ def chan_map(probe_version='3A', dp=None):
         
     return cm
 
-def get_units(dp):
+def get_units(dp, quality='all'):
+    assert quality in ['all', 'good', 'mua', 'noise']
     f1=dp+'/cluster_group.tsv'
     f2=dp+'/cluster_groups.csv'
     if os.path.isfile(f1):
@@ -66,29 +67,14 @@ def get_units(dp):
         print('cluster groups table not found in provided data path. Exiting.')
         return
     try:
-        if np.all(np.isnan(cl_grp['group'])): # Units have not been given a class yet
-            units=[]
-        else:
-            units = cl_grp.loc[:, 'cluster_id']
+        np.all(np.isnan(cl_grp['group'])) # Units have not been given a class yet
+        units=[]
     except:
-        units = cl_grp.loc[:, 'cluster_id']
+        if quality=='all':
+            units = cl_grp.loc[:, 'cluster_id']
+        else:
+            units = cl_grp.loc[np.nonzero(cl_grp['group']==quality)[0], 'cluster_id']
     return np.array(units, dtype=np.int64)
 
 def get_good_units(dp):
-    f1=dp+'/cluster_group.tsv'
-    f2=dp+'/cluster_groups.csv'
-    if os.path.isfile(f1):
-        cl_grp = pd.read_csv(f1,delimiter='	')
-    elif os.path.isfile(f2):
-        cl_grp = pd.read_csv(f2)
-    else:
-        print('cluster groups table not found in provided data path. Exiting.')
-        return
-    try:
-        if np.all(np.isnan(cl_grp['group'])): # Units have not been given a class yet
-            goodUnits=[]
-        else:
-            goodUnits = cl_grp.loc[np.nonzero(cl_grp['group']=='good')[0], 'cluster_id']
-    except:
-        goodUnits = cl_grp.loc[np.nonzero(cl_grp['group']=='good')[0], 'cluster_id']
-    return np.array(goodUnits, dtype=np.int64)
+    return get_units(dp, quality='good')

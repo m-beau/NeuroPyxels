@@ -4,6 +4,7 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 
+import os
 import os.path as op
 import imp
 
@@ -20,7 +21,54 @@ dp='/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run
 
 #%% Concise home made function
 
-def get_wvf(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, ampFactor=500, probe_type='3A'):
+def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, ampFactor=500, probe_type='3A', sav=True, prnt=True):
+    '''
+    ********
+    routine from rtn.npix.spk_wvf
+    Extracts a sample of waveforms from the raw data file.
+    ********
+    
+    Parameters:
+        - dp:
+        - unit:
+        - n_waveforms:
+        - t_waveforms:
+        - wvf_subset_selection: either 'regular' (homogeneous selection or in batches) or 'random'
+        - wvf_batch_size: if >1 and 'regular' selection, selects ids as batches of spikes.
+    
+    Returns:
+        waveforms: numpy array of shape (n_waveforms, t_waveforms, n_channels) where n_channels is defined by the channel map.
+    
+    WARNING: waveforms are neither whitened nor common average referenced.
+    '''
+    dprm = dp+'/routinesMemory'
+    if not os.path.isdir(dprm):
+        os.makedirs(dprm)
+    if os.path.exists(dprm+'/wvf{}_{}-{}.npy'.format(u, n_waveforms, t_waveforms)):
+        if prnt: print("File wvf{}_{}-{}.npy found in routines memory.".format(u, n_waveforms, t_waveforms))
+        waveforms = np.load(dprm+'/wvf{}_{}-{}.npy'.format(u, n_waveforms, t_waveforms))
+
+    # if not, compute it
+    else:
+        dpme = dp+'/manualExports'
+        fn="/wvf_[{}].npy".format(u)
+        if n_waveforms==100 and t_waveforms==82:
+            if os.path.exists(dpme+fn):
+                waveforms = np.load(dpme+fn)
+                if prnt: print("File wvf_[{}].npy found in phy manual exports.".format(u))
+            else:
+                if prnt: print('''File wvf_[{}].npy not found exports (snippet reminder :export_wvf).'''.format(u))
+        else:
+            waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, ampFactor, probe_type)
+                
+        # Save it
+        if sav:
+            np.save(dprm+'/wvf{}_{}-{}.npy'.format(u, n_waveforms, t_waveforms), waveforms)
+    # Either return or draw to global namespace
+    return waveforms
+
+
+def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, ampFactor=500, probe_type='3A'):
     '''Function to extract a subset of waveforms from a given unit.
     Parameters:
         - dp:
@@ -76,25 +124,22 @@ def get_wvf(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection='reg
     
     return  waveforms
 
-def get_best_chan(dp, unit):
-    waveforms=get_wvf(dp, unit, 1000)
+def get_main_chan(dp, unit):
+    waveforms=wvf(dp, unit, 200)
     wvf_m = np.rollaxis(waveforms.mean(0),1)
     best_chan = np.argwhere(np.max(abs(wvf_m),1) == np.max(np.max(abs(wvf_m),1)))
     return best_chan
 
-def get_depthSorted_channels(dp, units=None):
+def get_depthSort_mainChans(dp, units=None, quality='all'):
     if ~np.any(units):
-        units=get_units(dp)
-    
-    bestChs=[]
-    for u in units:
-        bestChs.append(get_best_chan(dp, u))
-    depthIdx = np.argsort(npa(bestChs))[::-1] # From surface (high ch) to DCN (low ch)
-    
-    units = units[depthIdx]
-    channels = bestChs[depthIdx]
+        units=get_units(dp, quality=quality)
+    main_chans=npa(zeros=units.shape)
+    for iu, u in enumerate(units):
+        main_chans[iu]= get_main_chan(dp, u)
 
-    return units, channels
+    depthIdx = np.argsort(npa(main_chans))[::-1] # From surface (high ch) to DCN (low ch)
+
+    return {units[depthIdx[i]]:main_chans[depthIdx[i]] for i in range(len(units))} # units, channels
 
 
 def get_chDis(dp, ch1, ch2):

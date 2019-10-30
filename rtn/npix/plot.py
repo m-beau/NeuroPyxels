@@ -16,7 +16,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
                     
-from rtn.npix.gl import get_good_units
+from rtn.npix.gl import get_units
 from rtn.npix.spk_wvf import get_depthSorted_channels
 from rtn.npix.corr import acg, ccg, gen_sfc, find_significant_hist_peak, make_cm
 from mpl_toolkits.mplot3d import axes3d
@@ -547,7 +547,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
     assert type(unit)==int
     saveDir=op.expanduser(saveDir)
     bChs=None
-    gu = get_good_units(dp) # get good units
+    gu = get_units(dp, quality='good') # get good units
     # sort them by depth
     if (unit in gu) and os.path.isfile(dp+'/FeaturesTable/FeaturesTable_good.csv'):
         ft = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_good.csv', sep=',', index_col=0)
@@ -567,7 +567,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
     bChs=None
-    gu = get_good_units(dp) # get good units
+    gu = get_units(dp, quality='good') # get good units
     # sort them by depth
     if np.all(np.isin(units, gu)) and os.path.isfile(dp+'/FeaturesTable/FeaturesTable_good.csv'):
         ft = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_good.csv', sep=',', index_col=0)
@@ -685,7 +685,7 @@ def plot_sfcdf(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, text=True, m
     return fig
 
 def plot_dataset_CCGs(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, rec_section='all'):
-    gu = get_good_units(dp) # get good units
+    gu = get_units(dp, quality='good') # get good units
     prct=0; sig=0;
     for i1, u1 in enumerate(gu):
         for i2, u2 in enumerate(gu):
@@ -705,7 +705,7 @@ def plot_dataset_CCGs(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, rec_s
     return
 
 def plot_dataset_ACGs(dp, cbin=0.5, cwin=80):
-    gu = get_good_units(dp) # get good units
+    gu = get_units(dp, quality='good') # get good units
     prct=0
     for i1, u1 in enumerate(gu):
         prct=i1*100./len(gu)

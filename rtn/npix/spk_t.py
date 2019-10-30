@@ -61,7 +61,7 @@ def ids(dp, u, ret=True, sav=True, prnt=True):
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    global indices
+    #global indices
     # Preformat
     u, dp = int(u), str(dp)
 
@@ -117,7 +117,7 @@ def trn(dp, u, ret=True, sav=True, prnt=True, rec_section='all'):
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - rec_section = 'all' or [(t1, t2), ...] with t1, t2 in seconds.
     '''
-    global train
+    #global train
     # Preformatpython how to save memory numpy array
     u, dp = int(u), str(dp)
     assert u in get_units(dp)
@@ -186,7 +186,7 @@ def isi(dp, u, ret=True, sav=True, prnt=True, rec_section='all'):
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    global isitvl
+    #global isitvl
     # Preformatpython how to save memory numpy array
     u, dp = int(u), str(dp)
 
@@ -238,7 +238,7 @@ def trnb(dp, u, bin_size, ret=True, sav=True, prnt=True, constrainBin=False, rec
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    global train_binarized
+    #global train_binarized
     # Preformat
     u, dp = int(u), str(dp)
 

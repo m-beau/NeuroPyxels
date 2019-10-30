@@ -65,6 +65,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     _as_array, _unique, _index_of
                     
 from rtn.npix.gl import chan_map
+from rtn.npix.spk_wvf import get_wvf, get_depthSort_mainChans
                     
 import networkx as nx
 
@@ -127,7 +128,7 @@ class Prophyler:
         return rtn.npix.gl.get_units(self.dp)
     
     def get_good_units(self):
-        return rtn.npix.gl.get_good_units(self.dp)
+        return rtn.npix.gl.get_units(self.dp, quality='good')
     
     def get_peak_channels(self):
         if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):

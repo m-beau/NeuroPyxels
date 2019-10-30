@@ -40,7 +40,6 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
     Returns:
         waveforms: numpy array of shape (n_waveforms, t_waveforms, n_channels) where n_channels is defined by the channel map.
     
-    WARNING: waveforms are neither whitened nor common average referenced.
     '''
     dprm = dp+'/routinesMemory'
     if not os.path.isdir(dprm):
@@ -82,7 +81,6 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     Returns:
         waveforms: numpy array of shape (n_waveforms, t_waveforms, n_channels) where n_channels is defined by the channel map.
     
-    WARNING: waveforms are neither whitened nor common average referenced.
     '''
     # Extract metadata
     channel_ids_abs = np.load(op.join(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
@@ -142,6 +140,7 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
 
     return  waveforms
 
+
 def get_main_chan(dp, unit):
     waveforms=wvf(dp, unit, 200)
     wvf_m = np.mean(waveforms, axis=0)
@@ -149,16 +148,18 @@ def get_main_chan(dp, unit):
     main_chan = int(np.nonzero(np.max(t_max_wvf)==t_max_wvf)[0])
     return main_chan
 
-def get_depthSort_mainChans(dp, units=None, quality='all'):
+def get_depthSort_mainChans(dp, units=[], quality='all'):
     if ~np.any(units):
         units=get_units(dp, quality=quality)
-    main_chans=npa(zeros=units.shape)
+    main_chans=npa(zeros=units.shape, dtype=np.int64)
     for iu, u in enumerate(units):
         main_chans[iu]= get_main_chan(dp, u)
 
-    depthIdx = np.argsort(npa(main_chans))[::-1] # From surface (high ch) to DCN (low ch)
-
-    return {units[depthIdx[i]]:main_chans[depthIdx[i]] for i in range(len(units))} # units, channels
+    depthIdx = np.argsort(main_chans)[::-1] # From surface (high ch) to DCN (low ch)
+    u_sort=units[depthIdx].reshape(len(units), 1)
+    ch_sort=main_chans[depthIdx].reshape(len(units), 1)
+    
+    return np.hstack([u_sort, ch_sort]) # units, channels
 
 
 def get_chDis(dp, ch1, ch2):

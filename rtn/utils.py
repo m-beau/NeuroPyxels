@@ -82,7 +82,8 @@ def npa(arr=[0], **kwargs):
     Optional aprams:
         - zeros: tuple. If provided, returns np.zeros(zeros)
         - ones: tuple. If provided, returns np.ones(ones)
-        - empty: tuple. If provided, returns np.empty(empty)'''
+        - empty: tuple. If provided, returns np.empty(empty)
+        - dtype: numpy datatype. If provided, returns np.array(arr, dtype=dtype) .'''
     if 'zeros' in kwargs.keys():
         return np.zeros(kwargs['zeros'])
     elif 'ones' in kwargs.keys():
@@ -90,10 +91,10 @@ def npa(arr=[0], **kwargs):
     elif 'empty' in kwargs.keys():
         return np.empty(kwargs['empty'])
     else:
-        if 'dtype' in kwargs.keys():
-            return np.array(arr, dtype=kwargs['dtype'])
-        else:
-            return np.array(arr)
+        arr=np.array(arr)
+    if 'dtype' in kwargs.keys():
+        arr = np.array(arr, dtype=kwargs['dtype'])
+    return arr
 
 def sign(x):
     "Returns the sign of the input number (1 or -1). 1 for 0 or -0."

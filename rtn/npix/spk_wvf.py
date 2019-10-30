@@ -99,6 +99,10 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
                          offset=params['offset'])
     traces = ConcatenatedArrays([traces], channel_ids_abs, scaling=None) # Here, the ABSOLUTE channel indices must be used to extract the correct channels
     
+    # Common average referencing
+    
+    
+    
     # Get spike times subset
     spike_samples = np.load(op.join(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
     spike_ids_subset=get_ids_subset(dp, unit, n_waveforms, wvf_batch_size, wvf_subset_selection)
@@ -111,6 +115,7 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
                                       sample_rate=params['sample_rate'])
     
     waveforms = waveform_loader.get(spike_ids_subset, channel_ids_rel) # Here, the relative indices must be used since only n_channel traces were extracted.
+    
     
     # Correct voltage values
     assert probe_type in ['3A', '3B', '1.0', '2.0', '2.0singleshank']
@@ -126,9 +131,10 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
 
 def get_main_chan(dp, unit):
     waveforms=wvf(dp, unit, 200)
-    wvf_m = np.rollaxis(waveforms.mean(0),1)
-    best_chan = np.argwhere(np.max(abs(wvf_m),1) == np.max(np.max(abs(wvf_m),1)))
-    return best_chan
+    wvf_m = np.mean(waveforms, axis=0)
+    t_max_wvf=np.max(abs(wvf_m),0)
+    main_chan = int(np.nonzero(np.max(t_max_wvf)==t_max_wvf)[0])
+    return main_chan
 
 def get_depthSort_mainChans(dp, units=None, quality='all'):
     if ~np.any(units):

@@ -113,13 +113,6 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     
     waveforms = waveform_loader.get(spike_ids_subset, channel_ids_rel) # Here, the relative indices must be used since only n_channel traces were extracted.
     
-    # Common average referencing: substract median for each channel, then median for each time point
-    medians_chan=np.median(traces[:1000000, :], 0).reshape((1,1)+(waveforms.shape[2],)) # across time for each channel
-    medians_chan=np.repeat(medians_chan, waveforms.shape[0], axis=0)
-    medians_chan=np.repeat(medians_chan, waveforms.shape[1], axis=1)
-    medians_t = np.median(waveforms, axis=2).reshape(waveforms.shape[:2]+(1,)) # across channels for each time point
-    medians_t = np.repeat(medians_t, waveforms.shape[2], axis=2)
-    waveforms=waveforms-medians_chan-medians_t
     
     # Correct voltage scaling
     assert probe_type in ['3A', '3B', '1.0', '2.0', '2.0singleshank']
@@ -130,7 +123,22 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
         Vrange=1.2e6
         bits_encoding=14
     waveforms*=(Vrange/2**bits_encoding/ampFactor) # (voltageRange/2^10bitsEncoding/amplification_gain, typically 500)
+
+    # Common average referencing: substract median for each channel, then median for each time point
+    # medians_chan=np.median(traces[:1000000, :], 0).reshape((1,1)+(waveforms.shape[2],)) # across time for each channel
+    # medians_chan=np.repeat(medians_chan, waveforms.shape[0], axis=0)
+    # medians_chan=np.repeat(medians_chan, waveforms.shape[1], axis=1)
     
+    wvf_baselines=np.append(waveforms[:,:int(waveforms.shape[1]*2./5),:], waveforms[:,int(waveforms.shape[1]*3./5):,:], axis=1)
+    medians_chan = np.median(wvf_baselines, axis=1).reshape((waveforms.shape[0], 1, waveforms.shape[2]))
+    medians_chan = np.repeat(medians_chan, waveforms.shape[1], axis=1)
+    waveforms-=medians_chan
+
+    medians_t = np.median(waveforms, axis=2).reshape(waveforms.shape[:2]+(1,)) # across channels for each time point
+    medians_t = np.repeat(medians_t, waveforms.shape[2], axis=2)
+    waveforms-=medians_t
+
+
     return  waveforms
 
 def get_main_chan(dp, unit):

@@ -77,7 +77,7 @@ _ACCEPTED_ARRAY_DTYPES = (np.float, np.float32, np.float64,
                           np.int32, np.int64, np.uint32, np.uint64,
                           np.bool)
 
-def npa(arr=[0], **kwargs):
+def npa(arr=[], **kwargs):
     '''Returns np.array(param).
     Optional aprams:
         - zeros: tuple. If provided, returns np.zeros(zeros)
@@ -85,11 +85,11 @@ def npa(arr=[0], **kwargs):
         - empty: tuple. If provided, returns np.empty(empty)
         - dtype: numpy datatype. If provided, returns np.array(arr, dtype=dtype) .'''
     if 'zeros' in kwargs.keys():
-        return np.zeros(kwargs['zeros'])
+        arr = np.zeros(kwargs['zeros'])
     elif 'ones' in kwargs.keys():
-        return np.empty(kwargs['ones'])
+        arr = np.empty(kwargs['ones'])
     elif 'empty' in kwargs.keys():
-        return np.empty(kwargs['empty'])
+        arr = np.empty(kwargs['empty'])
     else:
         arr=np.array(arr)
     if 'dtype' in kwargs.keys():

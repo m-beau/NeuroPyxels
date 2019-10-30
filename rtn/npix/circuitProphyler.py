@@ -131,44 +131,31 @@ class Prophyler:
         return rtn.npix.gl.get_units(self.dp, quality='good')
     
     def get_peak_channels(self):
-        if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
-            ft = pd.read_csv(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv'), sep=',', index_col=0)
-            bestChs=np.array(ft["WVF-MainChannel"], dtype=np.int64)
-            gu=np.array(ft.index, dtype=np.int64)
-            depthIdx = np.argsort(bestChs) # From deep to shallow
-            
-            self.peak_channels = {gu[depthIdx][i]:bestChs[depthIdx][i] for i in range(len(gu))}
-            
-        else:
-            print('You need to export the features tables using phy first!!')
-            return
+        mainChans = get_depthSort_mainChans(self.dp, quality='good')
+        self.peak_channels = {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
+
         
     def get_peak_positions(self):
-        if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
-            self.get_peak_channels()
-            
-            # Get peak channel xy positions
-            chan_pos=self.chan_map[:,1:] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
-            peak_pos = npa(zeros=(len(self.peak_channels), 3))
-            for i, (u,c) in enumerate(self.peak_channels.items()): # find peak positions in x,y
-                peak_pos[i,:]=np.append([u], (chan_pos[c]).flatten())
-            self.peak_positions_real=peak_pos
-            
-            # Homogeneously distributes neurons on same channels around mother channel to prevent overlap
-            for pp in np.unique(peak_pos[:,1:], axis=0): # space positions if several units per channel
-                boolarr=(pp[0]==peak_pos[:,1])&(pp[1]==peak_pos[:,2])
-                n1=sum(x > 0 for x in boolarr)
-                if n1>1:
-                    for i in range(n1):
-                        x_spacing=16# x spacing is 32um
-                        spacing=x_spacing*1./(n1+1) 
-                        boolidx=np.nonzero(boolarr)[0][i]
-                        peak_pos[boolidx,1]=peak_pos[boolidx,1]-x_spacing*1./2+(i+1)*spacing # 1 is index of x value
-            self.peak_positions={int(pp[0]):pp[1:] for pp in peak_pos}
-
-        else:
-            print('You need to export the features tables using phy first!!')
-            return
+        self.get_peak_channels()
+        
+        # Get peak channel xy positions
+        chan_pos=self.chan_map[:,1:] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
+        peak_pos = npa(zeros=(len(self.peak_channels), 3))
+        for i, (u,c) in enumerate(self.peak_channels.items()): # find peak positions in x,y
+            peak_pos[i,:]=np.append([u], (chan_pos[c]).flatten())
+        self.peak_positions_real=peak_pos
+        
+        # Homogeneously distributes neurons on same channels around mother channel to prevent overlap
+        for pp in np.unique(peak_pos[:,1:], axis=0): # space positions if several units per channel
+            boolarr=(pp[0]==peak_pos[:,1])&(pp[1]==peak_pos[:,2])
+            n1=sum(x > 0 for x in boolarr)
+            if n1>1:
+                for i in range(n1):
+                    x_spacing=16# x spacing is 32um
+                    spacing=x_spacing*1./(n1+1) 
+                    boolidx=np.nonzero(boolarr)[0][i]
+                    peak_pos[boolidx,1]=peak_pos[boolidx,1]-x_spacing*1./2+(i+1)*spacing # 1 is index of x value
+        self.peak_positions={int(pp[0]):pp[1:] for pp in peak_pos}
     
     def get_graph(self, prophylerGraph='undigraph'):
         assert prophylerGraph in ['undigraph', 'digraph']
@@ -651,10 +638,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
             for et in keep_edges_types:
                 assert et in ['-', '+', 'ci', 'main']
                 self.keep_edges(edges_type=et, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
-        
-        if not op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
-            print('You need to export the features tables using phy first!!')
-            return
         
         ew = [self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph) for e in g_plt.edges]
         e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph), 2))\

@@ -606,7 +606,8 @@ def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=
         return
     
     # Sort units by depth
-    units, channels = get_depthSort_mainChans(dp, units)
+    mainChans = get_depthSort_mainChans(dp, units)
+    units, channels = mainChans[:,0], mainChans[:,1]
     
     # make correlation matrix of units sorted by depth
     cm = make_cm(dp, units, b, cwin, cbin, corrEvaluator, vmax, vmin, rec_section)

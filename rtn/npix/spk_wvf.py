@@ -137,7 +137,8 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     medians_t = np.median(waveforms, axis=2).reshape(waveforms.shape[:2]+(1,)) # across channels for each time point
     medians_t = np.repeat(medians_t, waveforms.shape[2], axis=2)
     waveforms-=medians_t
-
+    
+    # Re-align waveforms in time?...
 
     return  waveforms
 

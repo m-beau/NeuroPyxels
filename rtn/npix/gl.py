@@ -14,7 +14,8 @@ import pandas as pd
 
 from rtn.utils import npa
 
-def chan_map(probe_version='3A', dp=None):
+def chan_map(probe_version='3A', dp=None, y_orig='surface'):
+    assert y_orig in ['surface' 'tip']
     assert probe_version in ['3A', '3B', '1.0', '2.0_singleshank', 'local']
     
     if probe_version in probe_version in ['3A', '3B', '1.0']:
@@ -52,6 +53,9 @@ def chan_map(probe_version='3A', dp=None):
                              the datapath needs to be provided to load the channel map.")
         c_ind=np.load(op.join(dp, 'channel_map.npy'));cp=np.load(op.join(dp, 'channel_positions.npy'));
         cm=npa(np.hstack([c_ind, cp]), dtype=np.int32)
+        
+    if y_orig=='surface':
+        cm[:,1:]=cm[:,1:][::-1]
         
     return cm
 

@@ -137,8 +137,11 @@ class Prophyler:
     def get_peak_positions(self):
         self.get_peak_channels()
         peak_pos=npa(zeros=(self.peak_channels.shape[0], 3), dtype=np.int64)
-        peak_pos[:,0]=self.peak_channels[:,0]
-        peak_pos[:,1:]=self.chan_map[:,1:][self.chan_map[:,0]==peak_pos[:,0]]
+        peak_pos[:,0]=self.peak_channels[:,0] # units
+        pos_idx=[] # how to get rid of for loop??
+        for ch in self.peak_channels[:,1]:
+            pos_idx.append(np.nonzero(np.isin(self.chan_map[:,0], ch))[0][0])
+        peak_pos[:,1:]=self.chan_map[:,1:][pos_idx, :]
         self.peak_positions_real=peak_pos
         
         # Homogeneously distributes neurons on same channels around mother channel to prevent overlap

@@ -17,7 +17,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     _as_array, _unique, _index_of
                     
 from rtn.npix.gl import get_units
-from rtn.npix.spk_wvf import get_depthSort_mainChans
+from rtn.npix.spk_wvf import get_depthSort_peakChans
 from rtn.npix.corr import acg, ccg, gen_sfc, find_significant_hist_peak, make_cm
 from mpl_toolkits.mplot3d import axes3d
 from mpl_toolkits.mplot3d import Axes3D
@@ -606,7 +606,7 @@ def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=
         return
     
     # Sort units by depth
-    mainChans = get_depthSort_mainChans(dp, units)
+    mainChans = get_depthSort_peakChans(dp, units)
     units, channels = mainChans[:,0], mainChans[:,1]
     
     # make correlation matrix of units sorted by depth

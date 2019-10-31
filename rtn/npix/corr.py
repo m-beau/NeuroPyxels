@@ -15,6 +15,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     
 from rtn.npix.gl import get_good_units
 from rtn.npix.spk_t import trn, trnb, isi, binarize
+from rtn.npix.spk_wvf import get_depthSort_peakChans
 
 import scipy.signal as sgnl
 from statsmodels.nonparametric.smoothers_lowess import lowess
@@ -858,25 +859,19 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
     '''
     try : assert _format in ['peaks_infos', 'raw_ccgs']
     except: print('WARNING {} must be in {}! Exitting now.'.format(_format, str(['peaks_infos', 'raw_sig_ccgs']))); return
+        
+    peakChs=get_depthSort_peakChans(dp, quality='good')
+    gu, bestChs = peakChs[:,0], peakChs[:,1]
     
     histo=False
-    gu = get_good_units(dp) # get good units
-    # sort them by depth
-    if os.path.isfile(dp+'/FeaturesTable/FeaturesTable_good.csv'):
-        ft = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_good.csv', sep=',', index_col=0)
-        bestChs=np.array(ft["WVF-MainChannel"])
+    if os.path.isfile(dp+'/FeaturesTable/FeaturesTable_histo.csv'):
+        fth = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_histo.csv', sep=',', index_col=0)
+        bestChs=np.array(fth["WVF-MainChannel"])
         depthIdx = np.argsort(bestChs)[::-1] # From surface (high ch) to DCN (low ch)
-        gu=np.array(ft.index, dtype=np.int64)[depthIdx]
-        if os.path.isfile(dp+'/FeaturesTable/FeaturesTable_histo.csv'):
-            fth = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_histo.csv', sep=',', index_col=0)
-            histo_str=np.array(fth["Histology_str"])
-            histo_str=histo_str[depthIdx]
-            histo=True
-    
-    else:
-        print('You need to export the features tables using phy first!!')
-        return
-    
+        histo_str=np.array(fth["Histology_str"])
+        histo_str=histo_str[depthIdx]
+        histo=True
+
     dprm = dp+'/routinesMemory'
     if not os.path.isdir(dprm):
         os.makedirs(dprm)

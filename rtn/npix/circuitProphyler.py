@@ -65,7 +65,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     _as_array, _unique, _index_of
                     
 from rtn.npix.gl import chan_map
-from rtn.npix.spk_wvf import wvf, get_depthSort_mainChans
+from rtn.npix.spk_wvf import wvf, get_depthSort_peakChans, get_peak_chan
                     
 import networkx as nx
 
@@ -131,18 +131,14 @@ class Prophyler:
         return rtn.npix.gl.get_units(self.dp, quality='good')
     
     def get_peak_channels(self):
-        mainChans = get_depthSort_mainChans(self.dp, quality='good')
-        self.peak_channels = {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
+        self.peak_channels = get_depthSort_peakChans(self.dp, quality='good')# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
 
         
     def get_peak_positions(self):
         self.get_peak_channels()
-        
-        # Get peak channel xy positions
-        chan_pos=self.chan_map[:,1:] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
-        peak_pos = npa(zeros=(len(self.peak_channels), 3))
-        for i, (u,c) in enumerate(self.peak_channels.items()): # find peak positions in x,y
-            peak_pos[i,:]=np.append([u], (chan_pos[c]).flatten())
+        peak_pos=npa(zeros=(self.peak_channels.shape[0], 3), dtype=np.int64)
+        peak_pos[:,0]=self.peak_channels[:,0]
+        peak_pos[:,1:]=self.chan_map[:,1:][self.chan_map[:,0]==peak_pos[:,0]]
         self.peak_positions_real=peak_pos
         
         # Homogeneously distributes neurons on same channels around mother channel to prevent overlap
@@ -309,7 +305,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     
     def get_node_attribute(self, n, at, prophylerGraph='undigraph', src_graph=None):        
         assert at in ['unit', 'groundtruthCellType', 'classifiedCellType']
-        return self.get_nodes(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[n][at]
+        return self.get_node_attributes(n, prophylerGraph, src_graph)[at]
 
     def set_node_attribute(self, n, at, at_val, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
@@ -324,25 +320,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         keys=npe[((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))][:,2]
         return keys
 
-    def get_edge_attribute(self, e, at, prophylerGraph='undigraph', src_graph=None):
-        
-        assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
-        assert len(e)==2 or len(e)==3
-        if len(e)==3:
-            try: # check that nodes are in the right order - multi directed graph
-                return self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[e][at]
-            except:
-                return self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],e[2])][at]
-        elif len(e)==2:
-            keys=self.get_edge_keys(e, prophylerGraph=prophylerGraph, src_graph=src_graph)
-            edges={}
-            for k in keys:
-                try: # check that nodes are in the right order - multi directed graph
-                    edges[k]=self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[0],e[1],k)][at]
-                except:
-                    edges[k]=self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],k)][at]
-            return edges
-    
     def get_edge_attributes(self, e, prophylerGraph='undigraph', src_graph=None):
         
         assert len(e)==2 or len(e)==3
@@ -360,14 +337,19 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 except:
                     edges[k]=self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],k)]
             return edges
+
+    def get_edge_attribute(self, e, at, prophylerGraph='undigraph', src_graph=None):
         
+        assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
+        return self.get_edge_attributes(e, prophylerGraph, src_graph)[at]
+
     def set_edge_attribute(self, e, at, at_val, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
         
         assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
         nx.set_edge_attributes(g, {e:{at:at_val}})
-        
+
     def get_edges_with_attribute(self, at, at_val, logical='==', tolist=True, prophylerGraph='undigraph', src_graph=None):
         edges=self.get_edges(frmt='dataframe', keys=True, prophylerGraph=prophylerGraph, src_graph=src_graph) # raws are attributes, columns indices
         assert at in edges.index
@@ -376,7 +358,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         ewa=edges.columns[ops[logical](edges.loc[at,:], at_val)]
         return ewa.to_list() if tolist else ewa
     
-    
+
     def get_node_edges(self, u, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
@@ -926,25 +908,14 @@ class Unit:
         self.undigraph.add_node(self.idx, unit=self, X=self.peak_position_real[0], Y=self.peak_position_real[1], posReal=self.peak_position_real, groundtruthCellType=self.groundtruthCellType, classifiedCellType=self.classifiedCellType) 
     
     def get_peak_channel(self):
-        if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
-            ft = pd.read_csv(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv'), sep=',', index_col=0)
-            self.peak_channel=int(ft.loc[self.idx, "WVF-MainChannel"])
-            
-        else:
-            print('You need to export the features tables using phy first!!')
-            return
+        self.peak_channel=get_peak_chan(self.dp, self.idx)
         
     def get_peak_position(self):
-        if op.isfile(op.join(self.dp,'FeaturesTable','FeaturesTable_good.csv')):
-            self.get_peak_channel()
-            
-            # Get peak channel xy positions
-            chan_pos=self.ds.chan_map[:,1:] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
-            self.peak_position_real=chan_pos[self.peak_channel].flatten() # find peak positions in x,y
-
-        else:
-            print('You need to export the features tables using phy first!!')
-            return
+        self.get_peak_channel()
+        
+        # Get peak channel xy positions
+        chan_pos=self.ds.chan_map[:,1:] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
+        self.peak_position_real=chan_pos[self.peak_channel].flatten() # find peak positions in x,y
                     
     def trn(self, rec_section='all'):
         return rtn.npix.spk_t.trn(self.dp, self.idx, rec_section=rec_section)

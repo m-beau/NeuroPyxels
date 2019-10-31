@@ -15,7 +15,7 @@ import pandas as pd
 from rtn.utils import npa
 
 def chan_map(probe_version='3A', dp=None, y_orig='surface'):
-    assert y_orig in ['surface' 'tip']
+    assert y_orig in ['surface', 'tip']
     assert probe_version in ['3A', '3B', '1.0', '2.0_singleshank', 'local']
     
     if probe_version in probe_version in ['3A', '3B', '1.0']:

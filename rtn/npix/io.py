@@ -52,11 +52,11 @@ def read_spikeglx_meta(dp):
     if meta['typeThis'] == 'imec':
         meta['sRateHz'] = meta['imSampRate']
     
-    probe_types = {'imProbeOpt':{3.0:'3A'},
+    probe_versions = {'imProbeOpt':{3.0:'3A'},
                'imDatPrb_type':{0:'1.0_staggered',
                                 21:'2.0_singleshank',
                                 22:'2.0_fourshanked'}}
-    meta['probe_type']=probe_types['imProbeOpt'][meta['imProbeOpt']] if 'imProbeOpt' in meta.keys() else probe_types['imDatPrb_type'][meta['imDatPrb_type']] if 'imDatPrb_type' in meta.keys() else 'N/A'
+    meta['probe_version']=probe_versions['imProbeOpt'][meta['imProbeOpt']] if 'imProbeOpt' in meta.keys() else probe_versions['imDatPrb_type'][meta['imDatPrb_type']] if 'imDatPrb_type' in meta.keys() else 'N/A'
     
     return meta
 

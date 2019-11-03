@@ -899,7 +899,7 @@ class Dataset:
         
         self.dp = op.expanduser(datapath)
         self.meta=read_spikeglx_meta(self.dp)
-        self.probe_version=self.meta['probe_type']
+        self.probe_version=self.meta['probe_version']
         self.name=self.dp.split('/')[-1] if dataset_name is None else dataset_name
         self.prb_name=probe_name
         self.params={}; params=imp.load_source('params', op.join(self.dp,'params.py'))
@@ -967,7 +967,7 @@ class Unit:
         self.undigraph.add_node(self.ds.prb_name+'_'+str(self.idx), unit=self, X=self.peak_position_real[0], Y=self.peak_position_real[1], posReal=self.peak_position_real, putativeCellType=self.putativeCellType, groundtruthCellType=self.groundtruthCellType, classifiedCellType=self.classifiedCellType) 
     
     def get_peak_channel(self):
-        self.peak_channel=get_peak_chan(self.dp, self.idx, self.ds.probe_type)
+        self.peak_channel=get_peak_chan(self.dp, self.idx, self.ds.probe_version)
         
     def get_peak_position(self):
         self.get_peak_channel()
@@ -994,11 +994,11 @@ class Unit:
         return rtn.npix.corr.ccg(self.dp, [self.idx]+list(U), cbin, cwin, fs, normalize, ret, sav, prnt, rec_section, again)
     
     def wvf(self, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10):
-        if self.ds.probe_type in ['3A', '1.0_staggered', '1.0_aligned',]:
+        if self.ds.probe_version in ['3A', '1.0_staggered', '1.0_aligned',]:
             ampFactor=500
-        elif self.ds.probe_type in [ '2.0_singleshank', '2.0_fourshanked']:
+        elif self.ds.probe_version in [ '2.0_singleshank', '2.0_fourshanked']:
             ampFactor=500
-        return rtn.npix.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, ampFactor, self.ds.probe_type, True, True)
+        return rtn.npix.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, ampFactor, self.ds.probe_version, True, True)
     
     def plot_acg(self, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
              pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0):

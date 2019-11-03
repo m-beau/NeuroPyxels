@@ -41,7 +41,7 @@ def chan_map(probe_version='3A', dp=None, y_orig='surface'):
         vert=npa([[  0,   20],
                   [  0,   20]])
         
-        cm=cm.copy()
+        cm=cm_el.copy()
         for i in range(int(Nchan/cm_el.shape[0])-1):
             cm = np.vstack((cm, cm+vert*(i+1)))
         cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
@@ -53,7 +53,7 @@ def chan_map(probe_version='3A', dp=None, y_orig='surface'):
         vert=npa([[  0,   15],
                   [  0,   15]])
         
-        cm=cm.copy()
+        cm=cm_el.copy()
         for i in range(int(Nchan/cm_el.shape[0])-1):
             cm = np.vstack((cm, cm+vert*(i+1)))
         cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])

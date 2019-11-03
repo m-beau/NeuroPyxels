@@ -43,7 +43,7 @@ def chan_map(probe_version='3A', dp=None, y_orig='surface'):
         
         cm=cm_el.copy()
         for i in range(int(Nchan/cm_el.shape[0])-1):
-            cm = np.vstack((cm, cm+vert*(i+1)))
+            cm = np.vstack((cm, cm_el+vert*(i+1)))
         cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
         
     elif probe_version=='2.0_singleshank':
@@ -55,7 +55,7 @@ def chan_map(probe_version='3A', dp=None, y_orig='surface'):
         
         cm=cm_el.copy()
         for i in range(int(Nchan/cm_el.shape[0])-1):
-            cm = np.vstack((cm, cm+vert*(i+1)))
+            cm = np.vstack((cm, cm_el+vert*(i+1)))
         cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
     
     elif probe_version=='local':

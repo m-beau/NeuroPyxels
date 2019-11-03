@@ -27,7 +27,7 @@ pro.connect_graph()
 # Plot the graph
 pro.plot_graph()
 
-# Get putative connections of a given node spotted on the graph
+# Get N of putative connections of a given node spotted on the graph
 pro.get_node_edges(node)
 
 # Only keep a set of relevant nodes or edges and plot it again
@@ -55,7 +55,6 @@ import imp
 import os.path as op
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-import seaborn as sns
 import numpy as np
 import pandas as pd
 
@@ -63,9 +62,10 @@ import rtn
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
-                    
+
+from rtn.npix.io import read_spikeglx_meta
 from rtn.npix.gl import chan_map
-from rtn.npix.spk_wvf import wvf, get_depthSort_peakChans, get_peak_chan
+from rtn.npix.spk_wvf import get_depthSort_peakChans, get_peak_chan
                     
 import networkx as nx
 
@@ -73,88 +73,78 @@ class Prophyler:
     '''
     For single probe recording:
     >>> dp = path/to/kilosort/output
-    >>> probe_type = '3A' # default '3A' - probe_type can be: '3A', '3B', '1.0', '2.0_singleshank', 'local' (will use channel map from dp)
-    >>> ds = Dataset(dp, probe_type)
+    >>> pro = Prophyler(dp)
     
-    For multi probes recordings:
-    >>> dps = {'name_probe_1':[path/to/kilosort/output, 'probe_type'], ...
-            }
-    
-    Structure of ds: ds generated a networkx graph whose nodes correspond to the dataset units labeled as good.
+    Structure of pro: pro generated a networkx graph whose nodes correspond to the dataset units labeled as good.
     Bear in mind that the graph nodes are actual objects, instances of Unit(), making this structure more powerful
     Because the relevant rtn methods can be integrated either in the Dataset class (connections related stuff) or the Units class (individual units related stuff)
     
     If you want to access unit u:
-    >>> ds.units[u]
-    >>> ds.units[u].trn(): equivalent to rtn.npix.spk_t.trn(dp,u)
+    >>> pro.units[u]
+    >>> pro.units[u].trn(): equivalent to rtn.npix.spk_t.trn(dp,u)
     
     The units can also be accessed through the 'unit' attributes of the graph nodes:
-    >>> ds.graph.nodes[u]]['unit'].trn() returns the same thing as ds.units[u].trn()
+    >>> pro.graph.nodes[u]]['unit'].trn() returns the same thing as ds.units[u].trn()
+    
+    For multi probes recordings:
+    >>> dp_dic = {'name_probe_1':'path/to/kilosort/output', ...
+            }
+    >>> multipro = Prophyler(dp_dic)
+    
+    multipro has the same structure as pro, but
+    - nested into dictionaries for dataset-specific items: pro.dp becomes multipro.dp['name_probe_1'], pro.units becomes multipro.units['name_probe_1'] etc
+    - still accessible directly for across-datasets items: pro.graph remains multipro.graph
+    
+    The way it works is:
+        Thanks to the Unit class which takes in independently a given dataset and a given graph,
+        it is possible to instanciate the Units with their own datasets but the same graph.
+        
+        The reference for the channel map is the
     '''
     
-    def __repr__(self):
-        return 'Neuropixels dataset at {}.'.format(self.dp)
     
-    def __init__(self, datapath, probe_version='3A'):
-        # typ_e=TypeError('''datapath should either be a string 'path/to/kilosort/output',
-        #                        or a dict of above-mentioned strings {'name_probe_1':'path/to/kilosort/output', ...}''')
-        # if type(datapaths) is not dict and type(datapaths) is not str:
-        #     raise typ_e
-        # if type(datapaths) is dict:
-        #     for i, v in datapaths.items():
-        #         if type(i) is not str or type(v) is not str:
-        #             raise typ_e
-        # if type(datapaths) is str:
-        #     datapaths={'Probe':datapaths}
+    def __init__(self, datapaths):
+
+        # Handle datapaths format 
+        typ_e=TypeError('''datapathd should be either a string to a kilosort path:
+                        'path/to/kilosort/output1'
+                        or a dict of such datapath strings:
+                        {'name_probe_1':'path/to/kilosort/output1', ...}''')
+        if type(datapaths) is dict:
+            for i, v in datapaths.items():
+                if type(i) is not str or type(v) is not str:
+                    raise typ_e
+                if not op.isdir(op.expanduser(v)):
+                    raise FileNotFoundError('{} not found!'.format(v))
+        elif type(datapaths) is str:
+            if not op.isdir(op.expanduser(datapaths)):
+                    raise FileNotFoundError('{} not found!'.format(datapaths))
+            else:
+                datapaths={'prb1':datapaths}
+        else:
+            raise typ_e
         
-        # for prb, datapath in datapaths.items():
-        self.dp = op.expanduser(datapath)
-        self.name=self.dp.split('/')[-1]
-        self.params={}; params=imp.load_source('params', op.join(self.dp,'params.py'))
-        for p in dir(params):
-            exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
-        self.fs=self.params['sample_rate']
-        self.endTime=int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
-        self.chan_map=chan_map(probe_version, self.dp, y_orig='surface')
+        all_dps=list(datapaths.values())
+        ds_names=''
+        for prb, dp in list(datapaths.items()):
+            ds_names+='_'+op.basename(dp)
+            self.ds[prb]=Dataset(dp, prb)
+            if op.dirname(all_dps[0])!=op.dirname(dp):
+                print('WARNING: all your datasets are not stored in the same pre-directory - directory of {} is picked.'.format(prb))
+        print('Prophyler data (shared across {} dataset(s)) will be saved here: {}/prophyler.'.format(len(all_dps), op.dirname(all_dps[0])))
+        self.dp_pro=op.join(op.dirname(all_dps[0]), 'prophyler'+ds_names)
+        if not op.isdir(self.dp_pro): os.mkdir(self.dp_pro)
         
         # Create a networkX graph whose nodes are Units()
-        self.dpnet=op.join(self.dp, 'network')
-        if not op.isdir(self.dpnet): os.mkdir(self.dpnet)
         self.undigraph=nx.MultiGraph() # Undirected multigraph - directionality is given by uSrc and uTrg. Several peaks -> several edges -> multigraph.
-        self.units = {u:Unit(self, u, self.undigraph) for u in self.get_good_units()} # Units are added to the graph when inititalized
-        self.get_peak_positions()
-
-    def get_units(self):
-        return rtn.npix.gl.get_units(self.dp)
-    
-    def get_good_units(self):
-        return rtn.npix.gl.get_units(self.dp, quality='good')
-    
-    def get_peak_channels(self):
-        self.peak_channels = get_depthSort_peakChans(self.dp, quality='good')# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
-
+        self.dpnet=op.join(self.dp_pro, 'network')
+        if not op.isdir(self.dpnet): os.mkdir(self.dpnet)
         
-    def get_peak_positions(self):
-        self.get_peak_channels()
-        peak_pos=npa(zeros=(self.peak_channels.shape[0], 3), dtype=np.int64)
-        peak_pos[:,0]=self.peak_channels[:,0] # units
-        pos_idx=[] # how to get rid of for loop??
-        for ch in self.peak_channels[:,1]:
-            pos_idx.append(np.nonzero(np.isin(self.chan_map[:,0], ch))[0][0])
-        peak_pos[:,1:]=self.chan_map[:,1:][pos_idx, :]
-        self.peak_positions_real=peak_pos
-        
-        # Homogeneously distributes neurons on same channels around mother channel to prevent overlap
-        for pp in np.unique(peak_pos[:,1:], axis=0): # space positions if several units per channel
-            boolarr=(pp[0]==peak_pos[:,1])&(pp[1]==peak_pos[:,2])
-            n1=sum(x > 0 for x in boolarr)
-            if n1>1:
-                for i in range(n1):
-                    x_spacing=16# x spacing is 32um
-                    spacing=x_spacing*1./(n1+1) 
-                    boolidx=np.nonzero(boolarr)[0][i]
-                    peak_pos[boolidx,1]=peak_pos[boolidx,1]-x_spacing*1./2+(i+1)*spacing # 1 is index of x value
-        self.peak_positions={int(pp[0]):pp[1:] for pp in peak_pos}
+        self.units={}
+        for prb, ds in self.ds.items():
+            for u in ds.get_good_units():
+                ds.get_peak_positions()
+                self.units[prb]={u:Unit(ds, u, self.undigraph)} # Units are added to the same graph when initialized, even from different source datasets
     
     def get_graph(self, prophylerGraph='undigraph'):
         assert prophylerGraph in ['undigraph', 'digraph']
@@ -163,12 +153,13 @@ class Prophyler:
         elif prophylerGraph=='digraph':
             return self.digraph
         else:
-            print("WARNING graph should be either 'undigraph' to pick self.undigraph or 'digraph' to pick self.digaph. Aborting.")
+            print("WARNING graph should be either 'undigraphundigraph=nx.MultiGraph()' to pick self.undigraph or 'digraph' to pick self.digaph. Aborting.")
             return
         
     def get_graph_copy(self, prophylerGraph='undigraph'):
         return self.get_graph(prophylerGraph).copy()
         
+    ##TODO
     def connect_graph(self, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False, plotsfcdf=False, prophylerGraph='undigraph', src_graph=None):
         
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
@@ -182,8 +173,8 @@ class Prophyler:
         if len(graphs)>0:
             while 1:
                 load_choice=input("""Saved graphs found in {}:{}.
-Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(op.join(self.dp, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
-                try: # works if an int is inputted
+                      Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(op.join(self.dp, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
+                try: # works if an int is inputed
                     load_choice=int(ast.literal_eval(load_choice))
                     g=self.import_graph(op.join(self.dpnet, graphs[load_choice]))
                     print("Building Dataset.graph from file {}.".format(graphs[load_choice]))
@@ -261,7 +252,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         else:
             return digraph
             
-
 
     def get_nodes(self, frmt='array', prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
@@ -365,8 +355,12 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
     def get_node_edges(self, u, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
-        
-        return {unt:[len(e_unt), '@{}'.format(self.peak_channels[unt])] for unt, e_unt in g[u].items()}
+        node_edges={}
+        for prbunt, e_unt in g[u].items():
+            prb, unt = prbunt.split('_')
+            node_edges[unt]=[len(e_unt), '@{}'.format(self.ds[prb].peak_channels[peak_channels[:,0]==unt, 0])]
+            
+        return node_edges
     
     def keep_nodes_list(self, nodes_list, prophylerGraph='undigraph', src_graph=None):
         '''
@@ -444,12 +438,14 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                     subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()
                     dfe.drop(subedges_to_drop, inplace=True)
                 edges_list=dfe.index.tolist()
-                
+            
             elif edges_type=='-':
                 edges_list=dfe.index[(amp<0)&((t<-t_asym)|(t>t_asym))].tolist()
                 
             elif edges_type=='+':
+                ci=dfe.index[(amp>0)&(t>-t_asym)&(t<t_asym)].tolist()
                 edges_list=dfe.index[(amp>0)&((t<-t_asym)|(t>t_asym))].tolist()
+                [edges_list.remove(ci_e) for ci_e in ci]
                 
             elif edges_type=='ci':
                 edges_list=dfe.index[(amp>0)&(t>-t_asym)&(t<t_asym)].tolist()
@@ -488,13 +484,6 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if g is None: return
         
         for node in g.nodes:
-            # Plot ACG
-            #rtn.npix.plot.plot_acg(self.dp, node, 0.2, 80)
-            # Plot Waveform
-            
-            # Pull up features
-            
-            
             label=''
             while label=='': # if enter is hit
                 label=input("\n\n || Unit {}- label?(<n> to skip):".format(node))
@@ -506,11 +495,10 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 g=self.set_node_attribute(node, 'groundtruthCellType', label, prophylerGraph=prophylerGraph, src_graph=src_graph) # update graph
             else:
                 self.set_node_attribute(node, 'groundtruthCellType', label, prophylerGraph=prophylerGraph, src_graph=src_graph) # update graph
-            self.units[node].groundtruthCellType=label # Update class
+            prb, idx = node.split('_')
+            self.units[prb][idx].groundtruthCellType=label # Update class
             print("Label of node {} was set to {}.\n".format(node, label))
             
-        
-    
     def label_edges(self, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
@@ -527,6 +515,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         for ei, edge in enumerate(list(g.edges)):
             ea=self.get_edge_attributes(edge, prophylerGraph=prophylerGraph, src_graph=src_graph) # u1, u2, i unpacked
             
+            ##TODO - plt ccg from shared directory
             rtn.npix.plot.plot_ccg(self.dp, [ea['uSrc'],ea['uTrg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
             
             label=''
@@ -593,7 +582,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 print(" || Saving graph {}.".format(file))
                 self.export_graph(name, frmt, prophylerGraph=prophylerGraph, src_graph=src_graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                 break
-
+    
+    ## TODO - remove self.peakchannels from drawing - handle datasets independently
     def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', keep_edges_types=None, edges_list=None, src_graph=None, t_asym=1,
                    nodes_size=400, nodes_color='grey', nodes_outline_color='k', edges_width=5, edge_vmin=-7, edge_vmax=7, arrowsize=25, arrowstyle='-|>',
                    ylim=[4000, 0], figsize=(6, 24), show_cmap=True, png=False, pdf=True, saveDir='~/Desktop', saveFig=False):
@@ -640,6 +630,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
                 if cct!='':
                     l+="\ncla:{}".format(cct)
                 nlabs[node]=l
+                
             nx.draw_networkx_labels(g_plt,self.peak_positions,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
             #nx.draw_networkx(g, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
         nx.draw_networkx_nodes(g_plt, pos=self.peak_positions, node_color=nodes_color, edgecolors=nodes_outline_color, alpha=0.8, node_size=nodes_size)
@@ -698,8 +689,8 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         if g is None: return
         
         assert frmt in ['edgelist', 'adjlist', 'gexf', 'gml', 'gpickle']
-        file=op.join(self.dpnet, prophylerGraph+'_'+name+'_'+self.name+'.'+frmt)
-        filePickle=op.join(self.dpnet, prophylerGraph+'_'+name+'_'+self.name+'.gpickle')
+        file=op.join(self.dpnet, prophylerGraph+'_'+name+'_'+op.basename(self.dp_pro)+'.'+frmt)
+        filePickle=op.join(self.dpnet, prophylerGraph+'_'+name+'_'+op.basename(self.dp_pro)+'.gpickle')
         
         if op.isfile(filePickle) and not ow:
             print("File name {} already taken. Pick another name or run the function with ow=True to overwrite file.")
@@ -737,6 +728,7 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         
         return nx_exp[frmt](name)
                 
+    ## TODO - adapt export feat table by handling the new waveform function (and main channels finders etc)
     def export_feat(self, rec_section='all'):
         # TO SET HERE - RECORDING SECTIONS TO CONSIDER TO COMPUTE THE FEATURES TABLE
         endTime = int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)# above max in seconds
@@ -889,8 +881,70 @@ Dial a filename index to load it, or <sfc> to build it from the significant func
         # Save the updated features table
         save_featuresTable(direct, ft, goodClusters, Features)                              
 
+class Dataset:
     
+    def __repr__(self):
+        return 'Neuropixels dataset at {}.'.format(self.dp)
     
+    def __init__(self, datapath, probe_name='prb1', dataset_name=None):
+
+        # Handle datapaths format 
+        if type(datapath) is str:
+            if not op.isdir(op.expanduser(datapath)):
+                    raise FileNotFoundError('{} not found!'.format(datapaths))
+        else:
+            raise TypeError('''datapath should be either a string to a kilosort path:
+                        'path/to/kilosort/output1'.''')
+        
+        self.dp = op.expanduser(datapath)
+        self.meta=read_spikeglx_meta(self.dp)
+        self.probe_version=self.meta['probe_type']
+        self.name=self.dp.split('/')[-1] if dataset_name is None else dataset_name
+        self.prb_name=probe_name
+        self.params={}; params=imp.load_source('params', op.join(self.dp,'params.py'))
+        for p in dir(params):
+            exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
+        self.fs=self.meta['sRateHz']
+        self.endTime=int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
+        self.chan_map=chan_map(self.probe_version, self.dp, y_orig='surface')
+        assert np.all(np.isin(chan_map('local', self.dp, y_orig='surface')[:,0], self.chan_map[:,0])), \
+        "Local channel map comprises channels not found in expected channels given matafile probe type."
+        
+    def get_units(self):
+        return rtn.npix.gl.get_units(self.dp)
+    
+    def get_good_units(self):
+        return rtn.npix.gl.get_units(self.dp, quality='good')
+    
+    def get_peak_channels(self):
+        self.peak_channels = get_depthSort_peakChans(self.dp, 'good', self.probe_type)# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
+
+        
+    def get_peak_positions(self):
+        self.get_peak_channels()
+        peak_pos=npa(zeros=(self.peak_channels.shape[0], 3), dtype=np.int64)
+        peak_pos[:,0]=self.peak_channels[:,0] # units
+        pos_idx=[] # how to get rid of for loop??
+        for ch in self.peak_channels[:,1]:
+            pos_idx.append(np.nonzero(np.isin(self.chan_map[:,0], ch))[0][0])
+        peak_pos[:,1:]=self.chan_map[:,1:][pos_idx, :]
+        self.peak_positions_real=peak_pos
+        
+        # Homogeneously distributes neurons on same channels around mother channel to prevent overlap
+        for pp in np.unique(peak_pos[:,1:], axis=0): # space positions if several units per channel
+            boolarr=(pp[0]==peak_pos[:,1])&(pp[1]==peak_pos[:,2])
+            n1=sum(x > 0 for x in boolarr)
+            if n1>1:
+                for i in range(n1):
+                    x_spacing=16# x spacing is 32um
+                    spacing=x_spacing*1./(n1+1) 
+                    boolidx=np.nonzero(boolarr)[0][i]
+                    peak_pos[boolidx,1]=peak_pos[boolidx,1]-x_spacing*1./2+(i+1)*spacing # 1 is index of x value
+        self.peak_positions={int(pp[0]):pp[1:] for pp in peak_pos}
+        
+        
+        
+        
 class Unit:
     '''The object Unit does not store anything itself except from its dataset and index.
     It makes it possible to call its various features.
@@ -903,22 +957,22 @@ class Unit:
         self.ds=dataset
         self.dp = self.ds.dp
         self.idx=index
-        self.groundtruthCellType=''
-        self.classifiedCellType=''
+        self.putativeCellType='' # Set by the experimentalist manually
+        self.groundtruthCellType='' # Either opto or because of cs/ss pause motif
+        self.classifiedCellType='' # Output of the classifier
         self.undigraph = graph
         self.get_peak_position()
         # self refers to the instance not the class, hehe
-        self.undigraph.add_node(self.idx, unit=self, X=self.peak_position_real[0], Y=self.peak_position_real[1], posReal=self.peak_position_real, groundtruthCellType=self.groundtruthCellType, classifiedCellType=self.classifiedCellType) 
+        self.undigraph.add_node(self.ds.prb_name+'_'+str(self.idx), unit=self, X=self.peak_position_real[0], Y=self.peak_position_real[1], posReal=self.peak_position_real, putativeCellType=self.putativeCellType, groundtruthCellType=self.groundtruthCellType, classifiedCellType=self.classifiedCellType) 
     
     def get_peak_channel(self):
-        self.peak_channel=get_peak_chan(self.dp, self.idx)
+        self.peak_channel=get_peak_chan(self.dp, self.idx, self.ds.probe_type)
         
     def get_peak_position(self):
         self.get_peak_channel()
         
         # Get peak channel xy positions
-        chan_pos=self.ds.chan_map[:,1:] # REAL peak waveform can be on channels ignored by kilosort so importing channel_map.py does not work
-        self.peak_position_real=chan_pos[self.peak_channel].flatten() # find peak positions in x,y
+        self.peak_position_real=ds.peak_positions_real[self.idx==ds.peak_positions_real[:,0], 1:].flatten()
                     
     def trn(self, rec_section='all'):
         return rtn.npix.spk_t.trn(self.dp, self.idx, rec_section=rec_section)
@@ -937,7 +991,14 @@ class Unit:
     
     def ccg(self, U, cbin, cwin, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all', again=False):
         return rtn.npix.corr.ccg(self.dp, [self.idx]+list(U), cbin, cwin, fs, normalize, ret, sav, prnt, rec_section, again)
-        
+    
+    def wvf(self, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10):
+        if self.ds.probe_type in ['3A', '1.0_staggered', '1.0_aligned',]:
+            ampFactor=500
+        elif self.ds.probe_type in [ '2.0_singleshank', '2.0_fourshanked']:
+            ampFactor=500
+        return rtn.npix.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, ampFactor, self.ds.probe_type, True, True)
+    
     def plot_acg(self, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
              pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0):
         
@@ -953,7 +1014,4 @@ class Unit:
     def connections(self):
         return dict(self.undigraph[self.idx])
     
-    # def wvf(self):
-    #     return rtn.npix.spk_t.wvf(self.dp,self.idx)
-    #     # TODO make the average waveform lodable by fixing io.py
         

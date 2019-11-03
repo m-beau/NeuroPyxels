@@ -9,18 +9,56 @@ Input/output utilitaries to deal with Neuropixels files.
 
 import psutil
 import os
+import os.path as op
 
 import numpy as np
-import math
-from math import floor, exp
+from math import floor
 
 import matplotlib.pyplot as plt
 
-from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
-                    npa, sign, minus_is_1, thresh, smooth, \
-                    _as_array, _unique, _index_of, _is_array_like
+from rtn.utils import npa, thresh
 
 #%% raw data extraction
+
+def read_spikeglx_meta(dp):
+    '''
+    Read spikeGLX metadata file.
+    '''
+    for file in os.listdir(dp):
+        if file.endswith(".ap.meta"):
+            fname=file
+            
+    metafile=op.join(dp, fname)
+    with open(metafile, 'r') as f:
+        meta = {}
+        for ln in f.readlines():
+            tmp = ln.split('=')
+            k, val = tmp
+            k = k.strip()
+            val = val.strip('\r\n')
+            if '~' in k:
+                meta[k] = val.strip('(').strip(')').split(')(')
+            else:
+                try:  # is it numeric?
+                    meta[k] = float(val)
+                except:
+                    try:
+                        meta[k] = float(val)
+                    except:
+                        meta[k] = val
+    # Set the sample rate depending on the recording mode
+
+    meta['sRateHz'] = meta[meta['typeThis'][:2] + 'SampRate']
+    if meta['typeThis'] == 'imec':
+        meta['sRateHz'] = meta['imSampRate']
+    
+    probe_types = {'imProbeOpt':{3.0:'3A'},
+               'imDatPrb_type':{0:'1.0_staggered',
+                                21:'2.0_singleshank',
+                                22:'2.0_fourshanked'}}
+    meta['probe_type']=probe_types['imProbeOpt'][meta['imProbeOpt']] if 'imProbeOpt' in meta.keys() else probe_types['imDatPrb_type'][meta['imDatPrb_type']] if 'imDatPrb_type' in meta.keys() else 'N/A'
+    
+    return meta
 
 def extract_rawChunk(bp, times, channels=np.arange(384), fs=30000, ampFactor=500, Nchans=385, syncChan=384, save=0, ret=1):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
@@ -146,13 +184,13 @@ def extract_syncChan(bp, syncChan=384, fs=30000, ampFactor=500, Nchans=385, save
         
     return sc
 
-def extract_syncEvents(bp, sign=1, syncChan=384, times='all', fs=30000, ampFactor=500, Nchans=385, save=0):
+def extract_syncEvents(bp, sgn=1, syncChan=384, times='all', fs=30000, ampFactor=500, Nchans=385, save=0):
     
     # Get sync chan
     sc = extract_syncChan(bp, syncChan, times, fs, ampFactor, Nchans, save)
     
     # threshold syncchan
-    events = thresh(sc, 0.5, sgn=sign)
+    events = thresh(sc, 0.5, sgn=sgn)
     
     return events
 

@@ -16,9 +16,9 @@ from rtn.utils import npa
 
 def chan_map(probe_version='3A', dp=None, y_orig='surface'):
     assert y_orig in ['surface', 'tip']
-    assert probe_version in ['3A', '3B', '1.0', '2.0_singleshank', 'local']
+    assert probe_version in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked', 'local']
     
-    if probe_version in probe_version in ['3A', '3B', '1.0']:
+    if probe_version in probe_version in ['3A', '1.0_staggered']:
         Nchan=384
         cm_el = npa([[  27,   0],
                            [  59,   0],
@@ -32,6 +32,18 @@ def chan_map(probe_version='3A', dp=None, y_orig='surface'):
         cm=cm_el.copy()
         for i in range(int(Nchan/cm_el.shape[0])-1):
             cm = np.vstack((cm, cm_el+vert*(i+1)))
+        cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
+    
+    elif probe_version=='1.0_aligned':
+        Nchan=384
+        cm_el = npa([[  11,   0],
+                           [  43,   0]])
+        vert=npa([[  0,   20],
+                  [  0,   20]])
+        
+        cm=cm.copy()
+        for i in range(int(Nchan/cm_el.shape[0])-1):
+            cm = np.vstack((cm, cm+vert*(i+1)))
         cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
         
     elif probe_version=='2.0_singleshank':

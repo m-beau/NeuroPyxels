@@ -22,7 +22,7 @@ unit=1820
 n_waveforms=100;t_waveforms=82;wvf_subset_selection='regular';wvf_batch_size=10;ampFactor=500;probe_type='3A'
 #%% Concise home made function
 
-def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, probe_type='3A', sav=True, prnt=True):
+def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, probe_version='3A', sav=True, prnt=True):
     '''
     ********
     routine from rtn.npix.spk_wvf
@@ -59,7 +59,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
             else:
                 if prnt: print('''File wvf_[{}].npy not found exports (snippet reminder :export_wvf).'''.format(u))
         else:
-            waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, probe_type)
+            waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, probe_version)
                 
         # Save it
         if sav:
@@ -68,7 +68,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
     return waveforms
 
 
-def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, probe_type='3A'):
+def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, probe_version='3A'):
     '''Function to extract a subset of waveforms from a given unit.
     Parameters:
         - dp:
@@ -113,12 +113,12 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     
     
     # Correct voltage scaling
-    assert probe_type in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']
-    if probe_type in ['3A', '1.0_staggered', '1.0_aligned']:
+    assert probe_version in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']
+    if probe_version in ['3A', '1.0_staggered', '1.0_aligned']:
         Vrange=1.2e6
         bits_encoding=10
         ampFactor=500
-    elif probe_type in ['2.0_singleshank', '2.0_fourshanked']:
+    elif probe_version in ['2.0_singleshank', '2.0_fourshanked']:
         Vrange=1.2e6
         bits_encoding=14
         ampFactor=500
@@ -138,24 +138,24 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     medians_t = np.repeat(medians_t, waveforms.shape[2], axis=2)
     waveforms-=medians_t
     
-    # Re-align waveforms in time?...
+    # Re-align waveforms in time?... not yet
 
     return  waveforms
 
 
-def get_peak_chan(dp, unit, probe_type='3A'):
-    waveforms=wvf(dp, unit, 200, probe_type=probe_type)
+def get_peak_chan(dp, unit, probe_version='3A'):
+    waveforms=wvf(dp, unit, 200, probe_version=probe_version)
     wvf_m = np.mean(waveforms, axis=0)
     t_max_wvf=np.max(abs(wvf_m),0)
     peak_chan = int(np.nonzero(np.max(t_max_wvf)==t_max_wvf)[0])
     return peak_chan
 
-def get_depthSort_peakChans(dp, units=[], quality='all', probe_type='3A'):
+def get_depthSort_peakChans(dp, units=[], quality='all', probe_version='3A'):
     if ~np.any(units):
         units=get_units(dp, quality=quality)
     peak_chans=npa(zeros=units.shape, dtype=np.int64)
     for iu, u in enumerate(units):
-        peak_chans[iu]= get_peak_chan(dp, u, probe_type)
+        peak_chans[iu]= get_peak_chan(dp, u, probe_version)
 
     depthIdx = np.argsort(peak_chans)[::-1] # From surface (high ch) to DCN (low ch)
     u_sort=units[depthIdx].reshape(len(units), 1)

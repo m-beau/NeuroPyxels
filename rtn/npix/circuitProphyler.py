@@ -115,7 +115,7 @@ class Prophyler:
                 if type(i) is not str or type(v) is not str:
                     raise typ_e
                 if not op.isdir(op.expanduser(v)):
-                    raise FileNotFoundError('{} not found!'.format(v))
+                    raise FileNotFoundError('Directory {} not found!'.format(v))
         elif type(datapaths) is str:
             if not op.isdir(op.expanduser(datapaths)):
                     raise FileNotFoundError('{} not found!'.format(datapaths))
@@ -126,6 +126,7 @@ class Prophyler:
         
         all_dps=list(datapaths.values())
         ds_names=''
+        self.ds={}
         for prb, dp in list(datapaths.items()):
             ds_names+='_'+op.basename(dp)
             self.ds[prb]=Dataset(dp, prb)
@@ -917,7 +918,7 @@ class Dataset:
         return rtn.npix.gl.get_units(self.dp, quality='good')
     
     def get_peak_channels(self):
-        self.peak_channels = get_depthSort_peakChans(self.dp, 'good', self.probe_type)# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
+        self.peak_channels = get_depthSort_peakChans(self.dp, quality='good', probe_version=self.probe_version)# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
 
         
     def get_peak_positions(self):
@@ -972,7 +973,7 @@ class Unit:
         self.get_peak_channel()
         
         # Get peak channel xy positions
-        self.peak_position_real=ds.peak_positions_real[self.idx==ds.peak_positions_real[:,0], 1:].flatten()
+        self.peak_position_real=self.ds.peak_positions_real[self.idx==self.ds.peak_positions_real[:,0], 1:].flatten()
                     
     def trn(self, rec_section='all'):
         return rtn.npix.spk_t.trn(self.dp, self.idx, rec_section=rec_section)

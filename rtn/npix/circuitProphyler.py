@@ -151,18 +151,22 @@ class Prophyler:
             elif ds.probe_version in ['1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']:
                 ds.sync_chan_ons=ons[6]
             sync_signals.append(ds.sync_chan_ons)
-            
-        spike_times = align_timeseries(spike_times, sync_signals)
-
-        self.merged_clusters_spikes=npa(zeros=(NspikesTotal, 3), dtype=np.uint64) # 1:dataset index, 2:unit index
         
-        cum_Nspikes=0
-        for ds_i in range(len(spike_clusters)):
-            Nspikes=len(spike_times[ds_i])
-            self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 0]=npa(ones=(Nspikes))*ds_i
-            self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 1]=spike_clusters[ds_i]
-            self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
-        self.merged_clusters_spikes=self.merged_clusters_spikes[np.argsort(self.merged_clusters_spikes[:,1])]
+        merge_fname='merged_clusters_spikes'
+        if op.exists(op.join(self.dp_pro, merge_fname+'.npz')):
+            self.merged_clusters_spikes=np.load(op.join(self.dp_pro, merge_fname+'.npz'))
+        else:
+            spike_times = align_timeseries(spike_times, sync_signals)
+            self.merged_clusters_spikes=npa(zeros=(NspikesTotal, 3), dtype=np.uint64) # 1:dataset index, 2:unit index
+            cum_Nspikes=0
+            for ds_i in range(len(spike_clusters)):
+                Nspikes=len(spike_times[ds_i])
+                self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 0]=npa(ones=(Nspikes))*ds_i
+                self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 1]=spike_clusters[ds_i]
+                self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
+            self.merged_clusters_spikes=self.merged_clusters_spikes[np.argsort(self.merged_clusters_spikes[:,1])]
+            np.savez_compressed(op.join(self.dp_pro, merge_fname+'.npz'), self.merged_clusters_spikes)
+        del spike_times, spike_clusters, sync_signals
         
         # Create a networkX graph whose nodes are Units()
         self.undigraph=nx.MultiGraph() # Undirected multigraph - directionality is given by uSrc and uTrg. Several peaks -> several edges -> multigraph.

@@ -12,6 +12,7 @@ import os, ast
 import os.path as op
 
 import numpy as np
+from scipy import sparse
 from math import floor
 
 import matplotlib.pyplot as plt
@@ -179,10 +180,11 @@ def get_npix_sync(dp, output_binary = False):
     if op.exists(sync_dp):
         print("No file ending in 'on.npy' found in sync_chan directory: extracting sync channel from binary.".format(sync_dp))
         for file in os.listdir(sync_dp):
-            if file.endswith("_sync.npy"):
+            if file.endswith("_sync.npz"):
                 fname=file[:-9]
                 sync_fname=fname+'_sync'
-                binary=np.load(op.join(sync_dp, sync_fname+'.npy'))
+                binary=np.load(op.join(sync_dp, sync_fname+'.npz'))
+                binary=binary[dir(binary.f)[0]].astype(np.int8)
                 meta=read_spikeglx_meta(dp, fname[-2:])
                 break
     else: os.mkdir(sync_dp)
@@ -196,7 +198,7 @@ def get_npix_sync(dp, output_binary = False):
             for file in os.listdir(dp):
                 if file.endswith(".ap.bin"):
                     fname=file[:-4]
-                    print('{}.lf.bin not found in directory - .ap.bin used instead: extracting sync channel will be slow.'.format(fname[:-7]))
+                    print('{}.lf.bin not found in directory - .ap.bin used instead: extracting sync channel will be slow.'.format(fname))
                     break
         if fname=='':
             raise FileNotFoundError('No binary file found in {}!! Aborting.'.format(dp))
@@ -213,8 +215,8 @@ def get_npix_sync(dp, output_binary = False):
         
         
         print('Unpacking {}...'.format(fname+'.bin'))
-        binary = unpackbits(syncdat.flatten(),16)
-        np.save(op.join(sync_dp, sync_fname+'.npy'), binary)
+        binary = unpackbits(syncdat.flatten(),16).astype(np.int8)
+        np.savez_compressed(op.join(sync_dp, sync_fname+'.npz'), binary)
 
     if output_binary:
         return binary

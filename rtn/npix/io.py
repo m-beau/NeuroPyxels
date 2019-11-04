@@ -8,7 +8,7 @@ Input/output utilitaries to deal with Neuropixels files.
 """
 
 import psutil
-import os
+import os, ast
 import os.path as op
 
 import numpy as np
@@ -16,19 +16,22 @@ from math import floor
 
 import matplotlib.pyplot as plt
 
-from rtn.utils import npa, thresh
+from rtn.utils import npa
 
-#%% raw data extraction
+#%% Extract metadata and sync channel
 
-def read_spikeglx_meta(dp):
+def read_spikeglx_meta(dp, subtype='ap'):
     '''
     Read spikeGLX metadata file.
     '''
+    metafile=''
     for file in os.listdir(dp):
-        if file.endswith(".ap.meta"):
-            fname=file
+        if file.endswith(".{}.meta".format(subtype)):
+            metafile=op.join(dp, file)
+            break
+    if metafile=='':
+        raise FileNotFoundError('*.{}.bin not found in directory. Aborting.'.format(subtype))
             
-    metafile=op.join(dp, fname)
     with open(metafile, 'r') as f:
         meta = {}
         for ln in f.readlines():
@@ -59,6 +62,181 @@ def read_spikeglx_meta(dp):
     meta['probe_version']=probe_versions['imProbeOpt'][meta['imProbeOpt']] if 'imProbeOpt' in meta.keys() else probe_versions['imDatPrb_type'][meta['imDatPrb_type']] if 'imDatPrb_type' in meta.keys() else 'N/A'
     
     return meta
+
+# DOES NOT WORK YET
+# def extract_syncChan(bp, syncChan=384, fs=30000, ampFactor=500, Nchans=385, save=0):
+#     ''' Extracts the 16 'square signals' corresponding to the 16 pins input to the Neuropixels FPGA board
+#     ### PARAMETERS
+#     - bp: binary path (files must ends in .bin, typically ap.bin)
+#     - synchan (default 384): 0-indexed sync channel
+#     - times: list of boundaries of the time window, in seconds [t1, t2]. If 'all', whole recording.
+#     - fs (default 30000): sampling rate
+#     - ampFactor (default 500): gain factor of recording (can be different for LFP and AP, check SpikeGLX/OpenEphys)
+#     - Nchans (default 385): total number of channels on the probe (3A: 385, )
+#     - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
+    
+#     ## RETURNS
+#     sync channel: 16*Nsamples numpy binary array
+#     (@ 30kHz of bp is the AP binary file, use fs=25000 if you want to use the LF file)
+#     '''
+    
+#     assert bp[-4:]=='.bin'
+#     bn = bp.split('/')[-1] # binary name
+#     dp = bp[:-len(bn)-1] # data path
+#     rcn = '{}_sync.npy'.format(bn) # raw chunk name
+#     rcp = dp+'/'+rcn
+#     if os.path.isfile(rcp):
+#         return np.load(rcp)
+    
+#     # Get sync channel, formatted as a string of Nsamples bytes
+#     sc=b''
+#     with open(bp, 'rb') as f_src:
+#         # each sample for each channel is encoded on 16 bits = 2 bytes: samples*Nchannels*2.
+#         i=30000
+#         while i<60000:
+#             print('{0:.3f}%...'.format(100*i/(os.path.getsize(bp)/(Nchans*2))))
+#             f_src.seek(int(i*Nchans+syncChan)*2) # get to 385*i+384 channels,
+#             b = f_src.read(2) # then read 2 bytes = 16bits
+#             if not b:
+#                 break
+#             sc+=b
+#             print(i)
+#             print(len(sc)/4)
+#             i+=1
+            
+#     # turn it into bits
+#     sc = np.frombuffer(sc, dtype=np.uint8) # bytes to uint8
+#     sc = np.unpackbits(sc) # uint8 to binary bits
+#     Nsamples=int(len(sc)/16)
+#     sc = sc.reshape((Nsamples, 16)).T
+
+#     if save:
+#         np.save(rcp, sc)
+        
+#     return sc
+
+# def extract_syncEvents(bp, sgn=1, syncChan=384, times='all', fs=30000, ampFactor=500, Nchans=385, save=0):
+    
+#     # Get sync chan
+#     sc = extract_syncChan(bp, syncChan, times, fs, ampFactor, Nchans, save)
+    
+#     # threshold syncchan
+#     events = thresh(sc, 0.5, sgn=sgn)
+    
+#     return events
+
+def unpackbits(x,num_bits = 16):
+    '''
+    unpacks numbers in bits.
+    '''
+    xshape = list(x.shape)
+    x = x.reshape([-1,1])
+    to_and = 2**np.arange(num_bits).reshape([1,num_bits])
+    return (x & to_and).astype(bool).astype(int).reshape(xshape + [num_bits])
+
+def get_npix_sync(dp, output_binary = False):
+    '''Unpacks neuropixels phase external input data
+    events = unpack_npix3a_sync(trigger_data_channel)
+        Inputs:
+            syncdat               : trigger data channel to unpack (pass the last channel of the memory mapped file)
+            srate (1)             : sampling rate of the data; to convert to time - meta['imSampRate']
+            output_binary (False) : outputs the unpacked signal
+        Outputs
+            events        : dictionary of events. the keys are the channel number, the items the sample times of the events.
+    
+        Usage:
+    Load and get trigger times in seconds:
+        dp='path/to/binary'
+        onsets,offsets = unpack_npix_sync(dp);
+    Plot events:
+        plt.figure(figsize = [10,4])
+        for ichan,times in onsets.items():
+            plt.vlines(times,ichan,ichan+.8,linewidth = 0.5)
+        plt.ylabel('Sync channel number'); plt.xlabel('time (s)')
+    '''
+    fname=''
+    onsets={}
+    offsets={}
+    sync_dp=op.join(dp, 'sync_chan')
+    
+    # Tries to directly generate and output onsets and offsets
+    if op.exists(sync_dp) and not output_binary:
+        print('sync channel extraction directory found: {}'.format(sync_dp))
+        for file in os.listdir(sync_dp):
+            if file.endswith("on.npy"):
+                fname=file[:-13]
+                for file in os.listdir(sync_dp):
+                    if file.endswith("on.npy"):
+                        file_i = ast.literal_eval(file[-7])
+                        onsets[file_i]=np.load(op.join(sync_dp,file))
+                    elif file.endswith("of.npy"):
+                        file_i = ast.literal_eval(file[-7])
+                        offsets[file_i]=np.load(op.join(sync_dp,file))
+                    
+                return onsets, offsets
+
+    # Generates binary and eventually outputs it
+    if op.exists(sync_dp):
+        print("No file ending in 'on.npy' found in sync_chan directory: extracting sync channel from binary.".format(sync_dp))
+        for file in os.listdir(sync_dp):
+            if file.endswith("_sync.npy"):
+                fname=file[:-9]
+                sync_fname=fname+'_sync'
+                binary=np.load(op.join(sync_dp, sync_fname+'.npy'))
+                meta=read_spikeglx_meta(dp, fname[-2:])
+                break
+    else: os.mkdir(sync_dp)
+    
+    if fname=='':
+        for file in os.listdir(dp):
+            if file.endswith(".lf.bin"):
+                fname=file[:-4]
+                break
+        if fname=='':
+            for file in os.listdir(dp):
+                if file.endswith(".ap.bin"):
+                    fname=file[:-4]
+                    print('{}.lf.bin not found in directory - .ap.bin used instead: extracting sync channel will be slow.'.format(fname[:-7]))
+                    break
+        if fname=='':
+            raise FileNotFoundError('No binary file found in {}!! Aborting.'.format(dp))
+        
+        sync_fname=fname+'_sync'
+        meta=read_spikeglx_meta(dp, fname[-2:])
+        nchan=meta['nSavedChans']
+        dt=np.dtype(np.int16)
+        nsamples = os.path.getsize(op.join(dp, fname+'.bin')) / (nchan * dt.itemsize)
+        syncdat=np.memmap(op.join(dp, fname+'.bin'),
+                        mode='r',
+                        dtype=dt,
+                        shape=(int(nsamples), int(nchan)))[:,-1]
+        
+        
+        print('Unpacking {}...'.format(fname+'.bin'))
+        binary = unpackbits(syncdat.flatten(),16)
+        np.save(op.join(sync_dp, sync_fname+'.npy'), binary)
+
+    if output_binary:
+        return binary
+    
+    # Generates onsets and offsets from binary
+    mult = 1
+    srate = meta['imSampRate']
+    sync_idx_onset = np.where(mult*np.diff(binary, axis = 0)>0)
+    sync_idx_offset = np.where(mult*np.diff(binary, axis = 0)<0)
+    for ichan in np.unique(sync_idx_onset[1]):
+        ons = sync_idx_onset[0][
+              sync_idx_onset[1] == ichan]/srate
+        onsets[ichan] = ons
+        np.save(op.join(sync_dp, sync_fname+'{}on.npy'.format(ichan)), ons)
+    for ichan in np.unique(sync_idx_offset[1]):
+        ofs = sync_idx_offset[0][
+              sync_idx_offset[1] == ichan]/srate
+        offsets[ichan] = ofs
+        np.save(op.join(sync_dp, sync_fname+'{}of.npy'.format(ichan)), ofs)
+    
+    return onsets,offsets
+
 
 def extract_rawChunk(bp, times, channels=np.arange(384), fs=30000, ampFactor=500, Nchans=385, syncChan=384, save=0, ret=1):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
@@ -132,67 +310,6 @@ def extract_rawChunk(bp, times, channels=np.arange(384), fs=30000, ampFactor=500
         return rc
     else:
         return
-
-def extract_syncChan(bp, syncChan=384, fs=30000, ampFactor=500, Nchans=385, save=0):
-    ''' Extracts the 16 'square signals' corresponding to the 16 pins input to the Neuropixels FPGA board
-    ### PARAMETERS
-    - bp: binary path (files must ends in .bin, typically ap.bin)
-    - synchan (default 384): 0-indexed sync channel
-    - times: list of boundaries of the time window, in seconds [t1, t2]. If 'all', whole recording.
-    - fs (default 30000): sampling rate
-    - ampFactor (default 500): gain factor of recording (can be different for LFP and AP, check SpikeGLX/OpenEphys)
-    - Nchans (default 385): total number of channels on the probe (3A: 385, )
-    - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
-    
-    ## RETURNS
-    sync channel: 16*Nsamples numpy binary array
-    (@ 30kHz of bp is the AP binary file, use fs=25000 if you want to use the LF file)
-    '''
-    
-    assert bp[-4:]=='.bin'
-    bn = bp.split('/')[-1] # binary name
-    dp = bp[:-len(bn)-1] # data path
-    rcn = '{}_sync.npy'.format(bn) # raw chunk name
-    rcp = dp+'/'+rcn
-    if os.path.isfile(rcp):
-        return np.load(rcp)
-    
-    # Get sync channel, formatted as a string of Nsamples bytes
-    sc=b''
-    with open(bp, 'rb') as f_src:
-        # each sample for each channel is encoded on 16 bits = 2 bytes: samples*Nchannels*2.
-        i=30000
-        while i<60000:
-            print('{0:.3f}%...'.format(100*i/(os.path.getsize(bp)/(Nchans*2))))
-            f_src.seek(int(i*Nchans+syncChan)*2) # get to 385*i+384 channels,
-            b = f_src.read(2) # then read 2 bytes = 16bits
-            if not b:
-                break
-            sc+=b
-            print(i)
-            print(len(sc)/4)
-            i+=1
-            
-    # turn it into bits
-    sc = np.frombuffer(sc, dtype=np.uint8) # bytes to uint8
-    sc = np.unpackbits(sc) # uint8 to binary bits
-    Nsamples=int(len(sc)/16)
-    sc = sc.reshape((Nsamples, 16)).T
-
-    if save:
-        np.save(rcp, sc)
-        
-    return sc
-
-def extract_syncEvents(bp, sgn=1, syncChan=384, times='all', fs=30000, ampFactor=500, Nchans=385, save=0):
-    
-    # Get sync chan
-    sc = extract_syncChan(bp, syncChan, times, fs, ampFactor, Nchans, save)
-    
-    # threshold syncchan
-    events = thresh(sc, 0.5, sgn=sgn)
-    
-    return events
 
 
 def plot_raw(bp, times, channels=np.arange(385), offset=450, fs=30000, ampFactor=500, Nchans=385, save=0, savePlot=0):

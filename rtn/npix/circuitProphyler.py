@@ -63,7 +63,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
 
-from rtn.npix.io import read_spikeglx_meta
+from rtn.npix.io import read_spikeglx_meta, get_npix_sync
 from rtn.npix.gl import chan_map
 from rtn.npix.spk_wvf import get_depthSort_peakChans, get_peak_chan
                     
@@ -103,7 +103,7 @@ class Prophyler:
     '''
     
     
-    def __init__(self, datapaths):
+    def __init__(self, datapaths, sync_idx3A=2):
 
         # Handle datapaths format 
         typ_e=TypeError('''datapathd should be either a string to a kilosort path:
@@ -135,6 +135,16 @@ class Prophyler:
         print('Prophyler data (shared across {} dataset(s)) will be saved here: {}/prophyler.'.format(len(all_dps), op.dirname(all_dps[0])))
         self.dp_pro=op.join(op.dirname(all_dps[0]), 'prophyler'+ds_names)
         if not op.isdir(self.dp_pro): os.mkdir(self.dp_pro)
+        
+        # Create time-aligned-across-datasets spike_times.npy files
+        for prb, ds in self.ds.items():
+            ons, offs = get_npix_sync(ds.dp)
+            if ds.probe_version == '3A':
+                ds.sync_chans_ons=ons[sync_idx3A]
+            elif ds.probe_version in ['1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']:
+                ds.sync_chans_ons=ons[6]
+            assert self.ds[self.ds.keys()[0]].sync_chans_ons==ds.sync_chans_ons
+        
         
         # Create a networkX graph whose nodes are Units()
         self.undigraph=nx.MultiGraph() # Undirected multigraph - directionality is given by uSrc and uTrg. Several peaks -> several edges -> multigraph.

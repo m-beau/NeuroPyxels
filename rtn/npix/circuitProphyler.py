@@ -59,9 +59,7 @@ import numpy as np
 import pandas as pd
 
 import rtn
-from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
-                    npa, sign, minus_is_1, thresh, smooth, \
-                    _as_array, _unique, _index_of
+from rtn.utils import npa, sign, align_timeseries
 
 from rtn.npix.io import read_spikeglx_meta, get_npix_sync
 from rtn.npix.gl import chan_map
@@ -137,14 +135,34 @@ class Prophyler:
         if not op.isdir(self.dp_pro): os.mkdir(self.dp_pro)
         
         # Create time-aligned-across-datasets spike_times.npy files
+        spike_times, spike_clusters, sync_signals = [], [], []
+        NspikesTotal=0
         for prb, ds in self.ds.items():
             ons, offs = get_npix_sync(ds.dp)
+            ds.spike_times=np.load(op.join(ds.dp, 'spike_times.npy')).flatten()
+            spike_times.append(ds.spike_times)
+            NspikesTotal+=len(ds.spike_times)
+            
+            ds.spike_clusters=np.load(op.join(ds.dp, 'spike_clusters.npy')).flatten()
+            spike_clusters.append(ds.spike_clusters)
+            
             if ds.probe_version == '3A':
-                ds.sync_chans_ons=ons[sync_idx3A]
+                ds.sync_chan_ons=ons[sync_idx3A]
             elif ds.probe_version in ['1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']:
-                ds.sync_chans_ons=ons[6]
-            assert self.ds[self.ds.keys()[0]].sync_chans_ons==ds.sync_chans_ons
+                ds.sync_chan_ons=ons[6]
+            sync_signals.append(ds.sync_chan_ons)
+            
+        spike_times = align_timeseries(spike_times, sync_signals)
+
+        self.merged_clusters_spikes=npa(zeros=(NspikesTotal, 3), dtype=np.uint64) # 1:dataset index, 2:unit index
         
+        cum_Nspikes=0
+        for ds_i in range(len(spike_clusters)):
+            Nspikes=len(spike_times[ds_i])
+            self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 0]=npa(ones=(Nspikes))*ds_i
+            self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 1]=spike_clusters[ds_i]
+            self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
+        self.merged_clusters_spikes=self.merged_clusters_spikes[np.argsort(self.merged_clusters_spikes[:,1])]
         
         # Create a networkX graph whose nodes are Units()
         self.undigraph=nx.MultiGraph() # Undirected multigraph - directionality is given by uSrc and uTrg. Several peaks -> several edges -> multigraph.
@@ -1026,3 +1044,10 @@ class Unit:
         return dict(self.undigraph[self.idx])
     
         
+
+    a=npa([ 0,  1,  2,  3,  9, 13, 16, 29])
+    aa=npa([ 0,  2, 13])
+    
+    b=npa([ 3,  4,  5,  7, 13, 17, 21, 34]) # should be exactly a, but 2-shifted + 1 of drift after 6, 2 of drift after 18
+    bb=npa([3, 6, 18])
+    

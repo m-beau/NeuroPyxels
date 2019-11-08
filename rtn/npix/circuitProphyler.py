@@ -62,7 +62,7 @@ import rtn
 from rtn.utils import npa, sign, align_timeseries
 
 from rtn.npix.io import read_spikeglx_meta, get_npix_sync
-from rtn.npix.gl import chan_map
+from rtn.npix.gl import chan_map, load_units_qualities
 from rtn.npix.spk_wvf import get_depthSort_peakChans, get_peak_chan
                     
 import networkx as nx
@@ -123,9 +123,10 @@ class Prophyler:
             raise typ_e
         
         all_dps=list(datapaths.values())
+        all_dps.sort() # ALWAYS INSTANCIATE DATASETS IN THEIR ALPHABETICAL ORDER
         ds_names=''
         self.ds={}
-        for prb, dp in list(datapaths.items()):
+        for prb, dp in datapaths.items():
             ds_names+='_'+op.basename(dp)
             self.ds[prb]=Dataset(dp, prb)
             if op.dirname(all_dps[0])!=op.dirname(dp):
@@ -167,6 +168,17 @@ class Prophyler:
             self.merged_clusters_spikes=self.merged_clusters_spikes[np.argsort(self.merged_clusters_spikes[:,1])]
             np.savez_compressed(op.join(self.dp_pro, merge_fname+'.npz'), self.merged_clusters_spikes)
         del spike_times, spike_clusters, sync_signals
+        
+        # Merge the units qualities
+        qualities=pd.DataFrame(columns=['dataset', 'dataset_i', 'cluster_id', 'group'])
+        for prb, ds in self.ds.items():
+            cl_grp = load_units_qualities(ds.dp)
+            cl_grp.insert(0, 'dataset_i', ds.ds_i)
+            cl_grp.insert(0, 'dataset', ds.dp)
+            qualities=qualities.append(cl_grp, ignore_index=True)
+        qualities.to_csv(op.join(self.dp_pro, 'merged_cluster_group.tsv'), sep='	')
+        
+        # CREATE A KEYWORD IN CCG FUNCTION: MERGED_DATASET=TRUE OR FALSE - IF TRUE, HANDLES LOADED FILE AS 3xNspikes ARRAY RATHER THAN 2 LOADED ARRAYS
         
         # Create a networkX graph whose nodes are Units()
         self.undigraph=nx.MultiGraph() # Undirected multigraph - directionality is given by uSrc and uTrg. Several peaks -> several edges -> multigraph.
@@ -217,8 +229,9 @@ class Prophyler:
                 except: # must be a normal or empty string
                     if load_choice=='sfc':
                         print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
-                        rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=g, again=again, againCCG=againCCG)
-                        if plotsfcdf:rtn.npix.plot.plot_sfcdf(self.dp, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
+                        ## TODO: JUST ALTER THIS FUNCTION
+                        rtn.npix.corr.gen_sfc(self.dp_pro, cbin, cwin, threshold, n_consec_bins, rec_section, graph=g, again=again, againCCG=againCCG)
+                        if plotsfcdf:rtn.npix.plot.plot_sfcdf(self.dp_pro, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
                                                      rec_section=rec_section, ticks=False, again = again, saveFig=True, saveDir=self.dpnet)
                         break
                     elif op.isfile(op.join(self.dpnet, load_choice)):
@@ -230,9 +243,10 @@ class Prophyler:
                     else:
                         print("Filename or 'sfc' misspelled. Try again.")
         else:
+            ## TODO: JUST ALTER THIS FUNCTION
             print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
-            rtn.npix.corr.gen_sfc(self.dp, cbin, cwin, threshold, n_consec_bins, rec_section, graph=g, again=again, againCCG=againCCG)
-            if plotsfcdf: rtn.npix.plot.plot_sfcdf(self.dp, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
+            rtn.npix.corr.gen_sfc(self.dp_pro, cbin, cwin, threshold, n_consec_bins, rec_section, graph=g, again=again, againCCG=againCCG)
+            if plotsfcdf: rtn.npix.plot.plot_sfcdf(self.dp_pro, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
                                                      rec_section=rec_section, ticks=False, again=again, saveFig=True, saveDir=self.dpnet)
 
     

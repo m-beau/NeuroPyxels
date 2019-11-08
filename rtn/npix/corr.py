@@ -5,6 +5,7 @@
 """
 
 import os, sys, ast
+import os.path as op
 
 import numpy as np
 import pandas as pd
@@ -64,10 +65,10 @@ def pearson_corr_trn(L, b, dp):
     # Outputs
     - C: pairwise correlations matrix, Ncells x Ncells
     '''
-    def bnr(t):
+    def bnr(t, b, rec_len):
         return binarize(t, b, 30000, rec_len, False)
     rec_len=np.load(dp+'/spike_times.npy')[-1]
-    tb1= bnr(L[0])
+    tb1= bnr(L[0], b, rec_len)
     M=npa(zeros=(len(L), len(tb1)))
     M[0,:]=tb1
     del tb1
@@ -79,7 +80,7 @@ def correlation_index(L, dt, dp):
     '''
     Calculate the NxN matrix of pairwise correlation indices from Wong, Meister and Shatz 1993
     reviewed by Cutts and Eglen 2014.
-    WARINING firing rate biased!
+    WARNING firing rate biased!
     # Parameters
     - L: list of Ncells spike time trains (arrays or lists), in samples
     - dt: synchronicity window, in ms
@@ -119,6 +120,155 @@ def correlation_index(L, dt, dp):
     
     return C if len(L)>2 else C[0,1] # return corr matrix if more than 2 series, else only the corrcoeff
 
+def spike_time_tiling_coefficient(L, dt, dp):
+    """
+    Calculates the Spike Time Tiling Coefficient (STTC) as described in
+    (Cutts & Eglen, 2014) following Cutts' implementation in C.
+    The STTC is a pairwise measure of correlation between spike trains.
+    It has been proposed as a replacement for the correlation index as it
+    presents several advantages (e.g. it's not confounded by firing rate,
+    appropriately distinguishes lack of correlation from anti-correlation,
+    periods of silence don't add to the correlation and it's sensitive to
+    firing patterns).
+
+    The STTC is calculated as follows:
+
+    .. math::
+        STTC = 1/2((PA - TB)/(1 - PA*TB) + (PB - TA)/(1 - PB*TA))
+
+    Where `PA` is the proportion of spikes from train 1 that lie within
+    `[-dt, +dt]` of any spike of train 2 divided by the total number of spikes
+    in train 1, `PB` is the same proportion for the spikes in train 2;
+    `TA` is the proportion of total recording time within `[-dt, +dt]` of any
+    spike in train 1, TB is the same proportion for train 2.
+    For :math:`TA = PB = 1`and for :math:`TB = PA = 1`
+    the resulting :math:`0/0` is replaced with :math:`1`,
+    since every spike from the train with :math:`T = 1` is within
+    `[-dt, +dt]` of a spike of the other train.
+
+    This is a Python implementation compatible with the elephant library of
+    the original code by C. Cutts written in C and avaiable at:
+    (https://github.com/CCutts/Detecting_pairwise_correlations_in_spike_trains/blob/master/spike_time_tiling_coefficient.c)
+
+    Parameters
+    ----------
+    spiketrain_1, spiketrain_2: neo.Spiketrain objects to cross-correlate.
+        Must have the same t_start and t_stop.
+    dt: Python Quantity.
+        The synchronicity window is used for both: the quantification of the
+        proportion of total recording time that lies [-dt, +dt] of each spike
+        in each train and the proportion of spikes in `spiketrain_1` that lies
+        `[-dt, +dt]` of any spike in `spiketrain_2`.
+        Default : 0.005 * pq.s
+
+    Returns
+    -------
+    index:  float
+        The spike time tiling coefficient (STTC). Returns np.nan if any spike
+        train is empty.
+
+    References
+    ----------
+    Cutts, C. S., & Eglen, S. J. (2014). Detecting Pairwise Correlations in
+    Spike Trains: An Objective Comparison of Methods and Application to the
+    Study of Retinal Waves. Journal of Neuroscience, 34(43), 14288–14303.
+    """
+
+    def run_P(spiketrain_1, spiketrain_2):
+        """
+        Check every spike in train 1 to see if there's a spike in train 2
+        within dt
+        """
+        N2 = len(spiketrain_2)
+
+        # Search spikes of spiketrain_1 in spiketrain_2
+        # ind will contain index of
+        ind = np.searchsorted(spiketrain_2.times, spiketrain_1.times)
+
+        # To prevent IndexErrors
+        # If a spike of spiketrain_1 is after the last spike of spiketrain_2,
+        # the index is N2, however spiketrain_2[N2] raises an IndexError.
+        # By shifting this index, the spike of spiketrain_1 will be compared
+        # to the last 2 spikes of spiketrain_2 (negligible overhead).
+        # Note: Not necessary for index 0 that will be shifted to -1,
+        # because spiketrain_2[-1] is valid (additional negligible comparison)
+        ind[ind == N2] = N2 - 1
+
+        # Compare to nearest spike in spiketrain_2 BEFORE spike in spiketrain_1
+        close_left = np.abs(
+            spiketrain_2.times[ind - 1] - spiketrain_1.times) <= dt
+        # Compare to nearest spike in spiketrain_2 AFTER (or simultaneous)
+        # spike in spiketrain_2
+        close_right = np.abs(
+            spiketrain_2.times[ind] - spiketrain_1.times) <= dt
+
+        # spiketrain_2 spikes that are in [-dt, dt] range of spiketrain_1
+        # spikes are counted only ONCE (as per original implementation)
+        close = close_left + close_right
+
+        # Count how many spikes in spiketrain_1 have a "partner" in
+        # spiketrain_2
+        return np.count_nonzero(close)
+
+    def run_T(spiketrain):
+        """
+        Calculate the proportion of the total recording time 'tiled' by spikes.
+        """
+        N = len(spiketrain)
+        time_A = 2 * N * dt  # maximum possible time
+
+        if N == 1:  # for just one spike in train
+            if spiketrain[0] - spiketrain.t_start < dt:
+                time_A += -dt + spiketrain[0] - spiketrain.t_start
+            if spiketrain[0] + dt > spiketrain.t_stop:
+                time_A += -dt - spiketrain[0] + spiketrain.t_stop
+        else:  # if more than one spike in train
+            # Vectorized loop of spike time differences
+            diff = np.diff(spiketrain)
+            diff_overlap = diff[diff < 2 * dt]
+            # Subtract overlap
+            time_A += -2 * dt * len(diff_overlap) + np.sum(diff_overlap)
+
+            # check if spikes are within dt of the start and/or end
+            # if so subtract overlap of first and/or last spike
+            if (spiketrain[0] - spiketrain.t_start) < dt:
+                time_A += spiketrain[0] - dt - spiketrain.t_start
+
+            if (spiketrain.t_stop - spiketrain[N - 1]) < dt:
+                time_A += -spiketrain[-1] - dt + spiketrain.t_stop
+
+        T = time_A / (spiketrain.t_stop - spiketrain.t_start)
+        return T.simplified.item()  # enforce simplification, strip units
+
+    N1 = len(spiketrain_1)
+    N2 = len(spiketrain_2)
+
+    if N1 == 0 or N2 == 0:
+        index = np.nan
+    else:
+        TA = run_T(spiketrain_1)
+        TB = run_T(spiketrain_2)
+        PA = run_P(spiketrain_1, spiketrain_2)
+        PA = PA / N1
+        PB = run_P(spiketrain_2, spiketrain_1)
+        PB = PB / N2
+        # check if the P and T values are 1 to avoid division by zero
+        # This only happens for TA = PB = 1 and/or TB = PA = 1,
+        # which leads to 0/0 in the calculation of the index.
+        # In those cases, every spike in the train with P = 1
+        # is within dt of a spike in the other train,
+        # so we set the respective (partial) index to 1.
+        if PA * TB == 1:
+            if PB * TA == 1:
+                index = 1.
+            else:
+                index = 0.5 + 0.5 * (PB - TA) / (1 - PB * TA)
+        elif PB * TA == 1:
+            index = 0.5 + 0.5 * (PA - TB) / (1 - PA * TB)
+        else:
+            index = 0.5 * (PA - TB) / (1 - PA * TB) + 0.5 * (PB - TA) / (
+                    1 - PB * TA)
+    return index
 
 
 def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, dic={}):
@@ -138,7 +288,7 @@ def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, dic={}
     return spikes[0,:], spikes[1,:] # equivalent of spike_times.npy and spike_clusters.npy
 
 
-def crosscorrelate_cyrille(dp, bin_size, win_size, U='NeuropixFullDataset', fs=30000, symmetrize=True, rec_section='all', prnt=True, own_trains={}):
+def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True, rec_section='all', prnt=True, own_trains={}):
     '''Returns the crosscorrelation function of two spike trains.
        - dp: (string): DataPath to the Neuropixels dataset.
        - win_size (float): window size, in milliseconds
@@ -160,27 +310,12 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U='NeuropixFullDataset', fs=3
     assert winsize_bins % 2 == 1
 
     #### Get clusters and times
-    if own_trains!={}:
-        phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, dic=own_trains)
-        units = _unique(spike_clusters)
-        n_units = len(units)
+    if type(U)!=list:
+        U=list(U)
     
-    else:
-        if type(U)==str:
-            # All the CCGs of a Neuropixels dataset
-            spike_clusters = np.load(dp+"/spike_clusters.npy")
-            units = _unique(spike_clusters)
-            n_units = len(units)
-            phy_ss = np.load(dp+'/spike_times.npy')
-    
-        # Between n_units provided units
-        else:
-            if type(U)!=list:
-                U=list(U)
-            
-            phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, dic={})
-            units = _unique(spike_clusters)
-            n_units = len(units)
+    phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, dic=own_trains)
+    units = _unique(spike_clusters)
+    n_units = len(units)
 
     #### Compute crosscorrelograms
     # Shift between the two copies of the spike trains.
@@ -776,7 +911,11 @@ def make_cm(dp, units, b=5, cbin=1, cwin=100, corrEvaluator='corrcoeff_eleph', v
         
 ''''''
 #%% Connectivity inferred from correlograms
- 
+
+def find_transmission_prob(ccg, cbin, holgauss_b, holgauss_w):
+    
+    return tp, tp_time
+
 def find_significant_hist_peak(hist, hbin, threshold=3, n_consec_bins=3, ext_mn=None, ext_std=None, pkSgn=None):
     '''CCG is a 1d array, 
     hbin is in ms, 

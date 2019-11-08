@@ -4,13 +4,12 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 import os, sys
+import os.path as op
+import ast
 
 import numpy as np
-
-from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
-                    npa, sign, minus_is_1, thresh, smooth, \
-                    _as_array, _unique, _index_of
-from rtn.npix.gl import get_units
+                    
+from rtn.npix.gl import get_units, assert_multidatasets
 
 def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
     '''Function to turn a spike train (array of time stamps)
@@ -48,7 +47,7 @@ def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
     return Xb
 
 
-def ids(dp, u, ret=True, sav=True, prnt=True):
+def ids(dp, unit, ret=True, sav=True, prnt=True):
     '''
     ********
     routine from routines_spikes
@@ -61,49 +60,41 @@ def ids(dp, u, ret=True, sav=True, prnt=True):
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    #global indices
-    # Preformat
-    u, dp = int(u), str(dp)
-
+    assert unit in get_units(dp)
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
-    if not os.path.isdir(dprm):
-        os.makedirs(dprm)
-    if os.path.exists(dprm+'/ids{}.npy'.format(u)):
-        if prnt: print("File ids{}.npy found in routines memory.".format(u))
-        indices = np.load(dprm+'/ids{}.npy'.format(u))
+    if not op.isdir(dprm): os.makedirs(dprm)
+    if op.exists(dprm+'/ids{}.npy'.format(unit)):
+        if prnt: print("File ids{}.npy found in routines memory.".format(unit))
+        indices = np.load(dprm+'/ids{}.npy'.format(unit))
         indices=np.asarray(indices, dtype='int64')
     # if not, compute it
     else:
-        dpme = dp+'/manualExports'
-        fn="/spike_ids{}.npy".format(u)
-        if os.path.exists(dpme+fn):
-            indices = np.load(dpme+fn)
-            if prnt: print("File spike_ids{}.npy found in phy manual exports.".format(u))
+        if prnt: 
+            print("File ids{}.npy not found in routines memory. Will be computed from source files.".format(unit))
+        mcs=assert_multidatasets(dp)
+        if type(mcs) is np.ndarray:
+            assert type(unit)=='str', "To load data from a merged datasets directory, you should feed in 'datasetindex_unit' strings in place of units!"
+            ds, u = unit.split('_')
+            ds, u = ast.literal_eval(ds), ast.literal_eval(unit)
+            assert type(ds) is type(u) is int, "To load data from a merged datasets directory, you should feed in 'a datasetindex_unit' string in place of unit!"
+            indices = np.nonzero((mcs[:,0]==u)&(mcs[:,1]==u))[0]
+            indices=np.reshape(indices, (max(indices.shape), ))
         else:
-            if prnt: 
-                print('''File spike_ids{}.npy not found in phy manual exports. Will be computed from source files. 
-                  Reminder: perform phy export of selected units ids with :export_ids.'''.format(u))
+            u = int(unit)
             spike_clusters = np.load(dp+"/spike_clusters.npy")
             indices = np.nonzero(spike_clusters==u)[0]
             indices=np.reshape(indices, (max(indices.shape), ))
                 
         # Save it
         if sav:
-            np.save(dprm+'/ids{}.npy'.format(u), indices)
+            np.save(dprm+'/ids{}.npy'.format(unit), indices)
     # Either return or draw to global namespace
-    if ret:
-        ids=indices.copy()
-        del indices
-        return ids
-    else:
-        # if prnt: print("ids{} defined into global namespace.".format(u))
-        # exec("ids{} = indices".format(u), globals())
-        del indices
+    return indices
 
     
 
-def trn(dp, u, ret=True, sav=True, prnt=True, rec_section='all'):
+def trn(dp, unit, ret=True, sav=True, prnt=True, rec_section='all'):
     '''
     ********
     routine from routines_spikes
@@ -117,63 +108,43 @@ def trn(dp, u, ret=True, sav=True, prnt=True, rec_section='all'):
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - rec_section = 'all' or [(t1, t2), ...] with t1, t2 in seconds.
     '''
-    #global train
-    # Preformatpython how to save memory numpy array
-    u, dp = int(u), str(dp)
-    assert u in get_units(dp)
+    assert unit in get_units(dp)
     fs=30000
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
-    if not os.path.isdir(dprm):
-        os.makedirs(dprm)
-    if os.path.exists(dprm+'/trn{}({}).npy'.format(u, str(rec_section)[0:50].replace(' ', ''))):
-        if prnt: print("File /trn{}({}).npy found in routines memory.".format(u, str(rec_section)[0:50].replace(' ', '')))
-        train = np.load(dprm+'/trn{}({}).npy'.format(u, str(rec_section)[0:50].replace(' ', '')))
+    if not op.isdir(dprm): os.makedirs(dprm)
+    if op.exists(dprm+'/trn{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', ''))):
+        if prnt: print("File /trn{}({}).npy found in routines memory.".format(unit, str(rec_section)[0:10].replace(' ', '')))
+        train = np.load(dprm+'/trn{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', '')))
         train=np.asarray(train, dtype='int64')
     # if not, compute it
     else:
-        if prnt: print("File trn{}.npy not found in routines memory.".format(u))
-        dpme = dp+'/manualExports'
-        fn="/spike_samples{}.npy".format(u)
-        if os.path.exists(dpme+fn):
-            train = np.load(dpme+fn)
-            if prnt: print("File spike_samples{}.npy found in phy manual exports.".format(u))
+        if prnt:
+            print("File trn{}.npy not found in routines memory. Will be computed from source files.".format(unit))
+        spike_clusters = np.load(dp+"/spike_clusters.npy")
+        spike_samples = np.load(dp+'/spike_times.npy')
+        train = spike_samples[spike_clusters==unit]
+        train=np.reshape(train, (max(train.shape), ))
+        
+        # Optional selection of a section of the recording.
+        if type(rec_section)==str:
+            if rec_section=='all':
+                pass # eq to rec_section=[(0, spike_samples[-1])] # in samples
         else:
-            if prnt: 
-                print('''File spike_samples{}.npy not found in phy manual exports. 
-                  Will be computed from source files. 
-                  Reminder: perform phy export of selected units samples with :export_samples.'''.format(u))
-            spike_clusters = np.load(dp+"/spike_clusters.npy")
-            spike_samples = np.load(dp+'/spike_times.npy')
-            train = spike_samples[spike_clusters==u]
-            train=np.reshape(train, (max(train.shape), ))
-            
-            # Optional selection of a section of the recording.
-            if type(rec_section)==str:
-                if rec_section=='all':
-                    pass # eq to rec_section=[(0, spike_samples[-1])] # in samples
-            else:
-                sec_bool=np.zeros(len(train), dtype=np.bool)
-                for section in rec_section:
-                    sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
-                train=train[sec_bool]
+            sec_bool=np.zeros(len(train), dtype=np.bool)
+            for section in rec_section:
+                sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
+            train=train[sec_bool]
                 
         train=np.asarray(train, dtype='int64')
         # Save it
         if sav:
-            np.save(dprm+'/trn{}({}).npy'.format(u, str(rec_section)[0:50].replace(' ', '')), train)
+            np.save(dprm+'/trn{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', '')), train)
     # Either return or draw to global namespace
-    if ret:
-        trn=train.copy()
-        del train
-        return trn
-    else:
-        # if prnt: print("trn{} defined into global namespace.".format(u))
-        # exec("trn{} = train".format(u), globals())
-        del train
+    return train
 
 
-def isi(dp, u, ret=True, sav=True, prnt=True, rec_section='all'):
+def isi(dp, unit, ret=True, sav=True, prnt=True, rec_section='all'):
     '''
     ********
     routine from routines_spikes
@@ -186,44 +157,33 @@ def isi(dp, u, ret=True, sav=True, prnt=True, rec_section='all'):
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    #global isitvl
-    # Preformatpython how to save memory numpy array
-    u, dp = int(u), str(dp)
 
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
-    if not os.path.isdir(dprm):
-        os.makedirs(dprm)
-    if os.path.exists(dprm+'/isi{}({}).npy'.format(u, str(rec_section)[0:50].replace(' ', ''))):
-        if prnt: print("File /isi{}({}).npy found in routines memory.".format(u, str(rec_section)[0:50].replace(' ', '')))
-        isitvl = np.load(dprm+'/isi{}({}).npy'.format(u, str(rec_section)[0:50].replace(' ', '')))
+    if not op.isdir(dprm): os.makedirs(dprm)
+    if op.exists(dprm+'/isi{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', ''))):
+        if prnt: print("File /isi{}({}).npy found in routines memory.".format(unit, str(rec_section)[0:10].replace(' ', '')))
+        isitvl = np.load(dprm+'/isi{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', '')))
         isitvl=np.asarray(isitvl, dtype='float64')
     # if not, compute it
     else:
-        if prnt: print("File isi{}.npy not found in routines memory. Will be computed from source files".format(u))
+        if prnt: print("File isi{}.npy not found in routines memory. Will be computed from source files".format(unit))
         sys.path.append(dp)
         from params import sample_rate as fs
-        train = trn(dp, u, ret=True, sav=sav, prnt=prnt, rec_section=rec_section)
+        train = trn(dp, unit, ret=True, sav=sav, prnt=prnt, rec_section=rec_section)
         train = train*1./(fs*1./1000) # Conversion from samples to ms
         isitvl = np.diff(train) # in ms
         isitvl=np.asarray(isitvl, dtype='float64')
         
         # Save it
         if sav:
-            np.save(dprm+'/isi{}({}).npy'.format(u, str(rec_section)[0:50].replace(' ', '')), isitvl)
+            np.save(dprm+'/isi{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', '')), isitvl)
     # Either return or draw to global namespace
-    if ret:
-        isi=isitvl.copy()
-        del isitvl
-        return isi
-    else:
-        # if prnt: print("isi{} defined into global namespace.".format(u))
-        # exec("isi{} = isitvl".format(u), globals())
-        del isitvl
+    return isitvl
         
 
 
-def trnb(dp, u, bin_size, ret=True, sav=True, prnt=True, constrainBin=False, rec_section='all'):
+def trnb(dp, unit, bin_size, ret=True, sav=True, prnt=True, constrainBin=False, rec_section='all'):
     '''
     ********
     routine from routines_spikes
@@ -238,24 +198,20 @@ def trnb(dp, u, bin_size, ret=True, sav=True, prnt=True, constrainBin=False, rec
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    #global train_binarized
-    # Preformat
-    u, dp = int(u), str(dp)
 
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
-    if not os.path.isdir(dprm):
-        os.makedirs(dprm)
-    if os.path.exists(dprm+'/trnb{}_{}({}).npy'.format(u, bin_size, str(rec_section)[0:50].replace(' ', ''))):
-        if prnt: print("File trnb{}_{}.npy found in routines memory.".format(u, bin_size))
-        train_binarized = np.load(dprm+'/trnb{}_{}({}).npy'.format(u, bin_size, str(rec_section)[0:50].replace(' ', '')))
+    if not op.isdir(dprm): os.makedirs(dprm)
+    if op.exists(dprm+'/trnb{}_{}({}).npy'.format(unit, bin_size, str(rec_section)[0:10].replace(' ', ''))):
+        if prnt: print("File trnb{}_{}.npy found in routines memory.".format(unit, bin_size))
+        train_binarized = np.load(dprm+'/trnb{}_{}({}).npy'.format(unit, bin_size, str(rec_section)[0:10].replace(' ', '')))
         train_binarized = np.asarray(train_binarized, dtype='int64')
     # if not, compute it
     else:
         if prnt: 
             print('''File trnb{}_{}.npy not found in routines memory.
-              Will be computed from source files.'''.format(u, bin_size))
-        train = trn(dp, u, ret=True, sav=False, rec_section=rec_section)
+              Will be computed from source files.'''.format(unit, bin_size))
+        train = trn(dp, unit, ret=True, sav=False, rec_section=rec_section)
         phy_st = np.load(dp+'/spike_times.npy')
         last_st = phy_st[-1,0] # in samples
         del phy_st
@@ -265,13 +221,6 @@ def trnb(dp, u, bin_size, ret=True, sav=True, prnt=True, constrainBin=False, rec
         train_binarized = np.asarray(train_binarized, dtype='int16') #0s and 1s -> int8 to save memory
         # Save it
         if sav:
-            np.save(dprm+'/trnb{}_{}({}).npy'.format(u, bin_size, str(rec_section)[0:50].replace(' ', '')), train_binarized)
+            np.save(dprm+'/trnb{}_{}({}).npy'.format(unit, bin_size, str(rec_section)[0:10].replace(' ', '')), train_binarized)
     # Either return or draw to global namespace
-    if ret:
-        trnb=train_binarized.copy()
-        del train_binarized
-        return trnb
-    else:
-        # if prnt: print("trnb{}_{} defined into global namespace.".format(u, bin_size))
-        # exec("trnb{}_{} = train_binarized".format(u, bin_size), globals())
-        del train_binarized
+    return train_binarized

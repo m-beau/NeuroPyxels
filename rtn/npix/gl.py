@@ -14,6 +14,12 @@ import pandas as pd
 
 from rtn.utils import npa
 
+def assert_multidatasets(dp):
+    'Returns unpacked merged_clusters_spikes.npz if it exists in dp, None otherwise.'
+    if op.exists(op.join(dp, 'merged_clusters_spikes.npz')):
+        mcs=np.load(op.join(dp, 'merged_clusters_spikes.npz'))
+        return mcs[list(mcs.keys())[0]]
+
 def chan_map(probe_version='3A', dp=None, y_orig='surface'):
     assert y_orig in ['surface', 'tip']
     assert probe_version in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked', 'local']
@@ -71,26 +77,42 @@ def chan_map(probe_version='3A', dp=None, y_orig='surface'):
         
     return cm
 
-def get_units(dp, quality='all'):
-    assert quality in ['all', 'good', 'mua', 'noise']
-    f1=dp+'/cluster_group.tsv'
-    f2=dp+'/cluster_groups.csv'
-    if os.path.isfile(f1):
-        cl_grp = pd.read_csv(f1,delimiter='	')
+def load_units_qualities(dp):
+    f1='cluster_group.tsv'
+    f2='cluster_groups.csv'
+    if os.path.isfile(op.join(dp, f1)):
+        qualities = pd.read_csv(f1,delimiter='	')
+    elif os.path.isfile(op.join(dp, f1)):
+        qualities = pd.read_csv('merged_'+f1,delimiter='	')
     elif os.path.isfile(f2):
-        cl_grp = pd.read_csv(f2)
+        qualities = pd.read_csv(op.join(dp, f2))
+    elif os.path.isfile(f2):
+        qualities = pd.read_csv(op.join(dp, 'merged_'+f2))
     else:
         print('cluster groups table not found in provided data path. Exiting.')
         return
-    try:
-        np.all(np.isnan(cl_grp['group'])) # Units have not been given a class yet
-        units=[]
-    except:
-        if quality=='all':
-            units = cl_grp.loc[:, 'cluster_id']
-        else:
-            units = cl_grp.loc[np.nonzero(cl_grp['group']==quality)[0], 'cluster_id']
-    return np.array(units, dtype=np.int64)
+    return qualities
+
+def get_units(dp, quality='all'):
+    assert quality in ['all', 'good', 'mua', 'noise']
+    
+    cl_grp = load_units_qualities(dp)
+    
+    if 'dataset' in cl_grp.columns:
+        units=['{}_{}'.format(cl_grp.loc[i, 'dataset_i'], cl_grp.loc[i, 'cluster_id']) for i in cl_grp.index if cl_grp.loc[i, 'group']=='good']
+        return units
+        
+    else:
+        cl_grp = load_units_qualities(dp)
+        try:
+            np.all(np.isnan(cl_grp['group'])) # Units have not been given a class yet
+            units=[]
+        except:
+            if quality=='all':
+                units = cl_grp.loc[:, 'cluster_id']
+            else:
+                units = cl_grp.loc[np.nonzero(cl_grp['group']==quality)[0], 'cluster_id']
+        return np.array(units, dtype=np.int64)
 
 def get_good_units(dp):
     return get_units(dp, quality='good')

@@ -147,7 +147,6 @@ class Prophyler:
         print('Prophyler data (shared across {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_pro))
         if not op.isdir(self.dp_pro):
             os.mkdir(self.dp_pro)
-            self.ds_table.to_csv(op.join(self.dp_pro, 'datasets_table.csv'))
         else:
             ds_table=pd.read_csv(op.join(self.dp_pro, 'datasets_table.csv'))
             for ds_i in ds_table.index:
@@ -159,6 +158,7 @@ class Prophyler:
                               If you wish to use the same probe names as before, re-instanciate prophyler with these.\
                               '''.format(len(self.ds_table.index), ds_table['probe'].tolist(), ds_table.index.tolist(), self.ds_table['probe'].tolist()))
             del ds_table
+        self.ds_table.to_csv(op.join(self.dp_pro, 'datasets_table.csv'))
         
         
         # Create time-aligned-across-datasets spike_times.npy files

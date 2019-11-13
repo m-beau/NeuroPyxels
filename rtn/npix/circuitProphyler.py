@@ -122,60 +122,85 @@ class Prophyler:
         else:
             raise typ_e
         
-        all_dps=list(datapaths.values())
-        all_dps.sort() # ALWAYS INSTANCIATE DATASETS IN THEIR ALPHABETICAL ORDER
+        # Make an alphabetically indexed table of all fed datasets
+        self.ds_table=pd.DataFrame(columns=['dataset_name', 'dp', 'probe'])
+        for i, (prb, dp) in enumerate(datapaths.items()):
+            self.ds_table.loc[i, 'dataset_name']=op.basename(dp)
+            self.ds_table.loc[i, 'dp']=dp
+            self.ds_table.loc[i, 'probe']=prb
+        self.ds_table.insert(0, 'dataset_i', self.ds_table['dataset_name'].argsort())
+        self.ds_table.sort_values('dataset_i', axis=0, inplace=True)
+        self.ds_table.set_index('dataset_i', inplace=True)
+        
+        # Define the prophyler path, where the 'merged' data will be saved
         ds_names=''
+        predirname=op.dirname(self.ds_table['dp'][0])
         self.ds={}
-        for prb, dp in datapaths.items():
-            ds_names+='_'+op.basename(dp)
-            self.ds[prb]=Dataset(dp, prb)
-            if op.dirname(all_dps[0])!=op.dirname(dp):
-                print('WARNING: all your datasets are not stored in the same pre-directory - directory of {} is picked.'.format(prb))
-        print('Prophyler data (shared across {} dataset(s)) will be saved here: {}/prophyler.'.format(len(all_dps), op.dirname(all_dps[0])))
-        self.dp_pro=op.join(op.dirname(all_dps[0]), 'prophyler'+ds_names)
-        if not op.isdir(self.dp_pro): os.mkdir(self.dp_pro)
+        for ds_i in self.ds_table.index:
+            dp, prb = self.ds_table.loc[ds_i, 'dp'], self.ds_table.loc[ds_i, 'probe']
+            self.ds[ds_i]=Dataset(dp, prb)
+            self.ds[ds_i].ds_i=ds_i
+            ds_names+='_'+self.ds[ds_i].name
+            if predirname!=op.dirname(dp):
+                print('WARNING: all your datasets are not stored in the same pre-directory - {} is picked anyway.'.format(predirname))
+        self.dp_pro=op.join(predirname, 'prophyler'+ds_names)
+        print('Prophyler data (shared across {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_pro))
+        if not op.isdir(self.dp_pro):
+            os.mkdir(self.dp_pro)
+            self.ds_table.to_csv(op.join(self.dp_pro, 'datasets_table.csv'))
+        else:
+            ds_table=pd.read_csv(op.join(self.dp_pro, 'datasets_table.csv'))
+            for ds_i in ds_table.index:
+                try:
+                    assert self.ds_table.loc[ds_i, 'probe']==ds_table.loc[ds_i, 'probe']
+                except:
+                    print('''WARNING you ran circuit prophyler on these {} datasets in the past \
+                              but used the probe names {} for datasets {} ({} currently)!! Using new probe names. \
+                              If you wish to use the same probe names as before, re-instanciate prophyler with these.\
+                              '''.format(len(self.ds_table.index), ds_table['probe'].tolist(), ds_table.index.tolist(), self.ds_table['probe'].tolist()))
+            del ds_table
+        
         
         # Create time-aligned-across-datasets spike_times.npy files
         spike_times, spike_clusters, sync_signals = [], [], []
         NspikesTotal=0
-        for prb, ds in self.ds.items():
+        for ds_i in self.ds_table.index:
+            ds=self.ds[ds_i]
             ons, offs = get_npix_sync(ds.dp)
-            ds.spike_times=np.load(op.join(ds.dp, 'spike_times.npy')).flatten()
-            spike_times.append(ds.spike_times)
-            NspikesTotal+=len(ds.spike_times)
-            
-            ds.spike_clusters=np.load(op.join(ds.dp, 'spike_clusters.npy')).flatten()
-            spike_clusters.append(ds.spike_clusters)
-            
+            spike_times.append(np.load(op.join(ds.dp, 'spike_times.npy')).flatten())
+            spike_clusters.append(np.load(op.join(ds.dp, 'spike_clusters.npy')).flatten())
             if ds.probe_version == '3A':
                 ds.sync_chan_ons=ons[sync_idx3A]
             elif ds.probe_version in ['1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']:
                 ds.sync_chan_ons=ons[6]
             sync_signals.append(ds.sync_chan_ons)
         
+        NspikesTotal=0
+        for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
         merge_fname='merged_clusters_spikes'
         if op.exists(op.join(self.dp_pro, merge_fname+'.npz')):
             self.merged_clusters_spikes=np.load(op.join(self.dp_pro, merge_fname+'.npz'))
         else:
+            print("Aligning spike trains...")
             spike_times = align_timeseries(spike_times, sync_signals)
-            self.merged_clusters_spikes=npa(zeros=(NspikesTotal, 3), dtype=np.uint64) # 1:dataset index, 2:unit index
+            merged_clusters_spikes=npa(zeros=(NspikesTotal, 3), dtype=np.uint64) # 1:dataset index, 2:unit index
             cum_Nspikes=0
-            for ds_i in range(len(spike_clusters)):
+            for ds_i in self.ds_table.index:
                 Nspikes=len(spike_times[ds_i])
-                self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 0]=npa(ones=(Nspikes))*ds_i
-                self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 1]=spike_clusters[ds_i]
-                self.merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
-            self.merged_clusters_spikes=self.merged_clusters_spikes[np.argsort(self.merged_clusters_spikes[:,1])]
-            np.savez_compressed(op.join(self.dp_pro, merge_fname+'.npz'), self.merged_clusters_spikes)
-        del spike_times, spike_clusters, sync_signals
+                merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 0]=npa(ones=(Nspikes))*ds_i
+                merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 1]=spike_clusters[ds_i]
+                merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
+            merged_clusters_spikes=merged_clusters_spikes[np.argsort(merged_clusters_spikes[:,2])]
+            np.savez_compressed(op.join(self.dp_pro, merge_fname+'.npz'), merged_clusters_spikes)
+        del spike_times, spike_clusters, sync_signals, merged_clusters_spikes
         
         # Merge the units qualities
-        qualities=pd.DataFrame(columns=['dataset', 'dataset_i', 'cluster_id', 'group'])
-        for prb, ds in self.ds.items():
-            cl_grp = load_units_qualities(ds.dp)
-            cl_grp.insert(0, 'dataset_i', ds.ds_i)
-            cl_grp.insert(0, 'dataset', ds.dp)
+        qualities=pd.DataFrame(columns=['dataset_i', 'cluster_id', 'group'])
+        for ds_i in self.ds_table.index:
+            cl_grp = load_units_qualities(self.ds[ds_i].dp)
+            cl_grp.insert(0, 'dataset_i', ds_i)
             qualities=qualities.append(cl_grp, ignore_index=True)
+        qualities.set_index('dataset_i', inplace=True)
         qualities.to_csv(op.join(self.dp_pro, 'merged_cluster_group.tsv'), sep='	')
         
         # CREATE A KEYWORD IN CCG FUNCTION: MERGED_DATASET=TRUE OR FALSE - IF TRUE, HANDLES LOADED FILE AS 3xNspikes ARRAY RATHER THAN 2 LOADED ARRAYS
@@ -186,10 +211,12 @@ class Prophyler:
         if not op.isdir(self.dpnet): os.mkdir(self.dpnet)
         
         self.units={}
-        for prb, ds in self.ds.items():
+        for ds_i in self.ds_table.index:
+            ds=self.ds[ds_i]
             for u in ds.get_good_units():
                 ds.get_peak_positions()
-                self.units[prb]={u:Unit(ds, u, self.undigraph)} # Units are added to the same graph when initialized, even from different source datasets
+                unit=Unit(ds, u, self.undigraph) # Units are added to the same graph when initialized, even from different source datasets
+                self.units[unit.nodename]=unit
     
     def get_graph(self, prophylerGraph='undigraph'):
         assert prophylerGraph in ['undigraph', 'digraph']
@@ -938,7 +965,7 @@ class Dataset:
         # Handle datapaths format 
         if type(datapath) is str:
             if not op.isdir(op.expanduser(datapath)):
-                    raise FileNotFoundError('{} not found!'.format(datapaths))
+                    raise FileNotFoundError('{} not found!'.format(datapath))
         else:
             raise TypeError('''datapath should be either a string to a kilosort path:
                         'path/to/kilosort/output1'.''')
@@ -1010,7 +1037,8 @@ class Unit:
         self.undigraph = graph
         self.get_peak_position()
         # self refers to the instance not the class, hehe
-        self.undigraph.add_node(self.ds.prb_name+'_'+str(self.idx), unit=self, X=self.peak_position_real[0], Y=self.peak_position_real[1], posReal=self.peak_position_real, putativeCellType=self.putativeCellType, groundtruthCellType=self.groundtruthCellType, classifiedCellType=self.classifiedCellType) 
+        self.nodename=self.ds.ds_i+'_'+str(self.idx)
+        self.undigraph.add_node(self.nodename, unit=self, X=self.peak_position_real[0], Y=self.peak_position_real[1], posReal=self.peak_position_real, putativeCellType=self.putativeCellType, groundtruthCellType=self.groundtruthCellType, classifiedCellType=self.classifiedCellType) 
     
     def get_peak_channel(self):
         self.peak_channel=get_peak_chan(self.dp, self.idx, self.ds.probe_version)
@@ -1063,9 +1091,9 @@ class Unit:
     
         
 
-    a=npa([ 0,  1,  2,  3,  9, 13, 16, 29])
-    aa=npa([ 0,  2, 13])
+    # a=npa([ 0,  1,  2,  3,  9, 13, 16, 29])
+    # aa=npa([ 0,  2, 13])
     
-    b=npa([ 3,  4,  5,  7, 13, 17, 21, 34]) # should be exactly a, but 2-shifted + 1 of drift after 6, 2 of drift after 18
-    bb=npa([3, 6, 18])
+    # b=npa([ 3,  4,  5,  7, 13, 17, 21, 34]) # should be exactly a, but 2-shifted + 1 of drift after 6, 2 of drift after 18
+    # bb=npa([3, 6, 18])
     

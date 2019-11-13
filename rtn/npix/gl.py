@@ -81,13 +81,13 @@ def load_units_qualities(dp):
     f1='cluster_group.tsv'
     f2='cluster_groups.csv'
     if os.path.isfile(op.join(dp, f1)):
-        qualities = pd.read_csv(f1,delimiter='	')
-    elif os.path.isfile(op.join(dp, f1)):
-        qualities = pd.read_csv('merged_'+f1,delimiter='	')
+        qualities = pd.read_csv(op.join(dp, f1),delimiter='	')
+    elif os.path.isfile(op.join(dp, 'merged_'+f1)):
+        qualities = pd.read_csv(op.join(dp, 'merged_'+f1), delimiter='	')
     elif os.path.isfile(f2):
-        qualities = pd.read_csv(op.join(dp, f2))
+        qualities = pd.read_csv(op.join(dp, f2), delimiter=',')
     elif os.path.isfile(f2):
-        qualities = pd.read_csv(op.join(dp, 'merged_'+f2))
+        qualities = pd.read_csv(op.join(dp, 'merged_'+f2), delimiter=',')
     else:
         print('cluster groups table not found in provided data path. Exiting.')
         return

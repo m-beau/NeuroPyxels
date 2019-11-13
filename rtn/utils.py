@@ -148,22 +148,22 @@ def align_timeseries(timeseries, sync_signals):
     
     '''
     assert type(timeseries) is type(sync_signals) is list, "You must provide timeseries and sync_signals as lists of arrays!"
-    assert len(timeseries)==len(sync_signals)>=2, "There must be as many time series as sync signals, at elast 2 of each!"
+    assert len(timeseries)==len(sync_signals)>=2, "There must be as many time series as sync signals, at least 2 of each!"
     for ss in sync_signals:
         assert len(sync_signals[0])==len(ss), "WARNING all sync signals do not have the same size, the acquisition must have been faulty!"
     assert len(sync_signals[0])>=1, "Only one synchronization signal has been provided - this is dangerous practice as this does not account for cumulative time drift."
     
     
     for dataset_i in range(len(timeseries)):
-        array0, sync=timeseries[dataset_i], sync_signals[dataset_i]
-        array=array0-sync[0]
-        for i, synci in enumerate(sync):
+        array0, syncs=timeseries[dataset_i], sync_signals[dataset_i]
+        array=array0-syncs[0]
+        for i, sync in enumerate(syncs):
             if i==0: pass
             else:
-                array1=array0-synci # refer to own sync stamp, synci
+                array1=array0-sync # refer to own sync stamp, sync
                 # re-time to where own sync stamp should be with respect to reference dataset (the 1st one)
-                other_synci_ref0=sync_signals[0][i]-sync_signals[0][0]
-                array=np.append(array[array1<0], array1[array1>=0]+other_synci_ref0)
+                first_sync_ref0=sync_signals[0][i]-sync_signals[0][0]
+                array=np.append(array[array1<0], array1[array1>=0]+first_sync_ref0)
         timeseries[dataset_i]=array
         
     return timeseries

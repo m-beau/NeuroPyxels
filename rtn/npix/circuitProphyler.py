@@ -212,8 +212,8 @@ class Prophyler:
         self.units={}
         for ds_i in self.ds_table.index:
             ds=self.ds[ds_i]
+            ds.get_peak_positions()
             for u in ds.get_good_units():
-                ds.get_peak_positions()
                 unit=Unit(ds, u, self.undigraph) # Units are added to the same graph when initialized, even from different source datasets
                 self.units[unit.nodename]=unit
     

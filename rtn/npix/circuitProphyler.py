@@ -132,14 +132,13 @@ class Prophyler:
         self.ds_table.sort_values('dataset_i', axis=0, inplace=True)
         self.ds_table.set_index('dataset_i', inplace=True)
         
-        # Define the prophyler path, where the 'merged' data will be saved
+        # Instanciate datasets and define the prophyler path, where the 'merged' data will be saved
         ds_names=''
         predirname=op.dirname(self.ds_table['dp'][0])
         self.ds={}
         for ds_i in self.ds_table.index:
             dp, prb = self.ds_table.loc[ds_i, 'dp'], self.ds_table.loc[ds_i, 'probe']
-            self.ds[ds_i]=Dataset(dp, prb)
-            self.ds[ds_i].ds_i=ds_i
+            self.ds[ds_i]=Dataset(dp, prb, ds_i)
             ds_names+='_'+self.ds[ds_i].name
             if predirname!=op.dirname(dp):
                 print('WARNING: all your datasets are not stored in the same pre-directory - {} is picked anyway.'.format(predirname))
@@ -430,9 +429,9 @@ class Prophyler:
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
         node_edges={}
-        for prbunt, e_unt in g[u].items():
-            prb, unt = prbunt.split('_')
-            node_edges[unt]=[len(e_unt), '@{}'.format(self.ds[prb].peak_channels[peak_channels[:,0]==unt, 0])]
+        for dsiunt, e_unt in g[u].items():
+            dsi, unt = dsiunt.split('_')
+            node_edges[unt]=[len(e_unt), '@{}'.format(self.ds[dsi].peak_channels[self.ds[dsi].peak_channels[:,0]==unt, 0])]
             
         return node_edges
     
@@ -569,8 +568,8 @@ class Prophyler:
                 g=self.set_node_attribute(node, 'groundtruthCellType', label, prophylerGraph=prophylerGraph, src_graph=src_graph) # update graph
             else:
                 self.set_node_attribute(node, 'groundtruthCellType', label, prophylerGraph=prophylerGraph, src_graph=src_graph) # update graph
-            prb, idx = node.split('_')
-            self.units[prb][idx].groundtruthCellType=label # Update class
+            dsi, idx = node.split('_')
+            self.units[dsi][idx].groundtruthCellType=label # Update class
             print("Label of node {} was set to {}.\n".format(node, label))
             
     def label_edges(self, prophylerGraph='undigraph', src_graph=None):
@@ -960,7 +959,7 @@ class Dataset:
     def __repr__(self):
         return 'Neuropixels dataset at {}.'.format(self.dp)
     
-    def __init__(self, datapath, probe_name='prb1', dataset_name=None):
+    def __init__(self, datapath, probe_name='prb1', dataset_index=0, dataset_name=None):
 
         # Handle datapaths format 
         if type(datapath) is str:
@@ -973,6 +972,7 @@ class Dataset:
         self.dp = op.expanduser(datapath)
         self.meta=read_spikeglx_meta(self.dp)
         self.probe_version=self.meta['probe_version']
+        self.ds_i=dataset_index
         self.name=self.dp.split('/')[-1] if dataset_name is None else dataset_name
         self.prb_name=probe_name
         self.params={}; params=imp.load_source('params', op.join(self.dp,'params.py'))
@@ -1037,7 +1037,7 @@ class Unit:
         self.undigraph = graph
         self.get_peak_position()
         # self refers to the instance not the class, hehe
-        self.nodename=self.ds.ds_i+'_'+str(self.idx)
+        self.nodename=str(self.ds.ds_i)+'_'+str(self.idx)
         self.undigraph.add_node(self.nodename, unit=self, X=self.peak_position_real[0], Y=self.peak_position_real[1], posReal=self.peak_position_real, putativeCellType=self.putativeCellType, groundtruthCellType=self.groundtruthCellType, classifiedCellType=self.classifiedCellType) 
     
     def get_peak_channel(self):

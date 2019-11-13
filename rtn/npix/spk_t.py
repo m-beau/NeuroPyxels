@@ -47,7 +47,7 @@ def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
     return Xb
 
 
-def ids(dp, unit, ret=True, sav=True, prnt=True):
+def ids(dp, unit, ret=True, sav=True, prnt=False):
     '''
     ********
     routine from routines_spikes
@@ -94,7 +94,7 @@ def ids(dp, unit, ret=True, sav=True, prnt=True):
 
     
 
-def trn(dp, unit, ret=True, sav=True, prnt=True, rec_section='all'):
+def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all'):
     '''
     ********
     routine from routines_spikes
@@ -144,7 +144,7 @@ def trn(dp, unit, ret=True, sav=True, prnt=True, rec_section='all'):
     return train
 
 
-def isi(dp, unit, ret=True, sav=True, prnt=True, rec_section='all'):
+def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all'):
     '''
     ********
     routine from routines_spikes
@@ -183,7 +183,7 @@ def isi(dp, unit, ret=True, sav=True, prnt=True, rec_section='all'):
         
 
 
-def trnb(dp, unit, bin_size, ret=True, sav=True, prnt=True, constrainBin=False, rec_section='all'):
+def trnb(dp, unit, bin_size, ret=True, sav=True, prnt=False, constrainBin=False, rec_section='all'):
     '''
     ********
     routine from routines_spikes

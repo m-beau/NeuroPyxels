@@ -98,12 +98,14 @@ def get_units(dp, quality='all'):
     
     cl_grp = load_units_qualities(dp)
     
-    if 'dataset' in cl_grp.columns:
-        units=['{}_{}'.format(cl_grp.loc[i, 'dataset_i'], cl_grp.loc[i, 'cluster_id']) for i in cl_grp.index if cl_grp.loc[i, 'group']=='good']
+    if cl_grp.index.name=='dataset_i':
+        if quality=='all':
+            units = ['{}_{}'.format(ds_i, cl_grp.loc[ds_i, 'cluster_id']) for ds_i in cl_grp.index]
+        else:
+            units=['{}_{}'.format(ds_i, cl_grp.loc[ds_i, 'cluster_id']) for ds_i in cl_grp.index if cl_grp.loc[ds_i, 'group']==quality]
         return units
         
     else:
-        cl_grp = load_units_qualities(dp)
         try:
             np.all(np.isnan(cl_grp['group'])) # Units have not been given a class yet
             units=[]

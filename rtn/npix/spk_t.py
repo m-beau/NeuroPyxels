@@ -72,18 +72,16 @@ def ids(dp, unit, ret=True, sav=True, prnt=False):
     else:
         if prnt: 
             print("File ids{}.npy not found in routines memory. Will be computed from source files.".format(unit))
-        mcs=assert_multidatasets(dp)
-        if type(mcs) is np.ndarray:
-            assert type(unit)=='str', "To load data from a merged datasets directory, you should feed in 'datasetindex_unit' strings in place of units!"
-            ds, u = unit.split('_')
-            ds, u = ast.literal_eval(ds), ast.literal_eval(unit)
-            assert type(ds) is type(u) is int, "To load data from a merged datasets directory, you should feed in 'a datasetindex_unit' string in place of unit!"
-            indices = np.nonzero((mcs[:,0]==u)&(mcs[:,1]==u))[0]
+        if type(unit)==str:
+            ds_i, unt = unit.split('_'); ds_i, unt = ast.literal_eval(ds_i), ast.literal_eval(unt)
+            spike_clusters_samples = np.load(op.join(dp, 'merged_clusters_spikes.npz'))
+            spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]
+            dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
+            indices = np.nonzero(dataset_mask&unit_mask)[0]
             indices=np.reshape(indices, (max(indices.shape), ))
-        else:
-            u = int(unit)
+        elif type(unit)==int:
             spike_clusters = np.load(dp+"/spike_clusters.npy")
-            indices = np.nonzero(spike_clusters==u)[0]
+            indices = np.nonzero(spike_clusters==unit)[0]
             indices=np.reshape(indices, (max(indices.shape), ))
                 
         # Save it
@@ -94,7 +92,7 @@ def ids(dp, unit, ret=True, sav=True, prnt=False):
 
     
 
-def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all'):
+def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
     '''
     ********
     routine from routines_spikes
@@ -108,8 +106,8 @@ def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all'):
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - rec_section = 'all' or [(t1, t2), ...] with t1, t2 in seconds.
     '''
-    assert unit in get_units(dp)
-    fs=30000
+    assert unit in get_units(dp), "Unit fed to trn function not found in dataset."
+    
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
     if not op.isdir(dprm): os.makedirs(dprm)
@@ -121,10 +119,19 @@ def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all'):
     else:
         if prnt:
             print("File trn{}.npy not found in routines memory. Will be computed from source files.".format(unit))
-        spike_clusters = np.load(dp+"/spike_clusters.npy")
-        spike_samples = np.load(dp+'/spike_times.npy')
-        train = spike_samples[spike_clusters==unit]
-        train=np.reshape(train, (max(train.shape), ))
+        
+        if type(unit)==str:
+            ds_i, unt = unit.split('_'); ds_i, unt = ast.literal_eval(ds_i), ast.literal_eval(unt)
+            spike_clusters_samples = np.load(op.join(dp, 'merged_clusters_spikes.npz'))
+            spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]
+            dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
+            train = spike_clusters_samples[dataset_mask&unit_mask, 2]
+            train=np.reshape(train, (max(train.shape), ))
+        elif type(unit)==int:
+            spike_clusters = np.load(op.join(dp,"spike_clusters.npy"))
+            spike_samples = np.load(op.join(dp,'spike_times.npy'))
+            train = spike_samples[spike_clusters==unit]
+            train=np.reshape(train, (max(train.shape), ))
         
         # Optional selection of a section of the recording.
         if type(rec_section)==str:
@@ -144,7 +151,7 @@ def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all'):
     return train
 
 
-def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all'):
+def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
     '''
     ********
     routine from routines_spikes
@@ -168,8 +175,6 @@ def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all'):
     # if not, compute it
     else:
         if prnt: print("File isi{}.npy not found in routines memory. Will be computed from source files".format(unit))
-        sys.path.append(dp)
-        from params import sample_rate as fs
         train = trn(dp, unit, ret=True, sav=sav, prnt=prnt, rec_section=rec_section)
         train = train*1./(fs*1./1000) # Conversion from samples to ms
         isitvl = np.diff(train) # in ms
@@ -183,7 +188,7 @@ def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all'):
         
 
 
-def trnb(dp, unit, bin_size, ret=True, sav=True, prnt=False, constrainBin=False, rec_section='all'):
+def trnb(dp, unit, bin_size, ret=True, sav=True, prnt=False, constrainBin=False, rec_section='all', fs=30000):
     '''
     ********
     routine from routines_spikes
@@ -215,8 +220,6 @@ def trnb(dp, unit, bin_size, ret=True, sav=True, prnt=False, constrainBin=False,
         phy_st = np.load(dp+'/spike_times.npy')
         last_st = phy_st[-1,0] # in samples
         del phy_st
-        sys.path.append(dp)
-        from params import sample_rate as fs
         train_binarized = binarize(train, bin_size, fs=fs, rec_len=last_st, constrainBin=constrainBin)
         train_binarized = np.asarray(train_binarized, dtype='int16') #0s and 1s -> int8 to save memory
         # Save it

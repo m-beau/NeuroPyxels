@@ -22,7 +22,7 @@ unit=1820
 n_waveforms=100;t_waveforms=82;wvf_subset_selection='regular';wvf_batch_size=10;ampFactor=500;probe_type='3A'
 #%% Concise home made function
 
-def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, probe_version='3A', sav=True, prnt=True):
+def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, probe_version='3A', sav=True, prnt=False):
     '''
     ********
     routine from rtn.npix.spk_wvf

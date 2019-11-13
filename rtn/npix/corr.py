@@ -625,7 +625,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     ********
     
     - dp (string): DataPath to the Neuropixels dataset.
-    - u (list of ints): list of units indices
+    - u (list of ints or str): list of units indices. If str, format has to be 'datasetIndex_unitIndex'.
     - win_size: size of binarized spike train bins, in milliseconds.
     - bin_size: size of crosscorrelograms bins, in milliseconds.
     - rec_len: length of the recording, in seconds. If not provided, time of the last spike.
@@ -655,44 +655,34 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     
     fn='/ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(rec_section)[0:50].replace(' ', ''))
     if os.path.exists(dprm+fn) and not again:
-        if prnt: print("File {} found in routines memory.".format(fn))
+        if prnt: print("File {} found in routines memory. Will be computed from source files.".format(fn))
         crosscorrelograms = np.load(dprm+fn)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
     # if not, compute it
     else:
         if prnt: print("File {} not found in routines memory.".format(fn))
-        dpme = dp+'/manualExports'
-        fn='/ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(rec_section)[0:50].replace(' ', ''))
-        if os.path.exists(dpme+fn):
-            crosscorrelograms = np.load(dpme+fn)
-            crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
-            if prnt: print("File {} found in phy manual exports.".format(fn))
-        else:
-            if prnt: print('''File /ccg{}_{}_{}_{}({}).npy not found in phy manual exports.
-                  Will be computed from source files.
-                  Reminder: perform phy export of selected units crosscorrelograms with :export_ccg.'''.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(rec_section)[0:50].replace(' ', '')))
-            sys.path.append(dp)
-            from params import sample_rate as fs
-            crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, rec_section=rec_section, prnt=prnt)
-            crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
-            if normalize in ['Hertz', 'Pearson', 'zscore']:
-                for i1,u1 in enumerate(sortedU):
-                    Nspikes1=len(trn(dp, u1, ret=True, prnt=prnt))
-                    #imfr1=np.mean(1000./isi(dp, u1)[isi(dp, u1)>0])
-                    for i2,u2 in enumerate(sortedU):
-                        Nspikes2=len(trn(dp, u2, ret=True, prnt=prnt))
-                        #imfr2=np.mean(1000./isi(dp, u2)[isi(dp, u2)>0])
+        sys.path.append(dp)
+        from params import sample_rate as fs
+        crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, rec_section=rec_section, prnt=prnt)#####################
+        crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
+        if normalize in ['Hertz', 'Pearson', 'zscore']:
+            for i1,u1 in enumerate(sortedU):
+                Nspikes1=len(trn(dp, u1, ret=True, prnt=prnt))
+                #imfr1=np.mean(1000./isi(dp, u1)[isi(dp, u1)>0])
+                for i2,u2 in enumerate(sortedU):
+                    Nspikes2=len(trn(dp, u2, ret=True, prnt=prnt))
+                    #imfr2=np.mean(1000./isi(dp, u2)[isi(dp, u2)>0])
+                    arr=crosscorrelograms[i1,i2,:]
+                    if normalize == 'Hertz':
+                        crosscorrelograms[i1,i2,:]=arr*1./(Nspikes1*bin_size*1./1000)
+                    elif normalize == 'Pearson':
+                        crosscorrelograms[i1,i2,:]=arr*1./np.sqrt(Nspikes1*Nspikes2)
+                    elif normalize=='zscore':
                         arr=crosscorrelograms[i1,i2,:]
-                        if normalize == 'Hertz':
-                            crosscorrelograms[i1,i2,:]=arr*1./(Nspikes1*bin_size*1./1000)
-                        elif normalize == 'Pearson':
-                            crosscorrelograms[i1,i2,:]=arr*1./np.sqrt(Nspikes1*Nspikes2)
-                        elif normalize=='zscore':
-                            arr=crosscorrelograms[i1,i2,:]
-                            mn = np.mean(np.append(arr[:int(len(arr)*2./5)], arr[int(len(arr)*3./5):]))
-                            std = np.std(np.append(arr[:int(len(arr)*2./5)], arr[int(len(arr)*3./5):]))
-                            crosscorrelograms[i1,i2,:]=(arr-mn)*1./std
-                        
+                        mn = np.mean(np.append(arr[:int(len(arr)*2./5)], arr[int(len(arr)*3./5):]))
+                        std = np.std(np.append(arr[:int(len(arr)*2./5)], arr[int(len(arr)*3./5):]))
+                        crosscorrelograms[i1,i2,:]=(arr-mn)*1./std
+                    
 
         # Save it
         if sav:

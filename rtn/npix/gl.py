@@ -83,11 +83,11 @@ def load_units_qualities(dp):
     if os.path.isfile(op.join(dp, f1)):
         qualities = pd.read_csv(op.join(dp, f1),delimiter='	')
     elif os.path.isfile(op.join(dp, 'merged_'+f1)):
-        qualities = pd.read_csv(op.join(dp, 'merged_'+f1), delimiter='	')
+        qualities = pd.read_csv(op.join(dp, 'merged_'+f1), delimiter='	', index_col='dataset_i')
     elif os.path.isfile(f2):
         qualities = pd.read_csv(op.join(dp, f2), delimiter=',')
     elif os.path.isfile(f2):
-        qualities = pd.read_csv(op.join(dp, 'merged_'+f2), delimiter=',')
+        qualities = pd.read_csv(op.join(dp, 'merged_'+f2), delimiter=',', index_col='dataset_i')
     else:
         print('cluster groups table not found in provided data path. Exiting.')
         return
@@ -97,12 +97,15 @@ def get_units(dp, quality='all'):
     assert quality in ['all', 'good', 'mua', 'noise']
     
     cl_grp = load_units_qualities(dp)
-    
+    units=[]
     if cl_grp.index.name=='dataset_i':
         if quality=='all':
-            units = ['{}_{}'.format(ds_i, cl_grp.loc[ds_i, 'cluster_id']) for ds_i in cl_grp.index]
+            for ds_i in cl_grp.index.unique():
+                units += ['{}_{}'.format(ds_i, u) for u in cl_grp.loc[ds_i, 'cluster_id']]
         else:
-            units=['{}_{}'.format(ds_i, cl_grp.loc[ds_i, 'cluster_id']) for ds_i in cl_grp.index if cl_grp.loc[ds_i, 'group']==quality]
+            for ds_i in cl_grp.index.unique():
+                # np.all(cl_grp.loc[ds_i, 'group'][cl_grp.loc[ds_i, 'cluster_id']==u]==quality)
+                units += ['{}_{}'.format(ds_i, u) for u in cl_grp.loc[(cl_grp['group']==quality)&(cl_grp.index==ds_i), 'cluster_id']]
         return units
         
     else:

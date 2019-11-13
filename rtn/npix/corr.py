@@ -14,7 +14,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
                     
-from rtn.npix.gl import get_good_units
+from rtn.npix.gl import get_units
 from rtn.npix.spk_t import trn, trnb, isi, binarize
 from rtn.npix.spk_wvf import get_depthSort_peakChans
 

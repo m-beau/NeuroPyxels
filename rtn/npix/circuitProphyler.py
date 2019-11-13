@@ -192,7 +192,7 @@ class Prophyler:
                 merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
             merged_clusters_spikes=merged_clusters_spikes[np.argsort(merged_clusters_spikes[:,2])]
             np.savez_compressed(op.join(self.dp_pro, merge_fname+'.npz'), merged_clusters_spikes)
-        del spike_times, spike_clusters, sync_signals, merged_clusters_spikes
+            del spike_times, spike_clusters, sync_signals, merged_clusters_spikes
         
         # Merge the units qualities
         qualities=pd.DataFrame(columns=['dataset_i', 'cluster_id', 'group'])

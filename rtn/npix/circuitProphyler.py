@@ -147,7 +147,7 @@ class Prophyler:
         if not op.isdir(self.dp_pro):
             os.mkdir(self.dp_pro)
         else:
-            ds_table=pd.read_csv(op.join(self.dp_pro, 'datasets_table.csv'))
+            ds_table=pd.read_csv(op.join(self.dp_pro, 'datasets_table.csv'), index_col='dataset_i')
             for ds_i in ds_table.index:
                 try:
                     assert self.ds_table.loc[ds_i, 'probe']==ds_table.loc[ds_i, 'probe']

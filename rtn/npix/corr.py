@@ -20,12 +20,12 @@ from rtn.npix.spk_wvf import get_depthSort_peakChans
 
 import scipy.signal as sgnl
 from statsmodels.nonparametric.smoothers_lowess import lowess
-from rtn.stats import fractile_normal
+from rtn.stats import pdf_normal, fractile_normal
 
-cbin=0.2
-cwin=100
-ccg1=ccg('/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1', [1820, 1654], cbin, cwin)
-ccg2=ccg('/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1', [392, 945], cbin, cwin)
+# cbin=0.2
+# cwin=100
+# ccg1=ccg('/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1', [1820, 1654], cbin, cwin)
+# ccg2=ccg('/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1', [392, 945], cbin, cwin)
 
 
 def pearson_corr(M):
@@ -1047,12 +1047,11 @@ def extract_hist_modulation_features(hist, hbin, threshold=2, n_consec_bins=3, e
     mn = np.mean(np.append(hist[:int(len(hist)*wfl)], hist[int(len(hist)*wfr):])) if ext_mn==None else ext_mn
     std = np.std(np.append(hist[:int(len(hist)*wfl)], hist[int(len(hist)*wfr):])) if ext_std==None else ext_std
     hist=(hist-mn)*1./std # Z-score
-    crosses2sd=find_threshold_crosses(hist, 2)
-    crosses3sd=find_threshold_crosses(hist, 3)
+    crosses=find_threshold_crosses(hist, threshold)
     
     peaks, troughs = [], []
     
-    for cross in crosses2sd:
+    for cross in crosses:
         # for positive crosses, l_ind is the index of the first bin above threshold;
         # r_ind is the index of the first bin below threshold.
         l_ind, r_ind = cross[0,0], cross[0,-1]+1
@@ -1162,8 +1161,8 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 #hist_wide=ccg(dp, [i,j], 0.5, 50, prnt=False)[0,1,:]
                 #mn=np.mean(hist); std=np.std(hist)
                 pkSgn='+' if i2>i1 else '-'
-                pks = extract_hist_modulation_features(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn=pkSgn)
-                pks=[(pk[:4]) for pk in pks]
+                pks = extract_hist_modulation_features(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn=pkSgn, win_fract_baseline=0.5)
+                #pks=[(pk[:4]) for pk in pks]
                 if _format=='peaks_infos':
                     SFCDF.loc[u1, u2]=pks if np.array(pks).any() else int(0)
                     if np.array(pks).any():

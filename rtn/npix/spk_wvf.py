@@ -7,10 +7,12 @@
 import os
 import os.path as op
 import imp
+import ast
 
 import numpy as np
 from math import ceil
 from scipy import signal
+import pandas as pd
 
 from rtn.npix.spk_t import ids
 from rtn.npix.gl import get_units
@@ -83,6 +85,13 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     
     '''
     # Extract metadata
+    if not os.exists(op.join(dp, 'channel_map.npy')):
+        if os.exists(op.join(dp, 'datasets_table.csv')):
+            ds_i, unit = unit.split('_'); ds_i, unit = ast.literal_eval(ds_i), ast.literal_eval(unit)
+            ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
+            dp=ds_table['dp'][ds_i]
+        else:
+            raise 
     channel_ids_abs = np.load(op.join(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
     channel_ids_rel = np.arange(channel_ids_abs.shape[0])
     params={}; par=imp.load_source('params', op.join(dp,'params.py'))
@@ -153,7 +162,7 @@ def get_peak_chan(dp, unit, probe_version='3A'):
 def get_depthSort_peakChans(dp, units=[], quality='all', probe_version='3A'):
     if ~np.any(units):
         units=get_units(dp, quality=quality)
-    peak_chans=npa(zeros=units.shape, dtype=np.int64)
+    peak_chans=npa(zeros=len(units), dtype=np.int64)
     for iu, u in enumerate(units):
         print("Getting peak channel of unit {}...".format(u))
         peak_chans[iu]= get_peak_chan(dp, u, probe_version)

@@ -256,7 +256,9 @@ class Prophyler:
                     if load_choice=='sfc':
                         print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
                         ## TODO: JUST ALTER THIS FUNCTION
-                        rtn.npix.corr.gen_sfc(self.dp_pro, cbin, cwin, threshold, n_consec_bins, rec_section, graph=g, again=again, againCCG=againCCG)
+                        SFCDF, SFCM1, gu, bestChs, SFCMtime = rtn.npix.corr.gen_sfc(self.dp_pro, cbin, cwin, threshold, n_consec_bins, rec_section, again=again, againCCG=againCCG)
+                        g = map_sfcdf_on_graph(SFCDF, g, cbin, cwin, threshold, n_consec_bins)
+                        del SFCDF, SFCM1, gu, bestChs, SFCMtime
                         if plotsfcdf:rtn.npix.plot.plot_sfcdf(self.dp_pro, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
                                                      rec_section=rec_section, ticks=False, again = again, saveFig=True, saveDir=self.dpnet)
                         break
@@ -274,7 +276,6 @@ class Prophyler:
             rtn.npix.corr.gen_sfc(self.dp_pro, cbin, cwin, threshold, n_consec_bins, rec_section, graph=g, again=again, againCCG=againCCG)
             if plotsfcdf: rtn.npix.plot.plot_sfcdf(self.dp_pro, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
                                                      rec_section=rec_section, ticks=False, again=again, saveFig=True, saveDir=self.dpnet)
-
     
     def make_directed_graph(self, src_graph=None, only_main_edges=False):
         '''
@@ -953,6 +954,29 @@ class Prophyler:
 
         # Save the updated features table
         save_featuresTable(direct, ft, goodClusters, Features)                              
+
+def map_sfcdf_on_graph(sfcdf, g, cbin, cwin, threshold, n_consec_bins):
+    # If called in the context of CircuitProphyler, add the connection to the graph
+    for u1 in sfcdf.index:
+        for u2 in sfcdf.index:
+            pks=sfcdf.loc[u1, str(u2)]
+            if type(pks) is str:
+                pks=ast.literal_eval(pks)
+                # pks with positive and negative peaks are present twice in the SFCDF (cf. case where pks='all' in find_significant_hist_peak)
+                # these need to be only added if u1<u2
+                pkSgns=npa([sign(p[2]) for p in pks])
+                make_edges=False
+                if np.all(pkSgns==1) or np.all(pkSgns==-1):
+                    make_edges=True
+                else:
+                    if u1<u2:
+                        make_edges=True
+                if make_edges:
+                    for p in pks:
+                        g.add_edge(u1, u2, uSrc=u1, uTrg=u2, 
+                                   amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=0,
+                                   criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'nConsecBins':n_consec_bins})
+    return g
 
 class Dataset:
     

@@ -4,7 +4,7 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 
-import os, sys, ast
+import os, ast
 import os.path as op
 
 import numpy as np
@@ -20,6 +20,12 @@ from rtn.npix.spk_wvf import get_depthSort_peakChans
 
 import scipy.signal as sgnl
 from statsmodels.nonparametric.smoothers_lowess import lowess
+from rtn.stats import fractile_normal
+
+cbin=0.2
+cwin=100
+ccg1=ccg('/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1', [1820, 1654], cbin, cwin)
+ccg2=ccg('/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1', [392, 945], cbin, cwin)
 
 
 def pearson_corr(M):
@@ -271,29 +277,30 @@ def spike_time_tiling_coefficient(L, dt, dp):
     return index
 
 
-def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, dic={}):
+def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, trains={}):
     '''If provided, dic must be of the form {unit1:train1InSamples, unit2:...}'''
-    if dic=={}:
-        for u in U:
-            dic[u]=trn(dp, u, ret=True, sav=False, rec_section=rec_section, prnt=prnt) # trains in samples
+    if trains=={}:
+        for iu, u in enumerate(U):
+            # Even lists of strings can be dealt with as integers by being replaced by their indices
+            trains[iu]=trn(dp, u, ret=True, sav=False, rec_section=rec_section, prnt=prnt) # trains in samples
     else:
-        assert len(dic.items())>1
+        assert len(trains.items())>1
     spikes = np.empty((2, 0))
-    for key, val in dic.items():
+    for key, val in trains.items():
         spikes = np.concatenate((spikes, np.vstack((val, np.full(val.shape, key)))), axis=1)
-        sortedIdx = np.argsort(spikes[0,:])
+    sortedIdx = np.argsort(spikes[0,:])
     rows = np.array([[0], [1]])
     spikes = spikes[rows, sortedIdx]
     spikes = spikes.astype('int64')
     return spikes[0,:], spikes[1,:] # equivalent of spike_times.npy and spike_clusters.npy
 
 
-def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True, rec_section='all', prnt=True, own_trains={}):
+def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True, rec_section='all', prnt=False, own_trains={}):
     '''Returns the crosscorrelation function of two spike trains.
        - dp: (string): DataPath to the Neuropixels dataset.
        - win_size (float): window size, in milliseconds
        - bin_size (float): bin size, in milliseconds
-       - U (list of integers): list of units indexes. Default 'NeuropixFullDataset'.
+       - U (list of integers): list of units indices.
        - fs: sampling rate (Hertz). Default 30000.
        - symmetrize (bool): symmetrize the semi correlograms. Default=True.
        - own_trains: dictionnary of trains, to calculate the CCG of an arbitrary list of trains in SAMPLES for fs=30kHz.'''
@@ -313,8 +320,8 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
     if type(U)!=list:
         U=list(U)
     
-    phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, dic=own_trains)
-    units = _unique(spike_clusters)
+    phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, trains=own_trains.copy())
+    units = _unique(spike_clusters)#_as_array(U) # Order of the correlogram: order of the inputted list U (replaced by its indices - see make_phy_like_spikeClustersTimes)
     n_units = len(units)
 
     #### Compute crosscorrelograms
@@ -398,19 +405,19 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
 
 #    if normalize:
 #        correlograms = np.apply_along_axis(lambda x: x*1./np.sum(x) if np.sum(x)!=0 else x, 2, correlograms)
-        
+                
     return correlograms
 
 def crosscorrelate_maxime(dp, bin_size, win_size, U, trainBin=10, fs=30000, rec_section='all', prnt=True, own_trains={}):
     '''Returns the crosscorrelation function of two spike trains.
-   - dp: (string): DataPath to the Neuropixels dataset.
-   - win_size (float): window size, in milliseconds
-   - bin_size (float): bin size, in milliseconds
-   - U (list of integers): list of units indexes. If string, measures it for the whole dataset.
-   - trainBin: binsize used to binarize trains before computing corrcoeff, in ms.
-   - fs: sampling rate (Hertz). Default 30000.
-   - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-   - own_trains: dictionnary of trains, to calculate the CCG of an arbitrary list of trains in SAMPLES for fs=30kHz.'''
+    - dp: (string): DataPath to the Neuropixels dataset.
+    - win_size (float): window size, in milliseconds
+    - bin_size (float): bin size, in milliseconds
+    - U (list of integers): list of units indexes. If string, measures it for the whole dataset.
+    - trainBin: binsize used to binarize trains before computing corrcoeff, in ms.
+    - fs: sampling rate (Hertz). Default 30000.
+    - symmetrize (bool): symmetrize the semi correlograms. Default=True.
+    - own_trains: dictionnary of trains, to calculate the CCG of an arbitrary list of trains in SAMPLES for fs=30kHz.'''
     
     #### Troubleshooting
     assert fs > 0.
@@ -480,13 +487,13 @@ def crosscorrelate_maxime(dp, bin_size, win_size, U, trainBin=10, fs=30000, rec_
 def crosscorrelate_maxime1(dp, U, bin_size, win_size, fs=30000, normalize=False, prnt=True):
     '''Returns the crosscorrelation function of two spike trains.
     Second one 'triggered' by the first one.
-   - dp: (string): DataPath to the Neuropixels dataset.
-   - U (list of integers): list of units indexes.
-   - win_size (float): window size, in milliseconds
-   - bin_size (float): bin size, in milliseconds
-   - fs: sampling rate (Hertz). Default 30000.
-   - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-   - normalize: normalize the correlograms. Default=False.'''
+    - dp: (string): DataPath to the Neuropixels dataset.
+    - U (list of integers): list of units indexes.
+    - win_size (float): window size, in milliseconds
+    - bin_size (float): bin size, in milliseconds
+    - fs: sampling rate (Hertz). Default 30000.
+    - symmetrize (bool): symmetrize the semi correlograms. Default=True.
+    - normalize: normalize the correlograms. Default=False.'''
        
     # Troubleshooting
     assert fs > 0.
@@ -542,13 +549,13 @@ def crosscorrelate_maxime2(dp, U, bin_size, win_size, trn_binsize=0.1, fs=30000,
     SYMMETRIZE NOT OPTIMIZED
     Returns the crosscorrelation function of two spike trains.
     Second one 'triggered' by the first one.
-   - dp: (string): DataPath to the Neuropixels dataset.
-   - U (list of integers): list of units indexes.
-   - win_size (float): window size, in milliseconds
-   - bin_size (float): bin size, in milliseconds
-   - fs: sampling rate (Hertz). Default 30000.
-   - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-   - normalize: normalize the correlograms. Default=False.'''
+    - dp: (string): DataPath to the Neuropixels dataset.
+    - U (list of integers): list of units indexes.
+    - win_size (float): window size, in milliseconds
+    - bin_size (float): bin size, in milliseconds
+    - fs: sampling rate (Hertz). Default 30000.
+    - symmetrize (bool): symmetrize the semi correlograms. Default=True.
+    - normalize: normalize the correlograms. Default=False.'''
        
     # Troubleshooting
     assert fs > 0.
@@ -624,19 +631,19 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     computes crosscorrelogram (1, window/bin_size) - int64, in Hertz
     ********
     
-    - dp (string): DataPath to the Neuropixels dataset.
-    - u (list of ints or str): list of units indices. If str, format has to be 'datasetIndex_unitIndex'.
-    - win_size: size of binarized spike train bins, in milliseconds.
-    - bin_size: size of crosscorrelograms bins, in milliseconds.
-    - rec_len: length of the recording, in seconds. If not provided, time of the last spike.
-    - fs: sampling frequency, in Hertz. 30000 for standard Neuropixels recordings.
-    - Normalize: either 'Counts' (no normalization), 'Hertz' (trigger-units-spikes-aligned inst.FR of target unit) 
+     - dp (string): DataPath to the Neuropixels dataset.
+     - u (list of ints or str): list of units indices. If str, format has to be 'datasetIndex_unitIndex'.
+     - win_size: size of binarized spike train bins, in milliseconds.
+     - bin_size: size of crosscorrelograms bins, in milliseconds.
+     - rec_len: length of the recording, in seconds. If not provided, time of the last spike.
+     - fs: sampling frequency, in Hertz. 30000 for standard Neuropixels recordings.
+     - Normalize: either 'Counts' (no normalization), 'Hertz' (trigger-units-spikes-aligned inst.FR of target unit) 
       or 'Pearson' (in units of pearson correlation coefficient).
-    - ret (bool - default False): if True, train returned by the routine.
+      - ret (bool - default False): if True, train returned by the routine.
       If False, by definition of the routine, drawn to global namespace.
       - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
       
-    returns numpy array (Nunits, Nunits, win_size/bin_size)
+      returns numpy array (Nunits, Nunits, win_size/bin_size)
 
     '''
     if type(normalize) != str or (normalize not in ['Counts', 'Hertz', 'Pearson', 'zscore']):
@@ -645,7 +652,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     # Preformat
     dp=str(dp)
     U = [U] if type(U)!=list else U
-    sortedU=list(np.unique(np.asarray(U)))
+    sortedU=U.copy()
+    sortedU.sort()
     
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
     # Search if the variable is already saved in dp/routinesMemory
@@ -661,16 +669,14 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     # if not, compute it
     else:
         if prnt: print("File {} not found in routines memory.".format(fn))
-        sys.path.append(dp)
-        from params import sample_rate as fs
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, rec_section=rec_section, prnt=prnt)#####################
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
         if normalize in ['Hertz', 'Pearson', 'zscore']:
             for i1,u1 in enumerate(sortedU):
-                Nspikes1=len(trn(dp, u1, ret=True, prnt=prnt))
+                Nspikes1=len(trn(dp, u1, ret=True, prnt=False))
                 #imfr1=np.mean(1000./isi(dp, u1)[isi(dp, u1)>0])
                 for i2,u2 in enumerate(sortedU):
-                    Nspikes2=len(trn(dp, u2, ret=True, prnt=prnt))
+                    Nspikes2=len(trn(dp, u2, ret=True, prnt=False))
                     #imfr2=np.mean(1000./isi(dp, u2)[isi(dp, u2)>0])
                     arr=crosscorrelograms[i1,i2,:]
                     if normalize == 'Hertz':
@@ -699,17 +705,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
                 sortedC[i1,i2,:]=crosscorrelograms[ii1, ii2, :]
     else:
         sortedC=crosscorrelograms
-    
-    # Either return or draw to global namespace
-    if ret:
-        ccg=sortedC.copy()
-        del sortedC
-        return ccg
-    else:
-        # if prnt: print("ccg{} defined into global namespace.".format(fn))
-        # fn='ccg_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_'), str(int(win_size)), str(rec_section)[0:50].replace(' ', ''))
-        # exec("{} = sortedC".format(fn), globals())
-        del sortedC
+
+    return sortedC
 
 def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all', again=False):
     '''
@@ -724,7 +721,7 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     ret=True, 
     sav=True, 
     prnt=True'''
-    u = int(u[0]) if type(u)==list else int(u)
+    u = u[0] if type(u)==list else u
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
     '''
     ********
@@ -732,30 +729,24 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     computes autocorrelogram (1, window/bin_size) - int64, in Hertz
     ********
     
-    - dp (string): DataPath to the Neuropixels dataset.
-    - u (int): unit index
-    - win_size: size of binarized spike train bins, in milliseconds.
-    - bin_size: size of autocorrelograms bins, in milliseconds.
-    - rec_len: length of the recording, in seconds. If not provided, time of the last spike.
-    - fs: sampling frequency, in Hertz.
-    - ret (bool - default False): if True, train returned by the routine.
+     - dp (string): DataPath to the Neuropixels dataset.
+     - u (int): unit index
+     - win_size: size of binarized spike train bins, in milliseconds.
+     - bin_size: size of autocorrelograms bins, in milliseconds.
+     - rec_len: length of the recording, in seconds. If not provided, time of the last spike.
+     - fs: sampling frequency, in Hertz.
+     - ret (bool - default False): if True, train returned by the routine.
       If False, by definition of the routine, drawn to global namespace.
-       - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
-    
-    returns numpy array (win_size/bin_size)
-    '''
+      - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
+      
+      returns numpy array (win_size/bin_size)
+      '''
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
     autocorrelogram = ccg(dp, u, bin_size, win_size, fs, normalize, ret, sav, prnt, rec_section, again)
     autocorrelogram = autocorrelogram[0,0,:]
-    # Either return or draw to global namespace
-    if ret:
-        acg = autocorrelogram.copy()
-        del autocorrelogram
-        return acg
-    else:
-        # if prnt: print("acg{} defined into global namespace.".format(u))
-        # exec("acg{} = autocorrelogram".format(u), globals())
-        del autocorrelogram
+
+    return autocorrelogram
+
 ''''''
 #%% Power spectrum of autocorrelograms
     
@@ -777,7 +768,7 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
       if False, by definition of the routine, drawn to global namespace.
       - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     
-    returns numpy array (Nunits, Nunits, nperseg/2+1)'''
+      returns numpy array (Nunits, Nunits, nperseg/2+1)'''
     # Preformat
     dp=str(dp)
     U = [U] if type(U)!=list else U
@@ -901,46 +892,119 @@ def make_cm(dp, units, b=5, cbin=1, cwin=100, corrEvaluator='corrcoeff_eleph', v
         
 ''''''
 #%% Connectivity inferred from correlograms
+fractile_normal(p=0.95, m=0, s=1)
+
+
+def canUse_Nbins(a=0.05, w=100, b=0.2, n_bins=3):
+    '''Function to assess the number of expected triplets (3 consecutive bins) in a crosscorrelogram.
+    The confidence of the test used cannot exceed the returned value.
+    E.g. for 100 bins or 0.1ms and a 
+    - a: alpha, confidence level
+    - w: correlogram window size, ms
+    - b: correlogram bin size, ms
+    
+    See Kopelowitz, Lev et Cohen, 2014, JNeuro methods,
+    Quantification of pairwise neuronal interactions: going beyond the significance lines.'''
+    assert 0<a<1
+    assert n_bins in [2,3], "Can only handle 2 or 3 bins"
+    n=w/b
+    if n_bins==3: expected_triplets=a*(a*n-2)*(a*n-4)/(8*(n-1))
+    elif n_bins==2: expected_triplets=a*(a*n-2)*(a*n-2)/(4*(n-1))
+    if a>expected_triplets:
+        print("You can use this test, of confidence {0} since the probability of encountering a triplet by chance is {1:.3f}.".format(a, expected_triplets))
+        return True
+    else:
+        print("You CANNOT use this test, of confidence {0} since the probability of encountering a triplet by chance is {1:.3f}.".format(a, expected_triplets))
+        return False
+
+def ccg_significance(CCG, cbin=0.2, cwin=100, law='Normal', alpha=0.05, n_consec_bins=3, multi_comp=False, bin_wise=False):
+    '''Function to assess whether a correlogram is significant or not.
+    Parameters:
+    - a: alpha, confidence level
+    - w: correlogram window size, ms
+    - b: correlogram bin size, ms
+    Returns:
+    - True or False, whether the ccg is significantly modulated or not
+    See Kopelowitz, Lev et Cohen, 2014, JNeuro methods,
+    Quantification of pairwise neuronal interactions: going beyond the significance lines.
+    Test1: law='Poisson', alpha=0.05, n_consec_bins=1, bin_wise=True
+    Test2: law='Poisson', alpha=0.05, n_consec_bins=1
+    Test3: law='Normal',  alpha=0.01, n_consec_bins=1, multi_comp=True
+    Test4: law='Normal',  alpha=0.05, n_consec_bins=3                     <<<-- RECOMMENDED BY PAPER
+    Test5: law='Normal',  alpha=0.01, n_consec_bins=2
+    '''
+    
+    assert law in ['Poisson', 'Normal']
+    assert 0<alpha<1
+    out_fraction=0.4;out_fraction/=2
+    Ho_ccg = np.concatenate([CCG[:int(out_fraction*cwin/cbin)], CCG[int((1-out_fraction)*cwin/cbin):]]) # It is assumed that before -40/after +40ms, there is no more correlation
+    if n_consec_bins in [2,3]:
+        assert law=='Normal', "Using more than 1 bin is not handled when assuming a Poisson distribution."
+        assert canUse_Nbins(alpha, cwin, cbin, n_consec_bins)
+    if not bin_wise: # else: compute one CI for each bin
+        if law=='Poisson':
+            CI=[] # not handled yet - how to end up with natural integers as ccg values? Spike counts? Can multiplie by random big number?
+        elif law=='Normal':
+            m=np.mean(Ho_ccg)
+            s=np.std(Ho_ccg)
+            fr_a=fractile_normal(1-(alpha/2), 0, 1)
+            CI=[m-s*fr_a, m+s*fr_a] # Confidence Interval
+        
+        peaks=find_threshold_crosses(CCG, cbin, threshold=3, n_consec_bins=3, ext_mn=None, ext_std=None, pkSgn='all', win_fract_baseline=0.6)
+    
+    return ccl # binary value, 0 or 1
+
+def ccg_strength(ccg, metric='Ntiriplets'):
+    '''
+    - a: alpha, confidence level
+    - w: correlogram window size, ms
+    - b: correlogram bin size, ms
+    See Kopelowitz, Lev et Cohen, 2014, JNeuro methods,
+    Quantification of pairwise neuronal interactions: going beyond the significance lines.'''
+    assert metric in ['Ntriplets', 'Nbins', 'bin_height', 'entropy', 'PCA_1']
+    
+    
+    return ccg_strength
 
 def find_transmission_prob(ccg, cbin, holgauss_b, holgauss_w):
     
     return tp, tp_time
 
-def find_significant_hist_peak(hist, hbin, threshold=3, n_consec_bins=3, ext_mn=None, ext_std=None, pkSgn=None):
-    '''CCG is a 1d array, 
-    hbin is in ms, 
-    threshold is in standard deviations,
-    baseline is a list of two floats framing the window on which it is calculated (millisecond),
-    n_consec_bins is an int (amount of consecutive bins below/above threshold to consider a bin significant).
-    Returns [l, r, y, t), ...] where l, r, y, t stand for left edge, right edge, y value (std), time'''
-    mn = np.mean(np.append(hist[:int(len(hist)*2./5)], hist[int(len(hist)*3./5):])) if ext_mn==None else ext_mn
-    std = np.std(np.append(hist[:int(len(hist)*2./5)], hist[int(len(hist)*3./5):])) if ext_std==None else ext_std
-    th = threshold
-    hist=(hist-mn)*1./std # Z-score
-    # Peaks
+def find_threshold_crosses(hist, th):
+    '''
+    - hist is a 1d array, 
+    - th is the threshold in hist unit,
+    
+    Returns:
+        - crosses: a list of 2D arrays[array([[t1, t2, ...tn], [c1, c2, ...cn]]), ...],
+        which contains the threshold crosses times and z-scored correlation values.
+        
+        By definition, all c values are above th or below -th.'''
+
+    ## Peaks
+    peaks=[]
     cross_thp, cross_thn = thresh(hist, th, 1), thresh(hist, th, -1)
     if (len(cross_thp)==0 or len(cross_thn)==0) and (len(cross_thp)+len(cross_thn))>0: cross_thp, cross_thn = [], [] # Only one cross at the beginning or the end e.g.
     elif (len(cross_thp)>0 and len(cross_thn)>0):
         flag0, flag1=False,False
         if cross_thp[-1]>cross_thn[-1]: flag1=True # if threshold+ is positively crossed at the end
         if cross_thn[0]<cross_thp[0]: flag0=True # if threshold+ is negatively crossed at the beginning
-        if flag1: cross_thp=cross_thp[:-1] # delete -1
-        if flag0: cross_thn=cross_thn[1:] # delete 0
-    try:
-        assert len(cross_thp)==len(cross_thn) # Should be true because starts from and returns to baseline
-        peaks = []
+        if flag1: cross_thp=cross_thp[:-1] # remove aberrant last value
+        if flag0: cross_thn=cross_thn[1:] # remove aberrant first value
+
+    if len(cross_thp)==len(cross_thn): # Should be true because starts from and returns to baseline
         for i in range(len(cross_thp)):
-             if ((cross_thn[i]-cross_thp[i])>=n_consec_bins):
-                 edgeL, edgeR = cross_thp[i], cross_thn[i]
-                 peaksize=max(hist[edgeL:edgeR])
-                 peaktime=(edgeL+np.nonzero(hist[edgeL:edgeR]==peaksize)[0][0]-(len(hist)-1)*1./2)*hbin
-                 peaks.append(((edgeL-(len(hist)-1)*1./2)*hbin, (edgeR-(len(hist)-1)*1./2)*hbin, peaksize, peaktime))
-    except:
+            l_ind, r_ind = cross_thp[i], cross_thn[i]
+            cross_values=hist[l_ind:r_ind+1]
+            cross_times=np.arange(l_ind, r_ind, 1)
+            peaks.append(np.vstack([cross_times, cross_values]))
+
+    else:
         print('ASSERTION ERROR len(cross_thp) ({}) == len(cross_thn) ({}) for hist peaks:'.format(len(cross_thp), len(cross_thn)))
         print(hist)
-        peaks = []
     
-    # Troughs
+    ## Troughs
+    troughs=[]
     cross_th_p, cross_th_n = thresh(hist, -th, 1), thresh(hist, -th, -1)
     if (len(cross_th_p)+len(cross_th_n))==1: cross_th_p, cross_th_n = [], [] # Only one cross at the beginning or the end
     elif len(cross_th_p)>0 and len(cross_th_n)>0:
@@ -950,34 +1014,78 @@ def find_significant_hist_peak(hist, hbin, threshold=3, n_consec_bins=3, ext_mn=
         if flag1: cross_th_n=cross_th_n[:-1] # remove aberrant last value
         if flag0: cross_th_p=cross_th_p[1:] # remove aberrant first value
     
-    try:
-        assert len(cross_th_p)==len(cross_th_n) # Should be true because starts from and returns to baseline
-        
-        troughs = []
+    if len(cross_th_p)==len(cross_th_n): # Should be true because starts from and returns to baseline
         for i in range(len(cross_th_p)):
-             edgeR, edgeL = cross_th_p[i], cross_th_n[i]
-             if (edgeR-edgeL)>=n_consec_bins:
-                 troughsize=min(hist[edgeL:edgeR])
-                 troughtime=(edgeL+np.nonzero(hist[edgeL:edgeR]==troughsize)[0][0]-(len(hist)-1)*1./2)*hbin
-                 troughs.append(((edgeL-(len(hist)-1)*1./2)*hbin, (edgeR-(len(hist)-1)*1./2)*hbin, troughsize, troughtime))
-    except:
+            l_ind, r_ind = cross_th_n[i], cross_th_p[i]
+            cross_values=hist[l_ind:r_ind]
+            cross_times=np.arange(l_ind, r_ind, 1)
+            troughs.append(np.vstack([cross_times, cross_values]))
+            
+    else:
         print('ASSERTION ERROR len(cross_thp) ({}) ==len(cross_thn) ({}) for hist troughs:'.format(len(cross_th_p), len(cross_th_n)))
         print(hist)
-        troughs = []
     
-    if len(troughs)!=0 and len(peaks)!=0:
-        pkSgn='all'
+    return peaks+troughs # concatenates
+
+def extract_hist_modulation_features(hist, hbin, threshold=2, n_consec_bins=3, ext_mn=None, ext_std=None, pkSgn='all', win_fract_baseline=0.5):
+    '''
+    - hist is a 1d array, 
+    - hbin is in ms, 
+    - th is the threshold in hist unit,
+    - n_consec_bins is the number of consecutive bins which  have to cross the threshold for a peak to be called a peak,
+    - ext_mn is an external mean which can be provided rather than being calculated on the 2 lateral fifth (to measure it on a wider window for instance).
+    - ext_std is an external std which can be provided rather than being calculated on the 2 lateral fifth  (measured it on a wider window for instance).
+    - pkSgn can be '+', '-' or 'all' -> dictates whether to return peaks, troughs or both.
+    - win_fract_baseline: fraction  of the window used to compute the Ho mean and std, is no ext_mn or ext_std are provided. If 0.6, 0:0.3 and 0.7:1 will be used.
+
+    Returns:
+        - peaks+troughs: [(l, r, y, t), ...] where l, r, y, t stand for left edge, right edge, y value (std), time'''
+    
+    assert pkSgn in ['+', '-', 'all'], "pkSgn has an odd value, should be  '+', '-' or 'all'."
+    assert win_fract_baseline<1
+    wfl, wfr = win_fract_baseline/2, 1-(win_fract_baseline/2)
+    mn = np.mean(np.append(hist[:int(len(hist)*wfl)], hist[int(len(hist)*wfr):])) if ext_mn==None else ext_mn
+    std = np.std(np.append(hist[:int(len(hist)*wfl)], hist[int(len(hist)*wfr):])) if ext_std==None else ext_std
+    hist=(hist-mn)*1./std # Z-score
+    crosses2sd=find_threshold_crosses(hist, 2)
+    crosses3sd=find_threshold_crosses(hist, 3)
+    
+    peaks, troughs = [], []
+    
+    for cross in crosses2sd:
+        # for positive crosses, l_ind is the index of the first bin above threshold;
+        # r_ind is the index of the first bin below threshold.
+        l_ind, r_ind = cross[0,0], cross[0,-1]+1
+        l_ms, r_ms = (l_ind-(len(hist)-1)*1./2)*hbin, (r_ind-(len(hist)-1)*1./2)*hbin
+        y=max(np.abs(cross[1,:]))*sign(cross[1,0])
+        t_ind=cross[0,:][cross[1,:]==y][0] # If there are 2 equal maxima, the 1st one is picked
+        t_ms=(t_ind-(len(hist)-1)*1./2)*hbin
+        n_triplets=cross.shape[1]//3
+        n_bincrossing=cross.shape[1]
+        bin_heights=np.mean(cross[1,:])
+        # Assuming that the sides of the correlogram have a normal distribution,
+        # the Z-scored crosscorrelogram with the mean and std of the correlogram sides
+        # should have a normal distribution if not modulated.
+        # Hence the Ho PDF of the Z-scored correlogram is the N(0,1) distribution.
+        # So the probability of a bin height is pdf_normal(np.abs(bin_height), m=0, s=1).
+        pi=pdf_normal(np.abs(cross[1,:]), m=0, s=1) 
+        entropy=-np.mean(np.log(pi))
+        if cross.shape[1]>=n_consec_bins:
+            if cross[1,0]>0: # peak
+                peaks.append((l_ms, r_ms, y, t_ms, n_triplets, n_bincrossing, bin_heights, entropy))
+            elif cross[1,0]<0:  # trough
+                troughs.append((l_ms, r_ms, y, t_ms, n_triplets, n_bincrossing, bin_heights, entropy))
+        
     if pkSgn=='+':
         ret = peaks
     elif pkSgn=='-':
         ret = troughs
-    else:
+    elif pkSgn=='all':
         ret = peaks+troughs # Concatenates (python list). Distinguish peaks and troughs with their peak value sign.
-    
-    return ret
-
         
-def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', _format='peaks_infos', again=False, graph=None, againCCG=False):
+    return ret
+        
+def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', _format='peaks_infos', again=False, againCCG=False, probe_version='3A'):
     '''
     Function generating a NxN functional correlation dataframe SFCDF and matrix SFCM
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -995,57 +1103,34 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
     histo=False
     if os.path.isfile(dp+'/FeaturesTable/FeaturesTable_histo.csv'):
         fth = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_histo.csv', sep=',', index_col=0)
-        bestChs=np.array(fth["WVF-MainChannel"])
         depthIdx = np.argsort(bestChs)[::-1] # From surface (high ch) to DCN (low ch)
         histo_str=np.array(fth["Histology_str"])
         histo_str=histo_str[depthIdx]
         histo=True
-
+    
     dprm = dp+'/routinesMemory'
-    if not os.path.isdir(dprm):
-        os.makedirs(dprm)
+    if not op.isdir(dprm): os.makedirs(dprm)
     
     if _format=='peaks_infos':
         fn1='/SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(rec_section)[0:50].replace(' ', ''), _format)
         fn2='/SFCM'+fn1[6:]
         fn3='/SFCMtime'+fn1[6:-4]+'.npy'
-        if os.path.exists(dprm+fn1) and not again:
+        if op.exists(dprm+fn1) and not again:
             print("File {} found in routines memory.".format(fn1))
             SFCDF = pd.read_csv(dprm+fn1, index_col='Unit')
             SFCDF.replace('0', 0, inplace=True) # Loading a csv turns all the values into strings - now only detected peaks are strings
             SFCDF.replace(0.0, 0, inplace=True)
             SFCM1 = pd.read_csv(dprm+fn2, index_col='Unit')
             SFCMtime = np.load(dprm+fn3)
-            # If called in the context of CircuitProphyler, add the connection to the graph
-            if graph is not None:
-                for u1 in SFCDF.index:
-                    for u2 in SFCDF.index:
-                        pks=SFCDF.loc[u1, str(u2)]
-                        if type(pks) is str:
-                            pks=ast.literal_eval(pks)
-                            # pks with positive and negative peaks are present twice in the SFCDF (cf. case where pks='all' in find_significant_hist_peak)
-                            # these need to be only added if u1<u2
-                            pkSgns=npa([sign(p[2]) for p in pks])
-                            make_edges=False
-                            if np.all(pkSgns==1) or np.all(pkSgns==-1):
-                                make_edges=True
-                            else:
-                                if u1<u2:
-                                    make_edges=True
-                            if make_edges:
-                                for p in pks:
-                                    graph.add_edge(u1, u2, uSrc=u1, uTrg=u2, 
-                                                   amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=0,
-                                                   criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'nConsecBins':n_consec_bins})
+
             return SFCDF, SFCM1, gu, np.sort(bestChs)[::-1], SFCMtime
             
     elif _format=='raw_ccgs':
         fn='/SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(rec_section)[0:50].replace(' ', ''), _format)
-        if os.path.exists(dprm+fn) and not again:
+        if op .exists(dprm+fn) and not again:
             print("File {} found in routines memory.".format(fn))
             SFCDF = pd.read_csv(dprm+fn, index_col='Unit')
             return SFCDF
-    
         
     if _format=='peaks_infos':
         gu12=np.array([[u]*12 for u in gu]).flatten()
@@ -1077,12 +1162,13 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 #hist_wide=ccg(dp, [i,j], 0.5, 50, prnt=False)[0,1,:]
                 #mn=np.mean(hist); std=np.std(hist)
                 pkSgn='+' if i2>i1 else '-'
-                pks = find_significant_hist_peak(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn=pkSgn)
+                pks = extract_hist_modulation_features(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn=pkSgn)
+                pks=[(pk[:4]) for pk in pks]
                 if _format=='peaks_infos':
                     SFCDF.loc[u1, u2]=pks if np.array(pks).any() else int(0)
                     if np.array(pks).any():
                         vsplit=len(pks)
-                        if vsplit>1: print('MORE THAN ONE SIGNIFICANT PEAK:{}->{}'.format(u1,u2), end = '\r')
+                        print('Significantly modulated ccg:{}->{}'.format(u1,u2), end = '\r')
                         if 12%vsplit==0: # dividers of 12
                             heatpks=np.array([[p[2]]*int(12*1./vsplit) for p in pks]).flatten()
                             heatpksT=np.array([[p[3]]*int(12*1./vsplit) for p in pks]).flatten()
@@ -1091,7 +1177,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                                 heatpks=np.array([p[2] for p in pks]+[0]*(12-vsplit)).flatten()
                                 heatpksT=np.array([p[3] for p in pks]+[0]*(12-vsplit)).flatten()
                             else:
-                                print('WARNING more than 12 peaks found - your threshold is too permissive or CCG f*cked up (units {} and {}), aborting.'.format(u1, u2))
+                                raise ValueError('WARNING more than 12 peaks found - your threshold is too permissive or CCG f*cked up (units {} and {}), aborting.'.format(u1, u2))
                     else:
                         heatpks=np.array([0]*12)
                         heatpksT=np.array([np.nan]*12)
@@ -1125,29 +1211,8 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
         SFCDF.to_csv(dprm+fn1)
         SFCM1.to_csv(dprm+fn2)
         np.save(dprm+fn3, SFCMtime)
-        # If called in the context of CircuitProphyler, add the connection to the graph
-        if graph is not None:
-            print('HAS NOT BEEN TESTED')
-            for u1 in SFCDF.index:
-                for u2 in SFCDF.index:
-                    pks=SFCDF.loc[u1, u2]
-                    if type(pks) is str:
-                        pks=ast.literal_eval(pks)
-                        # pks with positive and negative peaks are present twice in the SFCDF (cf. case where pks='all' in find_significant_hist_peak)
-                        # these need to be only added if u1<u2
-                        pkSgns=npa([sign(p[2]) for p in pks])
-                        make_edges=False
-                        if np.all(pkSgns==1) or np.all(pkSgns==-1):
-                            make_edges=True
-                        else:
-                            if u1<u2:
-                                make_edges=True
-                        if make_edges:
-                            for p in pks:
-                                graph.add_edge(u1, u2, uSrc=u1, uTrg=u2, 
-                                               amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=None,
-                                               criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'nConsecBins':n_consec_bins})
-        return SFCDF, SFCM1, gu, np.sort(bestChs)[::-1], SFCMtime
+
+        return SFCDF, SFCM1, gu, bestChs, SFCMtime
 
     elif _format=='raw_ccgs':
         SFCDF.to_csv(dprm+fn)
@@ -1155,7 +1220,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
     
 def make_acg_df(dp, cbin=0.1, cwin=80, rec_section='all'):
     # Get good units
-    gu = get_good_units(dp) # get good units
+    gu = get_units(dp, quality='good') # get good units
     
     # Initialize ACG dataframe
     if (cwin*1./cbin)%2==0: # even

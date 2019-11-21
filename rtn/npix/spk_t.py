@@ -126,13 +126,15 @@ def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
             spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]
             dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
             train = spike_clusters_samples[dataset_mask&unit_mask, 2]
-            train=np.reshape(train, (max(train.shape), ))
+            train=np.reshape(train, (max(train.shape), )).astype(np.int64)
         elif type(unit)==int:
             spike_clusters = np.load(op.join(dp,"spike_clusters.npy"))
             spike_samples = np.load(op.join(dp,'spike_times.npy'))
             train = spike_samples[spike_clusters==unit]
-            train=np.reshape(train, (max(train.shape), ))
-        
+            train=np.reshape(train, (max(train.shape), )).astype(np.int64)
+        else:
+            print(type(unit))
+            return
         # Optional selection of a section of the recording.
         if type(rec_section)==str:
             if rec_section=='all':
@@ -143,7 +145,6 @@ def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
                 sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
             train=train[sec_bool]
                 
-        train=np.asarray(train, dtype='int64')
         # Save it
         if sav:
             np.save(dprm+'/trn{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', '')), train)

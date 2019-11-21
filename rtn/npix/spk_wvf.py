@@ -119,9 +119,9 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
         bits_encoding=10
         ampFactor=500
     elif probe_version in ['2.0_singleshank', '2.0_fourshanked']:
-        Vrange=1.2e6
+        Vrange=1e6
         bits_encoding=14
-        ampFactor=500
+        ampFactor=80
     waveforms*=(Vrange/2**bits_encoding/ampFactor) # (voltageRange/2^10bitsEncoding/amplification_gain, typically 500)
 
     # Common average referencing: substract median for each channel, then median for each time point
@@ -155,6 +155,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', probe_version='3A'):
         units=get_units(dp, quality=quality)
     peak_chans=npa(zeros=units.shape, dtype=np.int64)
     for iu, u in enumerate(units):
+        print("Getting peak channel of unit {}...".format(u))
         peak_chans[iu]= get_peak_chan(dp, u, probe_version)
 
     depthIdx = np.argsort(peak_chans)[::-1] # From surface (high ch) to DCN (low ch)

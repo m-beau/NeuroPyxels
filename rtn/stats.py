@@ -11,6 +11,7 @@ Inferential statistics tools.
 '''https://machinelearningmastery.com/statistical-hypothesis-tests-in-python-cheat-sheet/'''
 
 import numpy as np
+import math
 from numpy.random import seed, randn
 import scipy.stats as stt
 import statsmodels as sttmdl
@@ -18,6 +19,43 @@ import statsmodels as sttmdl
 from rtn.utils import npa
 
 '''Reminder: Observations < Samples < Population'''
+
+#%% Laws
+
+def pdf_normal(x, m=0, s=1):
+    'Normal probability density function.'
+    x=npa([x]).flatten()
+    return np.exp(-1./2*((x-m)/s)**2)/(s*np.sqrt(2*np.pi))
+
+def pdf_poisson(X, l=1):
+    'Poisson probability density function.'
+    X=npa([X]).flatten()
+    p=npa(zeros=X.shape)
+    for i, x in enumerate(X):
+        assert x>=0 and type(x) is int, "A Poisson law only accepts natural integers as inputs!"
+        p[i]=np.exp(-l)*l**x/math.factorial(x)
+    return p
+
+def fractile_law(p, law, w1=-5, w2=5, b=0.01):
+    assert type(p) is float
+    X=np.arange(w1, w2, b)
+    P=0
+    for i in X:
+        try: P+=law[0](i, *law[1])*b
+        except:  P+=law[0](i, law[1])*b
+        if P>=p:return np.round(i, 4)
+
+def fractile_normal(p=0.95, m=0, s=1, w1=-5, w2=5, b=0.01):
+    '''Fractile of order p drawn from the normal cumulative probability density function.
+    Ex: fractile_normal(0.975) will be 1.96 (the normal cumulative pdf reaches 0.975 for x=1.96.)
+    So 95% of samples of a normal distribution will be between mean+/-1.96*std.
+    '''
+    return fractile_law(p, [pdf_normal, (m,s)], w1, w2, b)
+
+def fractile_poisson(p=0.95, l=0, w1=-5, w2=5, b=0.01):
+    '''Fractile of order p drawn from the poisson cumulative probability density function.
+    '''
+    return fractile_law(p, [pdf_poisson, l], w1, w2, b)
 
 #%% A] Statistical tests assumptions checkpoints: 1) no outliers, 2) normal distribution
 def check_outliers(x, th_sd=2, remove=False):

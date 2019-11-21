@@ -18,7 +18,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     
 from rtn.npix.gl import get_units
 from rtn.npix.spk_wvf import get_depthSort_peakChans
-from rtn.npix.corr import acg, ccg, gen_sfc, find_significant_hist_peak, make_cm
+from rtn.npix.corr import acg, ccg, gen_sfc, extract_hist_modulation_features, make_cm
 from mpl_toolkits.mplot3d import axes3d
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -697,7 +697,7 @@ def plot_dataset_CCGs(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, rec_s
             if i1<i2:
                 print('Assessing CCG {}x{}... {}%'.format(u1, u2, prct))
                 hist=ccg(dp, [u1,u2], cbin, cwin, fs=30000, normalize='Hertz', prnt=False, rec_section=rec_section)[0,1,:]
-                pks = find_significant_hist_peak(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn='all')
+                pks = extract_hist_modulation_features(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn='all')
                 if np.array(pks).any():
                     sig+=1
                     print("{}th significant CCG...".format(sig))

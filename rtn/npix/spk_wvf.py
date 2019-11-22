@@ -43,6 +43,13 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
         waveforms: numpy array of shape (n_waveforms, t_waveforms, n_channels) where n_channels is defined by the channel map.
     
     '''
+    if op.basename(dp)[:9]=='prophyler':
+        if op.exists(op.join(dp, 'datasets_table.csv')):
+            ds_i, u = u.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
+            ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
+            dp=ds_table['dp'][ds_i]
+        else:
+            raise 
     dprm = dp+'/routinesMemory'
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
@@ -85,13 +92,6 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     
     '''
     # Extract metadata
-    if not os.exists(op.join(dp, 'channel_map.npy')):
-        if os.exists(op.join(dp, 'datasets_table.csv')):
-            ds_i, unit = unit.split('_'); ds_i, unit = ast.literal_eval(ds_i), ast.literal_eval(unit)
-            ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
-            dp=ds_table['dp'][ds_i]
-        else:
-            raise 
     channel_ids_abs = np.load(op.join(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
     channel_ids_rel = np.arange(channel_ids_abs.shape[0])
     params={}; par=imp.load_source('params', op.join(dp,'params.py'))
@@ -162,16 +162,16 @@ def get_peak_chan(dp, unit, probe_version='3A'):
 def get_depthSort_peakChans(dp, units=[], quality='all', probe_version='3A'):
     if ~np.any(units):
         units=get_units(dp, quality=quality)
-    peak_chans=npa(zeros=len(units), dtype=np.int64)
+    units=npa(units)
+    peak_chans=npa(zeros=(units.shape[0],2),dtype='<U6')
     for iu, u in enumerate(units):
         print("Getting peak channel of unit {}...".format(u))
-        peak_chans[iu]= get_peak_chan(dp, u, probe_version)
+        peak_chans[iu,0] = u
+        peak_chans[iu,1] = int(get_peak_chan(dp, u, probe_version))
 
-    depthIdx = np.argsort(peak_chans)[::-1] # From surface (high ch) to DCN (low ch)
-    u_sort=units[depthIdx].reshape(len(units), 1)
-    ch_sort=peak_chans[depthIdx].reshape(len(units), 1)
+    depthIdx = np.argsort(peak_chans[:,1])[::-1] # From surface (high ch) to DCN (low ch)
     
-    return np.hstack([u_sort, ch_sort]) # units, channels
+    return peak_chans[depthIdx] # units, channels
 
 
 def get_chDis(dp, ch1, ch2):

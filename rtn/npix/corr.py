@@ -1230,5 +1230,3 @@ def crosscorrelate_maxime2(dp, U, bin_size, win_size, trn_binsize=0.1, fs=30000,
                 correlograms[i2, i1, :]=np.array([corr[-v+1] for v in range(len(corr))])*1./(0.001*bin_size*np.sqrt(len(trn(dp, u1, prnt=False))*len(trn(dp, u2, prnt=False))))
     
     return correlograms
-
-Z

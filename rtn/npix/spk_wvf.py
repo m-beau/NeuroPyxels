@@ -163,15 +163,37 @@ def get_depthSort_peakChans(dp, units=[], quality='all', probe_version='3A'):
     if ~np.any(units):
         units=get_units(dp, quality=quality)
     units=npa(units)
-    peak_chans=npa(zeros=(units.shape[0],2),dtype='<U6')
-    for iu, u in enumerate(units):
-        print("Getting peak channel of unit {}...".format(u))
-        peak_chans[iu,0] = u
-        peak_chans[iu,1] = int(get_peak_chan(dp, u, probe_version))
+    if type(units[0])==np.str_:
+        datasets={}
+        for iu, u in enumerate(units):
+            ds_i, u = u.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
+            if ds_i not in datasets.keys(): datasets[ds_i]=1
+            else: datasets[ds_i]+=1
+        peak_chans_dic={}
+        for ds_i, Nu in datasets.items():
+            peak_chans_dic[ds_i]=npa(zeros=(Nu,2),dtype='<U6')
+        for iu, u in enumerate(units):
+            print("Getting peak channel of unit {}...".format(u))
+            ds_i = ast.literal_eval(u.split('_')[0])
+            if ds_i>=1: iu=iu%datasets[ds_i-1]
+            peak_chans_dic[ds_i][iu,0] = u
+            peak_chans_dic[ds_i][iu,1] = int(get_peak_chan(dp, u, probe_version))
+        peak_chans=npa(zeros=(0,2),dtype='<U6')
+        for ds_i in sorted(datasets.keys()):
+            depthIdx = np.argsort(peak_chans_dic[ds_i].astype('int64')[:,1])[::-1]
+            peak_chans_dic[ds_i]=peak_chans_dic[ds_i][depthIdx]
+            peak_chans=np.vstack([peak_chans, peak_chans_dic[ds_i]])
 
-    depthIdx = np.argsort(peak_chans[:,1])[::-1] # From surface (high ch) to DCN (low ch)
+    else:
+        peak_chans=npa(zeros=(units.shape[0],2),dtype='int64')
+        for iu, u in enumerate(units):
+            print("Getting peak channel of unit {}...".format(u))
+            peak_chans[iu,0] = u
+            peak_chans[iu,1] = int(get_peak_chan(dp, u, probe_version))
+        depthIdx = np.argsort(peak_chans[:,1])[::-1] # From surface (high ch) to DCN (low ch)
+        peak_chans=peak_chans[depthIdx]
     
-    return peak_chans[depthIdx] # units, channels
+    return peak_chans # units, channels
 
 
 def get_chDis(dp, ch1, ch2):

@@ -72,7 +72,7 @@ def ids(dp, unit, ret=True, sav=True, prnt=False):
     else:
         if prnt: 
             print("File ids{}.npy not found in routines memory. Will be computed from source files.".format(unit))
-        if type(unit)==str:
+        if type(unit)==str or type(unit)==np.str_:
             ds_i, unt = unit.split('_'); ds_i, unt = ast.literal_eval(ds_i), ast.literal_eval(unt)
             spike_clusters_samples = np.load(op.join(dp, 'merged_clusters_spikes.npz'))
             spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]
@@ -120,7 +120,7 @@ def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
         if prnt:
             print("File trn{}.npy not found in routines memory. Will be computed from source files.".format(unit))
         
-        if type(unit)==str:
+        if type(unit)==str or type(unit)==np.str_:
             ds_i, unt = unit.split('_'); ds_i, unt = ast.literal_eval(ds_i), ast.literal_eval(unt)
             spike_clusters_samples = np.load(op.join(dp, 'merged_clusters_spikes.npz'))
             spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]

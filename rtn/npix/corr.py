@@ -408,221 +408,6 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
                 
     return correlograms
 
-def crosscorrelate_maxime(dp, bin_size, win_size, U, trainBin=10, fs=30000, rec_section='all', prnt=True, own_trains={}):
-    '''Returns the crosscorrelation function of two spike trains.
-    - dp: (string): DataPath to the Neuropixels dataset.
-    - win_size (float): window size, in milliseconds
-    - bin_size (float): bin size, in milliseconds
-    - U (list of integers): list of units indexes. If string, measures it for the whole dataset.
-    - trainBin: binsize used to binarize trains before computing corrcoeff, in ms.
-    - fs: sampling rate (Hertz). Default 30000.
-    - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-    - own_trains: dictionnary of trains, to calculate the CCG of an arbitrary list of trains in SAMPLES for fs=30kHz.'''
-    
-    #### Troubleshooting
-    assert fs > 0.
-    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
-    binsize = int(np.ceil(fs * bin_size*1./1000))  # in samples
-    assert binsize >= 1 # Cannot be smaller than a sample time
- 
-    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
-    winsize_bins = 2 * int(.5 * win_size *1./ bin_size) + 1 # Both in millisecond
-    assert winsize_bins >= 1
-    assert winsize_bins % 2 == 1
- 
-    #### Get clusters and times
-    if own_trains!={}:
-        phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, dic=own_trains)
-        units = _unique(spike_clusters)
-        n_units = len(units)
-     
-    else:
-        if type(U)==str:
-            # All the CCGs of a Neuropixels dataset
-            spike_clusters = np.load(dp+"/spike_clusters.npy")
-            units = _unique(spike_clusters)
-            n_units = len(units)
-            phy_ss = np.load(dp+'/spike_times.npy')
-     
-        # Between n_units provided units
-        else:
-            if type(U)!=list:
-                U=list(U)
-             
-            phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, dic={})
-            units = _unique(spike_clusters)
-            n_units = len(units)
- 
-    #### Compute crosscorrelograms
-    rec_len=phy_ss[-1]
-    correlograms = np.zeros((n_units, n_units, winsize_bins // 2 + 1), dtype=np.float32) # Only computes semi correlograms (//2)
-    for i1, u1 in enumerate(units):
-        t1 = phy_ss[spike_clusters==u1] # samples
-        t1b=binarize(t1, trainBin, fs, rec_len=rec_len, constrainBin=False)
-        for i2, u2 in enumerate(units):
-            t2 = phy_ss[spike_clusters==u2] # samples
-            for ilag, lag in enumerate(np.arange(0, winsize_bins // 2 + 1)):
-                t2_lag = t2+lag*binsize # samples
-                t2lb=binarize(t2_lag, trainBin, fs, rec_len=rec_len, constrainBin=False)
-                c = pearson_corr(npa([t1b, t2lb]))
-                print(u1, u2, lag, c)
-                correlograms[i1, i2, ilag]=c
-            # set ACG 0 to 0
-            if i1==i2:
-                correlograms[i1, i2, 0]=0
-    del t1, t1b, t2, t2_lag, t2lb
-     
-    # Symmetrize
-    n_units, _, n_bins = correlograms.shape
-    assert n_units == _
-    correlograms[..., 0] = np.maximum(correlograms[..., 0],
-                                      correlograms[..., 0].T)
-    sym = correlograms[..., 1:][..., ::-1]
-    sym = np.transpose(sym, (1, 0, 2))
-    correlograms = np.dstack((sym, correlograms))
-     
-    return correlograms
-
-
-def crosscorrelate_maxime1(dp, U, bin_size, win_size, fs=30000, normalize=False, prnt=True):
-    '''Returns the crosscorrelation function of two spike trains.
-    Second one 'triggered' by the first one.
-    - dp: (string): DataPath to the Neuropixels dataset.
-    - U (list of integers): list of units indexes.
-    - win_size (float): window size, in milliseconds
-    - bin_size (float): bin size, in milliseconds
-    - fs: sampling rate (Hertz). Default 30000.
-    - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-    - normalize: normalize the correlograms. Default=False.'''
-       
-    # Troubleshooting
-    assert fs > 0.
-    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
-    binsize = int(np.ceil(fs * bin_size*1./1000))  # in samples
-    assert binsize >= 1 # Cannot be smaller than a sample time
- 
-    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
-    win_size_bins = 2 * int(win_size*0.5/bin_size) + 1 # Both in millisecond
-    assert win_size_bins >= 1
-    assert win_size_bins % 2 == 1
-    
-    correlograms=np.zeros((len(U), len(U), win_size_bins))
-    if (win_size*1./bin_size)%2==0: # even
-        binsedges=np.arange(-win_size*1./2-bin_size*1./2, win_size*1./2+bin_size*3./2, bin_size) # add 1 + two half bins to keep even centered on 0
-    elif win_size*1./bin_size%2==1: # odd
-        binsedges=np.arange(-win_size*1./2, win_size*1./2+bin_size, bin_size) # add one bin to make even centered on 0
-    
-    for i1, u1 in enumerate(U):
-        t1=trn(dp, u1, ret=True, prnt=False)*1./30 # ms
-        for i2, u2 in enumerate(U):
-            if i2>=i1:
-                t2 = trn(dp, u2, ret=True, prnt=False)*1./30 if u2!=u1 else t1 # ms
-                dt=np.array([])
-                if prnt: print('CCG {}x{}'.format(u1, u2))
-                for si, spk in enumerate(t1):
-                    #end = '\r' if si<len(t1)-1 else ''
-                    #print('{}%...'.format(int(100*(si+1)*1./len(t1))), end=end)
-                    d = t2-spk
-                    dt = np.append(dt, d[(d>=-win_size*1./2)&(d<=win_size*1./2)])
-            else:
-                pass
-            
-            hist=np.histogram(dt, binsedges)[0]
-            if i1==i2:
-                hist[int(.5*(len(hist)-1))]=0
-            
-            correlograms[i1, i2, :]=hist*1./(0.001*bin_size*np.sqrt(len(t1)*len(t2)))
-    
-    # Symmetrize
-    for i1, u1 in enumerate(U):
-        for i2, u2 in enumerate(U):
-            if i1!=i2:
-                correlograms[i2, i1, :]=np.array([hist[-v+1] for v in range(len(hist))])
-    
-    return correlograms
-
-def crosscorrelate_maxime2(dp, U, bin_size, win_size, trn_binsize=0.1, fs=30000, normalize=False, prnt=True):
-    '''
-    STILL NOT FUNCTIONAL
-    HORIZONTAL SCALING PROBLEM
-    VERTICAL SCALING PROBLEM (likely use mfr1 and mfr2 and T)
-    SYMMETRIZE NOT OPTIMIZED
-    Returns the crosscorrelation function of two spike trains.
-    Second one 'triggered' by the first one.
-    - dp: (string): DataPath to the Neuropixels dataset.
-    - U (list of integers): list of units indexes.
-    - win_size (float): window size, in milliseconds
-    - bin_size (float): bin size, in milliseconds
-    - fs: sampling rate (Hertz). Default 30000.
-    - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-    - normalize: normalize the correlograms. Default=False.'''
-       
-    # Troubleshooting
-    assert fs > 0.
-    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
-    binsize = int(np.ceil(fs * bin_size*1./1000))  # in samples
-    assert binsize >= 1 # Cannot be smaller than a sample time
- 
-    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
-    win_size_bins = 2 * int(win_size*0.5/bin_size) + 1 # Both in millisecond
-    assert win_size_bins >= 1
-    assert win_size_bins % 2 == 1
-    
-    correlograms=np.zeros((len(U), len(U), win_size_bins))
-    if (win_size*1./bin_size)%2==0: # even
-        #binsedges=np.arange(-win_size*1./2-bin_size*1./2, win_size*1./2+bin_size*3./2, bin_size) # add 1 + two half bins to keep even centered on 0
-        bins=np.arange(-win_size*1./2, win_size*1./2+bin_size, bin_size)
-    elif win_size*1./bin_size%2==1: # odd
-        #binsedges=np.arange(-win_size*1./2, win_size*1./2+bin_size, bin_size) # add one bin to make even centered on 0
-        bins=np.arange(-win_size*1./2+bin_size*1./2, win_size*1./2+bin_size*1./2, bin_size)
-        
-    try:
-        assert (bin_size*1e6)%(trn_binsize*1e6)==0
-    except:
-        if prnt: print('bin_size ({}) is not a multiple of trn_bins ({}), therefore shifts are not integers! Abort.'.format(bin_size, trn_binsize))
-        return
-    
-    for i1, u1 in enumerate(U):
-        tb1=trnb(dp, u1, trn_binsize, prnt=False) # binarized at the same sampling rate as the correlogram
-        #mfr1=1000./np.mean(isi(dp, u1, prnt=False)) # in s-1
-        for i2, u2 in enumerate(U):
-            if prnt: print('CCG {}x{}'.foamrt(u1, u2))
-            if i2>=i1:
-                tb2 = trnb(dp, u2, trn_binsize, prnt=False) if i2!=i1 else tb1 # binarized at the same sampling rate as the correlogram
-                #mfr2=1000./np.mean(isi(dp, u2, prnt=False)) # in s-1
-                corr=np.zeros((len(bins)))
-                shifts=np.asarray(np.round(bins*1./bin_size, 2)*(bin_size*1./trn_binsize), dtype=np.int64)
-                #T=len(tb1) # T
-                for si, shift in enumerate(shifts): # bins are centered on 0 and include 0
-                    #end = '\r' if si<len(shifts)-1 else ''
-                    #print('{}%...'.format(int(100*(si+1)*1./len(shifts))), end=end)
-                    # C(shift) = (1./(T*bin_size*mfr1*mfr2))*S[t:0->T][(n1(t)-mfr1) * (n2(t+shift)-mfr2)]
-                    tb1c = tb1#-mfr1 # n1(t)-mfr1
-                    if shift>=0:
-                        tb2c_shifted=np.append(tb2[shift:], np.zeros((shift)))#-mfr2 # n2(t+shift)-mfr2 (0 padding on the left)
-                    elif shift<0:
-                        tb2c_shifted=np.append(np.zeros((-shift)), tb2[:+shift])#-mfr2 # n2(t+shift)-mfr2 (0 padding on the right)
-                    
-                    C_shift=np.sum(tb1c*tb2c_shifted) # C(shift) (element wise multiplication)
-                    corr[si]=C_shift#*1./(T*bin_size*mfr1*mfr2) # Normalize by recording length in ms * mfr1/2 in ms-1
-                    
-            else:
-                pass
-            
-            if i1==i2:
-                corr[int(.5*(len(corr)-1))]=0
-            correlograms[i1, i2, :]=corr
-    
-    # Symmetrize
-    for i1, u1 in enumerate(U):
-        for i2, u2 in enumerate(U):
-            corr=correlograms[i1, i2, :]
-            if i1!=i2:
-                correlograms[i2, i1, :]=np.array([corr[-v+1] for v in range(len(corr))])*1./(0.001*bin_size*np.sqrt(len(trn(dp, u1, prnt=False))*len(trn(dp, u2, prnt=False))))
-    
-    return correlograms
-
-
              
 def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all', again=False):
     '''
@@ -1083,8 +868,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
     of significant peaks (either positive or negative).
     
     '''
-    try : assert _format in ['peaks_infos', 'raw_ccgs']
-    except: print('WARNING {} must be in {}! Exitting now.'.format(_format, str(['peaks_infos', 'raw_sig_ccgs']))); return
+    assert _format in ['peaks_infos', 'raw_ccgs'],'WARNING {} must be in {}! Exitting now.'.format(_format, str(['peaks_infos', 'raw_sig_ccgs']))
         
     peakChs=get_depthSort_peakChans(dp, quality='good')
     gu, bestChs = peakChs[:,0], peakChs[:,1].astype('int64')
@@ -1139,7 +923,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
 
 
     prct=0
-    print('Job started!')
+    print('Significant functional correlations (sfc) extraction started!')
     for i1, u1 in enumerate(gu):
         for i2, u2 in enumerate(gu):
             end = '\r' if (i1*len(gu)+i2)<(len(gu)**2-1) else ''
@@ -1231,3 +1015,220 @@ def make_acg_df(dp, cbin=0.1, cwin=80, rec_section='all'):
     print('Job done.')
     
     return ACGDF
+
+
+def crosscorrelate_maxime(dp, bin_size, win_size, U, trainBin=10, fs=30000, rec_section='all', prnt=True, own_trains={}):
+    '''Returns the crosscorrelation function of two spike trains.
+    - dp: (string): DataPath to the Neuropixels dataset.
+    - win_size (float): window size, in milliseconds
+    - bin_size (float): bin size, in milliseconds
+    - U (list of integers): list of units indexes. If string, measures it for the whole dataset.
+    - trainBin: binsize used to binarize trains before computing corrcoeff, in ms.
+    - fs: sampling rate (Hertz). Default 30000.
+    - symmetrize (bool): symmetrize the semi correlograms. Default=True.
+    - own_trains: dictionnary of trains, to calculate the CCG of an arbitrary list of trains in SAMPLES for fs=30kHz.'''
+    
+    #### Troubleshooting
+    assert fs > 0.
+    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
+    binsize = int(np.ceil(fs * bin_size*1./1000))  # in samples
+    assert binsize >= 1 # Cannot be smaller than a sample time
+ 
+    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
+    winsize_bins = 2 * int(.5 * win_size *1./ bin_size) + 1 # Both in millisecond
+    assert winsize_bins >= 1
+    assert winsize_bins % 2 == 1
+ 
+    #### Get clusters and times
+    if own_trains!={}:
+        phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, dic=own_trains)
+        units = _unique(spike_clusters)
+        n_units = len(units)
+     
+    else:
+        if type(U)==str:
+            # All the CCGs of a Neuropixels dataset
+            spike_clusters = np.load(dp+"/spike_clusters.npy")
+            units = _unique(spike_clusters)
+            n_units = len(units)
+            phy_ss = np.load(dp+'/spike_times.npy')
+     
+        # Between n_units provided units
+        else:
+            if type(U)!=list:
+                U=list(U)
+             
+            phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, dic={})
+            units = _unique(spike_clusters)
+            n_units = len(units)
+ 
+    #### Compute crosscorrelograms
+    rec_len=phy_ss[-1]
+    correlograms = np.zeros((n_units, n_units, winsize_bins // 2 + 1), dtype=np.float32) # Only computes semi correlograms (//2)
+    for i1, u1 in enumerate(units):
+        t1 = phy_ss[spike_clusters==u1] # samples
+        t1b=binarize(t1, trainBin, fs, rec_len=rec_len, constrainBin=False)
+        for i2, u2 in enumerate(units):
+            t2 = phy_ss[spike_clusters==u2] # samples
+            for ilag, lag in enumerate(np.arange(0, winsize_bins // 2 + 1)):
+                t2_lag = t2+lag*binsize # samples
+                t2lb=binarize(t2_lag, trainBin, fs, rec_len=rec_len, constrainBin=False)
+                c = pearson_corr(npa([t1b, t2lb]))
+                print(u1, u2, lag, c)
+                correlograms[i1, i2, ilag]=c
+            # set ACG 0 to 0
+            if i1==i2:
+                correlograms[i1, i2, 0]=0
+    del t1, t1b, t2, t2_lag, t2lb
+     
+    # Symmetrize
+    n_units, _, n_bins = correlograms.shape
+    assert n_units == _
+    correlograms[..., 0] = np.maximum(correlograms[..., 0],
+                                      correlograms[..., 0].T)
+    sym = correlograms[..., 1:][..., ::-1]
+    sym = np.transpose(sym, (1, 0, 2))
+    correlograms = np.dstack((sym, correlograms))
+     
+    return correlograms
+
+
+def crosscorrelate_maxime1(dp, U, bin_size, win_size, fs=30000, normalize=False, prnt=True):
+    '''Returns the crosscorrelation function of two spike trains.
+    Second one 'triggered' by the first one.
+    - dp: (string): DataPath to the Neuropixels dataset.
+    - U (list of integers): list of units indexes.
+    - win_size (float): window size, in milliseconds
+    - bin_size (float): bin size, in milliseconds
+    - fs: sampling rate (Hertz). Default 30000.
+    - symmetrize (bool): symmetrize the semi correlograms. Default=True.
+    - normalize: normalize the correlograms. Default=False.'''
+       
+    # Troubleshooting
+    assert fs > 0.
+    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
+    binsize = int(np.ceil(fs * bin_size*1./1000))  # in samples
+    assert binsize >= 1 # Cannot be smaller than a sample time
+ 
+    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
+    win_size_bins = 2 * int(win_size*0.5/bin_size) + 1 # Both in millisecond
+    assert win_size_bins >= 1
+    assert win_size_bins % 2 == 1
+    
+    correlograms=np.zeros((len(U), len(U), win_size_bins))
+    if (win_size*1./bin_size)%2==0: # even
+        binsedges=np.arange(-win_size*1./2-bin_size*1./2, win_size*1./2+bin_size*3./2, bin_size) # add 1 + two half bins to keep even centered on 0
+    elif win_size*1./bin_size%2==1: # odd
+        binsedges=np.arange(-win_size*1./2, win_size*1./2+bin_size, bin_size) # add one bin to make even centered on 0
+    
+    for i1, u1 in enumerate(U):
+        t1=trn(dp, u1, ret=True, prnt=False)*1./30 # ms
+        for i2, u2 in enumerate(U):
+            if i2>=i1:
+                t2 = trn(dp, u2, ret=True, prnt=False)*1./30 if u2!=u1 else t1 # ms
+                dt=np.array([])
+                if prnt: print('CCG {}x{}'.format(u1, u2))
+                for si, spk in enumerate(t1):
+                    #end = '\r' if si<len(t1)-1 else ''
+                    #print('{}%...'.format(int(100*(si+1)*1./len(t1))), end=end)
+                    d = t2-spk
+                    dt = np.append(dt, d[(d>=-win_size*1./2)&(d<=win_size*1./2)])
+            else:
+                pass
+            
+            hist=np.histogram(dt, binsedges)[0]
+            if i1==i2:
+                hist[int(.5*(len(hist)-1))]=0
+            
+            correlograms[i1, i2, :]=hist*1./(0.001*bin_size*np.sqrt(len(t1)*len(t2)))
+    
+    # Symmetrize
+    for i1, u1 in enumerate(U):
+        for i2, u2 in enumerate(U):
+            if i1!=i2:
+                correlograms[i2, i1, :]=np.array([hist[-v+1] for v in range(len(hist))])
+    
+    return correlograms
+
+def crosscorrelate_maxime2(dp, U, bin_size, win_size, trn_binsize=0.1, fs=30000, normalize=False, prnt=True):
+    '''
+    STILL NOT FUNCTIONAL
+    HORIZONTAL SCALING PROBLEM
+    VERTICAL SCALING PROBLEM (likely use mfr1 and mfr2 and T)
+    SYMMETRIZE NOT OPTIMIZED
+    Returns the crosscorrelation function of two spike trains.
+    Second one 'triggered' by the first one.
+    - dp: (string): DataPath to the Neuropixels dataset.
+    - U (list of integers): list of units indexes.
+    - win_size (float): window size, in milliseconds
+    - bin_size (float): bin size, in milliseconds
+    - fs: sampling rate (Hertz). Default 30000.
+    - symmetrize (bool): symmetrize the semi correlograms. Default=True.
+    - normalize: normalize the correlograms. Default=False.'''
+       
+    # Troubleshooting
+    assert fs > 0.
+    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
+    binsize = int(np.ceil(fs * bin_size*1./1000))  # in samples
+    assert binsize >= 1 # Cannot be smaller than a sample time
+ 
+    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
+    win_size_bins = 2 * int(win_size*0.5/bin_size) + 1 # Both in millisecond
+    assert win_size_bins >= 1
+    assert win_size_bins % 2 == 1
+    
+    correlograms=np.zeros((len(U), len(U), win_size_bins))
+    if (win_size*1./bin_size)%2==0: # even
+        #binsedges=np.arange(-win_size*1./2-bin_size*1./2, win_size*1./2+bin_size*3./2, bin_size) # add 1 + two half bins to keep even centered on 0
+        bins=np.arange(-win_size*1./2, win_size*1./2+bin_size, bin_size)
+    elif win_size*1./bin_size%2==1: # odd
+        #binsedges=np.arange(-win_size*1./2, win_size*1./2+bin_size, bin_size) # add one bin to make even centered on 0
+        bins=np.arange(-win_size*1./2+bin_size*1./2, win_size*1./2+bin_size*1./2, bin_size)
+        
+    try:
+        assert (bin_size*1e6)%(trn_binsize*1e6)==0
+    except:
+        if prnt: print('bin_size ({}) is not a multiple of trn_bins ({}), therefore shifts are not integers! Abort.'.format(bin_size, trn_binsize))
+        return
+    
+    for i1, u1 in enumerate(U):
+        tb1=trnb(dp, u1, trn_binsize, prnt=False) # binarized at the same sampling rate as the correlogram
+        #mfr1=1000./np.mean(isi(dp, u1, prnt=False)) # in s-1
+        for i2, u2 in enumerate(U):
+            if prnt: print('CCG {}x{}'.foamrt(u1, u2))
+            if i2>=i1:
+                tb2 = trnb(dp, u2, trn_binsize, prnt=False) if i2!=i1 else tb1 # binarized at the same sampling rate as the correlogram
+                #mfr2=1000./np.mean(isi(dp, u2, prnt=False)) # in s-1
+                corr=np.zeros((len(bins)))
+                shifts=np.asarray(np.round(bins*1./bin_size, 2)*(bin_size*1./trn_binsize), dtype=np.int64)
+                #T=len(tb1) # T
+                for si, shift in enumerate(shifts): # bins are centered on 0 and include 0
+                    #end = '\r' if si<len(shifts)-1 else ''
+                    #print('{}%...'.format(int(100*(si+1)*1./len(shifts))), end=end)
+                    # C(shift) = (1./(T*bin_size*mfr1*mfr2))*S[t:0->T][(n1(t)-mfr1) * (n2(t+shift)-mfr2)]
+                    tb1c = tb1#-mfr1 # n1(t)-mfr1
+                    if shift>=0:
+                        tb2c_shifted=np.append(tb2[shift:], np.zeros((shift)))#-mfr2 # n2(t+shift)-mfr2 (0 padding on the left)
+                    elif shift<0:
+                        tb2c_shifted=np.append(np.zeros((-shift)), tb2[:+shift])#-mfr2 # n2(t+shift)-mfr2 (0 padding on the right)
+                    
+                    C_shift=np.sum(tb1c*tb2c_shifted) # C(shift) (element wise multiplication)
+                    corr[si]=C_shift#*1./(T*bin_size*mfr1*mfr2) # Normalize by recording length in ms * mfr1/2 in ms-1
+                    
+            else:
+                pass
+            
+            if i1==i2:
+                corr[int(.5*(len(corr)-1))]=0
+            correlograms[i1, i2, :]=corr
+    
+    # Symmetrize
+    for i1, u1 in enumerate(U):
+        for i2, u2 in enumerate(U):
+            corr=correlograms[i1, i2, :]
+            if i1!=i2:
+                correlograms[i2, i1, :]=np.array([corr[-v+1] for v in range(len(corr))])*1./(0.001*bin_size*np.sqrt(len(trn(dp, u1, prnt=False))*len(trn(dp, u2, prnt=False))))
+    
+    return correlograms
+
+Z

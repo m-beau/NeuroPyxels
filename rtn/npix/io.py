@@ -59,8 +59,9 @@ def read_spikeglx_meta(dp, subtype='ap'):
     probe_versions = {'imProbeOpt':{3.0:'3A'},
                'imDatPrb_type':{0:'1.0_staggered',
                                 21:'2.0_singleshank',
-                                22:'2.0_fourshanked'}}
+                                24:'2.0_fourshanked'}}
     meta['probe_version']=probe_versions['imProbeOpt'][meta['imProbeOpt']] if 'imProbeOpt' in meta.keys() else probe_versions['imDatPrb_type'][meta['imDatPrb_type']] if 'imDatPrb_type' in meta.keys() else 'N/A'
+    assert meta['probe_version'] in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']
     
     return meta
 

@@ -159,7 +159,6 @@ class Prophyler:
             del ds_table
         self.ds_table.to_csv(op.join(self.dp_pro, 'datasets_table.csv'))
         
-        
         # Create time-aligned-across-datasets spike_times.npy files
         spike_times, spike_clusters, sync_signals = [], [], []
         NspikesTotal=0
@@ -1004,8 +1003,8 @@ class Dataset:
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
         self.fs=self.meta['sRateHz']
         self.endTime=int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
-        self.chan_map=chan_map(self.probe_version, self.dp, y_orig='surface')
-        assert np.all(np.isin(chan_map('local', self.dp, y_orig='surface')[:,0], self.chan_map[:,0])), \
+        self.chan_map=chan_map(self.dp, y_orig='surface')
+        assert np.all(np.isin(chan_map(self.dp, y_orig='surface', 'local')[:,0], self.chan_map[:,0])), \
         "Local channel map comprises channels not found in expected channels given matafile probe type."
         
     def get_units(self):
@@ -1015,7 +1014,7 @@ class Dataset:
         return rtn.npix.gl.get_units(self.dp, quality='good')
     
     def get_peak_channels(self):
-        self.peak_channels = get_depthSort_peakChans(self.dp, quality='good', probe_version=self.probe_version)# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
+        self.peak_channels = get_depthSort_peakChans(self.dp, quality='good')# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
 
         
     def get_peak_positions(self):
@@ -1065,7 +1064,7 @@ class Unit:
         self.undigraph.add_node(self.nodename, unit=self, X=self.peak_position_real[0], Y=self.peak_position_real[1], posReal=self.peak_position_real, putativeCellType=self.putativeCellType, groundtruthCellType=self.groundtruthCellType, classifiedCellType=self.classifiedCellType) 
     
     def get_peak_channel(self):
-        self.peak_channel=get_peak_chan(self.dp, self.idx, self.ds.probe_version)
+        self.peak_channel=get_peak_chan(self.dp, self.idx)
         
     def get_peak_position(self):
         self.get_peak_channel()
@@ -1092,11 +1091,7 @@ class Unit:
         return rtn.npix.corr.ccg(self.dp, [self.idx]+list(U), cbin, cwin, fs, normalize, ret, sav, prnt, rec_section, again)
     
     def wvf(self, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10):
-        if self.ds.probe_version in ['3A', '1.0_staggered', '1.0_aligned',]:
-            ampFactor=500
-        elif self.ds.probe_version in [ '2.0_singleshank', '2.0_fourshanked']:
-            ampFactor=500
-        return rtn.npix.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, ampFactor, self.ds.probe_version, True, True)
+        return rtn.npix.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, True, True)
     
     def plot_acg(self, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
              pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0):

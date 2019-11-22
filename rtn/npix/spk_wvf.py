@@ -16,7 +16,7 @@ import pandas as pd
 
 from rtn.npix.spk_t import ids
 from rtn.npix.gl import get_units
-from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice
+from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta
 from rtn.utils import _as_array, npa
 
 dp='/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1'
@@ -24,7 +24,7 @@ unit=1820
 n_waveforms=100;t_waveforms=82;wvf_subset_selection='regular';wvf_batch_size=10;ampFactor=500;probe_type='3A'
 #%% Concise home made function
 
-def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, probe_version='3A', sav=True, prnt=False):
+def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False):
     '''
     ********
     routine from rtn.npix.spk_wvf
@@ -68,7 +68,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
             else:
                 if prnt: print('''File wvf_[{}].npy not found exports (snippet reminder :export_wvf).'''.format(u))
         else:
-            waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, probe_version)
+            waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size)
                 
         # Save it
         if sav:
@@ -77,7 +77,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
     return waveforms
 
 
-def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, probe_version='3A'):
+def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10):
     '''Function to extract a subset of waveforms from a given unit.
     Parameters:
         - dp:
@@ -122,7 +122,7 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     
     
     # Correct voltage scaling
-    assert probe_version in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']
+    probe_version=read_spikeglx_meta(dp)['probe_version']
     if probe_version in ['3A', '1.0_staggered', '1.0_aligned']:
         Vrange=1.2e6
         bits_encoding=10
@@ -152,14 +152,14 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     return  waveforms
 
 
-def get_peak_chan(dp, unit, probe_version='3A'):
-    waveforms=wvf(dp, unit, 200, probe_version=probe_version)
+def get_peak_chan(dp, unit):
+    waveforms=wvf(dp, unit, 200)
     wvf_m = np.mean(waveforms, axis=0)
     t_max_wvf=np.max(abs(wvf_m),0)
     peak_chan = int(np.nonzero(np.max(t_max_wvf)==t_max_wvf)[0])
     return peak_chan
 
-def get_depthSort_peakChans(dp, units=[], quality='all', probe_version='3A'):
+def get_depthSort_peakChans(dp, units=[], quality='all'):
     if ~np.any(units):
         units=get_units(dp, quality=quality)
     units=npa(units)
@@ -177,7 +177,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', probe_version='3A'):
             ds_i = ast.literal_eval(u.split('_')[0])
             if ds_i>=1: iu=iu%datasets[ds_i-1]
             peak_chans_dic[ds_i][iu,0] = u
-            peak_chans_dic[ds_i][iu,1] = int(get_peak_chan(dp, u, probe_version))
+            peak_chans_dic[ds_i][iu,1] = int(get_peak_chan(dp, u))
         peak_chans=npa(zeros=(0,2),dtype='<U6')
         for ds_i in sorted(datasets.keys()):
             depthIdx = np.argsort(peak_chans_dic[ds_i].astype('int64')[:,1])[::-1]
@@ -189,7 +189,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', probe_version='3A'):
         for iu, u in enumerate(units):
             print("Getting peak channel of unit {}...".format(u))
             peak_chans[iu,0] = u
-            peak_chans[iu,1] = int(get_peak_chan(dp, u, probe_version))
+            peak_chans[iu,1] = int(get_peak_chan(dp, u))
         depthIdx = np.argsort(peak_chans[:,1])[::-1] # From surface (high ch) to DCN (low ch)
         peak_chans=peak_chans[depthIdx]
     

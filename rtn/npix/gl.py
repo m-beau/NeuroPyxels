@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from rtn.utils import npa
+from rtn.npix.io import read_spikeglx_meta
 
 def assert_multidatasets(dp):
     'Returns unpacked merged_clusters_spikes.npz if it exists in dp, None otherwise.'
@@ -20,8 +21,10 @@ def assert_multidatasets(dp):
         mcs=np.load(op.join(dp, 'merged_clusters_spikes.npz'))
         return mcs[list(mcs.keys())[0]]
 
-def chan_map(probe_version='3A', dp=None, y_orig='surface'):
+def chan_map(dp=None, y_orig='surface', probe_version=None):
+    
     assert y_orig in ['surface', 'tip']
+    if probe_version is None: probe_version=read_spikeglx_meta(dp)['probe_version']
     assert probe_version in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked', 'local']
     
     if probe_version in probe_version in ['3A', '1.0_staggered']:

@@ -943,28 +943,16 @@ def ccg_significance(CCG, cbin=0.2, cwin=100, law='Normal', alpha=0.05, n_consec
         assert canUse_Nbins(alpha, cwin, cbin, n_consec_bins)
     if not bin_wise: # else: compute one CI for each bin
         if law=='Poisson':
-            CI=[] # not handled yet - how to end up with natural integers as ccg values? Spike counts? Can multiplie by random big number?
+            peaks=[] # not handled yet - how to end up with natural integers as ccg values? Spike counts? Can multiplie by random big number?
         elif law=='Normal':
             m=np.mean(Ho_ccg)
             s=np.std(Ho_ccg)
             fr_a=fractile_normal(1-(alpha/2), 0, 1)
-            CI=[m-s*fr_a, m+s*fr_a] # Confidence Interval
-        
-        peaks=find_threshold_crosses(CCG, cbin, threshold=3, n_consec_bins=3, ext_mn=None, ext_std=None, pkSgn='all', win_fract_baseline=0.6)
-    
-    return ccl # binary value, 0 or 1
+            peaks=extract_hist_modulation_features(CCG, cbin, fr_a, n_consec_bins, m, s)
+    else:
+        peaks=[] 
 
-def ccg_strength(ccg, metric='Ntiriplets'):
-    '''
-    - a: alpha, confidence level
-    - w: correlogram window size, ms
-    - b: correlogram bin size, ms
-    See Kopelowitz, Lev et Cohen, 2014, JNeuro methods,
-    Quantification of pairwise neuronal interactions: going beyond the significance lines.'''
-    assert metric in ['Ntriplets', 'Nbins', 'bin_height', 'entropy', 'PCA_1']
-    
-    
-    return ccg_strength
+    return 1 if np.any(peaks) else 0
 
 def find_transmission_prob(ccg, cbin, holgauss_b, holgauss_w):
     
@@ -1039,7 +1027,9 @@ def extract_hist_modulation_features(hist, hbin, threshold=2, n_consec_bins=3, e
     - win_fract_baseline: fraction  of the window used to compute the Ho mean and std, is no ext_mn or ext_std are provided. If 0.6, 0:0.3 and 0.7:1 will be used.
 
     Returns:
-        - peaks+troughs: [(l, r, y, t), ...] where l, r, y, t stand for left edge, right edge, y value (std), time'''
+        - peaks+troughs: [(l_ms, r_ms, y, t_ms, n_triplets, n_bincrossing, bin_heights, entropy), ...]
+          where l_ms, r_ms, y, t_ms stand for left edge, right edge, y value (std), time
+          and n_triplets, n_bincrossing, bin_heights, entropy for the 4 correlation strength metrics of Kopelowitz et al.'''
     
     assert pkSgn in ['+', '-', 'all'], "pkSgn has an odd value, should be  '+', '-' or 'all'."
     assert win_fract_baseline<1
@@ -1084,7 +1074,7 @@ def extract_hist_modulation_features(hist, hbin, threshold=2, n_consec_bins=3, e
         
     return ret
         
-def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', _format='peaks_infos', again=False, againCCG=False, probe_version='3A'):
+def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', _format='peaks_infos', again=False, againCCG=False):
     '''
     Function generating a NxN functional correlation dataframe SFCDF and matrix SFCM
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -1097,15 +1087,15 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
     except: print('WARNING {} must be in {}! Exitting now.'.format(_format, str(['peaks_infos', 'raw_sig_ccgs']))); return
         
     peakChs=get_depthSort_peakChans(dp, quality='good')
-    gu, bestChs = peakChs[:,0], peakChs[:,1]
+    gu, bestChs = peakChs[:,0], peakChs[:,1].astype('int64')
     
-    histo=False
-    if os.path.isfile(dp+'/FeaturesTable/FeaturesTable_histo.csv'):
-        fth = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_histo.csv', sep=',', index_col=0)
-        depthIdx = np.argsort(bestChs)[::-1] # From surface (high ch) to DCN (low ch)
-        histo_str=np.array(fth["Histology_str"])
-        histo_str=histo_str[depthIdx]
-        histo=True
+    # histo=False
+    # if os.path.isfile(dp+'/FeaturesTable/FeaturesTable_histo.csv'):
+    #     fth = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_histo.csv', sep=',', index_col=0)
+    #     depthIdx = np.argsort(bestChs)[::-1] # From surface (high ch) to DCN (low ch)
+    #     histo_str=np.array(fth["Histology_str"])
+    #     histo_str=histo_str[depthIdx]
+    #     histo=True
     
     dprm = dp+'/routinesMemory'
     if not op.isdir(dprm): os.makedirs(dprm)
@@ -1122,7 +1112,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
             SFCM1 = pd.read_csv(dprm+fn2, index_col='Unit')
             SFCMtime = np.load(dprm+fn3)
 
-            return SFCDF, SFCM1, gu, np.sort(bestChs)[::-1], SFCMtime
+            return SFCDF, SFCM1, gu, bestChs, SFCMtime
             
     elif _format=='raw_ccgs':
         fn='/SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(rec_section)[0:50].replace(' ', ''), _format)
@@ -1144,7 +1134,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
         elif (cwin*1./cbin)%2==1: # odd
             bins=np.arange(-cwin*1./2+cbin*1./2, cwin*1./2+cbin*1./2, cbin)
         SFCDF = pd.DataFrame(index=all_gu_x_all_gu, columns=[str(b) for b in bins])
-        if histo: SFCDF.insert(loc=0, column='regions', value=np.nan)
+        #if histo: SFCDF.insert(loc=0, column='regions', value=np.nan)
         SFCDF.insert(loc=0, column='pattern', value=np.nan)
 
 
@@ -1187,7 +1177,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                 elif _format=='raw_ccgs':
                     if np.array(pks).any():
                         #shist=smooth(hist, frac=frac, it=0, frac2=frac2, spec=spec, cbin=cbin, cwin=cwin, lms=lms)
-                        colBin1=SFCDF.columns[2] if histo else SFCDF.columns[1]
+                        colBin1=SFCDF.columns[1] #SFCDF.columns[2] if histo else SFCDF.columns[1]
                         SFCDF.loc['{}->{}'.format(u1,u2),colBin1:]=hist
                         TY = np.array([[p[3], p[2]] for p in pks])
                         TY = TY[np.argsort(TY[:,0])] # sort by crescent peak time
@@ -1198,7 +1188,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                             pattern+= sgn+sym
                         
                         SFCDF.loc['{}->{}'.format(u1,u2),'pattern']=pattern
-                        if histo: SFCDF.loc['{}->{}'.format(u1,u2),'regions']='{}->{}'.format(fth.loc[u1, 'Histology_str'], fth.loc[u2, 'Histology_str'])
+                        # if histo: SFCDF.loc['{}->{}'.format(u1,u2),'regions']='{}->{}'.format(fth.loc[u1, 'Histology_str'], fth.loc[u2, 'Histology_str'])
                     else:
                         SFCDF.drop(['{}->{}'.format(u1,u2)], inplace=True)
     print('Job done.')

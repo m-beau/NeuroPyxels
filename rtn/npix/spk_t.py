@@ -47,7 +47,7 @@ def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
     return Xb
 
 
-def ids(dp, unit, ret=True, sav=True, prnt=False):
+def ids(dp, unit, ret=True, sav=True, prnt=False, again=False):
     '''
     ********
     routine from routines_spikes
@@ -64,7 +64,7 @@ def ids(dp, unit, ret=True, sav=True, prnt=False):
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
     if not op.isdir(dprm): os.makedirs(dprm)
-    if op.exists(dprm+'/ids{}.npy'.format(unit)):
+    if op.exists(dprm+'/ids{}.npy'.format(unit)) and not again:
         if prnt: print("File ids{}.npy found in routines memory.".format(unit))
         indices = np.load(dprm+'/ids{}.npy'.format(unit))
         indices=np.asarray(indices, dtype='int64')
@@ -92,7 +92,7 @@ def ids(dp, unit, ret=True, sav=True, prnt=False):
 
     
 
-def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
+def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000, again=False):
     '''
     ********
     routine from routines_spikes
@@ -111,7 +111,7 @@ def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
     if not op.isdir(dprm): os.makedirs(dprm)
-    if op.exists(dprm+'/trn{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', ''))):
+    if op.exists(dprm+'/trn{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', ''))) and not again:
         if prnt: print("File /trn{}({}).npy found in routines memory.".format(unit, str(rec_section)[0:10].replace(' ', '')))
         train = np.load(dprm+'/trn{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', '')))
         train=np.asarray(train, dtype='int64')
@@ -152,7 +152,7 @@ def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
     return train
 
 
-def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
+def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000, again=False):
     '''
     ********
     routine from routines_spikes
@@ -169,7 +169,7 @@ def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
     if not op.isdir(dprm): os.makedirs(dprm)
-    if op.exists(dprm+'/isi{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', ''))):
+    if op.exists(dprm+'/isi{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', ''))) and not again:
         if prnt: print("File /isi{}({}).npy found in routines memory.".format(unit, str(rec_section)[0:10].replace(' ', '')))
         isitvl = np.load(dprm+'/isi{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', '')))
         isitvl=np.asarray(isitvl, dtype='float64')
@@ -189,7 +189,7 @@ def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000):
         
 
 
-def trnb(dp, unit, bin_size, ret=True, sav=True, prnt=False, constrainBin=False, rec_section='all', fs=30000):
+def trnb(dp, unit, bin_size, ret=True, sav=True, prnt=False, constrainBin=False, rec_section='all', fs=30000, again=False):
     '''
     ********
     routine from routines_spikes
@@ -208,7 +208,7 @@ def trnb(dp, unit, bin_size, ret=True, sav=True, prnt=False, constrainBin=False,
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
     if not op.isdir(dprm): os.makedirs(dprm)
-    if op.exists(dprm+'/trnb{}_{}({}).npy'.format(unit, bin_size, str(rec_section)[0:10].replace(' ', ''))):
+    if op.exists(dprm+'/trnb{}_{}({}).npy'.format(unit, bin_size, str(rec_section)[0:10].replace(' ', ''))) and not again:
         if prnt: print("File trnb{}_{}.npy found in routines memory.".format(unit, bin_size))
         train_binarized = np.load(dprm+'/trnb{}_{}({}).npy'.format(unit, bin_size, str(rec_section)[0:10].replace(' ', '')))
         train_binarized = np.asarray(train_binarized, dtype='int64')

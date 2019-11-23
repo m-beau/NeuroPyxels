@@ -768,7 +768,7 @@ def find_threshold_crosses(hist, th):
     if len(cross_thp)==len(cross_thn): # Should be true because starts from and returns to baseline
         for i in range(len(cross_thp)):
             l_ind, r_ind = cross_thp[i], cross_thn[i]
-            cross_values=hist[l_ind:r_ind+1]
+            cross_values=hist[l_ind:r_ind]
             cross_times=np.arange(l_ind, r_ind, 1)
             peaks.append(np.vstack([cross_times, cross_values]))
 
@@ -802,19 +802,18 @@ def find_threshold_crosses(hist, th):
 
 def extract_hist_modulation_features(hist, hbin, threshold=2, n_consec_bins=3, ext_mn=None, ext_std=None, pkSgn='all', win_fract_baseline=0.5):
     '''
-    - hist is a 1d array, 
-    - hbin is in ms, 
-    - th is the threshold in hist unit,
-    - n_consec_bins is the number of consecutive bins which  have to cross the threshold for a peak to be called a peak,
-    - ext_mn is an external mean which can be provided rather than being calculated on the 2 lateral fifth (to measure it on a wider window for instance).
-    - ext_std is an external std which can be provided rather than being calculated on the 2 lateral fifth  (measured it on a wider window for instance).
-    - pkSgn can be '+', '-' or 'all' -> dictates whether to return peaks, troughs or both.
-    - win_fract_baseline: fraction  of the window used to compute the Ho mean and std, is no ext_mn or ext_std are provided. If 0.6, 0:0.3 and 0.7:1 will be used.
-
-    Returns:
+        - hist is a 1d array, 
+        - hbin is in ms, 
+        - th is the threshold in hist unit,
+        - n_consec_bins is the number of consecutive bins which  have to cross the threshold for a peak to be called a peak,
+        - ext_mn is an external mean which can be provided rather than being calculated on the 2 lateral fifth (to measure it on a wider window for instance).
+        - ext_std is an external std which can be provided rather than being calculated on the 2 lateral fifth  (measured it on a wider window for instance).
+        - pkSgn can be '+', '-' or 'all' -> dictates whether to return peaks, troughs or both.
+        - win_fract_baseline: fraction  of the window used to compute the Ho mean and std, is no ext_mn or ext_std are provided. If 0.6, 0:0.3 and 0.7:1 will be used.
+        Returns:
         - peaks+troughs: [(l_ms, r_ms, y, t_ms, n_triplets, n_bincrossing, bin_heights, entropy), ...]
-          where l_ms, r_ms, y, t_ms stand for left edge, right edge, y value (std), time
-          and n_triplets, n_bincrossing, bin_heights, entropy for the 4 correlation strength metrics of Kopelowitz et al.'''
+        where l_ms, r_ms, y, t_ms stand for left edge, right edge, y value (std), time
+        and n_triplets, n_bincrossing, bin_heights, entropy for the 4 correlation strength metrics of Kopelowitz et al.'''
     
     assert pkSgn in ['+', '-', 'all'], "pkSgn has an odd value, should be  '+', '-' or 'all'."
     assert win_fract_baseline<1
@@ -926,11 +925,11 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
     print('Significant functional correlations (sfc) extraction started!')
     for i1, u1 in enumerate(gu):
         for i2, u2 in enumerate(gu):
-            end = '\r' if (i1*len(gu)+i2)<(len(gu)**2-1) else ''
             if prct!=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2))):
                 prct=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2)))
-                print('{}%...'.format(prct), end=end)
+                print('{}%...'.format(prct))
             if i1!=i2:
+                print('(Checking ccg:{}->{}...)'.format(u1,u2))
                 hist=ccg(dp, [u1, u2], cbin, cwin, normalize='Hertz', prnt=False, rec_section=rec_section, again=againCCG)[0,1,:]
                 #hist_wide=ccg(dp, [i,j], 0.5, 50, prnt=False)[0,1,:]
                 #mn=np.mean(hist); std=np.std(hist)
@@ -941,7 +940,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                     SFCDF.loc[u1, u2]=pks if np.array(pks).any() else int(0)
                     if np.array(pks).any():
                         vsplit=len(pks)
-                        print('Significantly modulated ccg:{}->{}'.format(u1,u2), end = '\r')
+                        print('>> Significantly modulated ccg:{}->{}! <<'.format(u1,u2))
                         if 12%vsplit==0: # dividers of 12
                             heatpks=np.array([[p[2]]*int(12*1./vsplit) for p in pks]).flatten()
                             heatpksT=np.array([[p[3]]*int(12*1./vsplit) for p in pks]).flatten()

@@ -188,6 +188,7 @@ class Prophyler:
                 merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 0]=npa(ones=(Nspikes))*ds_i
                 merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 1]=spike_clusters[ds_i]
                 merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
+                cum_Nspikes+=Nspikes
             merged_clusters_spikes=merged_clusters_spikes[np.argsort(merged_clusters_spikes[:,2])]
             np.savez_compressed(op.join(self.dp_pro, merge_fname+'.npz'), merged_clusters_spikes)
             del spike_times, spike_clusters, sync_signals, merged_clusters_spikes
@@ -1004,7 +1005,7 @@ class Dataset:
         self.fs=self.meta['sRateHz']
         self.endTime=int(np.load(op.join(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
         self.chan_map=chan_map(self.dp, y_orig='surface')
-        assert np.all(np.isin(chan_map(self.dp, y_orig='surface', probe_type='local')[:,0], self.chan_map[:,0])), \
+        assert np.all(np.isin(chan_map(self.dp, y_orig='surface', probe_version='local')[:,0], self.chan_map[:,0])), \
         "Local channel map comprises channels not found in expected channels given matafile probe type."
         
     def get_units(self):

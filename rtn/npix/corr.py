@@ -925,6 +925,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
     print('Significant functional correlations (sfc) extraction started!')
     for i1, u1 in enumerate(gu):
         for i2, u2 in enumerate(gu):
+            skip=0
             if prct!=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2))):
                 prct=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2)))
                 print('{}%...'.format(prct))
@@ -949,8 +950,9 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                                 heatpks=np.array([p[2] for p in pks]+[0]*(12-vsplit)).flatten()
                                 heatpksT=np.array([p[3] for p in pks]+[0]*(12-vsplit)).flatten()
                             else:
-                                raise ValueError('WARNING more than 12 peaks found - your threshold is too permissive or CCG f*cked up (units {} and {}), aborting.'.format(u1, u2))
-                    else:
+                                skip=1
+                                print('WARNING more than 12 peaks found - your threshold is too permissive or CCG f*cked up (units {} and {}), aborting.'.format(u1, u2))
+                    if not np.array(pks).any() or skip:
                         heatpks=np.array([0]*12)
                         heatpksT=np.array([np.nan]*12)
                     

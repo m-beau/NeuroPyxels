@@ -80,7 +80,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         assert sample_lines=='all'
         sample_lines=n_waveforms
     elif type(sample_lines) is float or type(sample_lines) is int:
-        sample_lines=max(sample_lines, n_waveforms)
+        sample_lines=min(sample_lines, n_waveforms)
         
     fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     cm=chan_map(dp, y_orig='surface', probe_version='local')
@@ -94,11 +94,16 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         chStart=get_peak_chan(dp, u)
         chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0])
         chStart=cm[chStart_i-Nchannels//2,0]
-    chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0]) # if not all channels were processed by kilosort, 
-    assert chStart_i>=0
+    else:
+        chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0]) # if not all channels were processed by kilosort, 
+
     chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
     chEnd_i = int(chStart_i+Nchannels)
-    fig, ax = plt.subplots(int(Nchannels*1./2), 2, figsize=(8, 16), dpi=80)
+    if Nchannels>=2:
+        Nchannels=Nchannels+Nchannels%2
+        fig, ax = plt.subplots(int(Nchannels*1./2), 2, figsize=(8, 2*Nchannels), dpi=80)
+    else:
+        fig, ax = plt.subplots(1, 1, figsize=(4, 4), dpi=80)
 
     data = waveforms[:, :, chStart_i:chEnd_i]
     datam = np.rollaxis(data.mean(0),1)

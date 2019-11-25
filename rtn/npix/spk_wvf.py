@@ -15,16 +15,13 @@ from scipy import signal
 import pandas as pd
 
 from rtn.npix.spk_t import ids
-from rtn.npix.gl import get_units
+from rtn.npix.gl import get_units, chan_map
 from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta
 from rtn.utils import _as_array, npa
 
-dp='/media/maxime/Npxl_data2/wheel_turning/DK152-153/DK153_190416day1_Probe2_run1'
-unit=1820
-n_waveforms=100;t_waveforms=82;wvf_subset_selection='regular';wvf_batch_size=10;ampFactor=500;probe_type='3A'
 #%% Concise home made function
 
-def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False):
+def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False, again=False):
     '''
     ********
     routine from rtn.npix.spk_wvf
@@ -53,7 +50,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
     dprm = dp+'/routinesMemory'
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
-    if os.path.exists(dprm+'/wvf{}_{}-{}.npy'.format(u, n_waveforms, t_waveforms)):
+    if os.path.exists(dprm+'/wvf{}_{}-{}.npy'.format(u, n_waveforms, t_waveforms)) and not again:
         if prnt: print("File wvf{}_{}-{}.npy found in routines memory.".format(u, n_waveforms, t_waveforms))
         waveforms = np.load(dprm+'/wvf{}_{}-{}.npy'.format(u, n_waveforms, t_waveforms))
 
@@ -61,12 +58,9 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
     else:
         dpme = dp+'/manualExports'
         fn="/wvf_[{}].npy".format(u)
-        if n_waveforms==100 and t_waveforms==82:
-            if os.path.exists(dpme+fn):
-                waveforms = np.load(dpme+fn)
-                if prnt: print("File wvf_[{}].npy found in phy manual exports.".format(u))
-            else:
-                if prnt: print('''File wvf_[{}].npy not found exports (snippet reminder :export_wvf).'''.format(u))
+        if n_waveforms==100 and t_waveforms==82 and os.path.exists(dpme+fn):
+            waveforms = np.load(dpme+fn)
+            if prnt: print("File wvf_[{}].npy found in phy manual exports(snippet reminder :export_wvf).".format(u))
         else:
             waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size)
                 
@@ -153,11 +147,12 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
 
 
 def get_peak_chan(dp, unit):
+    cm=chan_map(dp, probe_version='local')
     waveforms=wvf(dp, unit, 200)
     wvf_m = np.mean(waveforms, axis=0)
     t_max_wvf=np.max(abs(wvf_m),0)
     peak_chan = int(np.nonzero(np.max(t_max_wvf)==t_max_wvf)[0])
-    return peak_chan
+    return cm[:,0][peak_chan]
 
 def get_depthSort_peakChans(dp, units=[], quality='all'):
     if ~np.any(units):

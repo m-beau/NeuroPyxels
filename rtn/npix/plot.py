@@ -16,8 +16,9 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
                     
-from rtn.npix.gl import get_units
-from rtn.npix.spk_wvf import get_depthSort_peakChans
+from rtn.npix.io import read_spikeglx_meta
+from rtn.npix.gl import get_units, chan_map
+from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan
 from rtn.npix.corr import acg, ccg, gen_sfc, extract_hist_modulation_features, make_cm
 from mpl_toolkits.mplot3d import axes3d
 from mpl_toolkits.mplot3d import Axes3D
@@ -36,264 +37,159 @@ def hist_MB(arr, a, b, s, title='MB hist', xlabel='', ylabel=''):
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
     return fig
 
-#%% Save matplotlib animations
-# https://towardsdatascience.com/how-to-create-animated-graphs-in-python-bb619cc2dec1
-##### TO CREATE A SERIES OF PICTURES
- 
-def make_views(ax,angles,width, height, elevation=None,
-                prefix='tmprot_',**kwargs):
-    """
-    Makes jpeg pictures of the given 3d ax, with different angles.
-    Args:
-        ax (3D axis): te ax
-        angles (list): the list of angles (in degree) under which to
-                       take the picture.
-        width,height (float): size, in inches, of the output images.
-        prefix (str): prefix for the files created. 
-     
-    Returns: the list of files created (for later removal)
-    """
-     
-    files = []
-    ax.figure.set_size_inches(width,height)
-     
-    for i,angle in enumerate(angles):
-        
-        ax.view_init(elev = elevation, azim=angle)
-        ax.set_xlim3d([206, 212])
-        ax.set_ylim3d([208, 213])
-        ax.set_zlim3d([207, 213])
-        fname = '%s%03d.png'%(prefix,i)
-        ax.figure.savefig(fname)
-        files.append(fname)
-     
-    return files
- 
- 
- 
-##### TO TRANSFORM THE SERIES OF PICTURE INTO AN ANIMATION
- 
-def make_movie(files,output, fps=10,bitrate=1800,**kwargs):
-    """
-    Uses mencoder, produces a .mp4/.ogv/... movie from a list of
-    picture files.
-    """
-     
-    output_name, output_ext = os.path.splitext(output)
-    command = { '.mp4' : 'mencoder "mf://%s" -mf fps=%d -o %s.mp4 -ovc lavc\
-                         -lavcopts vcodec=msmpeg4v2:vbitrate=%d'
-                         %(",".join(files),fps,output_name,bitrate)}
-                          
-    command['.ogv'] = command['.mp4'] + '; ffmpeg -i %s.mp4 -r %d %s'%(output_name,fps,output)
-     
-    print(command[output_ext])
-    output_ext = os.path.splitext(output)[1]
-    os.system(command[output_ext])
- 
- 
- 
-def make_gif(files,output,delay=100, repeat=True,**kwargs):
-    """
-    Uses imageMagick to produce an animated .gif from a list of
-    picture files.
-    """
-     
-    loop = -1 if repeat else 0
-    os.system('convert -delay %d -loop %d %s %s'
-              %(delay,loop," ".join(files),output))
- 
- 
- 
- 
-def make_strip(files,output,**kwargs):
-    """
-    Uses imageMagick to produce a .jpeg strip from a list of
-    picture files.
-    """
-     
-    os.system('montage -tile 1x -geometry +0+0 %s %s'%(" ".join(files),output))
-     
-     
-     
-##### MAIN FUNCTION
- 
-def rotanimate(ax, width, height, angles, output, **kwargs):
-    """
-    Produces an animation (.mp4,.ogv,.gif,.jpeg,.png) from a 3D plot on
-    a 3D ax
-     
-    Args:
-        ax (3D axis): the ax containing the plot of interest
-        angles (list): the list of angles (in degree) under which to
-                       show the plot.
-        output : name of the output file. The extension determines the
-                 kind of animation used.
-        **kwargs:
-            - width : in inches
-            - heigth: in inches
-            - framerate : frames per second
-            - delay : delay between frames in milliseconds
-            - repeat : True or False (.gif only)
-    """
-         
-    output_ext = os.path.splitext(output)[1]
- 
-    files = make_views(ax,angles, width, height, **kwargs)
-     
-    D = { '.mp4' : make_movie,
-          '.ogv' : make_movie,
-          '.gif': make_gif ,
-          '.jpeg': make_strip,
-          '.png':make_strip}
-           
-    D[output_ext](files,output,**kwargs)
-     
-    for f in files:
-        os.remove(f)
-
-def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Downloads', title='movie', frmt='gif', axis=True):
-    '''
-    ax is the figure axes that you will make rotate along its vertical axis,
-    on Nangles angles (default 300),
-    separated by delay time units (default 2),
-    at a resolution of widthxheight pixels (default 10x10),
-    saved in saveDir directory (default Downloads) with the title title (default movie) and format frmt (gif).
-    '''
-    assert frmt in ['gif', 'mp4', 'ogv']
-    if not axis: plt.axis('off') # remove axes for visual appeal
-    oldDir=os.getcwd()
-    saveDir=op.expanduser(saveDir)
-    os.chdir(saveDir)
-    angles = np.linspace(0,360,Nangles)[:-1] # Take 20 angles between 0 and 360
-    ttl='{}.{}'.format(title, frmt)
-    rotanimate(ax, width, height, angles,ttl, delay=delay)
-    
-    os.chdir(oldDir)
-
 #%% Waveforms
-def plot_wvf_16(datam):
-    datam = np.squeeze(datam)
-    if datam.shape == (82, 16):
-        datam = datam.T
-    assert datam.shape == (16, 82)
-    fig, ax = plt.subplots(int(datam.shape[0]*1./2), 2)
-    ylim1, ylim2 = np.squeeze(np.min(datam))-10, np.squeeze(np.max(datam))+10
-    for i in range(datam.shafind_significant_ccg_peakpe[0]):
-        print(i//2, i%2)
-        ax[i//2,i%2].plot(datam[i,:])
-        ax[i//2,i%2].set_ylim([ylim1, ylim2])
-    fig.tight_layout()
+# def plot_wvf_16(datam):
+#     datam = np.squeeze(datam)
+#     if datam.shape == (82, 16):
+#         datam = datam.T
+#     assert datam.shape == (16, 82)
+#     fig, ax = plt.subplots(int(datam.shape[0]*1./2), 2)
+#     ylim1, ylim2 = np.squeeze(np.min(datam))-10, np.squeeze(np.max(datam))+10
+#     for i in range(datam.shafind_significant_ccg_peakpe[0]):
+#         print(i//2, i%2)
+#         ax[i//2,i%2].plot(datam[i,:])
+#         ax[i//2,i%2].set_ylim([ylim1, ylim2])
+#     fig.tight_layout()
     
-    return fig
+#     return fig
 
-def plot_wvf_setCh(data, chStart=176, title = 'Probe 3B', Nchannels=12, \
-                   color=(0./255, 0./255, 0./255), ampFactor=500, fs=30000, 
-                   labels=True, saveDir='~/Downloads', saveFig=False, saveData=False, ylim=0):
-    try:
-        assert data.shape == (100, 82, 384)
-    except:
-        data=np.reshape(data, data.shape[0:3])
+def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
+               title = '', std=True, color=(0./255, 0./255, 0./255),
+               labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False):
+    '''
+    Parameters:
+        - dp: string, datapath to kilosort directory
+        - u: int, unit index
+        - Nchannels: int, number of channels where waveform is plotted
+        - chStart: int, channel from which to plot consecutive Nchannels | Default None, will then center on the peak channel.
+        - n_waveforms: int, number of randomly sampled waveforms from which the mean and std are computed
+        - t_waveforms: float, time span of the waveform samples around spike onset, in ms
+        - title: string, plot title
+        - std: boolean, whether or not to plot the underlying standard deviation area | default True
+        - color: (r,g,b) tuple or [0 to 1] floats, color of the mean waveform | default black
+        - sample_lines: 'all' or int, whether to plot all or sample_lines individual samples in the background. Set to 0 to plot nothing.
+        - labels: boolean, whether to plot or not the axis, axis labels, title... If False, only lines are plotted
+        - ylim: upper limit of plots, in uV
+        - saveDir  | default False
+        - saveFig: boolean, save figure source data to saveDir | default Downloads
+        - saveData: boolean, save waveforms source data to saveDir | default Downloads
+    Returns:
+        - matplotlib figure with Nchannels subplots, plotting the mean
+    '''
+    if type(sample_lines) is str:
+        assert sample_lines=='all'
+        sample_lines=n_waveforms
+    elif type(sample_lines) is float or type(sample_lines) is int:
+        sample_lines=max(sample_lines, n_waveforms)
+        
+    fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+    cm=chan_map(dp, y_orig='surface', probe_version='local')
+    t_waveforms_s=int(t_waveforms*(fs/1000))
+    waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, wvf_subset_selection='regular', wvf_batch_size=10)
+    assert waveforms.shape==(n_waveforms, t_waveforms_s, cm.shape[0])
+    
     saveDir=op.expanduser(saveDir)
-    chStart = int(min(chStart-1, data.shape[2]-Nchannels-1))
-    chEnd = int(chStart+Nchannels)
+
+    if chStart is None:
+        chStart=get_peak_chan(dp, u)
+        chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0])
+        chStart=cm[chStart_i-Nchannels//2,0]
+    chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0]) # if not all channels were processed by kilosort, 
+    assert chStart_i>=0
+    chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
+    chEnd_i = int(chStart_i+Nchannels)
     fig, ax = plt.subplots(int(Nchannels*1./2), 2, figsize=(8, 16), dpi=80)
-    data = data*(1.2e6/2**10/ampFactor) # Correct voltage
+
+    data = waveforms[:, :, chStart_i:chEnd_i]
     datam = np.rollaxis(data.mean(0),1)
     datastd = np.rollaxis(data.std(0),1)
-    data = data[:, :, chStart:chEnd]
-    datam = datam[chStart:chEnd, :]
-    datastd = datastd[chStart:chEnd, :]
-    x = np.linspace(0, data.shape[1]*1./(fs/1000), data.shape[1]) # Plot 82 datapoints between 0 and 82/30 ms
-    if ylim==0:
-        ylim1, ylim2 = np.squeeze(np.min(datam)-np.max(datastd)-20), np.squeeze(np.max(datam)+np.max(datastd)+20)
-    else:
-        ylim1, ylim2 = ylim[0], ylim[1]
+
+    ylim1, ylim2 = (np.min(datam-datastd)-50, np.max(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
+    x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot 82 datapoints between 0 and 82/30 ms
     for i in range(data.shape[2]):
         i1, i2 = data.shape[2]//2-1-i//2, i%2
-        for j in range(data.shape[1]):
+        for j in range(sample_lines):
             ax[i1, i2].set_ylim([ylim1, ylim2])
-            ax[i1, i2].plot(x, data[j,:, i], linewidth=0.5, alpha=0.3, color=color)
+            ax[i1, i2].plot(x, data[j,:, i], linewidth=0.3, alpha=0.3, color=color)
         #r, c = int(Nchannels*1./2)-1-(i//2),i%2
         color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
         ax[i1, i2].plot(x, datam[i, :], linewidth=2, color=color_dark, alpha=1)
-        ax[i1, i2].plot(x, datam[i, :]+datastd[i,:], linewidth=1, color=color, alpha=0.5)
-        ax[i1, i2].plot(x, datam[i, :]-datastd[i,:], linewidth=1, color=color, alpha=0.5)
-        ax[i1, i2].fill_between(x, datam[i, :]-datastd[i,:], datam[i, :]+datastd[i,:], facecolor=color, interpolate=True, alpha=0.2)
-        if labels:
-            ax[i1, i2].set_title(chStart+(2*(i//2)+i%2), size=12, loc='right', weight='bold')
-            if i2==0:
-                ax[i1, i2].set_ylabel('EC V (uV)', size=14)
-            if i1==int(Nchannels/2)-1:#start plotting from top
-                ax[i1, i2].set_xlabel('t (ms)', size=20)
-            ax[i1, i2].tick_params(labelsize=16)
-        else:
-            ax[i1, i2].axis('off')
-#            for axis in ['x', 'y']:
-#                ax[r, c].tick_params(axis=axis,          # changes apply to the x-axis
-#                                which='both',      # both major and minor ticks are affected
-#                                bottom=False,      # ticks along the bottom edge are off
-#                                top=False,         # ticks along the top edge are off
-#                                labelbottom=False) # labels along the bottom edge are off
-        # Hide the right and top spines
+        if std:
+            ax[i1, i2].plot(x, datam[i, :]+datastd[i,:], linewidth=1, color=color, alpha=0.5)
+            ax[i1, i2].plot(x, datam[i, :]-datastd[i,:], linewidth=1, color=color, alpha=0.5)
+            ax[i1, i2].fill_between(x, datam[i, :]-datastd[i,:], datam[i, :]+datastd[i,:], facecolor=color, interpolate=True, alpha=0.2)
         ax[i1, i2].spines['right'].set_visible(False)
         ax[i1, i2].spines['top'].set_visible(False)
-        ax[i1, i2].spines['left'].set_visible(False)
-        ax[i1, i2].spines['bottom'].set_visible(False)
+        ax[i1, i2].spines['left'].set_lw(2)
+        ax[i1, i2].spines['bottom'].set_lw(2)
+        if labels:
+            ax[i1, i2].set_title(cm[:,0][chStart_i+(2*(i//2)+i%2)], size=12, loc='right', weight='bold')
+            if i2==0 and i1==int(Nchannels/2)-1:#start plotting from top
+                ax[i1, i2].tick_params(axis='both', bottom=1, left=1, top=0, right=0, labelsize=16, width=2)
+                ax[i1, i2].set_ylabel('EC V (uV)', size=16)
+                ax[i1, i2].set_xlabel('t (ms)', size=16)
+            else:
+                ax[i1, i2].tick_params(axis='both', bottom=1, left=1, top=0, right=0, labelsize=16, width=2)
+                ax[i1, i2].get_xaxis().set_ticklabels([])
+                ax[i1, i2].get_yaxis().set_ticklabels([])
+        else:
+            ax[i1, i2].axis('off')
 
-    # if labels:
-    #     fig.suptitle(title, size=20, weight='bold')
+    title = 'waveforms of {}'.format(u) if title=='' else title
+    fig.suptitle(title, size=20, weight='bold')
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    fig.subplots_adjust(left=0.2, bottom=0.05, right=0.8, top=0.95, wspace=0.1, hspace=0.05)
-    plt.tight_layout()
+    #fig.subplots_adjust(left=0.2, bottom=0.05, right=0.8, top=0.95, wspace=0.1, hspace=0.05)
     
     if saveFig:
         fig.savefig(op.join(saveDir, title+'.pdf'), format='pdf')
+    if saveData:
+        np.save(op.join(saveDir, title+'.npy'), waveforms)
     
     return fig
     
-def plot_wvf_mainCh(data, title = 'Merged units 19, 452, 555', color=(0./255, 0./255, 0./255), 
-                    ampFactor=500, fs=30000, plotRaw=False, channel=None, saveDir='~/Downloads', 
-                    saveFig=False, saveData=False, ylim=0):
-    assert data.ndim == 3# (100, 82, 384) or  data.shape == (100, 82, 373)
-    saveDir=op.expanduser(saveDir)
-    data = data*(1.2e6/2**10/ampFactor) # Correct voltage
-    fig, ax = plt.subplots()
-    datam = np.rollaxis(data.mean(0),1)
-    datastd = np.rollaxis(data.std(0),1)
-    if not channel:
-        mainChannel = np.argwhere(np.max(abs(datam),1) == np.max(np.max(abs(datam),1)))
-    else:
-        mainChannel = [[channel]]
-    print(mainChannel)
-    data = data[:, :, mainChannel]
-    datam = np.squeeze(datam[mainChannel, :])
-    datastd = np.squeeze(datastd[mainChannel, :])
-    x = np.linspace(0, data.shape[1]*1./(fs/1000), data.shape[1]) # Plot 82 datapoints between 0 and 82/30 ms
-    #ylim1, ylim2 = np.squeeze(np.min(datam))-10, np.squeeze(np.max(datam))+10
-    if plotRaw:
-        for j in range(data.shape[1]):
-            #ax.set_ylim([ylim1, ylim2])
-            ax.plot(x, data[j,:, 0], linewidth=0.5, alpha=0.5, color=color)
+# def plot_wvf_mainCh(data, title = 'Merged units 19, 452, 555', color=(0./255, 0./255, 0./255), 
+#                     ampFactor=500, fs=30000, plotRaw=False, channel=None, saveDir='~/Downloads', 
+#                     saveFig=False, saveData=False, ylim=0):
+#     assert data.ndim == 3# (100, 82, 384) or  data.shape == (100, 82, 373)
+#     saveDir=op.expanduser(saveDir)
+#     data = data*(1.2e6/2**10/ampFactor) # Correct voltage
+#     fig, ax = plt.subplots()
+#     datam = np.rollaxis(data.mean(0),1)
+#     datastd = np.rollaxis(data.std(0),1)
+#     if not channel:
+#         mainChannel = np.argwhere(np.max(abs(datam),1) == np.max(np.max(abs(datam),1)))
+#     else:
+#         mainChannel = [[channel]]
+#     print(mainChannel)
+#     data = data[:, :, mainChannel]
+#     datam = np.squeeze(datam[mainChannel, :])
+#     datastd = np.squeeze(datastd[mainChannel, :])
+#     x = np.linspace(0, data.shape[1]*1./(fs/1000), data.shape[1]) # Plot 82 datapoints between 0 and 82/30 ms
+#     #ylim1, ylim2 = np.squeeze(np.min(datam))-10, np.squeeze(np.max(datam))+10
+#     if plotRaw:
+#         for j in range(data.shape[1]):
+#             #ax.set_ylim([ylim1, ylim2])
+#             ax.plot(x, data[j,:, 0], linewidth=0.5, alpha=0.5, color=color)
 
-    ax.plot(x, datam, linewidth=2.5, color=color)
-    ax.plot(x, datam+datastd, linewidth=1, color=color, alpha=0.7)
-    ax.plot(x, datam-datastd, linewidth=1, color=color, alpha=0.7)
-    ax.fill_between(x, datam-datastd, datam+datastd, facecolor=color, interpolate=True, alpha=0.3)
-    if type(ylim)==list or type(ylim)==tuple:
-        ax.set_ylim(ylim)
-    ax.set_title(title)
-    ax.set_xlabel('Time (ms)')
-    ax.set_ylabel('Extracellular Potential (uV)')
-    fig.tight_layout()
+#     ax.plot(x, datam, linewidth=2.5, color=color)
+#     ax.plot(x, datam+datastd, linewidth=1, color=color, alpha=0.7)
+#     ax.plot(x, datam-datastd, linewidth=1, color=color, alpha=0.7)
+#     ax.fill_between(x, datam-datastd, datam+datastd, facecolor=color, interpolate=True, alpha=0.3)
+#     if type(ylim)==list or type(ylim)==tuple:
+#         ax.set_ylim(ylim)
+#     ax.set_title(title)
+#     ax.set_xlabel('Time (ms)')
+#     ax.set_ylabel('Extracellular Potential (uV)')
+#     fig.tight_layout()
     
-    return fig
+#     return fig
     
 
 #%% Correlograms
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True, 
             show=True, pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, 
-            saveData=False, ylim1=0, ylim2=0,normalize='Hertz', ccg_mn=None, ccg_std=None):
+            saveData=False, ylim1=0, ylim2=0, normalize='Hertz', ccg_mn=None, ccg_std=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -583,7 +479,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
             ccg_mn=np.mean(np.append(ccg25, ccg35))
     if CCG.shape[0]==2:
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, pdf, png, rec_section=rec_section, 
-                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std)
+                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize='zscore', ccg_mn=ccg_mn, ccg_std=ccg_std)
     else:
         fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, pdf, png, rec_section=rec_section, labels=labels, title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
         
@@ -770,3 +666,137 @@ def network_plot_3D(G, angle, save=False):
          plt.show()
     
     return
+
+#%% Save matplotlib animations
+# https://towardsdatascience.com/how-to-create-animated-graphs-in-python-bb619cc2dec1
+##### TO CREATE A SERIES OF PICTURES
+ 
+def make_views(ax,angles,width, height, elevation=None,
+                prefix='tmprot_',**kwargs):
+    """
+    Makes jpeg pictures of the given 3d ax, with different angles.
+    Args:
+        ax (3D axis): te ax
+        angles (list): the list of angles (in degree) under which to
+                       take the picture.
+        width,height (float): size, in inches, of the output images.
+        prefix (str): prefix for the files created. 
+     
+    Returns: the list of files created (for later removal)
+    """
+     
+    files = []
+    ax.figure.set_size_inches(width,height)
+     
+    for i,angle in enumerate(angles):
+        
+        ax.view_init(elev = elevation, azim=angle)
+        ax.set_xlim3d([206, 212])
+        ax.set_ylim3d([208, 213])
+        ax.set_zlim3d([207, 213])
+        fname = '%s%03d.png'%(prefix,i)
+        ax.figure.savefig(fname)
+        files.append(fname)
+     
+    return files
+ 
+ 
+ 
+##### TO TRANSFORM THE SERIES OF PICTURE INTO AN ANIMATION
+ 
+def make_movie(files,output, fps=10,bitrate=1800,**kwargs):
+    """
+    Uses mencoder, produces a .mp4/.ogv/... movie from a list of
+    picture files.
+    """
+     
+    output_name, output_ext = os.path.splitext(output)
+    command = { '.mp4' : 'mencoder "mf://%s" -mf fps=%d -o %s.mp4 -ovc lavc\
+                         -lavcopts vcodec=msmpeg4v2:vbitrate=%d'
+                         %(",".join(files),fps,output_name,bitrate)}
+                          
+    command['.ogv'] = command['.mp4'] + '; ffmpeg -i %s.mp4 -r %d %s'%(output_name,fps,output)
+     
+    print(command[output_ext])
+    output_ext = os.path.splitext(output)[1]
+    os.system(command[output_ext])
+ 
+ 
+ 
+def make_gif(files,output,delay=100, repeat=True,**kwargs):
+    """
+    Uses imageMagick to produce an animated .gif from a list of
+    picture files.
+    """
+     
+    loop = -1 if repeat else 0
+    os.system('convert -delay %d -loop %d %s %s'
+              %(delay,loop," ".join(files),output))
+ 
+ 
+ 
+ 
+def make_strip(files,output,**kwargs):
+    """
+    Uses imageMagick to produce a .jpeg strip from a list of
+    picture files.
+    """
+     
+    os.system('montage -tile 1x -geometry +0+0 %s %s'%(" ".join(files),output))
+     
+     
+     
+##### MAIN FUNCTION
+ 
+def rotanimate(ax, width, height, angles, output, **kwargs):
+    """
+    Produces an animation (.mp4,.ogv,.gif,.jpeg,.png) from a 3D plot on
+    a 3D ax
+     
+    Args:
+        ax (3D axis): the ax containing the plot of interest
+        angles (list): the list of angles (in degree) under which to
+                       show the plot.
+        output : name of the output file. The extension determines the
+                 kind of animation used.
+        **kwargs:
+            - width : in inches
+            - heigth: in inches
+            - framerate : frames per second
+            - delay : delay between frames in milliseconds
+            - repeat : True or False (.gif only)
+    """
+         
+    output_ext = os.path.splitext(output)[1]
+ 
+    files = make_views(ax,angles, width, height, **kwargs)
+     
+    D = { '.mp4' : make_movie,
+          '.ogv' : make_movie,
+          '.gif': make_gif ,
+          '.jpeg': make_strip,
+          '.png':make_strip}
+           
+    D[output_ext](files,output,**kwargs)
+     
+    for f in files:
+        os.remove(f)
+
+def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Downloads', title='movie', frmt='gif', axis=True):
+    '''
+    ax is the figure axes that you will make rotate along its vertical axis,
+    on Nangles angles (default 300),
+    separated by delay time units (default 2),
+    at a resolution of widthxheight pixels (default 10x10),
+    saved in saveDir directory (default Downloads) with the title title (default movie) and format frmt (gif).
+    '''
+    assert frmt in ['gif', 'mp4', 'ogv']
+    if not axis: plt.axis('off') # remove axes for visual appeal
+    oldDir=os.getcwd()
+    saveDir=op.expanduser(saveDir)
+    os.chdir(saveDir)
+    angles = np.linspace(0,360,Nangles)[:-1] # Take 20 angles between 0 and 360
+    ttl='{}.{}'.format(title, frmt)
+    rotanimate(ax, width, height, angles,ttl, delay=delay)
+    
+    os.chdir(oldDir)

@@ -38,25 +38,12 @@ def hist_MB(arr, a, b, s, title='MB hist', xlabel='', ylabel=''):
     return fig
 
 #%% Waveforms
-# def plot_wvf_16(datam):
-#     datam = np.squeeze(datam)
-#     if datam.shape == (82, 16):
-#         datam = datam.T
-#     assert datam.shape == (16, 82)
-#     fig, ax = plt.subplots(int(datam.shape[0]*1./2), 2)
-#     ylim1, ylim2 = np.squeeze(np.min(datam))-10, np.squeeze(np.max(datam))+10
-#     for i in range(datam.shafind_significant_ccg_peakpe[0]):
-#         print(i//2, i%2)
-#         ax[i//2,i%2].plot(datam[i,:])
-#         ax[i//2,i%2].set_ylim([ylim1, ylim2])
-#     fig.tight_layout()
-    
-#     return fig
 
 def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
                title = '', std=True, color=(0./255, 0./255, 0./255),
                labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False):
     '''
+    To plot main channel alone: use Nchannels=1, chStart=None
     Parameters:
         - dp: string, datapath to kilosort directory
         - u: int, unit index
@@ -89,22 +76,23 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     assert waveforms.shape==(n_waveforms, t_waveforms_s, cm.shape[0])
     
     saveDir=op.expanduser(saveDir)
-
-    if chStart is None:
-        chStart=get_peak_chan(dp, u)
-        chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0])
-        chStart=cm[chStart_i-Nchannels//2,0]
-    else:
-        chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0]) # if not all channels were processed by kilosort, 
-
-    chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
-    chEnd_i = int(chStart_i+Nchannels)
     if Nchannels>=2:
         Nchannels=Nchannels+Nchannels%2
         fig, ax = plt.subplots(int(Nchannels*1./2), 2, figsize=(8, 2*Nchannels), dpi=80)
+        if Nchannels==2:
+            ax=ax.reshape((1, 2))#to handle case of 2 subplots
     else:
         fig, ax = plt.subplots(1, 1, figsize=(4, 4), dpi=80)
-
+        ax=np.array(ax).reshape((1, 1))
+    if chStart is None:
+        chStart=get_peak_chan(dp, u)
+        chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0])-Nchannels//2
+        chStart=cm[chStart_i,0]
+    else:
+        chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0]) # if not all channels were processed by kilosort,
+    chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
+    chEnd_i = int(chStart_i+Nchannels)
+    
     data = waveforms[:, :, chStart_i:chEnd_i]
     datam = np.rollaxis(data.mean(0),1)
     datastd = np.rollaxis(data.std(0),1)
@@ -112,7 +100,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     ylim1, ylim2 = (np.min(datam-datastd)-50, np.max(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
     x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot 82 datapoints between 0 and 82/30 ms
     for i in range(data.shape[2]):
-        i1, i2 = data.shape[2]//2-1-i//2, i%2
+        i1, i2 = max(0,data.shape[2]//2-1-i//2), i%2
         for j in range(sample_lines):
             ax[i1, i2].set_ylim([ylim1, ylim2])
             ax[i1, i2].plot(x, data[j,:, i], linewidth=0.3, alpha=0.3, color=color)
@@ -129,21 +117,19 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         ax[i1, i2].spines['bottom'].set_lw(2)
         if labels:
             ax[i1, i2].set_title(cm[:,0][chStart_i+(2*(i//2)+i%2)], size=12, loc='right', weight='bold')
-            if i2==0 and i1==int(Nchannels/2)-1:#start plotting from top
-                ax[i1, i2].tick_params(axis='both', bottom=1, left=1, top=0, right=0, labelsize=16, width=2)
-                ax[i1, i2].set_ylabel('EC V (uV)', size=16)
-                ax[i1, i2].set_xlabel('t (ms)', size=16)
+            ax[i1, i2].tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
+            if i2==0 and i1==max(0,int(Nchannels/2)-1):#start plotting from top
+                ax[i1, i2].set_ylabel('EC V (uV)', size=14, weight='bold')
+                ax[i1, i2].set_xlabel('t (ms)', size=14, weight='bold')
             else:
-                ax[i1, i2].tick_params(axis='both', bottom=1, left=1, top=0, right=0, labelsize=16, width=2)
-                ax[i1, i2].get_xaxis().set_ticklabels([])
-                ax[i1, i2].get_yaxis().set_ticklabels([])
+                ax[i1, i2].set_xticklabels([])
+                ax[i1, i2].set_yticklabels([])
         else:
             ax[i1, i2].axis('off')
 
     title = 'waveforms of {}'.format(u) if title=='' else title
-    fig.suptitle(title, size=20, weight='bold')
-    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    #fig.subplots_adjust(left=0.2, bottom=0.05, right=0.8, top=0.95, wspace=0.1, hspace=0.05)
+    fig.suptitle(title, size=18, weight='bold')
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95-0.07*(len(title.split('\n'))-1)])
     
     if saveFig:
         fig.savefig(op.join(saveDir, title+'.pdf'), format='pdf')
@@ -151,44 +137,6 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         np.save(op.join(saveDir, title+'.npy'), waveforms)
     
     return fig
-    
-# def plot_wvf_mainCh(data, title = 'Merged units 19, 452, 555', color=(0./255, 0./255, 0./255), 
-#                     ampFactor=500, fs=30000, plotRaw=False, channel=None, saveDir='~/Downloads', 
-#                     saveFig=False, saveData=False, ylim=0):
-#     assert data.ndim == 3# (100, 82, 384) or  data.shape == (100, 82, 373)
-#     saveDir=op.expanduser(saveDir)
-#     data = data*(1.2e6/2**10/ampFactor) # Correct voltage
-#     fig, ax = plt.subplots()
-#     datam = np.rollaxis(data.mean(0),1)
-#     datastd = np.rollaxis(data.std(0),1)
-#     if not channel:
-#         mainChannel = np.argwhere(np.max(abs(datam),1) == np.max(np.max(abs(datam),1)))
-#     else:
-#         mainChannel = [[channel]]
-#     print(mainChannel)
-#     data = data[:, :, mainChannel]
-#     datam = np.squeeze(datam[mainChannel, :])
-#     datastd = np.squeeze(datastd[mainChannel, :])
-#     x = np.linspace(0, data.shape[1]*1./(fs/1000), data.shape[1]) # Plot 82 datapoints between 0 and 82/30 ms
-#     #ylim1, ylim2 = np.squeeze(np.min(datam))-10, np.squeeze(np.max(datam))+10
-#     if plotRaw:
-#         for j in range(data.shape[1]):
-#             #ax.set_ylim([ylim1, ylim2])
-#             ax.plot(x, data[j,:, 0], linewidth=0.5, alpha=0.5, color=color)
-
-#     ax.plot(x, datam, linewidth=2.5, color=color)
-#     ax.plot(x, datam+datastd, linewidth=1, color=color, alpha=0.7)
-#     ax.plot(x, datam-datastd, linewidth=1, color=color, alpha=0.7)
-#     ax.fill_between(x, datam-datastd, datam+datastd, facecolor=color, interpolate=True, alpha=0.3)
-#     if type(ylim)==list or type(ylim)==tuple:
-#         ax.set_ylim(ylim)
-#     ax.set_title(title)
-#     ax.set_xlabel('Time (ms)')
-#     ax.set_ylabel('Extracellular Potential (uV)')
-#     fig.tight_layout()
-    
-#     return fig
-    
 
 #%% Correlograms
 

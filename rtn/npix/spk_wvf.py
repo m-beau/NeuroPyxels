@@ -12,10 +12,9 @@ import ast
 import numpy as np
 from math import ceil
 from scipy import signal
-import pandas as pd
 
 from rtn.npix.spk_t import ids
-from rtn.npix.gl import get_units, chan_map
+from rtn.npix.gl import get_units, chan_map, get_prophyler_source
 from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta
 from rtn.utils import _as_array, npa
 
@@ -40,14 +39,8 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
         waveforms: numpy array of shape (n_waveforms, t_waveforms, n_channels) where n_channels is defined by the channel map.
     
     '''
-    if op.basename(dp)[:9]=='prophyler':
-        assert op.exists(op.join(dp, 'datasets_table.csv')), "File {} not found in prophyler directory!".format(op.join(dp, 'datasets_table.csv'))
-        ds_i, u = u.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
-        ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
-        ds_dp=ds_table['dp'][ds_i]
-        assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
-        Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], op.join(dp, 'datasets_table.csv'))
-        dp=ds_dp
+    dp, u = get_prophyler_source(dp, u)
+
     dprm = dp+'/routinesMemory'
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
@@ -148,14 +141,7 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
 
 
 def get_peak_chan(dp, unit):
-    if op.basename(dp)[:9]=='prophyler':
-        assert op.exists(op.join(dp, 'datasets_table.csv')), "File {} not found in prophyler directory!".format(op.join(dp, 'datasets_table.csv'))
-        ds_i, unit = unit.split('_'); ds_i, unit = ast.literal_eval(ds_i), ast.literal_eval(unit)
-        ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
-        ds_dp=ds_table['dp'][ds_i]
-        assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
-        Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], op.join(dp, 'datasets_table.csv'))
-        dp=ds_dp
+    dp, unit = get_prophyler_source(dp, unit)
     cm=chan_map(dp, probe_version='local')
     waveforms=wvf(dp, unit, 200)
     wvf_m = np.mean(waveforms, axis=0)
@@ -227,14 +213,8 @@ def templates(dp, u):
         temaplate: numpy array of shape (n_templates, 82, n_channels) where n_channels is defined by the channel map and n_templates by how many merges were done.
     
     '''
-    if op.basename(dp)[:9]=='prophyler':
-        assert op.exists(op.join(dp, 'datasets_table.csv')), "File {} not found in prophyler directory!".format(op.join(dp, 'datasets_table.csv'))
-        ds_i, u = u.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
-        ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
-        ds_dp=ds_table['dp'][ds_i]
-        assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
-        Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], op.join(dp, 'datasets_table.csv'))
-    
+    dp, u = get_prophyler_source(dp, u)
+
     IDs=ids(dp,u)
     #mean_amp=np.mean(np.load(op.join(dp,'amplitudes.npy'))[IDs])
     template_ids=np.unique(np.load(op.join(dp,'spike_templates.npy'))[IDs])

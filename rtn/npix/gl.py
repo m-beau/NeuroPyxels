@@ -8,6 +8,7 @@ Dataset: Neuropixels dataset -> dp is phy directory (kilosort or spyking circus 
 """
 import os
 import os.path as op
+import ast
 
 import numpy as np
 import pandas as pd
@@ -129,3 +130,16 @@ def get_units(dp, quality='all'):
 
 def get_good_units(dp):
     return get_units(dp, quality='good')
+
+def get_prophyler_source(dp_pro, u):
+    '''If dp is a prophyler datapath, returns datapath from source dataset and unit as integer.
+       Else, returns dp and u as they are.
+    '''
+    if op.basename(dp_pro)[:9]=='prophyler':
+        ds_i, u = u.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
+        ds_table=pd.read_csv(op.join(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
+        ds_dp=ds_table['dp'][ds_i]
+        assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
+        Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], op.join(dp_pro, 'datasets_table.csv'))
+        dp_pro=ds_dp
+    return dp_pro, u

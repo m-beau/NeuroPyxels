@@ -952,7 +952,7 @@ def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='a
                             else:
                                 skip=1
                                 print('WARNING more than 12 peaks found - your threshold is too permissive or CCG f*cked up (units {} and {}), aborting.'.format(u1, u2))
-                    if not np.array(pks).any() or skip:
+                    if (not np.array(pks).any()) or skip:
                         heatpks=np.array([0]*12)
                         heatpksT=np.array([np.nan]*12)
                     

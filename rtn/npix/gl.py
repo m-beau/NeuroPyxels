@@ -108,7 +108,7 @@ def get_units(dp, quality='all'):
                 ds_dp=ds_table['dp'][ds_i]
                 assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
                 Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], op.join(dp, 'datasets_table.csv'))
-                ds_units=np.unique(np.load(op.join(ds_dp, 'spike_cluters.npy')))
+                ds_units=np.unique(np.load(op.join(ds_dp, 'spike_clusters.npy')))
                 units += ['{}_{}'.format(ds_i, u) for u in ds_units]
         else:
             for ds_i in cl_grp.index.unique():

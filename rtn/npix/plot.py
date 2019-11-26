@@ -40,7 +40,7 @@ def hist_MB(arr, a, b, s, title='MB hist', xlabel='', ylabel=''):
 #%% Waveforms
 
 def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
-               title = '', plot_std=True, plot_mean=True, plot_templates=False, color=(0./255, 0./255, 0./255),
+               title = '', plot_std=True, plot_mean=True, plot_templates=True, color=phyColorsDic[0],
                labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None

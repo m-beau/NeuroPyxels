@@ -40,7 +40,7 @@ def hist_MB(arr, a, b, s, title='MB hist', xlabel='', ylabel=''):
 #%% Waveforms
 
 def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
-               title = '', std=True, mean=True, template=False, color=(0./255, 0./255, 0./255),
+               title = '', plot_std=True, plot_mean=True, plot_templates=False, color=(0./255, 0./255, 0./255),
                labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
@@ -73,6 +73,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         
     fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     cm=chan_map(dp, y_orig='surface', probe_version='local')
+    peak_chan=get_peak_chan(dp, u); peak_chan_i = int(np.nonzero(np.abs(cm[:,0]-peak_chan)==min(np.abs(cm[:,0]-peak_chan)))[0][0]);
     t_waveforms_s=int(t_waveforms*(fs/1000))
     waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, wvf_subset_selection='regular', wvf_batch_size=10)
     tplts=templates(dp, u)
@@ -88,8 +89,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         fig, ax = plt.subplots(1, 1, figsize=(4, 4), dpi=80)
         ax=np.array(ax).reshape((1, 1))
     if chStart is None:
-        chStart=get_peak_chan(dp, u)
-        chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0])-Nchannels//2
+        chStart_i = peak_chan_i-Nchannels//2
         chStart=cm[chStart_i,0]
     else:
         chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0]) # if not all channels were processed by kilosort,
@@ -99,23 +99,26 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     data = waveforms[:, :, chStart_i:chEnd_i]
     datam = np.rollaxis(data.mean(0),1)
     datastd = np.rollaxis(data.std(0),1)
+    tplts=tplts[:, :, chStart_i:chEnd_i]
+    pci_rel=chEnd_i-peak_chan_i
+    tpl_scalings=[(max(datam[pci_rel, :])-min(datam[pci_rel, :]))/(max(tpl[:,pci_rel])-min(tpl[:,pci_rel]))for tpl in tplts]
 
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
     ylim1, ylim2 = (np.min(datam-datastd)-50, np.max(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
-    x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot 82 datapoints between 0 and 82/30 ms
+    x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot t datapoints between 0 and t/30 ms
+    x_tplts = x[(data.shape[1]-tplts.shape[1])//2:(data.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
     for i in range(data.shape[2]):
         i1, i2 = max(0,data.shape[2]//2-1-i//2), i%2
         for j in range(sample_lines):
             ax[i1, i2].set_ylim([ylim1, ylim2])
             ax[i1, i2].plot(x, data[j,:, i], linewidth=0.3, alpha=0.3, color=color)
         #r, c = int(Nchannels*1./2)-1-(i//2),i%2
-        if templates:
-            for tpl in tplts:
-                tpl_scaling=(max(datam[i, :])-min(datam[i, :]))/(max(tpl)-min(tpl))
-                ax[i1, i2].plot(x, tpl*tpl_scaling, linewidth=2, color=(0,0,0), alpha=0.5)
-        if mean:
+        if plot_templates:
+            for tpl_i, tpl in enumerate(tplts):
+                ax[i1, i2].plot(x_tplts, tpl[:,i]*tpl_scalings[tpl_i], linewidth=1, color=(0,0,0), alpha=0.4)
+        if plot_mean:
             ax[i1, i2].plot(x, datam[i, :], linewidth=2, color=color_dark, alpha=1)
-        if std:
+        if plot_std:
             ax[i1, i2].plot(x, datam[i, :]+datastd[i,:], linewidth=1, color=color, alpha=0.5)
             ax[i1, i2].plot(x, datam[i, :]-datastd[i,:], linewidth=1, color=color, alpha=0.5)
             ax[i1, i2].fill_between(x, datam[i, :]-datastd[i,:], datam[i, :]+datastd[i,:], facecolor=color, interpolate=True, alpha=0.2)

@@ -119,7 +119,7 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
         Vrange=1e6
         bits_encoding=14
         ampFactor=80
-    waveforms*=(Vrange/2**bits_encoding/ampFactor) # (voltageRange/2^10bitsEncoding/amplification_gain, typically 500)
+    waveforms*=(Vrange/2**bits_encoding/ampFactor)
 
     # Common average referencing: substract median for each channel, then median for each time point
     # medians_chan=np.median(traces[:1000000, :], 0).reshape((1,1)+(waveforms.shape[2],)) # across time for each channel

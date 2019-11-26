@@ -31,7 +31,7 @@ def read_spikeglx_meta(dp, subtype='ap'):
             metafile=op.join(dp, file)
             break
     if metafile=='':
-        raise FileNotFoundError('*.{}.bin not found in directory. Aborting.'.format(subtype))
+        raise FileNotFoundError('*.{}.meta not found in directory. Aborting.'.format(subtype))
             
     with open(metafile, 'r') as f:
         meta = {}

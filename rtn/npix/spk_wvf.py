@@ -150,7 +150,7 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
 def get_peak_chan(dp, unit):
     if op.basename(dp)[:9]=='prophyler':
         assert op.exists(op.join(dp, 'datasets_table.csv')), "File {} not found in prophyler directory!".format(op.join(dp, 'datasets_table.csv'))
-        ds_i, u = unit.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
+        ds_i, unit = unit.split('_'); ds_i, unit = ast.literal_eval(ds_i), ast.literal_eval(unit)
         ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
         ds_dp=ds_table['dp'][ds_i]
         assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \

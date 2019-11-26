@@ -279,11 +279,8 @@ def spike_time_tiling_coefficient(L, dt, dp):
 
 def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, trains={}):
     '''If provided, dic must be of the form {unit1:train1InSamples, unit2:...}'''
-    if type(U[0]) is str: same_ds=all(u[0] == U[0][0] for u in U)
     if trains=={}:
         for iu, u in enumerate(U):
-            if type(U[0]) is str:
-                if same_ds: dp, u = get_prophyler_source(dp, u)
             # Even lists of strings can be dealt with as integers by being replaced by their indices
             trains[iu]=trn(dp, u, ret=True, sav=False, rec_section=rec_section, prnt=prnt) # trains in samples
     else:
@@ -438,8 +435,11 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         print("WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore']. Exitting now.")
         return None
     # Preformat
-    dp=str(dp)
     U = [U] if type(U)!=list else U
+    same_ds=all(u[0] == U[0][0] for u in U) if type(U[0]) is str else False
+    for iu,u in enumerate(U):
+        (dp1, U[iu]) = get_prophyler_source(dp, u) if same_ds else (dp, u)
+    dp=dp1;del dp1
     sortedU=U.copy()
     sortedU.sort()
     

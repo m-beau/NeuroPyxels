@@ -18,7 +18,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     
 from rtn.npix.io import read_spikeglx_meta
 from rtn.npix.gl import get_units, chan_map
-from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan
+from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
 from rtn.npix.corr import acg, ccg, gen_sfc, extract_hist_modulation_features, make_cm
 from mpl_toolkits.mplot3d import axes3d
 from mpl_toolkits.mplot3d import Axes3D
@@ -40,7 +40,7 @@ def hist_MB(arr, a, b, s, title='MB hist', xlabel='', ylabel=''):
 #%% Waveforms
 
 def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
-               title = '', std=True, color=(0./255, 0./255, 0./255),
+               title = '', std=True, mean=True, template=False, color=(0./255, 0./255, 0./255),
                labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
@@ -53,6 +53,8 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         - t_waveforms: float, time span of the waveform samples around spike onset, in ms
         - title: string, plot title
         - std: boolean, whether or not to plot the underlying standard deviation area | default True
+        - mean: boolean, whether or not to plot the mean waveform | default True
+        - template: boolean, whether or not to plot the waveform template | default True
         - color: (r,g,b) tuple or [0 to 1] floats, color of the mean waveform | default black
         - sample_lines: 'all' or int, whether to plot all or sample_lines individual samples in the background. Set to 0 to plot nothing.
         - labels: boolean, whether to plot or not the axis, axis labels, title... If False, only lines are plotted
@@ -73,6 +75,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     cm=chan_map(dp, y_orig='surface', probe_version='local')
     t_waveforms_s=int(t_waveforms*(fs/1000))
     waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, wvf_subset_selection='regular', wvf_batch_size=10)
+    tplts=templates(dp, u)
     assert waveforms.shape==(n_waveforms, t_waveforms_s, cm.shape[0])
     
     saveDir=op.expanduser(saveDir)
@@ -97,6 +100,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     datam = np.rollaxis(data.mean(0),1)
     datastd = np.rollaxis(data.std(0),1)
 
+    color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
     ylim1, ylim2 = (np.min(datam-datastd)-50, np.max(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
     x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot 82 datapoints between 0 and 82/30 ms
     for i in range(data.shape[2]):
@@ -105,8 +109,12 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
             ax[i1, i2].set_ylim([ylim1, ylim2])
             ax[i1, i2].plot(x, data[j,:, i], linewidth=0.3, alpha=0.3, color=color)
         #r, c = int(Nchannels*1./2)-1-(i//2),i%2
-        color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
-        ax[i1, i2].plot(x, datam[i, :], linewidth=2, color=color_dark, alpha=1)
+        if templates:
+            for tpl in tplts:
+                tpl_scaling=(max(datam[i, :])-min(datam[i, :]))/(max(tpl)-min(tpl))
+                ax[i1, i2].plot(x, tpl*tpl_scaling, linewidth=2, color=(0,0,0), alpha=0.5)
+        if mean:
+            ax[i1, i2].plot(x, datam[i, :], linewidth=2, color=color_dark, alpha=1)
         if std:
             ax[i1, i2].plot(x, datam[i, :]+datastd[i,:], linewidth=1, color=color, alpha=0.5)
             ax[i1, i2].plot(x, datam[i, :]-datastd[i,:], linewidth=1, color=color, alpha=0.5)
@@ -128,7 +136,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
             ax[i1, i2].axis('off')
 
     title = 'waveforms of {}'.format(u) if title=='' else title
-    fig.suptitle(title, size=18, weight='bold')
+    if labels: fig.suptitle(title, size=18, weight='bold')
     fig.tight_layout(rect=[0, 0.03, 1, 0.95-0.07*(len(title.split('\n'))-1)])
     
     if saveFig:

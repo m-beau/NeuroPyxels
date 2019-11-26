@@ -41,12 +41,13 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
     
     '''
     if op.basename(dp)[:9]=='prophyler':
-        if op.exists(op.join(dp, 'datasets_table.csv')):
-            ds_i, u = u.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
-            ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
-            dp=ds_table['dp'][ds_i]
-        else:
-            raise 
+        assert op.exists(op.join(dp, 'datasets_table.csv')), "File {} not found in prophyler directory!".format(op.join(dp, 'datasets_table.csv'))
+        ds_i, u = u.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
+        ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
+        ds_dp=ds_table['dp'][ds_i]
+        assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
+        Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], op.join(dp, 'datasets_table.csv'))
+        dp=ds_dp
     dprm = dp+'/routinesMemory'
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
@@ -67,7 +68,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
         # Save it
         if sav:
             np.save(dprm+'/wvf{}_{}-{}.npy'.format(u, n_waveforms, t_waveforms), waveforms)
-    # Either return or draw to global namespace
+
     return waveforms
 
 
@@ -203,7 +204,35 @@ def get_chDis(dp, ch1, ch2):
     chDis=np.sqrt((ch_pos1[0]-ch_pos2[0])**2+(ch_pos1[1]-ch_pos2[1])**2)
     return chDis
 
-
+def templates(dp, u):
+    '''
+    ********
+    routine from rtn.npix.spk_wvf
+    Extracts the template used by kilosort to cluster this unit.
+    ********
+    
+    Parameters:
+        - dp: string, datapath to kilosort output
+        - unit: int, unit index
+    
+    Returns:
+        temaplate: numpy array of shape (n_templates, 82, n_channels) where n_channels is defined by the channel map and n_templates by how many merges were done.
+    
+    '''
+    if op.basename(dp)[:9]=='prophyler':
+        assert op.exists(op.join(dp, 'datasets_table.csv')), "File {} not found in prophyler directory!".format(op.join(dp, 'datasets_table.csv'))
+        ds_i, u = u.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
+        ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
+        ds_dp=ds_table['dp'][ds_i]
+        assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
+        Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], op.join(dp, 'datasets_table.csv'))
+    
+    IDs=ids(dp,u)
+    #mean_amp=np.mean(np.load(op.join(dp,'amplitudes.npy'))[IDs])
+    template_ids=np.unique(np.load(op.join(dp,'spike_templates.npy'))[IDs])
+    templates = np.load(op.join(dp, 'templates.npy'))[template_ids]#*mean_amp
+                
+    return templates
 
 #%% get_wvf utilities
     

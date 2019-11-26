@@ -240,7 +240,8 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     return fig
         
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=True, 
-            show=True, pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None):
+            show=True, pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, 
+            ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -319,7 +320,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     
 def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, saveDir='~/Downloads', 
                      saveFig=False, prnt=False, show=True, pdf=True, png=False, rec_section='all', 
-                     labels=True, title=None, std_lines=True, ylim1=0, ylim2=0, normalize='Hertz'):
+                     labels=True, title=None, std_lines=True, ylim1=0, ylim2=0, normalize='zscore'):
     colorsDic = {
     0:(53./255, 127./255, 255./255),
     1:(255./255, 0./255, 0./255),
@@ -403,7 +404,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
     return fig
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0, acg_mn=None, acg_std=None):
+             pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0, acg_mn=None, acg_std=None, again=False):
     assert type(unit)==int
     saveDir=op.expanduser(saveDir)
     bChs=None
@@ -413,7 +414,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
         ft = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_good.csv', sep=',', index_col=0)
         bestChs=np.array(ft["WVF-MainChannel"])
         bChs=[bestChs[np.isin(gu, unit)][0]]
-    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section)
+    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section, again=again)
     if normalize=='zscore':
         ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section)
         acg25, acg35 = ACG_hertz[:int(len(ACG_hertz)*2./5)], ACG_hertz[int(len(ACG_hertz)*3./5):]
@@ -423,7 +424,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
             rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, acg_mn=acg_mn, acg_std=acg_std)
     
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim1=0, ylim2=0, ccg_mn=None, ccg_std=None):
+             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim1=0, ylim2=0, ccg_mn=None, ccg_std=None, again=False):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
     bChs=None
@@ -435,9 +436,9 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
         bChs=[bestChs[np.isin(gu, u)][0] for u in units]
 
     if CCG is None:
-        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section)
+        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section, again=again)
         if normalize=='zscore':
-            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section)[0,1,:]
+            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section, again=again)[0,1,:]
             ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
             ccg_std=np.std(np.append(ccg25, ccg35))
             ccg_mn=np.mean(np.append(ccg25, ccg35))
@@ -445,7 +446,8 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, pdf, png, rec_section=rec_section, 
                       labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize='zscore', ccg_mn=ccg_mn, ccg_std=ccg_std)
     else:
-        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, pdf, png, rec_section=rec_section, labels=labels, title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
+        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, pdf, png, rec_section=rec_section, 
+                               labels=labels, title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
         
     return fig
 
@@ -498,15 +500,15 @@ def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=
 
 #%% Connectivity inferred from correlograms
     
-def plot_sfcdf(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, text=True, markers=False, rec_section='all', 
-               ticks=True, again = False, saveFig=True, saveDir=None, graph=None, againCCG=False):
+def plot_sfcdf(dp, cbin=0.2, cwin=100, threshold=3, n_consec_bins=3, text=True, markers=False, rec_section='all', 
+               ticks=True, again = False, saveFig=True, saveDir=None, againCCG=False):
     '''
     Visually represents the connectivity datafrane otuputted by 'gen_cdf'.
     Each line/row is a good unit.
     Each intersection is a square split in a varying amount of columns,
     each column representing a positive or negatively significant peak collored accordingly to its size s.
     '''
-    df, hmm, gu, bestChs, hmmT = gen_sfc(dp, cbin, cwin, threshold, n_consec_bins, rec_section=rec_section, _format='peaks_infos', again=again, graph=graph, againCCG=againCCG)
+    df, hmm, gu, bestChs, hmmT = gen_sfc(dp, cbin, cwin, threshold, n_consec_bins, rec_section=rec_section, _format='peaks_infos', again=again, againCCG=againCCG)
     plt.figure()
     hm = sns.heatmap(hmm, yticklabels=True, xticklabels=True, cmap="RdBu_r", center=0, vmin=-5, vmax=5, cbar_kws={'label': 'Crosscorrelogram peak (s.d.)'})
     #hm = sns.heatmap(hmmT, yticklabels=False, xticklabels=False, alpha=0.0)

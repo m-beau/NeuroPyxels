@@ -151,9 +151,8 @@ def trn(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False
     # Either return or draw to global namespace
     return train
 
-def mfr(dp, unit, exclusion_quantile=0.005, sav=True, prnt=False, rec_section='all', fs=30000., again=False):
-    
-    i = isi(dp, unit, sav, prnt, rec_section, fs, again) # output in ms
+def mfr(dp, unit, exclusion_quantile=0.005, sav=True, prnt=False, rec_section='all', again=False):
+    i = isi(dp, unit, sav, prnt, rec_section, 30000, again) # output in ms
     # Remove outlyers
     i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]
     
@@ -172,7 +171,7 @@ def isi(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-
+    fs=30000
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
     if not op.isdir(dprm): os.makedirs(dprm)
@@ -184,6 +183,7 @@ def isi(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False
     else:
         if prnt: print("File isi{}.npy not found in routines memory. Will be computed from source files".format(unit))
         train = trn(dp, unit, sav=sav, prnt=prnt, rec_section=rec_section)
+        print(fs)
         train = train*1./(fs*1./1000) # Conversion from samples to ms
         isitvl = np.diff(train) # in ms
         isitvl=np.asarray(isitvl, dtype='float64')

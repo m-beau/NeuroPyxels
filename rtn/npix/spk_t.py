@@ -47,7 +47,7 @@ def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
     return Xb
 
 
-def ids(dp, unit, ret=True, sav=True, prnt=False, again=False):
+def ids(dp, unit, sav=True, prnt=False, again=False):
     '''
     ********
     routine from routines_spikes
@@ -92,7 +92,7 @@ def ids(dp, unit, ret=True, sav=True, prnt=False, again=False):
 
     
 
-def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000, again=False):
+def trn(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False):
     '''
     ********
     routine from routines_spikes
@@ -151,8 +151,15 @@ def trn(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000, a
     # Either return or draw to global namespace
     return train
 
+def mfr(dp, unit, exclusion_quantile=0.005, sav=True, prnt=False, rec_section='all', fs=30000., again=False):
+    
+    i = isi(dp, unit, sav, prnt, rec_section, fs, again) # output in ms
+    # Remove outlyers
+    i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]
+    
+    return 1000./np.mean(i)
 
-def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000, again=False):
+def isi(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False):
     '''
     ********
     routine from routines_spikes
@@ -176,7 +183,7 @@ def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000, a
     # if not, compute it
     else:
         if prnt: print("File isi{}.npy not found in routines memory. Will be computed from source files".format(unit))
-        train = trn(dp, unit, ret=True, sav=sav, prnt=prnt, rec_section=rec_section)
+        train = trn(dp, unit, sav=sav, prnt=prnt, rec_section=rec_section)
         train = train*1./(fs*1./1000) # Conversion from samples to ms
         isitvl = np.diff(train) # in ms
         isitvl=np.asarray(isitvl, dtype='float64')
@@ -189,7 +196,7 @@ def isi(dp, unit, ret=True, sav=True, prnt=False, rec_section='all', fs=30000, a
         
 
 
-def trnb(dp, unit, bin_size, ret=True, sav=True, prnt=False, constrainBin=False, rec_section='all', fs=30000, again=False):
+def trnb(dp, unit, bin_size, sav=True, prnt=False, constrainBin=False, rec_section='all', fs=30000, again=False):
     '''
     ********
     routine from routines_spikes

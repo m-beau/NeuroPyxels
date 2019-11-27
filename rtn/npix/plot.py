@@ -109,8 +109,8 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     x_tplts = x[(data.shape[1]-tplts.shape[1])//2:(data.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
     for i in range(data.shape[2]):
         i1, i2 = max(0,data.shape[2]//2-1-i//2), i%2
+        ax[i1, i2].set_ylim([ylim1, ylim2])
         for j in range(sample_lines):
-            ax[i1, i2].set_ylim([ylim1, ylim2])
             ax[i1, i2].plot(x, data[j,:, i], linewidth=0.3, alpha=0.3, color=color)
         #r, c = int(Nchannels*1./2)-1-(i//2),i%2
         if plot_templates:
@@ -315,6 +315,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         if saveData:
             np.save(saveDir+'/acg%d_%d_%.2f_x.npy'%(unit, cwin, cbin), x)
             np.save(saveDir+'/acg%d_%d_%.2f_y.npy'%(unit, cwin, cbin), ACG)
+    
     return fig
         
     
@@ -404,11 +405,12 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
     return fig
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim1=0, ylim2=0, acg_mn=None, acg_std=None, again=False):
+             pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0], acg_mn=None, acg_std=None, again=False):
     assert type(unit)==int
     saveDir=op.expanduser(saveDir)
     bChs=None
     gu = get_units(dp, quality='good') # get good units
+    ylim1, ylim2 = ylim[0], ylim[1]
     # sort them by depth
     if (unit in gu) and os.path.isfile(dp+'/FeaturesTable/FeaturesTable_good.csv'):
         ft = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_good.csv', sep=',', index_col=0)
@@ -420,17 +422,18 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
         acg25, acg35 = ACG_hertz[:int(len(ACG_hertz)*2./5)], ACG_hertz[int(len(ACG_hertz)*3./5):]
         acg_std=np.std(np.append(acg25, acg35))
         acg_mn=np.mean(np.append(acg25, acg35))
-    plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, pdf=pdf, png=png, 
+    fig=plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, pdf=pdf, png=png, 
             rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, acg_mn=acg_mn, acg_std=acg_std)
     
     return fig
     
-def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='zscore', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim1=0, ylim2=0, ccg_mn=None, ccg_std=None, again=False):
+def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
+             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=[0,0], ccg_mn=None, ccg_std=None, again=False):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
     bChs=None
     gu = get_units(dp, quality='good') # get good units
+    ylim1, ylim2 = ylim[0], ylim[1]
     # sort them by depth
     if np.all(np.isin(units, gu)) and os.path.isfile(dp+'/FeaturesTable/FeaturesTable_good.csv'):
         ft = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_good.csv', sep=',', index_col=0)

@@ -95,12 +95,12 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0]) # if not all channels were processed by kilosort,
     chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
     chEnd_i = int(chStart_i+Nchannels)
-    
+    pci_rel=peak_chan_i-chStart_i
+
     data = waveforms[:, :, chStart_i:chEnd_i]
     datam = np.rollaxis(data.mean(0),1)
     datastd = np.rollaxis(data.std(0),1)
     tplts=tplts[:, :, chStart_i:chEnd_i]
-    pci_rel=chEnd_i-peak_chan_i
     tpl_scalings=[(max(datam[pci_rel, :])-min(datam[pci_rel, :]))/(max(tpl[:,pci_rel])-min(tpl[:,pci_rel]))for tpl in tplts]
 
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
@@ -423,7 +423,9 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
     plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, pdf=pdf, png=png, 
             rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, acg_mn=acg_mn, acg_std=acg_std)
     
-def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
+    return fig
+    
+def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='zscore', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
              pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim1=0, ylim2=0, ccg_mn=None, ccg_std=None, again=False):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
@@ -444,7 +446,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
             ccg_mn=np.mean(np.append(ccg25, ccg35))
     if CCG.shape[0]==2:
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, pdf, png, rec_section=rec_section, 
-                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize='zscore', ccg_mn=ccg_mn, ccg_std=ccg_std)
+                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std)
     else:
         fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, pdf, png, rec_section=rec_section, 
                                labels=labels, title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)

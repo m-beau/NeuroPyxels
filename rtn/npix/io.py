@@ -65,68 +65,6 @@ def read_spikeglx_meta(dp, subtype='ap'):
     
     return meta
 
-# DOES NOT WORK YET
-# def extract_syncChan(bp, syncChan=384, fs=30000, ampFactor=500, Nchans=385, save=0):
-#     ''' Extracts the 16 'square signals' corresponding to the 16 pins input to the Neuropixels FPGA board
-#     ### PARAMETERS
-#     - bp: binary path (files must ends in .bin, typically ap.bin)
-#     - synchan (default 384): 0-indexed sync channel
-#     - times: list of boundaries of the time window, in seconds [t1, t2]. If 'all', whole recording.
-#     - fs (default 30000): sampling rate
-#     - ampFactor (default 500): gain factor of recording (can be different for LFP and AP, check SpikeGLX/OpenEphys)
-#     - Nchans (default 385): total number of channels on the probe (3A: 385, )
-#     - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
-    
-#     ## RETURNS
-#     sync channel: 16*Nsamples numpy binary array
-#     (@ 30kHz of bp is the AP binary file, use fs=25000 if you want to use the LF file)
-#     '''
-    
-#     assert bp[-4:]=='.bin'
-#     bn = bp.split('/')[-1] # binary name
-#     dp = bp[:-len(bn)-1] # data path
-#     rcn = '{}_sync.npy'.format(bn) # raw chunk name
-#     rcp = dp+'/'+rcn
-#     if os.path.isfile(rcp):
-#         return np.load(rcp)
-    
-#     # Get sync channel, formatted as a string of Nsamples bytes
-#     sc=b''
-#     with open(bp, 'rb') as f_src:
-#         # each sample for each channel is encoded on 16 bits = 2 bytes: samples*Nchannels*2.
-#         i=30000
-#         while i<60000:
-#             print('{0:.3f}%...'.format(100*i/(os.path.getsize(bp)/(Nchans*2))))
-#             f_src.seek(int(i*Nchans+syncChan)*2) # get to 385*i+384 channels,
-#             b = f_src.read(2) # then read 2 bytes = 16bits
-#             if not b:
-#                 break
-#             sc+=b
-#             print(i)
-#             print(len(sc)/4)
-#             i+=1
-            
-#     # turn it into bits
-#     sc = np.frombuffer(sc, dtype=np.uint8) # bytes to uint8
-#     sc = np.unpackbits(sc) # uint8 to binary bits
-#     Nsamples=int(len(sc)/16)
-#     sc = sc.reshape((Nsamples, 16)).T
-
-#     if save:
-#         np.save(rcp, sc)
-        
-#     return sc
-
-# def extract_syncEvents(bp, sgn=1, syncChan=384, times='all', fs=30000, ampFactor=500, Nchans=385, save=0):
-    
-#     # Get sync chan
-#     sc = extract_syncChan(bp, syncChan, times, fs, ampFactor, Nchans, save)
-    
-#     # threshold syncchan
-#     events = thresh(sc, 0.5, sgn=sgn)
-    
-#     return events
-
 def unpackbits(x,num_bits = 16):
     '''
     unpacks numbers in bits.

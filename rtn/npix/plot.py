@@ -4,7 +4,7 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 import os
-import os.path as op
+import os.path as op; opj=op.join
 import ast
 
 import numpy as np
@@ -40,8 +40,8 @@ def hist_MB(arr, a, b, s, title='MB hist', xlabel='', ylabel=''):
 #%% Waveforms
 
 def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
-               title = '', plot_std=True, plot_mean=True, plot_templates=True, color=phyColorsDic[0],
-               labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False):
+               title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
+               labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf'):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
     Parameters:
@@ -143,9 +143,10 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     fig.tight_layout(rect=[0, 0.03, 1, 0.95-0.07*(len(title.split('\n'))-1)])
     
     if saveFig:
-        fig.savefig(op.join(saveDir, title+'.pdf'), format='pdf')
+        assert _format in ['png', 'pdf', 'eps']
+        fig.savefig(opj(saveDir, title+'.{}'.format(_format)), format=_format)
     if saveData:
-        np.save(op.join(saveDir, title+'.npy'), waveforms)
+        np.save(opj(saveDir, title+'.npy'), waveforms)
     
     return fig
 
@@ -548,7 +549,7 @@ def plot_sfcdf(dp, cbin=0.2, cwin=100, threshold=3, n_consec_bins=3, text=True, 
     fig = hm.get_figure()
     if saveFig:
         if saveDir is None: saveDir=dp
-        fig.savefig(op.join(saveDir,'heatmap_{}_{}_{}_{}.pdf'.format(cbin, cwin, threshold, n_consec_bins)))
+        fig.savefig(opj(saveDir,'heatmap_{}_{}_{}_{}.pdf'.format(cbin, cwin, threshold, n_consec_bins)))
     
     return fig
 

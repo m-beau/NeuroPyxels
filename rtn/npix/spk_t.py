@@ -4,7 +4,7 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 import os, sys
-import os.path as op
+import os.path as op; opj=op.join
 import ast
 
 import numpy as np
@@ -74,7 +74,7 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
             print("File ids{}.npy not found in routines memory. Will be computed from source files.".format(unit))
         if type(unit)==str or type(unit)==np.str_:
             ds_i, unt = unit.split('_'); ds_i, unt = ast.literal_eval(ds_i), ast.literal_eval(unt)
-            spike_clusters_samples = np.load(op.join(dp, 'merged_clusters_spikes.npz'))
+            spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npz'))
             spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]
             dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
             indices = np.nonzero(dataset_mask&unit_mask)[0]
@@ -122,14 +122,17 @@ def trn(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False
         
         if type(unit)==str or type(unit)==np.str_:
             ds_i, unt = unit.split('_'); ds_i, unt = ast.literal_eval(ds_i), ast.literal_eval(unt)
-            spike_clusters_samples = np.load(op.join(dp, 'merged_clusters_spikes.npz'))
+            spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npz'))
             spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]
             dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
             train = spike_clusters_samples[dataset_mask&unit_mask, 2]
             train=np.reshape(train, (max(train.shape), )).astype(np.int64)
-        elif type(unit)==int:
-            spike_clusters = np.load(op.join(dp,"spike_clusters.npy"))
-            spike_samples = np.load(op.join(dp,'spike_times.npy'))
+        else:
+            try:unit=int(unit)
+            except:pass
+        if type(unit)==int:
+            spike_clusters = np.load(opj(dp,"spike_clusters.npy"))
+            spike_samples = np.load(opj(dp,'spike_times.npy'))
             train = spike_samples[spike_clusters==unit]
             train=np.reshape(train, (max(train.shape), )).astype(np.int64)
         else:
@@ -171,7 +174,6 @@ def isi(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    fs=30000
     # Search if the variable is already saved in dp/routinesMemory
     dprm = dp+'/routinesMemory'
     if not op.isdir(dprm): os.makedirs(dprm)
@@ -182,8 +184,9 @@ def isi(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False
     # if not, compute it
     else:
         if prnt: print("File isi{}.npy not found in routines memory. Will be computed from source files".format(unit))
-        train = trn(dp, unit, sav=sav, prnt=prnt, rec_section=rec_section)
-        print(fs)
+        train = trn(dp, unit, sav, prnt, rec_section, fs, again)
+        if train is None:
+            print('Train is none!!', unit)
         train = train*1./(fs*1./1000) # Conversion from samples to ms
         isitvl = np.diff(train) # in ms
         isitvl=np.asarray(isitvl, dtype='float64')

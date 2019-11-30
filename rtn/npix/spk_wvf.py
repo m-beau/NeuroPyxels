@@ -145,8 +145,8 @@ def get_peak_chan(dp, unit):
     cm=chan_map(dp, probe_version='local')
     waveforms=wvf(dp, unit, 200)
     wvf_m = np.mean(waveforms, axis=0)
-    t_max_wvf=np.max(abs(wvf_m),0)
-    peak_chan = int(np.nonzero(np.max(t_max_wvf)==t_max_wvf)[0])
+    max_min_wvf=np.max(wvf_m,0)-np.min(wvf_m,0)
+    peak_chan = int(np.nonzero(np.max(max_min_wvf)==max_min_wvf)[0])
     return cm[:,0][peak_chan]
 
 def get_depthSort_peakChans(dp, units=[], quality='all'):

@@ -5,7 +5,7 @@
 """
 
 import os, ast
-import os.path as op
+import os.path as op; opj=op.join
 
 import numpy as np
 import pandas as pd

@@ -16,7 +16,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
                     
-from rtn.npix.io import read_spikeglx_meta
+from rtn.npix.io import read_spikeglx_meta, extract_rawChunk
 from rtn.npix.gl import get_units, chan_map
 from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
 from rtn.npix.corr import acg, ccg, gen_sfc, extract_hist_modulation_features, make_cm
@@ -37,7 +37,7 @@ def hist_MB(arr, a, b, s, title='MB hist', xlabel='', ylabel=''):
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
     return fig
 
-#%% Waveforms
+#%% Waveforms or raw data
 
 def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
                title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
@@ -147,6 +147,53 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         fig.savefig(opj(saveDir, title+'.{}'.format(_format)), format=_format)
     if saveData:
         np.save(opj(saveDir, title+'.npy'), waveforms)
+    
+    return fig
+
+def plot_raw(bp, times, channels=np.arange(384), subtype='ap', offset=450, save=0, savePlot=0):
+    '''
+    ## PARAMETERS
+    - bp: binary path (files must ends in .bin, typically ap.bin)
+    - times: list of boundaries of the time window, in seconds [t1, t2]. If 'all', whole recording.
+    - channels (default: np.arange(0, 385)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
+    - offset: graphical offset between channels, in uV
+    - fs (default 30000): sampling rate
+    - ampFactor (default 500): gain factor of recording (can be different for LFP and AP, check SpikeGLX/OpenEphys)
+    - Nchans (default 385): total number of channels on the probe (3A: 385, )
+    - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
+    
+    ## RETURNS
+    fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
+    
+    
+    '''
+    
+    # Get data
+    rawChunk = extract_rawChunk(bp, times, channels, subtype, save, 1)
+
+    # Offset data
+    plt_offsets = np.arange(0, len(channels)*offset, offset)
+    plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rawChunk.shape[1]))
+    rawChunk+=plt_offsets
+    
+    # Plot data
+    fig, ax = plt.subplots()
+    y_subticks = np.arange(50, offset/2, 50)
+    y_ticks=[plt_offsets[:,0]]
+    for i in y_subticks:
+        y_ticks+=[plt_offsets[:,0]-i, plt_offsets[:,0]+i] 
+    y_ticks = np.sort(npa(y_ticks).flatten())
+    y_labels = npa([(y_subticks[::-1]*-1).tolist()+['#{}'.format(channels[i])]+y_subticks.tolist() for i in range(len(channels))]).flatten()
+    
+    t=np.tile(np.arange(rawChunk.shape[1])*1000./fs, (rawChunk.shape[0], 1))
+    for i in np.arange(rawChunk.shape[0]):
+        y=i*offset
+        ax.plot([0, t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
+    ax.plot(t.T, rawChunk.T, linewidth=1)
+    ax.set_xlabel('Time (ms)')
+    ax.set_ylabel('Extracellular potential (uV)')
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels(y_labels)
     
     return fig
 

@@ -48,7 +48,8 @@ pro.plot_graph(graph_src=g)
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-import os, ast
+import os
+from ast import literal_eval as ale
 import operator
 import time
 import imp
@@ -246,7 +247,7 @@ class Prophyler:
                 load_choice=input("""Saved graphs found in {}:{}.
                       Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(opj(self.dp, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
                 try: # works if an int is inputed
-                    load_choice=int(ast.literal_eval(load_choice))
+                    load_choice=int(ale(load_choice))
                     g=self.import_graph(opj(self.dpnet, graphs[load_choice]))
                     print("Building Dataset.graph from file {}.".format(graphs[load_choice]))
                     if graphs[load_choice].split('.')[-1]!='gpickle':
@@ -599,7 +600,7 @@ class Prophyler:
                 print(" || Total edges of source unit: {}".format(self.get_node_edges(ea['uSrc'], prophylerGraph=prophylerGraph)))
                 label=input(" || Current label: {}. New label? ({},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(self.get_edge_attribute(edge,'label'), ['<{}>:{}'.format(i,v) for i,v in enumerate(edges_types)]))
                 try: # Will only work if integer is inputted
-                    label=ast.literal_eval(label)
+                    label=ale(label)
                     label=edges_types[label]
                     self.set_edge_attribute(edge, 'label', label, prophylerGraph=prophylerGraph, src_graph=src_graph) # if src_graph is None, nothing will be returned
                     print(" || Label of edge {} was set to {}.\n".format(edge, label))
@@ -635,7 +636,7 @@ class Prophyler:
                 formats=['gpickle', 'gexf', 'edgelist', 'adjlist', 'gml']
                 frmt=input(" || In which format? {}".format(['<{}>:{}'.format(i,v) for i,v in enumerate(formats)]))
                 try: # Will only work if integer is inputted
-                    frmt=ast.literal_eval(frmt)
+                    frmt=ale(frmt)
                     frmt=formats[frmt]
                     break
                 except:
@@ -961,7 +962,7 @@ def map_sfcdf_on_graph(sfcdf, g, cbin, cwin, threshold, n_consec_bins):
         for u2 in sfcdf.index:
             pks=sfcdf.loc[u1, str(u2)]
             if type(pks) is str:
-                pks=ast.literal_eval(pks)
+                pks=ale(pks)
                 # pks with positive and negative peaks are present twice in the SFCDF (cf. case where pks='all' in find_significant_hist_peak)
                 # these need to be only added if u1<u2
                 pkSgns=npa([sign(p[2]) for p in pks])

@@ -7,8 +7,7 @@
 import os
 import os.path as op
 import imp
-import ast
-
+from ast import literal_eval as ale
 import numpy as np
 from math import ceil
 from scipy import signal
@@ -110,16 +109,8 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     
     
     # Correct voltage scaling
-    probe_version=read_spikeglx_meta(dp)['probe_version']
-    if probe_version in ['3A', '1.0_staggered', '1.0_aligned']:
-        Vrange=1.2e6
-        bits_encoding=10
-        ampFactor=500
-    elif probe_version in ['2.0_singleshank', '2.0_fourshanked']:
-        Vrange=1e6
-        bits_encoding=14
-        ampFactor=80
-    waveforms*=(Vrange/2**bits_encoding/ampFactor)
+    meta=read_spikeglx_meta(dp, 'ap')
+    waveforms*=meta['scale_factor']
 
     # Common average referencing: substract median for each channel, then median for each time point
     # medians_chan=np.median(traces[:1000000, :], 0).reshape((1,1)+(waveforms.shape[2],)) # across time for each channel
@@ -156,7 +147,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
     if type(units[0])==np.str_:
         datasets={}
         for iu, u in enumerate(units):
-            ds_i, u = u.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
+            ds_i, u = u.split('_'); ds_i, u = ale(ds_i), ale(u)
             if ds_i not in datasets.keys(): datasets[ds_i]=1
             else: datasets[ds_i]+=1
         peak_chans_dic={}
@@ -164,7 +155,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
             peak_chans_dic[ds_i]=npa(zeros=(Nu,2),dtype='<U6')
         for iu, u in enumerate(units):
             print("Getting peak channel of unit {}...".format(u))
-            ds_i = ast.literal_eval(u.split('_')[0])
+            ds_i = ale(u.split('_')[0])
             if ds_i>=1: iu=iu%datasets[ds_i-1]
             peak_chans_dic[ds_i][iu,0] = u
             peak_chans_dic[ds_i][iu,1] = int(get_peak_chan(dp, u))

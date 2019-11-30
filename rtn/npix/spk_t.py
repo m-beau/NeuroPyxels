@@ -5,7 +5,7 @@
 """
 import os, sys
 import os.path as op; opj=op.join
-import ast
+from ast import literal_eval as ale
 
 import numpy as np
                     
@@ -73,7 +73,7 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
         if prnt: 
             print("File ids{}.npy not found in routines memory. Will be computed from source files.".format(unit))
         if type(unit)==str or type(unit)==np.str_:
-            ds_i, unt = unit.split('_'); ds_i, unt = ast.literal_eval(ds_i), ast.literal_eval(unt)
+            ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)
             spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npz'))
             spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]
             dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
@@ -121,7 +121,7 @@ def trn(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False
             print("File trn{}.npy not found in routines memory. Will be computed from source files.".format(unit))
         
         if type(unit)==str or type(unit)==np.str_:
-            ds_i, unt = unit.split('_'); ds_i, unt = ast.literal_eval(ds_i), ast.literal_eval(unt)
+            ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)
             spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npz'))
             spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]
             dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)

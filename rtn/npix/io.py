@@ -9,15 +9,16 @@ Input/output utilitaries to deal with Neuropixels files.
 
 import psutil
 import os, ast
-import os.path as op
+from ast import literal_eval as ale
+import os.path as op; opj=op.join
 
 import numpy as np
-from scipy import sparse
 from math import floor
 
 import matplotlib.pyplot as plt
 
 from rtn.utils import npa
+from rtn.npix.gl import chan_map
 
 #%% Extract metadata and sync channel
 
@@ -28,7 +29,7 @@ def read_spikeglx_meta(dp, subtype='ap'):
     metafile=''
     for file in os.listdir(dp):
         if file.endswith(".{}.meta".format(subtype)):
-            metafile=op.join(dp, file)
+            metafile=opj(dp, file)
             break
     if metafile=='':
         raise FileNotFoundError('*.{}.meta not found in directory. Aborting.'.format(subtype))
@@ -62,6 +63,16 @@ def read_spikeglx_meta(dp, subtype='ap'):
                                 24:'2.0_fourshanked'}}
     meta['probe_version']=probe_versions['imProbeOpt'][meta['imProbeOpt']] if 'imProbeOpt' in meta.keys() else probe_versions['imDatPrb_type'][meta['imDatPrb_type']] if 'imDatPrb_type' in meta.keys() else 'N/A'
     assert meta['probe_version'] in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']
+    
+    if meta['probe_version'] in ['3A', '1.0_staggered', '1.0_aligned']:
+        Vrange=1.2e6
+        bits_encoding=10
+        ampFactor=500
+    elif meta['probe_version'] in ['2.0_singleshank', '2.0_fourshanked']:
+        Vrange=1e6
+        bits_encoding=14
+        ampFactor=80
+    meta['scale_factor']=(Vrange/2**bits_encoding/ampFactor)
     
     return meta
 
@@ -97,7 +108,7 @@ def get_npix_sync(dp, output_binary = False):
     fname=''
     onsets={}
     offsets={}
-    sync_dp=op.join(dp, 'sync_chan')
+    sync_dp=opj(dp, 'sync_chan')
     
     # Tries to directly generate and output onsets and offsets
     if op.exists(sync_dp) and not output_binary:
@@ -107,11 +118,11 @@ def get_npix_sync(dp, output_binary = False):
                 fname=file[:-13]
                 for file in os.listdir(sync_dp):
                     if file.endswith("on.npy"):
-                        file_i = ast.literal_eval(file[-7])
-                        onsets[file_i]=np.load(op.join(sync_dp,file))
+                        file_i = ale(file[-7])
+                        onsets[file_i]=np.load(opj(sync_dp,file))
                     elif file.endswith("of.npy"):
-                        file_i = ast.literal_eval(file[-7])
-                        offsets[file_i]=np.load(op.join(sync_dp,file))
+                        file_i = ale(file[-7])
+                        offsets[file_i]=np.load(opj(sync_dp,file))
                     
                 return onsets, offsets
 
@@ -122,7 +133,7 @@ def get_npix_sync(dp, output_binary = False):
             if file.endswith("_sync.npz"):
                 fname=file[:-9]
                 sync_fname=fname+'_sync'
-                binary=np.load(op.join(sync_dp, sync_fname+'.npz'))
+                binary=np.load(opj(sync_dp, sync_fname+'.npz'))
                 binary=binary[dir(binary.f)[0]].astype(np.int8)
                 meta=read_spikeglx_meta(dp, fname[-2:])
                 break
@@ -144,10 +155,13 @@ def get_npix_sync(dp, output_binary = False):
         
         sync_fname=fname+'_sync'
         meta=read_spikeglx_meta(dp, fname[-2:])
-        nchan=meta['nSavedChans']
+        nchan=int(meta['nSavedChans'])
+        #all_channels = np.array([ale(ch.split(':')[-1]) for ch in meta['~snsChanMap'][1:-1]], dtype=np.int16);
+        #syncChan=nchan-ale(meta['acqApLfSy'].split(',')[-1])
+    
         dt=np.dtype(np.int16)
-        nsamples = os.path.getsize(op.join(dp, fname+'.bin')) / (nchan * dt.itemsize)
-        syncdat=np.memmap(op.join(dp, fname+'.bin'),
+        nsamples = os.path.getsize(opj(dp, fname+'.bin')) / (nchan * dt.itemsize)
+        syncdat=np.memmap(opj(dp, fname+'.bin'),
                         mode='r',
                         dtype=dt,
                         shape=(int(nsamples), int(nchan)))[:,-1]
@@ -155,36 +169,36 @@ def get_npix_sync(dp, output_binary = False):
         
         print('Unpacking {}...'.format(fname+'.bin'))
         binary = unpackbits(syncdat.flatten(),16).astype(np.int8)
-        np.savez_compressed(op.join(sync_dp, sync_fname+'.npz'), binary)
+        np.savez_compressed(opj(sync_dp, sync_fname+'.npz'), binary)
 
     if output_binary:
         return binary
     
     # Generates onsets and offsets from binary
     mult = 1
-    srate = meta['imSampRate']
+    srate = meta['sRateHz']
     sync_idx_onset = np.where(mult*np.diff(binary, axis = 0)>0)
     sync_idx_offset = np.where(mult*np.diff(binary, axis = 0)<0)
     for ichan in np.unique(sync_idx_onset[1]):
         ons = sync_idx_onset[0][
               sync_idx_onset[1] == ichan]/srate
         onsets[ichan] = ons
-        np.save(op.join(sync_dp, sync_fname+'{}on.npy'.format(ichan)), ons)
+        np.save(opj(sync_dp, sync_fname+'{}on.npy'.format(ichan)), ons)
     for ichan in np.unique(sync_idx_offset[1]):
         ofs = sync_idx_offset[0][
               sync_idx_offset[1] == ichan]/srate
         offsets[ichan] = ofs
-        np.save(op.join(sync_dp, sync_fname+'{}of.npy'.format(ichan)), ofs)
+        np.save(opj(sync_dp, sync_fname+'{}of.npy'.format(ichan)), ofs)
     
     return onsets,offsets
 
 
-def extract_rawChunk(bp, times, channels=np.arange(384), fs=30000, ampFactor=500, Nchans=385, syncChan=384, save=0, ret=1):
+def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, ret=1):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     ## PARAMETERS
-    - bp: binary path (files must ends in .bin, typically ap.bin)
-    - times: list of boundaries of the time window, in seconds [t1, t2]. If 'all', whole recording.
-    - channels (default: np.arange(0, 385)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
+    - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
+    - times: list of boundaries of the time window, in seconds [t1, t2].
+    - channels (default: np.arange(384)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
     - fs (default 30000): sampling rate
     - ampFactor (default 500): gain factor of recording (can be different for LFP and AP, check SpikeGLX/OpenEphys)
     - Nchans (default 385): total number of channels on the probe, including sync channel (3A: 385)
@@ -196,21 +210,38 @@ def extract_rawChunk(bp, times, channels=np.arange(384), fs=30000, ampFactor=500
     rawChunk[0,:] is channel 0; rawChunk[1,:] is channel 1, etc.
     '''
     
+    # Find binary file
     assert len(times)==2
-    channels = np.array(channels, dtype=np.int16); assert np.all(channels<=(Nchans-1))
-    assert bp[-4:]=='.bin'
-    bn = bp.split('/')[-1] # binary name
-    dp = bp[:-len(bn)-1] # data path
-    rcn = '{}_t{}-{}_ch{}-{}.npy'.format(bn, times[0], times[1], channels[0], channels[-1]) # raw chunk name
-    rcp = dp+'/'+rcn
+    fname=''
+    for file in os.listdir(dp):
+        if file.endswith(".{}.bin".format(subtype)):
+            fname=opj(dp, file)
+            break
+    if fname=='':
+        raise FileNotFoundError('*.{}.bin not found in directory. Aborting.'.format(subtype))
     
+    # Extract and format meta data
+    meta=read_spikeglx_meta(dp, subtype)
+    fs = int(meta['sRateHz'])
+    Nchans=int(meta['nSavedChans'])
+    bytes_per_sample=2
+    
+    # Format inputs
+    cm=chan_map(dp, probe_version='local'); assert cm.shape[0]<=Nchans-1
+    assert np.all(np.isin(channels, cm[:,0])), "WARNING Kilosort excluded some channels that you provided for analysis \
+    because they did not display enough threshold crossings! Use other channels amongst:\n{}".format(cm[:,0])
+    channels=np.array([int(np.nonzero(cm[:,0]==ch)[0]) for ch in channels], dtype=np.int16);
+    t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
+    bn = op.basename(fname) # binary name
+    rcn = '{}_t{}-{}_ch{}-{}.npy'.format(bn, times[0], times[1], channels[0], channels[-1]) # raw chunk name
+    rcp = opj(dp, rcn)
     
     if os.path.isfile(rcp):
         return np.load(rcp)
     
     # Check that available memory is high enough to load the raw chunk
     vmem=dict(psutil.virtual_memory()._asdict())
-    chunkSize = fs*385*2*(times[1]-times[0])
+    chunkSize = int(fs*Nchans*bytes_per_sample*(times[1]-times[0]))
     print('Used RAM: {0:.1f}% ({1:.2f}GB total).'.format(vmem['used']*100/vmem['total'], vmem['total']/1024/1024/1024))
     print('Chunk size:{0:.3f}MB. Available RAM: {1:.3f}MB.'.format(chunkSize/1024/1024, vmem['available']/1024/1024))
     if chunkSize>0.9*vmem['available']:
@@ -219,11 +250,10 @@ def extract_rawChunk(bp, times, channels=np.arange(384), fs=30000, ampFactor=500
         return
     
     # Get chunk from binary file
-    with open(bp, 'rb') as f_src:
+    with open(fname, 'rb') as f_src:
         # each sample for each channel is encoded on 16 bits = 2 bytes: samples*Nchannels*2.
-        t1, t2 = times
-        byte1 = int(t1*fs*Nchans*2)
-        byte2 = int(t2*fs*Nchans*2)
+        byte1 = int(t1*Nchans*bytes_per_sample)
+        byte2 = int(t2*Nchans*bytes_per_sample)
         bytesRange = byte2-byte1
         
         f_src.seek(byte1)
@@ -231,13 +261,12 @@ def extract_rawChunk(bp, times, channels=np.arange(384), fs=30000, ampFactor=500
         bData = f_src.read(bytesRange)
     
     # Decode binary data
+    assert len(bData)%2==0
     rc = np.frombuffer(bData, dtype=np.int16) # 16bits decoding
-    rc = rc*(1.2e6/2**10/ampFactor) # convert into uV
-    rc = rc.reshape((int(t2*fs-t1*fs), Nchans)).T
+    rc = rc*meta['scale_factor'] # convert into uV
+    rc = rc.reshape((int(t2-t1), Nchans)).T
     rc = rc[channels, :] # get the right channels range
-    if syncChan in channels:
-        print('WARNING: you also extracted the sync channel ({}) as a recording channel, it will be meaningless.'.format(syncChan))
-    
+
     # Center channels individually
     offsets = np.mean(rc, axis=1)
     print('Channels are offset by {}uV on average!'.format(np.mean(offsets)))
@@ -251,54 +280,6 @@ def extract_rawChunk(bp, times, channels=np.arange(384), fs=30000, ampFactor=500
         return rc
     else:
         return
-
-
-def plot_raw(bp, times, channels=np.arange(385), offset=450, fs=30000, ampFactor=500, Nchans=385, save=0, savePlot=0):
-    '''
-    ## PARAMETERS
-    - bp: binary path (files must ends in .bin, typically ap.bin)
-    - times: list of boundaries of the time window, in seconds [t1, t2]. If 'all', whole recording.
-    - channels (default: np.arange(0, 385)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
-    - offset: graphical offset between channels, in uV
-    - fs (default 30000): sampling rate
-    - ampFactor (default 500): gain factor of recording (can be different for LFP and AP, check SpikeGLX/OpenEphys)
-    - Nchans (default 385): total number of channels on the probe (3A: 385, )
-    - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
-    
-    ## RETURNS
-    fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
-    
-    
-    '''
-    
-    # Get data
-    rawChunk = extract_rawChunk(bp, times, channels, fs, ampFactor, Nchans, save)
-
-    # Offset data
-    plt_offsets = np.arange(0, len(channels)*offset, offset)
-    plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rawChunk.shape[1]))
-    rawChunk+=plt_offsets
-    
-    # Plot data
-    fig, ax = plt.subplots()
-    y_subticks = np.arange(50, offset/2, 50)
-    y_ticks=[plt_offsets[:,0]]
-    for i in y_subticks:
-        y_ticks+=[plt_offsets[:,0]-i, plt_offsets[:,0]+i] 
-    y_ticks = np.sort(npa(y_ticks).flatten())
-    y_labels = npa([(y_subticks[::-1]*-1).tolist()+['#{}'.format(channels[i])]+y_subticks.tolist() for i in range(len(channels))]).flatten()
-    
-    t=np.tile(np.arange(rawChunk.shape[1])*1000./fs, (rawChunk.shape[0], 1))
-    for i in np.arange(rawChunk.shape[0]):
-        y=i*offset
-        ax.plot([0, t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
-    ax.plot(t.T, rawChunk.T, linewidth=1)
-    ax.set_xlabel('Time (ms)')
-    ax.set_ylabel('Extracellular potential (uV)')
-    ax.set_yticks(y_ticks)
-    ax.set_yticklabels(y_labels)
-    
-    return fig
 
 #%% I/O array functions from phy
     

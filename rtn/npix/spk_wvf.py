@@ -13,8 +13,8 @@ from math import ceil
 from scipy import signal
 
 from rtn.npix.spk_t import ids
-from rtn.npix.gl import get_units, chan_map, get_prophyler_source
-from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta
+from rtn.npix.gl import get_units, get_prophyler_source
+from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta, chan_map
 from rtn.utils import _as_array, npa
 
 #%% Concise home made function

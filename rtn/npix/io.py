@@ -230,8 +230,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     
     # Format inputs
     cm=chan_map(dp, probe_version='local'); assert cm.shape[0]<=Nchans-1
-    channels=assert_chan_in_dataset(dp, channels)
-    channels=np.array([int(np.nonzero(cm[:,0]==ch)[0]) for ch in channels], dtype=np.int16);
+    channels=assert_chan_in_dataset(dp, channels) # index out of 384, should remain the same because rc initial shape is 384!
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
     bn = op.basename(fname) # binary name
     rcn = '{}_t{}-{}_ch{}-{}.npy'.format(bn, times[0], times[1], channels[0], channels[-1]) # raw chunk name

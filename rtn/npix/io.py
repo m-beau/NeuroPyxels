@@ -317,8 +317,8 @@ def assert_chan_in_dataset(dp, channels):
     cm=chan_map(dp, probe_version='local')
     if not np.all(np.isin(channels, cm[:,0])):
         print("WARNING Kilosort excluded some channels that you provided for analysis \
-because they did not display enough threshold crossings! Jumping channels:{}\
-".format(channels[~np.isin(channels, cm[:,0])]))
+    because they did not display enough threshold crossings! Jumping channels:{}\
+    ".format(channels[~np.isin(channels, cm[:,0])]))
     channels=channels[np.isin(channels, cm[:,0])]
     return channels
 #%% Compute stuff to preprocess data

@@ -231,7 +231,8 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     # Format inputs
     cm=chan_map(dp, probe_version='local'); assert cm.shape[0]<=Nchans-1
     assert np.all(np.isin(channels, cm[:,0])), "WARNING Kilosort excluded some channels that you provided for analysis \
-    because they did not display enough threshold crossings! Use other channels amongst:\n{}".format(cm[:,0])
+    because they did not display enough threshold crossings! Jumping channels:{}".format(channels[~np.isin(channels, cm[:,0])])
+    channels=channels[np.isin(channels, cm[:,0])]
     channels=np.array([int(np.nonzero(cm[:,0]==ch)[0]) for ch in channels], dtype=np.int16);
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
     bn = op.basename(fname) # binary name

@@ -16,8 +16,8 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
                     
-from rtn.npix.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset
-from rtn.npix.gl import get_units, chan_map
+from rtn.npix.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
+from rtn.npix.gl import get_units
 from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
 from rtn.npix.spk_t import trn
 from rtn.npix.corr import acg, ccg, gen_sfc, extract_hist_modulation_features, make_cm

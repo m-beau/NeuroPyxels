@@ -8,17 +8,14 @@ Input/output utilitaries to deal with Neuropixels files.
 """
 
 import psutil
-import os, ast
+import os
 from ast import literal_eval as ale
 import os.path as op; opj=op.join
 
 import numpy as np
 from math import floor
 
-import matplotlib.pyplot as plt
-
 from rtn.utils import npa
-from rtn.npix.gl import chan_map
 
 #%% Extract metadata and sync channel
 
@@ -77,6 +74,66 @@ def read_spikeglx_meta(dp, subtype='ap'):
     meta['scale_factor']=(Vrange/2**bits_encoding/ampFactor)
     
     return meta
+
+def chan_map(dp=None, y_orig='surface', probe_version=None):
+    
+    assert y_orig in ['surface', 'tip']
+    if probe_version is None: probe_version=read_spikeglx_meta(dp)['probe_version']
+    
+    if probe_version in probe_version in ['3A', '1.0_staggered']:
+        Nchan=384
+        cm_el = npa([[  27,   0],
+                           [  59,   0],
+                           [  11,   20],
+                           [  43,   20]])
+        vert=npa([[  0,   40],
+                  [  0,   40],
+                  [  0,   40],
+                  [  0,   40]])
+        
+        cm=cm_el.copy()
+        for i in range(int(Nchan/cm_el.shape[0])-1):
+            cm = np.vstack((cm, cm_el+vert*(i+1)))
+        cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
+    
+    elif probe_version=='1.0_aligned':
+        Nchan=384
+        cm_el = npa([[  11,   0],
+                           [  43,   0]])
+        vert=npa([[  0,   20],
+                  [  0,   20]])
+        
+        cm=cm_el.copy()
+        for i in range(int(Nchan/cm_el.shape[0])-1):
+            cm = np.vstack((cm, cm_el+vert*(i+1)))
+        cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
+        
+    elif probe_version=='2.0_singleshank':
+        Nchan=384
+        cm_el = npa([[  0,   0],
+                           [  32,   0]])
+        vert=npa([[  0,   15],
+                  [  0,   15]])
+        
+        cm=cm_el.copy()
+        for i in range(int(Nchan/cm_el.shape[0])-1):
+            cm = np.vstack((cm, cm_el+vert*(i+1)))
+        cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
+    
+    elif probe_version=='local':
+        if dp is None:
+            raise ValueError("dp argument is not provided - when channel map is \
+                             atypical and probe_version is hence called 'local', \
+                             the datapath needs to be provided to load the channel map.")
+        c_ind=np.load(op.join(dp, 'channel_map.npy'));cp=np.load(op.join(dp, 'channel_positions.npy'));
+        cm=npa(np.hstack([c_ind, cp]), dtype=np.int32)
+        
+    if y_orig=='surface':
+        cm[:,1:]=cm[:,1:][::-1]
+        
+    return cm
+
+#%% Binary file I/O
 
 def unpackbits(x,num_bits = 16):
     '''

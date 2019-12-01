@@ -62,8 +62,8 @@ import pandas as pd
 import rtn
 from rtn.utils import npa, sign, align_timeseries
 
-from rtn.npix.io import read_spikeglx_meta, get_npix_sync
-from rtn.npix.gl import chan_map, load_units_qualities
+from rtn.npix.io import read_spikeglx_meta, get_npix_sync, chan_map
+from rtn.npix.gl import load_units_qualities
 from rtn.npix.spk_wvf import get_depthSort_peakChans, get_peak_chan
                     
 import networkx as nx

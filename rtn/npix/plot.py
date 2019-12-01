@@ -150,34 +150,35 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     
     return fig
 
-def plot_raw(bp, times, channels=np.arange(384), subtype='ap', offset=450, save=0, savePlot=0):
+def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveDir='~/Downloads', saveData=0, saveFig=0,
+             _format='pdf', color='multi', whiten=True):
     '''
     ## PARAMETERS
     - bp: binary path (files must ends in .bin, typically ap.bin)
     - times: list of boundaries of the time window, in seconds [t1, t2]. If 'all', whole recording.
     - channels (default: np.arange(0, 385)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
     - offset: graphical offset between channels, in uV
-    - fs (default 30000): sampling rate
-    - ampFactor (default 500): gain factor of recording (can be different for LFP and AP, check SpikeGLX/OpenEphys)
-    - Nchans (default 385): total number of channels on the probe (3A: 385, )
-    - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
-    
+    - saveDir: directory where to save either the figure or the data (default: ~/Downloads)
+    - saveData (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
+    - saveFig: save the figure at saveDir
+    - _format: format of the figure to save | default: pdf
+    - color: color to plot all the lines. | default: multi, will use 20DistinctColors iteratively to distinguish channels by eye
     ## RETURNS
     fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
-    
     
     '''
     
     # Get data
-    rawChunk = extract_rawChunk(bp, times, channels, subtype, save, 1)
-
+    rc = extract_rawChunk(dp, times, channels, subtype, saveData, 1, whiten)
+    meta=read_spikeglx_meta(dp, subtype)
+    fs = int(meta['sRateHz'])
     # Offset data
     plt_offsets = np.arange(0, len(channels)*offset, offset)
-    plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rawChunk.shape[1]))
-    rawChunk+=plt_offsets
+    plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rc.shape[1]))
+    rc+=plt_offsets
     
     # Plot data
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10,rc.shape[0]))
     y_subticks = np.arange(50, offset/2, 50)
     y_ticks=[plt_offsets[:,0]]
     for i in y_subticks:
@@ -185,18 +186,37 @@ def plot_raw(bp, times, channels=np.arange(384), subtype='ap', offset=450, save=
     y_ticks = np.sort(npa(y_ticks).flatten())
     y_labels = npa([(y_subticks[::-1]*-1).tolist()+['#{}'.format(channels[i])]+y_subticks.tolist() for i in range(len(channels))]).flatten()
     
-    t=np.tile(np.arange(rawChunk.shape[1])*1000./fs, (rawChunk.shape[0], 1))
-    for i in np.arange(rawChunk.shape[0]):
+    t=np.tile(np.arange(rc.shape[1])*1000./fs, (rc.shape[0], 1))
+    for i in np.arange(rc.shape[0]):
         y=i*offset
         ax.plot([0, t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
-    ax.plot(t.T, rawChunk.T, linewidth=1)
+    if color=='multi':
+        color=[DistinctColors20[ci%(len(DistinctColors20)-1)] for ci in range(t.shape[0])]
+    ax.plot(t.T, rc.T, linewidth=1, color='k')
     ax.set_xlabel('Time (ms)')
     ax.set_ylabel('Extracellular potential (uV)')
     ax.set_yticks(y_ticks)
     ax.set_yticklabels(y_labels)
     
+    fig.tight_layout()
+    
+    if saveFig:
+        saveDir=op.expanduser(saveDir)
+        rcn = '{}_t{}-{}_ch{}-{}.npy'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
+        fig.savefig(opj(saveDir, '{}.{}'.format(rcn, _format)), format=_format)
+    
     return fig
 
+def plot_raw_units(dp, times, channels=np.arange(384), units=[], offset=450, saveDir='~/Downloads', saveData=0, saveFig=0, whiten=0,
+             _format='pdf', color='multi'):
+    fig=plot_raw(dp, times, channels, 'ap', offset, saveDir, saveData, 0, color='k', whiten=whiten)
+    ax=fig.get_axes()[0]
+    
+    assert type(units) is list
+    
+    
+    
+    return fig
 #%% Correlograms
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True, 

@@ -64,14 +64,16 @@ def read_spikeglx_meta(dp, subtype='ap'):
     meta['probe_version']=probe_versions['imProbeOpt'][meta['imProbeOpt']] if 'imProbeOpt' in meta.keys() else probe_versions['imDatPrb_type'][meta['imDatPrb_type']] if 'imDatPrb_type' in meta.keys() else 'N/A'
     assert meta['probe_version'] in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']
     
+    Vrange=(meta['imAiRangeMax']-meta['imAiRangeMin'])*1e6
+    ampFactor=ale(meta['~imroTbl'][1].split(' ')[3])
     if meta['probe_version'] in ['3A', '1.0_staggered', '1.0_aligned']:
-        Vrange=1.2e6
+        assert Vrange==1.2e6
         bits_encoding=10
-        ampFactor=500
+        assert ampFactor==500
     elif meta['probe_version'] in ['2.0_singleshank', '2.0_fourshanked']:
-        Vrange=1e6
+        assert Vrange==1e6
         bits_encoding=14
-        ampFactor=80
+        assert ampFactor==80
     meta['scale_factor']=(Vrange/2**bits_encoding/ampFactor)
     
     return meta
@@ -193,7 +195,7 @@ def get_npix_sync(dp, output_binary = False):
     return onsets,offsets
 
 
-def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, ret=1):
+def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, ret=1, whiten=0):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     ## PARAMETERS
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
@@ -263,12 +265,44 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     # Decode binary data
     assert len(bData)%2==0
     rc = np.frombuffer(bData, dtype=np.int16) # 16bits decoding
-    rc = rc*meta['scale_factor'] # convert into uV
     rc = rc.reshape((int(t2-t1), Nchans)).T
     rc = rc[channels, :] # get the right channels range
 
+    # Whiten data
+    if whiten:
+        # with open(fname, 'rb') as f_src:
+        #     # each sample for each channel is encoded on 16 bits = 2 bytes: samples*Nchannels*2.
+        #     byte1 = int(0*Nchans*bytes_per_sample)
+        #     byte2 = int(300000*Nchans*bytes_per_sample)
+        #     bytesRange = byte2-byte1
+            
+        #     f_src.seek(byte1)
+            
+        #     bDataW = f_src.read(bytesRange)
+    
+        # assert len(bDataW)%2==0
+        # rcW = np.frombuffer(bDataW, dtype=np.int16) # 16bits decoding
+        # rcW = rcW.reshape((300000, Nchans))
+        # rcW = rcW[:, channels] # get the right channels range
+        # w = whitening_matrix(rcW)
+        # rc_scales=(np.max(rc, 1)-np.min(rc, 1))
+        # rcW=np.dot(rc.T,w)
+        # rcW=rcW.T
+        # rcW_scales=(np.max(rcW, 1)-np.min(rcW, 1))
+        # rc=rcW*np.repeat((rc_scales/rcW_scales).reshape(rc.shape[0], 1), rc.shape[1], axis=1)
+        
+        w = whitening_matrix(rc.T)
+        rc_scales=(np.max(rc, 1)-np.min(rc, 1))
+        rc=np.dot(rc.T,w)
+        rc=rc.T
+        rcW_scales=(np.max(rc, 1)-np.min(rc, 1))
+        rc=rc*np.repeat((rc_scales/rcW_scales).reshape(rc.shape[0], 1), rc.shape[1], axis=1)
+
+    # Scale data
+    rc = rc*meta['scale_factor'] # convert into uV
+
     # Center channels individually
-    offsets = np.mean(rc, axis=1)
+    offsets = np.median(rc, axis=1)
     print('Channels are offset by {}uV on average!'.format(np.mean(offsets)))
     offsets = np.tile(offsets[:,np.newaxis], (1, rc.shape[1]))
     rc-=offsets
@@ -280,6 +314,25 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
         return rc
     else:
         return
+
+#%% Compute stuff to preprocess data
+        
+def whitening_matrix(x, fudge=1e-18):
+    """
+    wmat = whitening_matrix(dat, fudge=1e-18)
+    Compute the whitening matrix.
+        - dat is a matrix nsamples x nchannels
+    Apply using np.dot(dat,wmat)
+    Adapted from phy
+    """
+    assert x.ndim == 2
+    ns, nc = x.shape
+    x_cov = np.cov(x, rowvar=0)
+    assert x_cov.shape == (nc, nc)
+    d, v = np.linalg.eigh(x_cov)
+    d = np.diag(1. / np.sqrt(d + fudge))
+    w = np.dot(np.dot(v, d), v.T)
+    return w
 
 #%% I/O array functions from phy
     

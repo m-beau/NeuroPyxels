@@ -230,11 +230,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     
     # Format inputs
     cm=chan_map(dp, probe_version='local'); assert cm.shape[0]<=Nchans-1
-    if not np.all(np.isin(channels, cm[:,0])):
-        print("WARNING Kilosort excluded some channels that you provided for analysis \
-    because they did not display enough threshold crossings! Jumping channels:{}\
-    ".format(channels[~np.isin(channels, cm[:,0])]))
-    channels=channels[np.isin(channels, cm[:,0])]
+    channels=assert_chan_in_dataset(dp, channels)
     channels=np.array([int(np.nonzero(cm[:,0]==ch)[0]) for ch in channels], dtype=np.int16);
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
     bn = op.basename(fname) # binary name
@@ -318,6 +314,14 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     else:
         return
 
+def assert_chan_in_dataset(dp, channels):
+    cm=chan_map(dp, probe_version='local')
+    if not np.all(np.isin(channels, cm[:,0])):
+        print("WARNING Kilosort excluded some channels that you provided for analysis \
+because they did not display enough threshold crossings! Jumping channels:{}\
+".format(channels[~np.isin(channels, cm[:,0])]))
+    channels=channels[np.isin(channels, cm[:,0])]
+    return channels
 #%% Compute stuff to preprocess data
         
 def whitening_matrix(x, fudge=1e-18):

@@ -16,7 +16,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of
                     
-from rtn.npix.io import read_spikeglx_meta, extract_rawChunk
+from rtn.npix.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset
 from rtn.npix.gl import get_units, chan_map
 from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
 from rtn.npix.spk_t import trn
@@ -171,11 +171,12 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
     '''
     
     # Get data
+    channels=assert_chan_in_dataset(dp, channels)
     rc = extract_rawChunk(dp, times, channels, subtype, saveData, 1, whiten)
     meta=read_spikeglx_meta(dp, subtype)
     fs = int(meta['sRateHz'])
     # Offset data
-    plt_offsets = np.arange(0, len(channels)*offset, offset)
+    plt_offsets = np.arange(0, rc.shape[0]*offset, offset)
     plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rc.shape[1]))
     rc+=plt_offsets
     
@@ -226,6 +227,7 @@ def plot_raw_units(dp, times, channels=np.arange(384), units=[], offset=450, sav
     fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
     
     '''
+    channels=assert_chan_in_dataset(dp, channels)
     rc = extract_rawChunk(dp, times, channels, 'ap', saveData, 1, whiten)
     # Offset data
     plt_offsets = np.arange(0, len(channels)*offset, offset)

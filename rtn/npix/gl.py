@@ -14,8 +14,7 @@ import numpy as np
 import pandas as pd
 
 from rtn.utils import npa
-#from rtn.npix.io import read_spikeglx_meta 11
-import pandas
+from rtn.npix.io import read_spikeglx_meta
 
 def assert_multidatasets(dp):
     'Returns unpacked merged_clusters_spikes.npz if it exists in dp, None otherwise.'

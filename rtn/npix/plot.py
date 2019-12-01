@@ -19,6 +19,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
 from rtn.npix.io import read_spikeglx_meta, extract_rawChunk
 from rtn.npix.gl import get_units, chan_map
 from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
+from rtn.npix.spk_t import trn
 from rtn.npix.corr import acg, ccg, gen_sfc, extract_hist_modulation_features, make_cm
 from mpl_toolkits.mplot3d import axes3d
 from mpl_toolkits.mplot3d import Axes3D
@@ -163,6 +164,7 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
     - saveFig: save the figure at saveDir
     - _format: format of the figure to save | default: pdf
     - color: color to plot all the lines. | default: multi, will use 20DistinctColors iteratively to distinguish channels by eye
+    - whiten: boolean, whiten data or not
     ## RETURNS
     fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
     
@@ -207,16 +209,82 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
     
     return fig
 
-def plot_raw_units(dp, times, channels=np.arange(384), units=[], offset=450, saveDir='~/Downloads', saveData=0, saveFig=0, whiten=0,
-             _format='pdf', color='multi'):
+def plot_raw_units(dp, times, channels=np.arange(384), units=[], offset=450, saveDir='~/Downloads', saveData=0, saveFig=0, whiten=1,
+             _format='pdf', colors='phy', Nchan_plot=5, spk_window=82):
+    '''
+    ## PARAMETERS
+    - bp: binary path (files must ends in .bin, typically ap.bin)
+    - times: list of boundaries of the time window, in seconds [t1, t2]. If 'all', whole recording.
+    - channels (default: np.arange(0, 385)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
+    - offset: graphical offset between channels, in uV
+    - saveDir: directory where to save either the figure or the data (default: ~/Downloads)
+    - saveData (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
+    - saveFig: save the figure at saveDir
+    - _format: format of the figure to save | default: pdf
+    - color: color to plot all the lines. | default: multi, will use 20DistinctColors iteratively to distinguish channels by eye
+    ## RETURNS
+    fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
+    
+    '''
+    rc = extract_rawChunk(dp, times, channels, 'ap', saveData, 1, whiten)
+    # Offset data
+    plt_offsets = np.arange(0, len(channels)*offset, offset)
+    plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rc.shape[1]))
+    rc+=plt_offsets
+    
     fig=plot_raw(dp, times, channels, 'ap', offset, saveDir, saveData, 0, color='k', whiten=whiten)
     ax=fig.get_axes()[0]
     
     assert type(units) is list
+    assert len(units)>=1
+    fs=read_spikeglx_meta(dp, 'ap')['sRateHz']
+    spk_w1 = spk_window // 2
+    spk_w2 = spk_window - spk_w1
+    t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
     
+    if colors=='phy':
+        phy_c=list(phyColorsDic.values())[:-1]
+        colors=[phy_c[ci%len(phy_c)] for ci in range(len(units))]
+    else:
+        assert type(colors) is str
+        assert len(colors)==len(units), 'The length of the list of colors should be the same as the list of units!!'
     
+    tx=np.tile(np.arange(rc.shape[1]), (rc.shape[0], 1))[0] # in samples
+    tx_ms=np.tile(np.arange(rc.shape[1])*1000./fs, (rc.shape[0], 1)) # in ms
+    for iu, u in enumerate(units):
+        peakChan=get_peak_chan(dp,u)
+        assert peakChan in channels, "WARNING the peak channel of {}, {}, is not in the set of channels plotted here!".format(u, peakChan)
+        peakChan_rel=np.nonzero(peakChan==channels)[0][0]
+        ch1, ch2 = max(0,peakChan_rel-Nchan_plot//2), min(rc.shape[0]-1, peakChan_rel-Nchan_plot//2+Nchan_plot)
+        t=trn(dp,u) # in samples
+        twin=t[(t>t1+spk_w1)&(t<t2-spk_w2)] # get spikes starting minimum spk_w1 after window start and ending maximum spk_w2 before window end
+        twin-=t1 # set t1 as time 0
+        for t_spk in twin:
+            spk_id=(tx>=t_spk-spk_w1)&(tx<=t_spk+spk_w2)
+            color=colors[iu]
+            ax.plot(tx_ms[ch1:ch2, spk_id].T, rc[ch1:ch2, spk_id].T, lw=1, color=color)
+            ax.plot(tx_ms[peakChan_rel, spk_id].T, rc[peakChan_rel, spk_id].T, lw=2, color=color)
     
     return fig
+
+#%% Rasters
+
+def plot_raster(spks,offset=0.0,height=1.0,colors='black',ax = None):
+    ''' Plot a raster from sets of spiketrains.
+            - "spks" is a list of spiketrains
+            - "colors" can be an array of colors
+        Joao Couto - January 2016
+    '''
+    if ax is None:
+        ax = plt.gca()
+    nspks = len(spks)
+    if type(colors) is str:
+        colors = [colors]*nspks
+    for i,(sp,cc) in enumerate(zip(spks,colors)):
+        ax.vlines(sp,offset+(i*height),
+                  offset+((i+1)*height),
+                  colors=cc)
+        
 #%% Correlograms
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True, 

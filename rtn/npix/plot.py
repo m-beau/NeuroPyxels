@@ -134,7 +134,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
             ax[i1, i2].set_title(cm[:,0][chStart_i+(2*(i//2)+i%2)], size=12, loc='right', weight='bold')
             ax[i1, i2].tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
             if i2==0 and i1==max(0,int(Nchannels/2)-1):#start plotting from top
-                ax[i1, i2].set_ylabel('EC V (uV)', size=14, weight='bold')
+                ax[i1, i2].set_ylabel('EC V (\u03bcV)', size=14, weight='bold')
                 ax[i1, i2].set_xlabel('t (ms)', size=14, weight='bold')
             else:
                 ax[i1, i2].set_xticklabels([])
@@ -155,7 +155,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     return fig
 
 def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveDir='~/Downloads', saveData=0, saveFig=0,
-             _format='pdf', color='multi', whiten=True, pyqtgraph=0):
+             _format='pdf', color='multi', whiten=True, pyqtgraph=1, show_allyticks=0):
     '''
     ## PARAMETERS
     - bp: binary path (files must ends in .bin, typically ap.bin)
@@ -184,56 +184,105 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
     rc+=plt_offsets
     
     # Plot data
-    fig, ax = plt.subplots(figsize=(10,rc.shape[0]))
-    y_subticks = np.arange(50, offset/2, 50)
-    y_ticks=[plt_offsets[:,0]]
-    for i in y_subticks:
-        y_ticks+=[plt_offsets[:,0]-i, plt_offsets[:,0]+i] 
-    y_ticks = np.sort(npa(y_ticks).flatten())
-    y_labels = npa([(y_subticks[::-1]*-1).tolist()+['#{}'.format(channels[i])]+y_subticks.tolist() for i in range(len(channels))]).flatten()
-    
-    t=np.tile(np.arange(rc.shape[1])*1000./fs, (rc.shape[0], 1))
-    for i in np.arange(rc.shape[0]):
-        y=i*offset
-        ax.plot([0, t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
-    if color=='multi':
-        color=[DistinctColors20[ci%(len(DistinctColors20)-1)] for ci in range(t.shape[0])]
-    ax.plot(t.T, rc.T, linewidth=1, color=color)
-    ax.set_xlabel('Time (ms)')
-    ax.set_ylabel('Extracellular potential (uV)')
-    ax.set_yticks(y_ticks)
-    ax.set_yticklabels(y_labels)
-    
-    fig.tight_layout()
-    
-    if saveFig:
-        saveDir=op.expanduser(saveDir)
-        rcn = '{}_t{}-{}_ch{}-{}.npy'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
-        fig.savefig(opj(saveDir, '{}.{}'.format(rcn, _format)), format=_format)
+    y_subticks = np.arange(50, offset/2, 50) if show_allyticks else npa([100])
+    y_ticks=[plt_offsets[:,0]] # len(y_ticks)==len(channels) here
+    for ys in y_subticks:
+        y_ticks=y_ticks+[plt_offsets[:,0]-ys, plt_offsets[:,0]+ys] if show_allyticks else y_ticks+[npa([plt_offsets[0,0]+ys])]
+    y_labels_ch=['#{}'.format(channels[i]) for i in range(len(channels))]
+    y_labels=[]
+    for i in range(len(y_labels_ch)):
+        y_labels+=[y_labels_ch[i]]
+        if i==0 or show_allyticks:
+            for j in range(len(y_ticks)-1):
+                if y_ticks[j+1][0]<0:
+                    y_labels=y_labels[:-1]+[str(y_ticks[j+1][0])]+[y_labels[-1]]
+                else:
+                    y_labels=y_labels+[str(y_ticks[j+1][0])]
+    y_ticks = np.sort(np.concatenate(y_ticks).flatten())
+    assert len(y_ticks)==len(y_labels)
 
-    if pyqtgraph:
-        app = QtGui.QApplication([])
+    t=np.tile(np.arange(rc.shape[1])*1000./fs, (rc.shape[0], 1))
+    if not pyqtgraph:
+        fig, ax = plt.subplots(figsize=(16,rc.shape[0]))
+        if color=='multi':
+            color=None
+        for i in np.arange(rc.shape[0]):
+            y=i*offset
+            ax.plot([0, t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
+        ax.plot(t.T, rc.T, linewidth=1, color=color)
+        ax.set_xlabel('Time (ms)', size=14, weight='bold')
+        ax.set_ylabel('Extracellular potential (\u03bcV)', size=14, weight='bold')
+        ax.set_yticks(y_ticks)
+        ax.set_yticklabels(y_labels)
+        ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.spines['left'].set_lw(2)
+        ax.spines['bottom'].set_lw(2)
         
+        fig.tight_layout()
+    
+        if saveFig:
+            saveDir=op.expanduser(saveDir)
+            rcn = '{}_t{}-{}_ch{}-{}.npy'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
+            fig.savefig(opj(saveDir, '{}.{}'.format(rcn, _format)), format=_format)
+        
+        return fig
+    
+    else:
         win = pg.GraphicsWindow(title="Raw data - {}-{}ms, channels {}-{}".format(times[0], times[1], channels[0], channels[-1]))
-        win.resize(1000,600)
-        p = win.addPlot(title="Multiple curves")
+        win.setBackground('w')
+        win.resize(1500,600)
+        p = win.addPlot()
+        p.setTitle("Raw data - {}-{}ms, channels {}-{}".format(times[0], times[1], channels[0], channels[-1]), color='k')
+        p.disableAutoRange()
         # Enable antialiasing for prettier plots
         pg.setConfigOptions(antialias=True)
     
         for i in np.arange(rc.shape[0]):
             y=i*offset
-            p.plot([0, t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
+            pen=pg.mkPen(color=(125,125,125), style=QtCore.Qt.DashLine, width=1.5)
+            p.plot([0, t[0,-1]], [y, y], pen=pen)
         if color=='multi':
-            color=[DistinctColors20[ci%(len(DistinctColors20)-1)] for ci in range(t.shape[0])]
-        p.plot(t.T, rc.T, linewidth=1, pen=color)
-        p.setLabel('left', "Extracellular potential", units='uV')
-        p.setLabel('bottom', "Time", units='ms')
-        QtGui.QApplication.instance().exec_()
+            color=[DistinctColors20[ci%(len(DistinctColors20)-1)] for ci in range(rc.shape[0])]
+        else:
+            if color=='k':
+                color=[(0,0,0)]*rc.shape[0]
+            else:
+                assert npa(color).shape[0]==3
+                color=[npa(color)]*rc.shape[0]
+                
+        for line in range(rc.shape[0]):
+            pen=pg.mkPen(color=tuple(npa(color[line])*255), width=1)
+            p.plot(t[line,:].T, rc[line,:].T, pen=pen)
+        pen=pg.mkPen(color=(0,0,0), width=2)
+        p.getAxis('left').setTicks([[(y_ticks[i], y_labels[i]) for i in range(len(y_ticks))],[]])
+        p.getAxis('bottom').setLabel('Time (ms)')
+        p.getAxis('left').setLabel('Extracellular potential (\u03bcV)')
+        p.getAxis('left').setPen(pen)
+        p.getAxis('bottom').setPen(pen)
+        font=QtGui.QFont()
+        font.setPixelSize(14)
+        p.getAxis("bottom").setTickFont(font)
+        p.getAxis("left").setTickFont(font)
+        p.getAxis("bottom").setStyle(tickTextOffset = 5)
+        p.getAxis("left").setStyle(tickTextOffset = 5)
+        p.autoRange() # adding it only after having plotted everything makes it way faster
         
-    return fig
+        # ax.set_yticks(y_ticks)
+        # ax.set_yticklabels(y_labels)
+        # ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
+        # ax.spines['right'].set_visible(False)
+        # ax.spines['top'].set_visible(False)
+        # ax.spines['left'].set_lw(2)
+        # ax.spines['bottom'].set_lw(2)
 
-def plot_raw_units(dp, times, channels=np.arange(384), units=[], offset=450, saveDir='~/Downloads', saveData=0, saveFig=0, whiten=1,
-             _format='pdf', colors='phy', Nchan_plot=5, spk_window=82):
+        
+        
+        return win,p
+
+def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Downloads', saveData=0, saveFig=0, whiten=1,
+             _format='pdf', colors='phy', Nchan_plot=5, spk_window=82, pyqtgraph=1, show_allyticks=0):
     '''
     ## PARAMETERS
     - bp: binary path (files must ends in .bin, typically ap.bin)
@@ -249,6 +298,9 @@ def plot_raw_units(dp, times, channels=np.arange(384), units=[], offset=450, sav
     fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
     
     '''
+    # if channels is None:
+    #     peakChan=get_peak_chan(dp,units[0])
+    #     channels=np.arange(peakChan-Nchan_plot//2-1, peakChan+Nchan_plot//2+2)
     channels=assert_chan_in_dataset(dp, channels)
     rc = extract_rawChunk(dp, times, channels, 'ap', saveData, 1, whiten)
     # Offset data
@@ -256,9 +308,9 @@ def plot_raw_units(dp, times, channels=np.arange(384), units=[], offset=450, sav
     plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rc.shape[1]))
     rc+=plt_offsets
     
-    fig=plot_raw(dp, times, channels, 'ap', offset, saveDir, saveData, 0, color='k', whiten=whiten)
-    ax=fig.get_axes()[0]
-    
+    back_color='k'
+    fig=plot_raw(dp, times, channels, 'ap', offset, saveDir, saveData, 0, color=back_color, whiten=whiten, pyqtgraph=pyqtgraph, show_allyticks=show_allyticks)
+    if not pyqtgraph: ax=fig.get_axes()[0]
     assert type(units) is list
     assert len(units)>=1
     fs=read_spikeglx_meta(dp, 'ap')['sRateHz']
@@ -275,7 +327,9 @@ def plot_raw_units(dp, times, channels=np.arange(384), units=[], offset=450, sav
     
     tx=np.tile(np.arange(rc.shape[1]), (rc.shape[0], 1))[0] # in samples
     tx_ms=np.tile(np.arange(rc.shape[1])*1000./fs, (rc.shape[0], 1)) # in ms
+    if pyqtgraph:fig[1].disableAutoRange()
     for iu, u in enumerate(units):
+        print('plotting unit {}...'.format(u))
         peakChan=get_peak_chan(dp,u)
         assert peakChan in channels, "WARNING the peak channel of {}, {}, is not in the set of channels plotted here!".format(u, peakChan)
         peakChan_rel=np.nonzero(peakChan==channels)[0][0]
@@ -283,12 +337,26 @@ def plot_raw_units(dp, times, channels=np.arange(384), units=[], offset=450, sav
         t=trn(dp,u) # in samples
         twin=t[(t>t1+spk_w1)&(t<t2-spk_w2)] # get spikes starting minimum spk_w1 after window start and ending maximum spk_w2 before window end
         twin-=t1 # set t1 as time 0
-        for t_spk in twin:
+        for t_spki, t_spk in enumerate(twin):
+            print('plotting spike {}/{}...'.format(t_spki, len(twin)))
             spk_id=(tx>=t_spk-spk_w1)&(tx<=t_spk+spk_w2)
             color=colors[iu]
-            ax.plot(tx_ms[ch1:ch2, spk_id].T, rc[ch1:ch2, spk_id].T, lw=1, color=color)
-            ax.plot(tx_ms[peakChan_rel, spk_id].T, rc[peakChan_rel, spk_id].T, lw=1.5, color=color)
+            if pyqtgraph:
+                win,p = fig
+                for line in np.arange(ch1, ch2, 1):
+                    p.plot(tx_ms[line, spk_id].T, rc[line, spk_id].T, linewidth=1, pen=tuple(npa(color)*255))
+                fig = win,p
+            else:
+                ax.plot(tx_ms[ch1:ch2, spk_id].T, rc[ch1:ch2, spk_id].T, lw=1.1, color=color)
+                #ax.plot(tx_ms[peakChan_rel, spk_id].T, rc[peakChan_rel, spk_id].T, lw=1.5, color=color)
+                fig.tight_layout()
+            
+    if saveFig and not pyqtgraph:
+        saveDir=op.expanduser(saveDir)
+        rcn = '{}_t{}-{}_ch{}-{}.npy'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
+        fig.savefig(opj(saveDir, '{}.{}'.format(rcn, _format)), format=_format)
     
+    if pyqtgraph:fig[1].autoRange()
     return fig
 
 #%% Rasters
@@ -1020,9 +1088,3 @@ def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Downl
 # lr.sigRegionChanged.connect(updatePlot)
 # p9.sigXRangeChanged.connect(updateRegion)
 # updatePlot()
-
-# ## Start Qt event loop unless running in interactive mode or using pyside.
-# if __name__ == '__main__':
-#     import sys
-#     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-#         QtGui.QApplication.instance().exec_()

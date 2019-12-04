@@ -144,7 +144,7 @@ def unpackbits(x,num_bits = 16):
     to_and = 2**np.arange(num_bits).reshape([1,num_bits])
     return (x & to_and).astype(bool).astype(int).reshape(xshape + [num_bits])
 
-def get_npix_sync(dp, output_binary = False):
+def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
     '''Unpacks neuropixels phase external input data
     events = unpack_npix3a_sync(trigger_data_channel)
         Inputs:
@@ -164,6 +164,7 @@ def get_npix_sync(dp, output_binary = False):
             plt.vlines(times,ichan,ichan+.8,linewidth = 0.5)
         plt.ylabel('Sync channel number'); plt.xlabel('time (s)')
     '''
+    assert sourcefile in ['ap', 'lf']
     fname=''
     onsets={}
     offsets={}
@@ -201,6 +202,7 @@ def get_npix_sync(dp, output_binary = False):
     if fname=='':
         for file in os.listdir(dp):
             if file.endswith(".lf.bin"):
+                if sourcefile=='ap': break
                 fname=file[:-4]
                 break
         if fname=='':

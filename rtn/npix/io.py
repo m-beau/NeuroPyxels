@@ -62,15 +62,15 @@ def read_spikeglx_meta(dp, subtype='ap'):
     assert meta['probe_version'] in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']
     
     Vrange=(meta['imAiRangeMax']-meta['imAiRangeMin'])*1e6
-    ampFactor=ale(meta['~imroTbl'][1].split(' ')[3])
     if meta['probe_version'] in ['3A', '1.0_staggered', '1.0_aligned']:
         assert Vrange==1.2e6
         bits_encoding=10
+        ampFactor=ale(meta['~imroTbl'][1].split(' ')[3])
         assert ampFactor==500
     elif meta['probe_version'] in ['2.0_singleshank', '2.0_fourshanked']:
         assert Vrange==1e6
         bits_encoding=14
-        assert ampFactor==80
+        ampFactor=80
     meta['scale_factor']=(Vrange/2**bits_encoding/ampFactor)
     
     return meta

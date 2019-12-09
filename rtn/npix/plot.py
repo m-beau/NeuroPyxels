@@ -155,7 +155,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     return fig
 
 def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveDir='~/Downloads', saveData=0, saveFig=0,
-             _format='pdf', color='multi', whiten=True, pyqtgraph=1, show_allyticks=0):
+             _format='pdf', color='multi', whiten=True, pyqtgraph=1, show_allyticks=0, events=[], set0atEvent=1, figsize=(20,8), plot_ylabels=True):
     '''
     ## PARAMETERS
     - bp: binary path (files must ends in .bin, typically ap.bin)
@@ -168,11 +168,16 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
     - _format: format of the figure to save | default: pdf
     - color: color to plot all the lines. | default: multi, will use 20DistinctColors iteratively to distinguish channels by eye
     - whiten: boolean, whiten data or not
+    - pyqtgraph: boolean, whether to use pyqtgraph backend instead of matplotlib (faster to plot and interact, use to explore data before saving nice plots with matplotlib) | default 0
+    - show_allyticks: boolean, whetehr to show all y ticks or not (every 50uV for each individual channel), only use if exporing data | default 0
+    - events: list of times where to plot vertical lines, in seconds.
+    - set0atEvent: boolean, set time=0 as the time of the first event provided in the list events, if any is provided.
+    PS: if you wish to center the plot on the event, ensure that the event is exactly between times[0] and times[1].
     ## RETURNS
     fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
     
     '''
-    
+    assert type(events) is list
     # Get data
     channels=assert_chan_in_dataset(dp, channels)
     rc = extract_rawChunk(dp, times, channels, subtype, saveData, 1, whiten)
@@ -201,19 +206,26 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
     y_ticks = np.sort(np.concatenate(y_ticks).flatten())
     assert len(y_ticks)==len(y_labels)
 
-    t=np.tile(np.arange(rc.shape[1])*1000./fs, (rc.shape[0], 1))
+    t=np.tile(np.arange(rc.shape[1])*1000./fs, (rc.shape[0], 1)) # in milliseconds
+    if any(events):
+        events=[e-times[0] for e in events] # offset to times[0]
+        if set0atEvent:
+            t=t-events[0]*1000
+            events=[e-events[0] for e in events]
     if not pyqtgraph:
-        fig, ax = plt.subplots(figsize=(16,rc.shape[0]))
+        fig, ax = plt.subplots(figsize=figsize)
         if color=='multi':
             color=None
         for i in np.arange(rc.shape[0]):
             y=i*offset
             ax.plot([0, t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
+        for e in events:
+            ax.plot([e,e], ax.get_ylim(), color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
         ax.plot(t.T, rc.T, linewidth=1, color=color)
         ax.set_xlabel('Time (ms)', size=14, weight='bold')
         ax.set_ylabel('Extracellular potential (\u03bcV)', size=14, weight='bold')
         ax.set_yticks(y_ticks)
-        ax.set_yticklabels(y_labels)
+        ax.set_yticklabels(y_labels) if plot_ylabels else ax.set_yticklabels([])
         ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
@@ -243,6 +255,8 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
             y=i*offset
             pen=pg.mkPen(color=(125,125,125), style=QtCore.Qt.DashLine, width=1.5)
             p.plot([0, t[0,-1]], [y, y], pen=pen)
+        for e in events:
+            p.plot([e,e], [p.rect().getCoords()[1], p.rect().getCoords()[3]], color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
         if color=='multi':
             color=[DistinctColors20[ci%(len(DistinctColors20)-1)] for ci in range(rc.shape[0])]
         else:
@@ -269,20 +283,11 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
         p.getAxis("left").setStyle(tickTextOffset = 5)
         p.autoRange() # adding it only after having plotted everything makes it way faster
         
-        # ax.set_yticks(y_ticks)
-        # ax.set_yticklabels(y_labels)
-        # ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
-        # ax.spines['right'].set_visible(False)
-        # ax.spines['top'].set_visible(False)
-        # ax.spines['left'].set_lw(2)
-        # ax.spines['bottom'].set_lw(2)
-
-        
         
         return win,p
 
 def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Downloads', saveData=0, saveFig=0, whiten=1,
-             _format='pdf', colors='phy', Nchan_plot=5, spk_window=82, pyqtgraph=1, show_allyticks=0):
+             _format='pdf', colors='phy', Nchan_plot=5, spk_window=82, pyqtgraph=1, show_allyticks=0, events=[], set0atEvent=1, figsize=(20,8)):
     '''
     ## PARAMETERS
     - bp: binary path (files must ends in .bin, typically ap.bin)
@@ -309,7 +314,8 @@ def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Do
     rc+=plt_offsets
     
     back_color='k'
-    fig=plot_raw(dp, times, channels, 'ap', offset, saveDir, saveData, 0, color=back_color, whiten=whiten, pyqtgraph=pyqtgraph, show_allyticks=show_allyticks)
+    fig=plot_raw(dp, times, channels, 'ap', offset, saveDir, saveData, 0, color=back_color, whiten=whiten, pyqtgraph=pyqtgraph,
+                 show_allyticks=show_allyticks, events=events, set0atEvent=set0atEvent, figsize=figsize)
     if not pyqtgraph: ax=fig.get_axes()[0]
     assert type(units) is list
     assert len(units)>=1
@@ -327,6 +333,11 @@ def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Do
     
     tx=np.tile(np.arange(rc.shape[1]), (rc.shape[0], 1))[0] # in samples
     tx_ms=np.tile(np.arange(rc.shape[1])*1000./fs, (rc.shape[0], 1)) # in ms
+    if any(events):
+        events=[e-times[0] for e in events] # offset to times[0]
+        if set0atEvent:
+            tx_ms=tx_ms-events[0]*1000
+            events=[e-events[0] for e in events]
     if pyqtgraph:fig[1].disableAutoRange()
     for iu, u in enumerate(units):
         print('plotting unit {}...'.format(u))

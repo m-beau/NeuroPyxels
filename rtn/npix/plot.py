@@ -365,7 +365,7 @@ def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Do
             
     if saveFig and not pyqtgraph:
         saveDir=op.expanduser(saveDir)
-        rcn = '{}_t{}-{}_ch{}-{}.npy'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
+        rcn = '{}_{}_t{}-{}_ch{}-{}.npy'.format(op.basename(dp), units, times[0], times[1], channels[0], channels[-1]) # raw chunk name
         fig.savefig(opj(saveDir, '{}.{}'.format(rcn, _format)), format=_format)
     
     if pyqtgraph:fig[1].autoRange()

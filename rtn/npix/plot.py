@@ -218,9 +218,7 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
             color=None
         for i in np.arange(rc.shape[0]):
             y=i*offset
-            ax.plot([0, t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
-        for e in events:
-            ax.plot([e,e], ax.get_ylim(), color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
+            ax.plot([t[0,0], t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
         ax.plot(t.T, rc.T, linewidth=1, color=color)
         ax.set_xlabel('Time (ms)', size=14, weight='bold')
         ax.set_ylabel('Extracellular potential (\u03bcV)', size=14, weight='bold')
@@ -231,7 +229,10 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
         ax.spines['top'].set_visible(False)
         ax.spines['left'].set_lw(2)
         ax.spines['bottom'].set_lw(2)
-        
+        for e in events:
+            ax.plot([e,e], ax.get_ylim(), color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
+        if len(channels)==1:
+            ax.set_xlim([t[0,0], t[0,-1]])
         fig.tight_layout()
     
         if saveFig:
@@ -344,7 +345,7 @@ def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Do
         peakChan=get_peak_chan(dp,u)
         assert peakChan in channels, "WARNING the peak channel of {}, {}, is not in the set of channels plotted here!".format(u, peakChan)
         peakChan_rel=np.nonzero(peakChan==channels)[0][0]
-        ch1, ch2 = max(0,peakChan_rel-Nchan_plot//2), min(rc.shape[0]-1, peakChan_rel-Nchan_plot//2+Nchan_plot)
+        ch1, ch2 = max(0,peakChan_rel-Nchan_plot//2), min(rc.shape[0], peakChan_rel-Nchan_plot//2+Nchan_plot)
         t=trn(dp,u) # in samples
         twin=t[(t>t1+spk_w1)&(t<t2-spk_w2)] # get spikes starting minimum spk_w1 after window start and ending maximum spk_w2 before window end
         twin-=t1 # set t1 as time 0

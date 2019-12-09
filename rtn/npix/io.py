@@ -323,7 +323,6 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     assert len(bData)%2==0
     rc = np.frombuffer(bData, dtype=np.int16) # 16bits decoding
     rc = rc.reshape((int(t2-t1), Nchans)).T
-    rc = rc[channels, :] # get the right channels range
 
     # Whiten data
     if whiten:
@@ -354,7 +353,9 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
         rc=rc.T
         rcW_scales=(np.max(rc, 1)-np.min(rc, 1))
         rc=rc*np.repeat((rc_scales/rcW_scales).reshape(rc.shape[0], 1), rc.shape[1], axis=1)
-
+    
+    # get the right channels range, AFTER WHITENING
+    rc = rc[channels, :] 
     # Scale data
     rc = rc*meta['scale_factor'] # convert into uV
 

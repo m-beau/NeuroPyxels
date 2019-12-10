@@ -177,8 +177,8 @@ class Prophyler:
         NspikesTotal=0
         for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
         merge_fname='merged_clusters_spikes'
-        if op.exists(opj(self.dp_pro, merge_fname+'.npz')):
-            self.merged_clusters_spikes=np.load(opj(self.dp_pro, merge_fname+'.npz'))
+        if op.exists(opj(self.dp_pro, merge_fname+'.npy')):
+            self.merged_clusters_spikes=np.load(opj(self.dp_pro, merge_fname+'.npy'))
         else:
             print("Aligning spike trains...")
             spike_times = align_timeseries(spike_times, sync_signals)
@@ -191,7 +191,7 @@ class Prophyler:
                 merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
                 cum_Nspikes+=Nspikes
             merged_clusters_spikes=merged_clusters_spikes[np.argsort(merged_clusters_spikes[:,2])]
-            np.savez_compressed(opj(self.dp_pro, merge_fname+'.npz'), merged_clusters_spikes)
+            np.save(opj(self.dp_pro, merge_fname+'.npy'), merged_clusters_spikes)
             del spike_times, spike_clusters, sync_signals, merged_clusters_spikes
         
         # Merge the units qualities

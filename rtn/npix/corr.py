@@ -282,7 +282,8 @@ def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, trains
     if trains=={}:
         for iu, u in enumerate(U):
             # Even lists of strings can be dealt with as integers by being replaced by their indices
-            trains[iu]=trn(dp, u, ret=True, sav=False, rec_section=rec_section, prnt=prnt) # trains in samples
+            print(iu, u)
+            trains[iu]=trn(dp, u, sav=True, rec_section=rec_section, prnt=prnt) # trains in samples
     else:
         assert len(trains.items())>1
     spikes = np.empty((2, 0))
@@ -446,14 +447,14 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = dp+'/routinesMemory'
+    dprm = opj(dp,'routinesMemory')
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
     
-    fn='/ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(rec_section)[0:50].replace(' ', ''))
+    fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(rec_section)[0:50].replace(' ', ''))
     if os.path.exists(dprm+fn) and not again:
         if prnt: print("File {} found in routines memory. Will be computed from source files.".format(fn))
-        crosscorrelograms = np.load(dprm+fn)
+        crosscorrelograms = np.load(opj(dprm,fn))
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
     # if not, compute it
     else:
@@ -481,8 +482,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
 
         # Save it
         if sav:
-            fn='/ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(rec_section)[0:50].replace(' ', ''))
-            np.save(dprm+fn, crosscorrelograms)
+            np.save(opj(dprm,fn), crosscorrelograms)
     
     # Structure the 3d array to return accordingly to the order of the inputed units U
     if crosscorrelograms.shape[0]>1:

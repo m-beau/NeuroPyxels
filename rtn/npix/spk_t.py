@@ -3,13 +3,14 @@
 2018-07-20
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
-import os, sys
+import os
 import os.path as op; opj=op.join
 from ast import literal_eval as ale
 
 import numpy as np
                     
-from rtn.npix.gl import get_units, assert_multidatasets
+from rtn.npix.gl import get_units
+from rtn.npix.io import read_spikeglx_meta
 
 def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
     '''Function to turn a spike train (array of time stamps)
@@ -62,7 +63,7 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
     '''
     assert unit in get_units(dp)
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = dp+'/routinesMemory'
+    dprm = opj(dp,'routinesMemory')
     if not op.isdir(dprm): os.makedirs(dprm)
     if op.exists(dprm+'/ids{}.npy'.format(unit)) and not again:
         if prnt: print("File ids{}.npy found in routines memory.".format(unit))
@@ -74,8 +75,7 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
             print("File ids{}.npy not found in routines memory. Will be computed from source files.".format(unit))
         if type(unit)==str or type(unit)==np.str_:
             ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)
-            spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npz'))
-            spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]
+            spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npy'))
             dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
             indices = np.nonzero(dataset_mask&unit_mask)[0]
             indices=np.reshape(indices, (max(indices.shape), ))
@@ -92,7 +92,7 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
 
     
 
-def trn(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False):
+def trn(dp, unit, sav=True, prnt=False, rec_section='all', again=False):
     '''
     ********
     routine from routines_spikes
@@ -106,12 +106,11 @@ def trn(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - rec_section = 'all' or [(t1, t2), ...] with t1, t2 in seconds.
     '''
-    assert unit in get_units(dp), "Unit fed to trn function not found in dataset."
     
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = dp+'/routinesMemory'
+    dprm = opj(dp,'routinesMemory')
     if not op.isdir(dprm): os.makedirs(dprm)
-    if op.exists(dprm+'/trn{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', ''))) and not again:
+    if op.exists(opj(dprm,'trn{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', '')))) and not again:
         if prnt: print("File /trn{}({}).npy found in routines memory.".format(unit, str(rec_section)[0:10].replace(' ', '')))
         train = np.load(dprm+'/trn{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', '')))
         train=np.asarray(train, dtype='int64')
@@ -120,29 +119,32 @@ def trn(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False
         if prnt:
             print("File trn{}.npy not found in routines memory. Will be computed from source files.".format(unit))
         
-        if type(unit)==str or type(unit)==np.str_:
+        assert unit in get_units(dp), "{}, fed to trn function, not found in dataset!".format(unit)
+        if type(unit) in [str, np.str_]:
             ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)
-            spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npz'))
-            spike_clusters_samples=spike_clusters_samples[list(spike_clusters_samples.keys())[0]]
+            spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npy'))
             dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
             train = spike_clusters_samples[dataset_mask&unit_mask, 2]
             train=np.reshape(train, (max(train.shape), )).astype(np.int64)
         else:
             try:unit=int(unit)
             except:pass
-        if type(unit)==int:
+        if type(unit) is int:
             spike_clusters = np.load(opj(dp,"spike_clusters.npy"))
             spike_samples = np.load(opj(dp,'spike_times.npy'))
             train = spike_samples[spike_clusters==unit]
             train=np.reshape(train, (max(train.shape), )).astype(np.int64)
-        else:
-            print(type(unit))
+        
+        if type(unit) not in [str, np.str_, int]:
+            print('WARNING unit {} type ({}) not handled!'.format(unit, type(unit)))
             return
+        
         # Optional selection of a section of the recording.
         if type(rec_section)==str:
             if rec_section=='all':
                 pass # eq to rec_section=[(0, spike_samples[-1])] # in samples
         else:
+            fs=read_spikeglx_meta(dp)['sRateHz']
             sec_bool=np.zeros(len(train), dtype=np.bool)
             for section in rec_section:
                 sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
@@ -175,7 +177,7 @@ def isi(dp, unit, sav=True, prnt=False, rec_section='all', fs=30000, again=False
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = dp+'/routinesMemory'
+    dprm = opj(dp,'routinesMemory')
     if not op.isdir(dprm): os.makedirs(dprm)
     if op.exists(dprm+'/isi{}({}).npy'.format(unit, str(rec_section)[0:10].replace(' ', ''))) and not again:
         if prnt: print("File /isi{}({}).npy found in routines memory.".format(unit, str(rec_section)[0:10].replace(' ', '')))
@@ -216,7 +218,7 @@ def trnb(dp, unit, bin_size, sav=True, prnt=False, constrainBin=False, rec_secti
     '''
 
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = dp+'/routinesMemory'
+    dprm = opj(dp,'routinesMemory')
     if not op.isdir(dprm): os.makedirs(dprm)
     if op.exists(dprm+'/trnb{}_{}({}).npy'.format(unit, bin_size, str(rec_section)[0:10].replace(' ', ''))) and not again:
         if prnt: print("File trnb{}_{}.npy found in routines memory.".format(unit, bin_size))

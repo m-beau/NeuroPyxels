@@ -13,8 +13,6 @@ import ast
 import numpy as np
 import pandas as pd
 
-from rtn.utils import npa
-
 def assert_multidatasets(dp):
     'Returns unpacked merged_clusters_spikes.npz if it exists in dp, None otherwise.'
     if op.exists(op.join(dp, 'merged_clusters_spikes.npz')):

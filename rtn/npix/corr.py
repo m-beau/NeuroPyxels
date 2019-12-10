@@ -462,10 +462,10 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
         if normalize in ['Hertz', 'Pearson', 'zscore']:
             for i1,u1 in enumerate(sortedU):
-                Nspikes1=len(trn(dp, u1, ret=True, prnt=False))
+                Nspikes1=len(trn(dp, u1, prnt=False))
                 #imfr1=np.mean(1000./isi(dp, u1)[isi(dp, u1)>0])
                 for i2,u2 in enumerate(sortedU):
-                    Nspikes2=len(trn(dp, u2, ret=True, prnt=False))
+                    Nspikes2=len(trn(dp, u2, prnt=False))
                     #imfr2=np.mean(1000./isi(dp, u2)[isi(dp, u2)>0])
                     arr=crosscorrelograms[i1,i2,:]
                     if normalize == 'Hertz':
@@ -577,9 +577,9 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
         if prnt: print("File ccg_{}_{}.npy not found in routines memory. Will be computed from source files.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
         Pxy = np.empty((len(sortedU), len(sortedU), int(nperseg/2)+1), dtype=np.float64)
         for i, u1 in enumerate(sortedU):
-            trnb1 = trnb(dp, u1, bin_size, ret=True)
+            trnb1 = trnb(dp, u1, bin_size)
             for j, u2 in enumerate(sortedU):
-                trnb2 = trnb(dp, u2, bin_size, ret=True)
+                trnb2 = trnb(dp, u2, bin_size)
                 (f, Pxy[i, j, :]) = sgnl.csd(trnb1, trnb2, fs=fs, window=window, nperseg=nperseg, scaling=scaling)
         Pxy = Pxy.astype(np.float64)
         # Save it
@@ -1127,10 +1127,10 @@ def crosscorrelate_maxime1(dp, U, bin_size, win_size, fs=30000, normalize=False,
         binsedges=np.arange(-win_size*1./2, win_size*1./2+bin_size, bin_size) # add one bin to make even centered on 0
     
     for i1, u1 in enumerate(U):
-        t1=trn(dp, u1, ret=True, prnt=False)*1./30 # ms
+        t1=trn(dp, u1, prnt=False)*1./30 # ms
         for i2, u2 in enumerate(U):
             if i2>=i1:
-                t2 = trn(dp, u2, ret=True, prnt=False)*1./30 if u2!=u1 else t1 # ms
+                t2 = trn(dp, u2, prnt=False)*1./30 if u2!=u1 else t1 # ms
                 dt=np.array([])
                 if prnt: print('CCG {}x{}'.format(u1, u2))
                 for si, spk in enumerate(t1):

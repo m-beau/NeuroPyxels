@@ -323,7 +323,8 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
     phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, trains=own_trains.copy())
     units = _unique(spike_clusters)#_as_array(U) # Order of the correlogram: order of the inputted list U (replaced by its indices - see make_phy_like_spikeClustersTimes)
     n_units = len(units)
-
+    print(units)
+    
     #### Compute crosscorrelograms
     # Shift between the two copies of the spike trains.
     shift = 1 # in indices of the spike times array... RESOLUTION OF 1 SAMPLE!

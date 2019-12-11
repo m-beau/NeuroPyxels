@@ -32,7 +32,7 @@ from sklearn import manifold
 from sklearn.manifold import TSNE
 import umap
 # Clustering
-from sklearn.cluster import DBSCAN, AgglomerativeClustering
+from sklearn.cluster import DBSCAN, AgglomerativeClustering, OPTICS
 #import sklearn.cluster.optics_ as op
 #OPTICS=op.OPTICS
 # Classification
@@ -89,19 +89,6 @@ def get_cmapsDic(Ncmap=5):
               'cmap15':cmap15}
     
     return cmapsDic
-
-# Load data
-dp_='~/Dropbox/Science/PhD/Data_Analysis/3_CircuitProfiling/SfN2018_allFeatureTableCbCtx.csv'
-ft_=pd.read_csv(dp_, index_col='Unit')
-ft_untagged=ft_.loc[ft_['label']==0]
-df_PCA=ft_.copy().drop(['WVF-MainChannel', 'Histology', 'Histology_str', 'label', 'label_str', 'cluster'], axis=1)
-df_PCA_sc = StandardScaler().fit_transform(df_PCA.values)
-Ncomp=5
-trans = PCA(n_components=Ncomp, svd_solver='full', random_state=42).fit(df_PCA_sc)
-red_data = trans.transform(df_PCA_sc)
-red_data_df = pd.DataFrame(data=red_data, columns=['Component {}'.format(i+1) for i in range(Ncomp)], index=ft_.index)
-red_data_lh=red_data_df.join(ft_.loc[:, 'label'])
-red_data_lh=red_data_lh.join(ft_.loc[:, 'Histology_str']) # transformed features table with 
 
 def feat_boxplot(ft, feat, whiskers='std'):
     assert type(feat)==str
@@ -525,28 +512,41 @@ def assess_clusters_purity(ft_, clusters, celltypes, dp):
     return ft
 
 
-def classify(labeled_set, targets, unlabeled_set, method='KNN'):
-    '''train_set should be a dataset labelled with targets, test_set unlabelled data.'''
+# def classify(labeled_set, targets, unlabeled_set, method='KNN'):
+#     '''train_set should be a dataset labelled with targets, test_set unlabelled data.'''
     
-    methodsList=['SVC', 'KNN']
-    if method not in methodsList:
-        print('WARNING the selected method is not in {}. Exitting.'.format(methodsList))
-        return
+#     methodsList=['SVC', 'KNN']
+#     if method not in methodsList:
+#         print('WARNING the selected method is not in {}. Exitting.'.format(methodsList))
+#         return
     
-    # Reduce dimensionality
-    # rd is the transformed data, trans is the transformation.
-    rd, trans, ax = red_dim(unlabeled_set, method='UMAP', Ncomp=2, n_neighbors=4, min_dist=0.3, size=15, labels=hist, cbartitle='Cerebellar region')
+#     # Reduce dimensionality
+#     # rd is the transformed data, trans is the transformation.
+#     rd, trans, ax = red_dim(unlabeled_set, method='UMAP', Ncomp=2, n_neighbors=4, min_dist=0.3, size=15, labels=hist, cbartitle='Cerebellar region')
 
-    # Split the testing set in two bits to evaluate it
-    X_train, X_test, y_train, y_test = train_test_split(labeled_set,
-                                                    targets,
-                                                    stratify=targets,
-                                                    random_state=42)
-    # Train the SVC
-    if method=='SVC':
-        svc = SVC().fit(X_train, y_train)
-        print('SVC score on the test set:{}'.format(svc.score(X_test, y_test)))
-    elif method=='KNN':
-        knn = KNeighborsClassifier().fit(X_train, y_train)
-        print('KNN score on the test set:{}'.format(knn.score(X_test, y_test)))
+#     # Split the testing set in two bits to evaluate it
+#     X_train, X_test, y_train, y_test = train_test_split(labeled_set,
+#                                                     targets,
+#                                                     stratify=targets,
+#                                                     random_state=42)
+#     # Train the SVC
+#     if method=='SVC':
+#         svc = SVC().fit(X_train, y_train)
+#         print('SVC score on the test set:{}'.format(svc.score(X_test, y_test)))
+#     elif method=='KNN':
+#         knn = KNeighborsClassifier().fit(X_train, y_train)
+#         print('KNN score on the test set:{}'.format(knn.score(X_test, y_test)))
     
+if __name__=='__main__':
+    # Load data
+    dp_='~/Dropbox/Science/PhD/Data_Analysis/3_CircuitProfiling/SfN2018_allFeatureTableCbCtx.csv'
+    ft_=pd.read_csv(dp_, index_col='Unit')
+    ft_untagged=ft_.loc[ft_['label']==0]
+    df_PCA=ft_.copy().drop(['WVF-MainChannel', 'Histology', 'Histology_str', 'label', 'label_str', 'cluster'], axis=1)
+    df_PCA_sc = StandardScaler().fit_transform(df_PCA.values)
+    Ncomp=5
+    trans = PCA(n_components=Ncomp, svd_solver='full', random_state=42).fit(df_PCA_sc)
+    red_data = trans.transform(df_PCA_sc)
+    red_data_df = pd.DataFrame(data=red_data, columns=['Component {}'.format(i+1) for i in range(Ncomp)], index=ft_.index)
+    red_data_lh=red_data_df.join(ft_.loc[:, 'label'])
+    red_data_lh=red_data_lh.join(ft_.loc[:, 'Histology_str']) # transformed features table with 

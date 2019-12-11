@@ -61,8 +61,7 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    try:unit=int(unit)
-    except:pass
+    unit=type(unit)
     assert unit in get_units(dp)
     # Search if the variable is already saved in dp/routinesMemory
     dprm = opj(dp,'routinesMemory')
@@ -81,7 +80,10 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
             dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
             indices = np.nonzero(dataset_mask&unit_mask)[0]
             indices=np.reshape(indices, (max(indices.shape), ))
-        elif type(unit) is int:
+        else:
+            try:unit=int(unit)
+            except:pass
+        if type(unit) is int:
             spike_clusters = np.load(dp+"/spike_clusters.npy")
             indices = np.nonzero(spike_clusters==unit)[0]
             indices=np.reshape(indices, (max(indices.shape), ))

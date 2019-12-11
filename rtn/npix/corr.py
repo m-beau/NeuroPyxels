@@ -282,7 +282,6 @@ def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, trains
     if trains=={}:
         for iu, u in enumerate(U):
             # Even lists of strings can be dealt with as integers by being replaced by their indices
-            print(iu, u)
             trains[iu]=trn(dp, u, sav=True, rec_section=rec_section, prnt=prnt) # trains in samples
     else:
         assert len(trains.items())>1
@@ -324,7 +323,6 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
     phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, trains=own_trains.copy())
     units = _unique(spike_clusters)#_as_array(U) # Order of the correlogram: order of the inputted list U (replaced by its indices - see make_phy_like_spikeClustersTimes)
     n_units = len(units)
-    print(units)
     
     #### Compute crosscorrelograms
     # Shift between the two copies of the spike trains.

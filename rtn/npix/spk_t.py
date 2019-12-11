@@ -72,7 +72,7 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
         indices=np.asarray(indices, dtype='int64')
     # if not, compute it
     else:
-        if prnt: 
+        if prnt:
             print("File ids{}.npy not found in routines memory. Will be computed from source files.".format(unit))
         if type(unit) in [str, np.str_]:
             ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)

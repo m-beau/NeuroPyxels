@@ -168,15 +168,17 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         pc_fname='peak_channels_{}.npy'.format(quality)
         if op.exists(opj(dp, pc_fname)):
             peak_chans=np.load(opj(dp, pc_fname))
-            return peak_chans
+            if np.all(np.isin(units, peak_chans[:,0])):
+                return peak_chans
         else:
             save=True
     else:
         units=npa(units).flatten()
         if op.exists(opj(dp, 'peak_channels_all.npy')):
             peak_chans=np.load(opj(dp, 'peak_channels_all.npy'))
-            units_mask=np.isin(peak_chans[:,0], units)
-            return peak_chans[units_mask]
+            if np.all(np.isin(units, peak_chans[:,0])):
+                units_mask=np.isin(peak_chans[:,0], units)
+                return peak_chans[units_mask]
     
     if type(units[0])==np.str_:
         datasets={}

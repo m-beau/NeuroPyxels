@@ -5,7 +5,7 @@
 """
 
 import os
-import os.path as op
+import os.path as op; opj=op.join
 import imp
 from ast import literal_eval as ale
 import numpy as np
@@ -79,13 +79,13 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     
     '''
     # Extract metadata
-    channel_ids_abs = np.load(op.join(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
+    channel_ids_abs = np.load(opj(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
     channel_ids_rel = np.arange(channel_ids_abs.shape[0])
-    params={}; par=imp.load_source('params', op.join(dp,'params.py'))
+    params={}; par=imp.load_source('params', opj(dp,'params.py'))
     for p in dir(par):
         exec("if '__'not in '{}': params['{}']=par.{}".format(p, p, p))
     params['filter_order'] = None if params['hp_filtered'] is False else 3
-    dat_path=op.join(dp, params['dat_path'])
+    dat_path=opj(dp, params['dat_path'])
     
     # Compute traces from binary file
     item_size = np.dtype(params['dtype']).itemsize
@@ -95,7 +95,7 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     traces = ConcatenatedArrays([trc], channel_ids_abs, scaling=None) # Here, the ABSOLUTE channel indices must be used to extract the correct channels
 
     # Get spike times subset
-    spike_samples = np.load(op.join(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
+    spike_samples = np.load(opj(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
     spike_ids_subset=get_ids_subset(dp, unit, n_waveforms, wvf_batch_size, wvf_subset_selection)
     
     # Extract waveforms i.e. bits of traces at spike times subset
@@ -132,6 +132,15 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
 
 
 def get_peak_chan(dp, unit):
+    '''
+    Parameters:
+        - datapath, string
+        - unit, integer or string
+    Returns:
+        - best_channel, integer indexing the channel
+          where the unit averaged raw waveform (n=100 spanning the whole recording)
+          has the largest peak to trough amplitude.
+    '''
     dp, unit = get_prophyler_source(dp, unit)
     cm=chan_map(dp, probe_version='local')
     waveforms=wvf(dp, unit, 200)
@@ -141,9 +150,34 @@ def get_peak_chan(dp, unit):
     return cm[:,0][peak_chan]
 
 def get_depthSort_peakChans(dp, units=[], quality='all'):
+    '''
+    Usage:
+        Either feed in a list of units - the function will return their indices/channels sorted by depth in a n_units x 2 array,
+        or simply indicate units 'quality' as 'all', 'mua' or good - will behave as if you had fed the list of units of this given quality.
+    Parameters:
+        - datapath, string
+        - units, list of integers or strings
+        - quality: string, 'all', 'mua' or 'good'
+    Returns:
+        - best_channels, numpy array of shape (n_units, 2).
+          Column 1: unit indices, column 2: respective peak channel indices.
+    '''
+    save=False # can only turn True if no units are fed
     if ~np.any(units):
         units=get_units(dp, quality=quality)
-    units=npa(units)
+        pc_fname='peak_channels_{}.npy'.format(quality)
+        if op.exists(opj(dp, pc_fname)):
+            peak_chans=np.load(opj(dp, pc_fname))
+            return peak_chans
+        else:
+            save=True
+    else:
+        units=npa(units).flatten()
+        if op.exists(opj(dp, 'peak_channels_all.npy')):
+            peak_chans=np.load(opj(dp, 'peak_channels_all.npy'))
+            units_mask=np.isin(peak_chans[:,0], units)
+            return peak_chans[units_mask]
+    
     if type(units[0])==np.str_:
         datasets={}
         for iu, u in enumerate(units):
@@ -174,6 +208,9 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         depthIdx = np.argsort(peak_chans[:,1])[::-1] # From surface (high ch) to DCN (low ch)
         peak_chans=peak_chans[depthIdx]
     
+    if save:
+        np.save(opj(dp, pc_fname))
+    
     return peak_chans # units, channels
 
 
@@ -183,7 +220,7 @@ def get_chDis(dp, ch1, ch2):
     returns distance in um.'''
     assert 1<=ch1<=384
     assert 1<=ch2<=384
-    ch_pos = np.load(op.join(dp,'channel_positions.npy')) # positions in um	
+    ch_pos = np.load(opj(dp,'channel_positions.npy')) # positions in um	
     ch_pos1=ch_pos[ch1-1] # convert from ch number to ch relative index	
     ch_pos2=ch_pos[ch2-1] # convert from ch number to ch relative index	
     chDis=np.sqrt((ch_pos1[0]-ch_pos2[0])**2+(ch_pos1[1]-ch_pos2[1])**2)
@@ -207,9 +244,9 @@ def templates(dp, u):
     dp, u = get_prophyler_source(dp, u)
 
     IDs=ids(dp,u)
-    #mean_amp=np.mean(np.load(op.join(dp,'amplitudes.npy'))[IDs])
-    template_ids=np.unique(np.load(op.join(dp,'spike_templates.npy'))[IDs])
-    templates = np.load(op.join(dp, 'templates.npy'))[template_ids]#*mean_amp
+    #mean_amp=np.mean(np.load(opj(dp,'amplitudes.npy'))[IDs])
+    template_ids=np.unique(np.load(opj(dp,'spike_templates.npy'))[IDs])
+    templates = np.load(opj(dp, 'templates.npy'))[template_ids]#*mean_amp
                 
     return templates
 

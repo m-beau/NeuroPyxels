@@ -673,8 +673,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
              pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=[0,0], ccg_mn=None, ccg_std=None, again=False):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
-    bChs=get_depthSort_peakChans(dp, quality='good')
-    #bChs=bChs[]
+    bChs=get_depthSort_peakChans(dp, units=units)[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
 
     if CCG is None:

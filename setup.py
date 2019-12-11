@@ -13,5 +13,5 @@ setup(name='rtn',
       install_requires=['numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'six', 'elephant', 'vispy', 'statsmodels', 'progressbar',
       'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'pyqtgraph'],
-      dependency_links=['https://github.com/llerussell/paq2py.git'],
+      dependency_links=['https://github.com/llerussell/paq2py/tarball/master'],
       keywords='phy,data analysis,electrophysiology,neuroscience')

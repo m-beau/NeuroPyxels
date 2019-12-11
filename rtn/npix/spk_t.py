@@ -73,17 +73,22 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
     else:
         if prnt: 
             print("File ids{}.npy not found in routines memory. Will be computed from source files.".format(unit))
-        if type(unit)==str or type(unit)==np.str_:
+        if type(unit) in [str, np.str_]:
             ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)
             spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npy'))
             dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
             indices = np.nonzero(dataset_mask&unit_mask)[0]
             indices=np.reshape(indices, (max(indices.shape), ))
-        elif type(unit)==int:
+        else:
+            try:unit=int(unit)
+            except:pass
+        if type(unit) is int:
             spike_clusters = np.load(dp+"/spike_clusters.npy")
             indices = np.nonzero(spike_clusters==unit)[0]
             indices=np.reshape(indices, (max(indices.shape), ))
-                
+        if type(unit) not in [str, np.str_, int]:
+            print('WARNING unit {} type ({}) not handled!'.format(unit, type(unit)))
+            return
         # Save it
         if sav:
             np.save(dprm+'/ids{}.npy'.format(unit), indices)

@@ -673,14 +673,9 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
              pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=[0,0], ccg_mn=None, ccg_std=None, again=False):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
-    bChs=None
-    gu = get_units(dp, quality='good') # get good units
+    bChs=get_depthSort_peakChans(dp, quality='good')
+    #bChs=bChs[]
     ylim1, ylim2 = ylim[0], ylim[1]
-    # sort them by depth
-    if np.all(np.isin(units, gu)) and os.path.isfile(dp+'/FeaturesTable/FeaturesTable_good.csv'):
-        ft = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_good.csv', sep=',', index_col=0)
-        bestChs=np.array(ft["WVF-MainChannel"])
-        bChs=[bestChs[np.isin(gu, u)][0] for u in units]
 
     if CCG is None:
         CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section, again=again)

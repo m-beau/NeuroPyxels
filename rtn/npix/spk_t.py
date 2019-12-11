@@ -61,6 +61,7 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
+    print(unit, type(unit))
     assert unit in get_units(dp)
     # Search if the variable is already saved in dp/routinesMemory
     dprm = opj(dp,'routinesMemory')

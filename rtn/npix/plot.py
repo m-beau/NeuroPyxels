@@ -461,7 +461,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         ax.set_xlabel('Time (ms)', size=20)
         ax.set_xlim([-cwin*1./2, cwin*1./2])
         if type(title)!=str:
-            if type(bChs)!=list:
+            if bChs is None:
                 title="Units {}->{} ({})s".format(uls[0], uls[1], str(rec_section)[0:50].replace(' ',  ''))
             else:
                 title="Units {}@{}->{}@{} ({})s".format(uls[0], bChs[0], uls[1], bChs[1], str(rec_section)[0:50].replace(' ',  ''))
@@ -537,9 +537,10 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         ax.set_xlabel('Time (ms)', size=20)
         ax.set_xlim([-cwin*1./2, cwin*1./2])
         if type(title)!=str:
-            if type(bChs)!=list:
+            if  bChs is None:
                 title="Unit {} ({})s".format(unit, str(rec_section)[0:50].replace(' ',  ''))
             else:
+                assert len(bChs)==1
                 title="Unit {}@{} ({})s".format(unit, bChs[0], str(rec_section)[0:50].replace(' ',  ''))
         ax.set_title(title, size=22)
         ax.tick_params(labelsize=20)
@@ -650,14 +651,9 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
              pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0], acg_mn=None, acg_std=None, again=False):
     assert type(unit)==int
     saveDir=op.expanduser(saveDir)
-    bChs=None
-    gu = get_units(dp, quality='good') # get good units
+    bChs=get_depthSort_peakChans(dp, units=unit)[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
-    # sort them by depth
-    if (unit in gu) and os.path.isfile(dp+'/FeaturesTable/FeaturesTable_good.csv'):
-        ft = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_good.csv', sep=',', index_col=0)
-        bestChs=np.array(ft["WVF-MainChannel"])
-        bChs=[bestChs[np.isin(gu, unit)][0]]
+
     ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section, again=again)
     if normalize=='zscore':
         ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section)

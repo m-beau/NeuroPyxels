@@ -62,7 +62,7 @@ def ids(dp, unit, sav=True, prnt=False, again=False):
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
 
-    assert unit in get_units(dp)
+    assert unit in get_units(dp), 'WARNING unit {} not found in dataset {}!'.format(unit, dp)
     # Search if the variable is already saved in dp/routinesMemory
     dprm = opj(dp,'routinesMemory')
     if not op.isdir(dprm): os.makedirs(dprm)
@@ -125,7 +125,7 @@ def trn(dp, unit, sav=True, prnt=False, rec_section='all', again=False):
         if prnt:
             print("File trn{}.npy not found in routines memory. Will be computed from source files.".format(unit))
         
-        assert unit in get_units(dp), "{}, fed to trn function, not found in dataset!".format(unit)
+        assert unit in get_units(dp), 'WARNING unit {} not found in dataset {}!'.format(unit, dp)
         if type(unit) in [str, np.str_]:
             ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)
             spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npy'))

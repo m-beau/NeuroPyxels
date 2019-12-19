@@ -103,6 +103,20 @@ def import_GLXdata(dp, variables='all'):
 
 #%% 3) Virmen files processed by Dim's script in matlab
 
+def get_event_types():
+    dic={
+          'l': 'trial offsets for left trials',
+          'r': 'trial offsets for righttrials',
+          'c': 'trial offsets for correct trials',
+          'i': 'trial offsets for incorrect trials',
+          'lc': 'trial offsets for left correct trials',
+          'rc': 'trial offsets for left correct trials',
+          'li': 'trial offsets for left incorrect trials',
+          'ri': 'trial offsets for right incorrect trials',
+          'rr': 'reward onsets for random rewards',
+          'cr': 'reward onsets for left correct trials'}
+    return dic
+
 def get_events(dp, f_behav, event_type, trial_on_i=2, reward_i=5, cue_i=4):
     '''
     Parameters:

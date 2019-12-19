@@ -9,6 +9,8 @@ import ast
 
 import numpy as np
 import pandas as pd
+from scipy import signal as sgnl
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -20,7 +22,8 @@ from rtn.npix.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dat
 from rtn.npix.gl import get_units
 from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
 from rtn.npix.spk_t import trn
-from rtn.npix.corr import acg, ccg, gen_sfc, extract_hist_modulation_features, make_cm
+from rtn.npix.corr import acg, ccg, gen_sfc, extract_hist_modulation_features, make_cm, make_matrix_2xNevents, crosscorr_cyrille
+from rtn.npix.behav import get_processed_ifr
 from mpl_toolkits.mplot3d import axes3d
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -373,23 +376,248 @@ def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Do
     if pyqtgraph:fig[1].autoRange()
     return fig
 
-#%% Rasters
+#%% Peri-event time plots: rasters, psths...
 
-def plot_raster(spks,offset=0.0,height=1.0,colors='black',ax = None):
-    ''' Plot a raster from sets of spiketrains.
-            - "spks" is a list of spiketrains
-            - "colors" can be an array of colors
-        Joao Couto - January 2016
+def ifr_subplots(times_list, events_list, titles_list, figsize=(8,4)):
+    assert len(times_list)==len(events_list)==len(titles_list)
+    
+    fig, ax = plt.subplots(len(times_list), figsize=figsize)
+    
+    for i, (tm, ev, tt) in enumerate(zip(times_list, events_list, titles_list)):
+        ax[i]=ifr_plot(tm, ev).get_axes()[0]
+        ax[i].set_title(tt)
+    
+    return fig
+
+def ifr_plot(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
+             zscore=False, zscoretype='overall', convolve=True, gw=64, gsd=1,
+             title='', figsize=(10,4), color=seabornColorsDic[0],
+             plot_all_traces=False, zslines=False, plot_sem=True,
+             saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf'):
     '''
-    if ax is None:
-        ax = plt.gca()
-    nspks = len(spks)
-    if type(colors) is str:
-        colors = [colors]*nspks
-    for i,(sp,cc) in enumerate(zip(spks,colors)):
-        ax.vlines(sp,offset+(i*height),
-                  offset+((i+1)*height),
-                  colors=cc)
+    '''
+    # Get ifr +- zscored +- smoothed (processed)
+    x, y, y_mn, y_p, y_p_sem = get_processed_ifr(times, events, b, window, remove_empty_trials,
+                      zscore, zscoretype, convolve, gw, gsd)
+    # plot
+    fig, ax = plt.subplots(figsize=figsize)
+    ylims=[]
+    if zscore:
+        if not convolve:
+            if not plot_sem:
+                ax.bar(x, y_p, width=b, color=color, edgecolor=color, linewidth=1)
+            else:
+                ax.hlines(y_p, xmin=x, xmax=x+b, color='black', linewidth=1, zorder=12)
+                ax.bar(x, y_p+y_p_sem, width=b, edgecolor=color, linewidth=1, align='edge', fc=(1,1,1,0))
+                ax.fill_between(x=x, y1=y_p+y_p_sem, y2=y_p-y_p_sem, step='post', alpha=0.1, facecolor=color)
+                ax.fill_between(x, y_p-y_p_sem, step='post', facecolor='white', zorder=8)
+                ax.step(x, y_p-y_p_sem, color=color, where='post', linewidth=1, zorder=10)
+        else:
+            if plot_all_traces:
+                for i in range(y.shape[0]):
+                    gaussWin=sgnl.gaussian(gw, gsd)
+                    gaussWin/=sum(gaussWin) # normalize !!!! For convolution, if we want to keep the amplitude unchanged!!
+                    trace = np.convolve(y[i,:], gaussWin, mode='full')[int(gw/2):-int(gw/2-1)]
+                    ax.plot(x, trace, lw=0.3, color=color, alpha=0.2)
+            ax.plot(x, y_p, lw=1, color=color)
+            if plot_sem:
+                ax.fill_between(x, y_p-y_p_sem, y_p+y_p_sem, facecolor=color, interpolate=True, alpha=0.2)
+                ax.plot(x, y_p-y_p_sem, lw=0.5, color=color)
+                ax.plot(x, y_p+y_p_sem, lw=0.5, color=color)
+                
+        ax.plot([x[0], x[-1]], [0,0], ls="--", c=(0,0,0), lw=0.5)
+        if zslines:
+            ax.plot([x[0], x[-1]], [1,1], ls="--", c=[1,0,0], lw=1)
+            ax.plot([x[0], x[-1]], [2,2], ls="--", c=[1,0,0], lw=1)
+            ax.plot([x[0], x[-1]], [3,3], ls="--", c=[1,0,0], lw=1)
+            ax.plot([x[0], x[-1]], [-1,-1], ls="--", c=[0,0,1], lw=1)
+            ax.plot([x[0], x[-1]], [-2,-2], ls="--", c=[0,0,1], lw=1)
+            ax.plot([x[0], x[-1]], [-3,-3], ls="--", c=[0,0,1], lw=1)
+        ax.set_ylim([-1, 2])
+        ax.set_ylabel('Inst.F.R. (s.d.)')
+    
+    elif not zscore:
+        if plot_all_traces:
+            for i in range(y.shape[0]):
+                    ax.plot(x, y[i,:], lw=0.3, color=color, alpha=0.2)
+        if not convolve:
+            if not plot_sem:
+                ax.bar(x, y_p, width=b, color=color, edgecolor=color, linewidth=1)
+            else:
+                ax.hlines(y_p, xmin=x, xmax=x+b, color='black', linewidth=1, zorder=12)
+                ax.bar(x, y_p+y_p_sem, width=b, edgecolor=color, linewidth=1, align='edge', fc=(1,1,1,0), zorder=3)
+                ax.fill_between(x=x, y1=y_p+y_p_sem, y2=y_p-y_p_sem, step='post', alpha=0.2, facecolor=color)
+                ax.fill_between(x, y_p-y_p_sem, step='post', facecolor='white', zorder=8)
+                ax.step(x, y_p-y_p_sem, color=color, where='post', linewidth=1, zorder=10)
+        else:
+            ax.plot(x, y_p, lw=1.5, color=color, alpha=1)
+            if plot_sem:
+                ax.fill_between(x, y_p-y_p_sem, y_p+y_p_sem, facecolor=color, interpolate=True, alpha=0.2)
+                ax.plot(x, y_p-y_p_sem, lw=1, color=color)
+                ax.plot(x, y_p+y_p_sem, lw=1, color=color)
+        yl=max(y_p+y_p_sem); ylims.append(int(yl)+5-(yl%5));
+        ax.set_ylabel('Inst.F.R. (Hz)')
+    
+    ax.plot([0,0], ax.get_ylim(), color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
+    ax.set_xlabel('Time from event (ms).')
+    ax.set_title(title)
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    # Save data and.or figure
+    saveDir=op.expanduser(saveDir)
+    if not os.path.isdir(saveDir): os.mkdir(saveDir)
+    if saveData:
+        np.save(opj(saveDir, title+'_x.npy'), x)
+        np.save(opj(saveDir,title+'_y.npy'), y)
+        np.save(opj(saveDir,title+'_y_processed.npy'), y_p)
+        np.save(opj(saveDir,title+'_y_p_sem.npy'), y_p_sem)
+    if saveFig:
+        title='_'+title
+        fig.savefig(opj(saveDir, 'psth{}.{}'.format(title, _format)), format=_format)
+    
+    return fig
+
+# def psth(times, events, window=[-1000, 1000], binsize=1, title='',
+#            figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
+#     '''
+#     Make a peristimulus time histogram of the provided 'times' aligned on the provided 'events', from window[0] to window[1].
+    
+#     Parameters:
+#         - times: list/array of time points, in seconds.
+#         - events: list/array of events, in seconds.
+#         - windows: list/array of shape (2,), in milliseconds: the raster will be plotted from events-window[0] to events-window[1] | Default: [-1000,1000]
+#         - binsize: float, in milliseconds
+#         - title: string, title of tehe plot + if saved file name will be raster_title._format.
+#         - figsize: tuple, (x,y) figure size
+#         - saveDir: save directory to save data and figure
+#         - saevFig: boolean, if 1 saves figure with name raster_title._format at saveDir
+#         - saveData: boolean, if 1 saves data as 2D array 2xlen(times), with first line being the event index and second line the relative timestamp time in seconds.
+#         - _format: string, format used to save figure if saveFig=1 | Default: 'pdf'
+    
+#     Returns:
+#         - fig: matplotlib figure.
+#     '''
+#     # to make it across datasets: juste make a function which add +10000000seconds to the times and events of dataset 2,
+#     # concatenates them all and here you go!
+#     # use correlogram function!
+#     events_dic={0:events,1:times}
+#     events_times=make_matrix_2xNevents(events_dic)
+#     psth_full=crosscorr_cyrille(events_times[1,:], events_times[0,:], win_size=max(np.abs(window)), bin_size, fs=30000, symmetrize=True)
+    
+    
+#     if saveFig:
+#         saveDir=op.expanduser(saveDir)
+#         if not os.path.isdir(saveDir): os.mkdir(saveDir)
+#         title='_'+title
+#         fig.savefig(opj(saveDir, 'raster{}.{}'.format(title, _format)), format=_format)
+        
+#     return fig
+
+# def raster(times, events, events_toplot=None, window=[-1000, 1000], title='',
+#            figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
+#     '''
+#     Make a raster plot of the provided 'times' aligned on the provided 'events', from window[0] to window[1].
+#     By default, there will be len(events) lines. you can pick a subset of events to plot
+#     by providing their indices as a list.array with 'events_toplot'.
+    
+#     Parameters:
+#         - times: list/array of time points, in seconds.
+#         - events: list/array of events, in seconds.
+#         - events_toplot: list/array of events indices to display on the raster | Default: None (plots everything)
+#         - windows: list/array of shape (2,): the raster will be plotted from events-window[0] to events-window[1] | Default: [-1000,1000]
+#         - title: string, title of tehe plot + if saved file name will be raster_title._format.
+#         - figsize: tuple, (x,y) figure size
+#         - saveDir: save directory to save data and figure
+#         - saevFig: boolean, if 1 saves figure with name raster_title._format at saveDir
+#         - saveData: boolean, if 1 saves data as 2D array 2xlen(times), with first line being the event index and second line the relative timestamp time in seconds.
+#         - _format: string, format used to save figure if saveFig=1 | Default: 'pdf'
+    
+#     Returns:
+#         - fig: matplotlib figure.
+#     '''
+    
+#     if events_toplot is None:
+#         events_toplot=np.arange(len(events))
+#     else:
+#         assert len(events_toplot)<=len(events), 'WARNING you asked to plot more events than you provided!'
+    
+#     fig, axes = plt.subplots(figsize=figsize)
+#     for ti, trg in enumerate(triggersnames):
+#         ax=axes[ti] if len(triggersnames)>1 else axes
+        
+#         triggers = triggersDic[trg]
+#         at, atb = align_unit(dp, u, triggers, window=window) if (type(u)==int or type(u)==list) else align_licks(dp, triggers, window=window, source=licks_source)
+#         print('Number of licks/spikes:', len([item for sublist in at for item in sublist]))
+#         for i, trial in enumerate(at):
+#             ax.scatter(trial, i+1+np.zeros((len(trial))), color='black', s=2)
+#         ax.plot([0,0], ax.get_ylim(), ls='--', lw=1, color='black')
+#         if trg[0]=='C':
+#             ax.plot([-500, -500], ax.get_ylim(), ls='--', lw=1, color='black')
+#         ax.set_ylim([0, len(at)])
+#         ax.invert_yaxis()
+#         ax.set_ylabel('Trial')
+#         ax.set_xlabel('Time from {} (ms)'.format(trgnDic[trg]))
+#         ax.set_xlim(window[0], window[1])
+#     fig.suptitle(title) if len(title)!=0 else fig.suptitle('Unit {}.'.format(u))
+#     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    
+#     if saveFig:
+#         saveDir=op.expanduser(saveDir)
+#         title='_'+title
+#         fig.savefig(opj(saveDir, 'raster{}.{}'.format(title, _format)), format=_format)
+        
+#     return fig
+
+# def raster_old(dp, u, triggersnames, title='', window=[-1000,1000], show=True, licks_source = 'GLX'):
+    
+#     # Sanity check triggers
+#     if type(u)!=list:
+#         if u =='licks' and licks_source=='PAQ':
+#             triggersDic = mk_PAQtriggersDic(dp)
+#         elif type(u)==int or type(u)==float or (u =='licks' and licks_source=='GLX'):
+#             triggersDic = mk_GLXtriggersDic(dp)
+#         else:
+#             print("WARNING u must be an int, float, 'licks' or list of ints. Exitting now.")
+#             return
+#     else:
+#         for unt in u:
+#             if type(unt)!=int:
+#                 print("WARNING u must be an int, float, 'licks' or list of ints. Exitting now.")
+#                 return
+#         triggersDic = mk_GLXtriggersDic(dp)
+    
+#     trgnDic = {'RR':'random real reward onset', 'CR':'cued real reward onset', 
+#                'RF':'random fictive reward onset', 'CO':'cued omitted reward onset'}
+#     if type(triggersnames)!=list: triggersnames = list(triggersnames)
+#     try:
+#         for trgn in triggersnames:
+#             assert trgn in trgnDic.keys()
+#     except:
+#         print('WARNING the triggersname should be one of: {}. Exit now.'.format(trgnDic.keys()))
+#         return
+#     # plot
+#     fig, axes = plt.subplots(len(triggersnames), figsize=(8,2.5*len(triggersnames)))
+#     for ti, trg in enumerate(triggersnames):
+#         ax=axes[ti] if len(triggersnames)>1 else axes
+        
+#         triggers = triggersDic[trg]
+#         at, atb = align_unit(dp, u, triggers, window=window) if (type(u)==int or type(u)==list) else align_licks(dp, triggers, window=window, source=licks_source)
+#         print('Number of licks/spikes:', len([item for sublist in at for item in sublist]))
+#         for i, trial in enumerate(at):
+#             ax.scatter(trial, i+1+np.zeros((len(trial))), color='black', s=2)
+#         ax.plot([0,0], ax.get_ylim(), ls='--', lw=1, color='black')
+#         if trg[0]=='C':
+#             ax.plot([-500, -500], ax.get_ylim(), ls='--', lw=1, color='black')
+#         ax.set_ylim([0, len(at)])
+#         ax.invert_yaxis()
+#         ax.set_ylabel('Trial')
+#         ax.set_xlabel('Time from {} (ms)'.format(trgnDic[trg]))
+#         ax.set_xlim(window[0], window[1])
+#     fig.suptitle(title) if len(title)!=0 else fig.suptitle('Unit {}.'.format(u))
+#     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+#     if not show:
+#         plt.close(fig)
+#     return fig
         
 #%% Correlograms
 

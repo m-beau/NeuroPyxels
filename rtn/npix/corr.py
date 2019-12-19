@@ -36,15 +36,27 @@ def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, trains
             trains[iu]=trn(dp, u, sav=True, rec_section=rec_section, prnt=prnt) # trains in samples
     else:
         assert len(trains.items())>1
-    spikes = np.empty((2, 0))
-    for key, val in trains.items():
-        spikes = np.concatenate((spikes, np.vstack((val, np.full(val.shape, key)))), axis=1)
-    sortedIdx = np.argsort(spikes[0,:])
-    rows = np.array([[0], [1]])
-    spikes = spikes[rows, sortedIdx]
+    spikes=make_matrix_2xNevents(trains)
     spikes = spikes.astype('int64')
     return spikes[0,:], spikes[1,:] # equivalent of spike_times.npy and spike_clusters.npy
 
+def make_matrix_2xNevents(dic):
+    '''
+    Parameters:
+        - dic: dictionnary, keys are timeseries labels (eg. trials, or unit indices) and values timeseries
+        
+    Returns:
+        - 2 x Nevents numpy array, labels in first row and timestamps of respective timeserie in second row.
+          Format equivalent of hstack of spike_times.npy and spike_clusters.npy
+    '''
+    m = np.empty((2, 0))
+    for k, v in dic.items():
+        m = np.concatenate((m, np.vstack((v, np.full(v.shape, k)))), axis=1)
+    sortedIdx = np.argsort(m[0,:])
+    rows = np.array([[0], [1]])
+    m = m[rows, sortedIdx]
+    
+    return m
 
 def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True, rec_section='all', prnt=False, own_trains={}):
     '''Returns the crosscorrelation function of two spike trains.
@@ -56,6 +68,15 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
        - symmetrize (bool): symmetrize the semi correlograms. Default=True.
        - own_trains: dictionnary of trains, to calculate the CCG of an arbitrary list of trains in SAMPLES for fs=30kHz.'''
        
+    #### Get clusters and times
+    U=list(U)
+    
+    spike_times, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, trains=own_trains.copy())
+                
+    return crosscorr_cyrille(spike_times, spike_clusters, win_size, bin_size, fs, symmetrize)
+
+def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=True):
+
     #### Troubleshooting
     assert fs > 0.
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
@@ -66,15 +87,11 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
     winsize_bins = 2 * int(.5 * win_size *1./ bin_size) + 1 # Both in millisecond
     assert winsize_bins >= 1
     assert winsize_bins % 2 == 1
-
-    #### Get clusters and times
-    if type(U)!=list:
-        U=list(U)
     
-    phy_ss, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, rec_section=rec_section, prnt=prnt, trains=own_trains.copy())
+    phy_ss, spike_clusters = times, clusters
     units = _unique(spike_clusters)#_as_array(U) # Order of the correlogram: order of the inputted list U (replaced by its indices - see make_phy_like_spikeClustersTimes)
     n_units = len(units)
-    
+
     #### Compute crosscorrelograms
     # Shift between the two copies of the spike trains.
     shift = 1 # in indices of the spike times array... RESOLUTION OF 1 SAMPLE!
@@ -156,9 +173,8 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
 
 #    if normalize:
 #        correlograms = np.apply_along_axis(lambda x: x*1./np.sum(x) if np.sum(x)!=0 else x, 2, correlograms)
-                
+    
     return correlograms
-
              
 def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all', again=False):
     '''

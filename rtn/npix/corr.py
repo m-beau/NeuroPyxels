@@ -256,8 +256,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     if crosscorrelograms.shape[0]>1:
         sortedC = np.zeros(crosscorrelograms.shape)
         sortedU=np.array(sortedU)
-        for i1, u1 in enumerate(U):
-            for i2, u2 in enumerate(U):
+        for i1, u1 in enumerate(U_):
+            for i2, u2 in enumerate(U_):
                 ii1, ii2 = np.nonzero(sortedU==u1)[0], np.nonzero(sortedU==u2)[0]
                 sortedC[i1,i2,:]=crosscorrelograms[ii1, ii2, :]
     else:

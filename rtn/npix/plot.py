@@ -901,7 +901,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
     ylim1, ylim2 = ylim[0], ylim[1]
 
     if CCG is None:
-        CCG=ccg(dp, units, cbin, cwin, normalize=normalize, rec_section=rec_section, again=again)
+        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section, again=again)
         assert CCG is not None
         if normalize=='zscore':
             CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section, again=again)[0,1,:]

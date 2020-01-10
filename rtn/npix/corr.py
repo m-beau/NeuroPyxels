@@ -204,12 +204,13 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     # Preformat
     U = [U] if type(U)!=list else U
     same_ds=all(u[0] == U[0][0] for u in U) if type(U[0]) is str else False
-    for iu,u in enumerate(U):
+    U_=U.copy()
+    for iu,u in enumerate(U_):
         print(iu, 'AAAAAAAAAA', dp, u)
-        (dp1, U[iu]) = get_prophyler_source(dp, u) if same_ds else (dp, u)
-        print(iu, 'AAAAAAAAAAAA', dp1, U[iu])
+        (dp1, U_[iu]) = get_prophyler_source(dp, u) if same_ds else (dp, u)
+        print(iu, 'AAAAAAAAAAAA', dp1, U_[iu])
     dp=dp1;del dp1
-    sortedU=U.copy()
+    sortedU=U_.copy()
     sortedU.sort()
     
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)

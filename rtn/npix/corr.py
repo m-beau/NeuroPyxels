@@ -507,7 +507,7 @@ def extract_hist_modulation_features(hist, hbin, threshold=2, n_consec_bins=3, e
         - ext_mn is an external mean which can be provided rather than being calculated on the 2 lateral fifth (to measure it on a wider window for instance).
         - ext_std is an external std which can be provided rather than being calculated on the 2 lateral fifth  (measured it on a wider window for instance).
         - pkSgn can be '+', '-' or 'all' -> dictates whether to return peaks, troughs or both.
-        - win_fract_baseline: fraction  of the window used to compute the Ho mean and std, is no ext_mn or ext_std are provided. If 0.6, 0:0.3 and 0.7:1 will be used.
+        - win_fract_baseline: fraction of the window used to compute the Ho mean and std, is no ext_mn or ext_std are provided. If 0.6, 0:0.3 and 0.7:1 will be used.
         Returns:
         - peaks+troughs: [(l_ms, r_ms, y, t_ms, n_triplets, n_bincrossing, bin_heights, entropy), ...]
         where l_ms, r_ms, y, t_ms stand for left edge, right edge, y value (std), time

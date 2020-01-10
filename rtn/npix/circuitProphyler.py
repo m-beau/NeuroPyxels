@@ -105,10 +105,11 @@ class Prophyler:
     def __init__(self, datapaths, sync_idx3A=2):
 
         # Handle datapaths format 
-        typ_e=TypeError('''datapathd should be either a string to a kilosort path:
-                        'path/to/kilosort/output1'
-                        or a dict of such datapath strings:
-                        {'name_probe_1':'path/to/kilosort/output1', ...}''')
+        typ_e=TypeError('''
+        Datapath should be either a string to a kilosort path:
+        'path/to/kilosort/output1'
+        or a dict of such datapath strings:
+        {'name_probe_1':'path/to/kilosort/output1', ...}''')
         if type(datapaths) is dict:
             for i, v in datapaths.items():
                 if type(i) is not str or type(v) is not str:

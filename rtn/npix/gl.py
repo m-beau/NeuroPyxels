@@ -8,7 +8,7 @@ Dataset: Neuropixels dataset -> dp is phy directory (kilosort or spyking circus 
 """
 import os
 import os.path as op
-import ast
+from ast import literal_eval as ale
 
 import numpy as np
 import pandas as pd
@@ -75,7 +75,7 @@ def get_prophyler_source(dp_pro, u):
        Else, returns dp and u as they are.
     '''
     if op.basename(dp_pro)[:9]=='prophyler':
-        ds_i, u = u.split('_'); ds_i, u = ast.literal_eval(ds_i), ast.literal_eval(u)
+        ds_i, u = u.split('_'); ds_i, u = ale(ds_i), ale(u)
         ds_table=pd.read_csv(op.join(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
         ds_dp=ds_table['dp'][ds_i]
         assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \

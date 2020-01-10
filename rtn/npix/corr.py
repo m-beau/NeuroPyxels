@@ -30,6 +30,7 @@ from rtn.stats import pdf_normal, fractile_normal
 
 def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, trains={}):
     '''If provided, dic must be of the form {unit1:train1InSamples, unit2:...}'''
+    print('AAAAAAAAA', dp)
     if trains=={}:
         for iu, u in enumerate(U):
             # Even lists of strings can be dealt with as integers by being replaced by their indices

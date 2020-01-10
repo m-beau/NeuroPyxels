@@ -199,8 +199,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
 
     '''
     if type(normalize) != str or (normalize not in ['Counts', 'Hertz', 'Pearson', 'zscore']):
-        print("WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore']. Exitting now.")
-        return None
+        raise ValueError("WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore']. Exitting now.")
+
     # Preformat
     U = [U] if type(U)!=list else U
     same_ds=all(u[0] == U[0][0] for u in U) if type(U[0]) is str else False

@@ -205,11 +205,13 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     U = [U] if type(U)!=list else U
     same_ds=all(u[0] == U[0][0] for u in U) if type(U[0]) is str else False
     for iu,u in enumerate(U):
+        print(iu, 'AAAAAAAAAA', dp, u)
         (dp1, U[iu]) = get_prophyler_source(dp, u) if same_ds else (dp, u)
+        print(iu, 'AAAAAAAAAAAA', dp1, U[iu])
     dp=dp1;del dp1
     sortedU=U.copy()
     sortedU.sort()
-    print('AAAAAAAAA', dp)
+    
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
     # Search if the variable is already saved in dp/routinesMemory
     dprm = opj(dp,'routinesMemory')

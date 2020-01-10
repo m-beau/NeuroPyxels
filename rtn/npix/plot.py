@@ -902,14 +902,15 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
 
     if CCG is None:
         CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section, again=again)
+        assert CCG is not None
         if normalize=='zscore':
             CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section, again=again)[0,1,:]
             ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
             ccg_std=np.std(np.append(ccg25, ccg35))
             ccg_mn=np.mean(np.append(ccg25, ccg35))
-    if CCG.shape[0]==2:
-        fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, pdf, png, rec_section=rec_section, 
-                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std)
+        if CCG.shape[0]==2:
+            fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, pdf, png, rec_section=rec_section, 
+                          labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std)
     else:
         fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, pdf, png, rec_section=rec_section, 
                                labels=labels, title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)

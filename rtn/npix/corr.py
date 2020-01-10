@@ -206,9 +206,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     same_ds=all(u[0] == U[0][0] for u in U) if type(U[0]) is str else False
     U_=U.copy()
     for iu,u in enumerate(U_):
-        print(iu, 'AAAAAAAAAA', dp, u)
         (dp1, U_[iu]) = get_prophyler_source(dp, u) if same_ds else (dp, u)
-        print(iu, 'AAAAAAAAAAAA', dp1, U_[iu])
     dp=dp1;del dp1
     sortedU=U_.copy()
     sortedU.sort()

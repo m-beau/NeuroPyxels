@@ -123,17 +123,18 @@ class Prophyler:
         else:
             raise typ_e
         
-        # Make an alphabetically indexed table of all fed datasets
+        # Make an alphabetically indexed table of all fed datasets (if several)
         self.ds_table=pd.DataFrame(columns=['dataset_name', 'dp', 'probe'])
         for i, (prb, dp) in enumerate(datapaths.items()):
             self.ds_table.loc[i, 'dataset_name']=op.basename(dp)
             self.ds_table.loc[i, 'dp']=dp
             self.ds_table.loc[i, 'probe']=prb
-        self.ds_table.insert(0, 'dataset_i', self.ds_table['dataset_name'].argsort())
+        self.ds_table.insert(0, 'dataset_i', self.ds_table['dataset_name'].argsort()) # sort table by dataset_name alphabetically
         self.ds_table.sort_values('dataset_i', axis=0, inplace=True)
         self.ds_table.set_index('dataset_i', inplace=True)
         
-        # Instanciate datasets and define the prophyler path, where the 'merged' data will be saved
+        # Instanciate datasets and define the prophyler path, where the 'merged' data will be saved,
+        # together with the dataset table, holding information about the datasets (indices, names, source paths etc)
         ds_names=''
         predirname=op.dirname(self.ds_table['dp'][0])
         self.ds={}
@@ -160,48 +161,61 @@ class Prophyler:
             del ds_table
         self.ds_table.to_csv(opj(self.dp_pro, 'datasets_table.csv'))
         
-        # Create time-aligned-across-datasets spike_times.npy files
-        spike_times, spike_clusters, sync_signals = [], [], []
-        NspikesTotal=0
-        for ds_i in self.ds_table.index:
-            ds=self.ds[ds_i]
-            ons, offs = get_npix_sync(ds.dp)
-            spike_times.append(np.load(opj(ds.dp, 'spike_times.npy')).flatten())
-            spike_clusters.append(np.load(opj(ds.dp, 'spike_clusters.npy')).flatten())
-            if ds.probe_version == '3A':
-                ds.sync_chan_ons=ons[sync_idx3A]
-            elif ds.probe_version in ['1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']:
-                ds.sync_chan_ons=ons[6]
-            sync_signals.append(ds.sync_chan_ons)
-        
-        NspikesTotal=0
-        for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
-        merge_fname='merged_clusters_spikes'
-        if op.exists(opj(self.dp_pro, merge_fname+'.npy')):
-            self.merged_clusters_spikes=np.load(opj(self.dp_pro, merge_fname+'.npy'))
-        else:
-            print("Aligning spike trains...")
-            spike_times = align_timeseries(spike_times, sync_signals)
-            merged_clusters_spikes=npa(zeros=(NspikesTotal, 3), dtype=np.uint64) # 1:dataset index, 2:unit index
-            cum_Nspikes=0
-            for ds_i in self.ds_table.index:
-                Nspikes=len(spike_times[ds_i])
-                merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 0]=npa(ones=(Nspikes))*ds_i
-                merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 1]=spike_clusters[ds_i]
-                merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
-                cum_Nspikes+=Nspikes
-            merged_clusters_spikes=merged_clusters_spikes[np.argsort(merged_clusters_spikes[:,2])]
-            np.save(opj(self.dp_pro, merge_fname+'.npy'), merged_clusters_spikes)
-            del spike_times, spike_clusters, sync_signals, merged_clusters_spikes
-        
-        # Merge the units qualities
+        # Load and save units qualities
+        # + check whether datasets have been re-spike sorted if not first instanciation
+        re_spksorted=False
         qualities=pd.DataFrame(columns=['dataset_i', 'cluster_id', 'group'])
         for ds_i in self.ds_table.index:
             cl_grp = load_units_qualities(self.ds[ds_i].dp)
             cl_grp.insert(0, 'dataset_i', ds_i)
             qualities=qualities.append(cl_grp, ignore_index=True)
         qualities.set_index('dataset_i', inplace=True)
-        qualities.to_csv(opj(self.dp_pro, 'merged_cluster_group.tsv'), sep='	')
+        qualities_dp=opj(self.dp_pro, 'merged_cluster_group.tsv')
+        if op.exists(qualities_dp):
+            qualities_old=pd.read_csv(qualities_dp, sep='	')
+            # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
+            if not np.all(qualities.loc[:, 'dataset_i':'cluster_id']==qualities_old).loc[:, 'dataset_i':'cluster_id']:
+                re_spksorted=True
+        qualities.to_csv(qualities_dp, sep='	')
+
+        # If several datasets are fed to the prophyler, align their spike times.
+        if len(self.ds_table.index)>1:
+            # Only if merged_clusters_times does not exist already or does but re-spikesorting has been detected
+            merge_fname='merged_clusters_spikes'
+            if (not op.exists(opj(self.dp_pro, merge_fname+'.npy'))) or re_spksorted:
+                print("Loading independent spike trains of {} datasets...".format(len(self.ds_table.index)))
+                spike_times, spike_clusters, sync_signals = [], [], []
+                for ds_i in self.ds_table.index:
+                    ds=self.ds[ds_i]
+                    ons, offs = get_npix_sync(ds.dp)
+                    spike_times.append(np.load(opj(ds.dp, 'spike_times.npy')).flatten())
+                    spike_clusters.append(np.load(opj(ds.dp, 'spike_clusters.npy')).flatten())
+                    if ds.probe_version == '3A':
+                        ds.sync_chan_ons=ons[sync_idx3A]
+                    elif ds.probe_version in ['1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']:
+                        ds.sync_chan_ons=ons[6]
+                    sync_signals.append(ds.sync_chan_ons)
+                NspikesTotal=0
+                for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
+                
+                print("Aligning spike trains of {} datasets...".format(len(self.ds_table.index)))
+                spike_times = align_timeseries(spike_times, sync_signals)
+                merged_clusters_spikes=npa(zeros=(NspikesTotal, 3), dtype=np.uint64) # 1:dataset index, 2:unit index
+                cum_Nspikes=0
+                for ds_i in self.ds_table.index:
+                    Nspikes=len(spike_times[ds_i])
+                    merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 0]=npa(ones=(Nspikes))*ds_i
+                    merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 1]=spike_clusters[ds_i]
+                    merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
+                    cum_Nspikes+=Nspikes
+                merged_clusters_spikes=merged_clusters_spikes[np.argsort(merged_clusters_spikes[:,2])]
+                np.save(opj(self.dp_pro, merge_fname+'.npy'), merged_clusters_spikes)
+                print('{} saved at {}.'.format(merge_fname+'.npy', self.dp_pro))
+                self.merged_clusters_spikes=np.memmap(opj(self.dp_pro, merge_fname+'.npy'))
+                del spike_times, spike_clusters, sync_signals, merged_clusters_spikes
+            
+            print('{} found at {} and memory mapped at self.merged_clusters_spikes.'.format(merge_fname+'.npy', self.dp_pro))
+            self.merged_clusters_spikes=np.memmap(opj(self.dp_pro, merge_fname+'.npy'))
         
         # CREATE A KEYWORD IN CCG FUNCTION: MERGED_DATASET=TRUE OR FALSE - IF TRUE, HANDLES LOADED FILE AS 3xNspikes ARRAY RATHER THAN 2 LOADED ARRAYS
         

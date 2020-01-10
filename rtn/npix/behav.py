@@ -105,14 +105,22 @@ def import_GLXdata(dp, variables='all'):
 
 def get_event_types():
     dic={
-          'l': 'trial offsets for left trials',
-          'r': 'trial offsets for righttrials',
-          'c': 'trial offsets for correct trials',
-          'i': 'trial offsets for incorrect trials',
-          'lc': 'trial offsets for left correct trials',
-          'rc': 'trial offsets for left correct trials',
-          'li': 'trial offsets for left incorrect trials',
-          'ri': 'trial offsets for right incorrect trials',
+          'l_of': 'trial offsets for left trials',
+          'r_of': 'trial offsets for righttrials',
+          'c_of': 'trial offsets for correct trials',
+          'i_of': 'trial offsets for incorrect trials',
+          'lc_of': 'trial offsets for left correct trials',
+          'rc_of': 'trial offsets for left correct trials',
+          'li_of': 'trial offsets for left incorrect trials',
+          'ri_of': 'trial offsets for right incorrect trials',
+          'l_on': 'trial onsets for left trials',
+          'r_on': 'trial onsets for righttrials',
+          'c_on': 'trial onsets for correct trials',
+          'i_on': 'trial onsets for incorrect trials',
+          'lc_on': 'trial onsets for left correct trials',
+          'rc_on': 'trial onsets for left correct trials',
+          'li_on': 'trial onsets for left incorrect trials',
+          'ri_on': 'trial onsets for right incorrect trials',
           'rr': 'reward onsets for random rewards',
           'cr': 'reward onsets for left correct trials'}
     return dic
@@ -123,14 +131,14 @@ def get_events(dp, f_behav, event_type, trial_on_i=2, reward_i=5, cue_i=4):
         - dp: string, datapath to directory with binary file (and eventually sync_chan subdirectory)
         - f_behav: string, path to the Virmen matlab structure
         - event_type: string, type of behavioral event to return amongst
-          > 'l': trial offsets for left trials
-          > 'r': trial offsets for righttrials
-          > 'c': trial offsets for correct trials
-          > 'i': trial offsets for incorrect trials
-          > 'lc': trial offsets for left correct trials
-          > 'rc': trial offsets for left correct trials
-          > 'li': trial offsets for left incorrect trials
-          > 'ri': trial offsets for right incorrect trials
+          > 'l_on'/'l_of': trial on/offsets for left trials
+          > 'r_on'/'r_of: trial on/offsets for righttrials
+          > 'c_on'/'c_of: trial on/offsets for correct trials
+          > 'i_on'/'i_of: trial on/offsets for incorrect trials
+          > 'lc_on'/'lc_of: trial on/offsets for left correct trials
+          > 'rc_on'/'rc_of: trial on/offsets for left correct trials
+          > 'li_on'/'li_of: trial on/offsets for left incorrect trials
+          > 'ri_on'/'ri_of: trial on/offsets for right incorrect trials
           > 'rr': reward onsets for random rewards
           > 'cr': reward onsets for left correct trials
         - trial_on_i: int, index of Neuropixels sync channel with trial_on
@@ -138,11 +146,12 @@ def get_events(dp, f_behav, event_type, trial_on_i=2, reward_i=5, cue_i=4):
         - cue_i: int, index of Neuropixels sync channel with cue
     '''
     ##TODO implement movement onset and offset with wheel data
-    available_events=['l', 'r', 'c', 'i', 'lc', 'rc', 'li', 'ri', 'rr', 'cr']
+    available_events=list(get_event_types().keys())
     assert event_type in available_events, 'WARNING your need to pick an event_type out of: {}'.format(available_events)
     
     ons, ofs = get_npix_sync(dp) # sync channels onsets and offsets
-    trials_df=get_trials_dataframe(f_behav, npix_trialOns=ons[trial_on_i], npix_trialOfs=ofs[trial_on_i], npix_rewards=ons[reward_i], npix_tone_cues=ons[cue_i])
+    trials_df=get_trials_dataframe(f_behav, npix_trialOns=ons[trial_on_i], npix_trialOfs=ofs[trial_on_i], npix_rewards=ons[reward_i], npix_tone_cues=ons[cue_i],
+                                   include_wheel_data=1)
     
     mask_left=(trials_df['trialside']=='left')
     mask_right=(trials_df['trialside']=='right')
@@ -150,21 +159,37 @@ def get_events(dp, f_behav, event_type, trial_on_i=2, reward_i=5, cue_i=4):
     mask_incorrect=(trials_df['correct']==0)
     mask_rr=(trials_df['trial_type']=='random_reward')
     mask_cr=(trials_df['trial_type']=='cued_reward')
-    if event_type is 'l':
+    if event_type is 'l_of':
+        return trials_df.loc[mask_left, 'npix_movOns'].as_matrix()
+    elif event_type is 'r_on':
+        return trials_df.loc[mask_right, 'npix_movOns'].as_matrix()
+    elif event_type is 'c_on':
+        return trials_df.loc[mask_correct, 'npix_movOns'].as_matrix()
+    elif event_type is 'i_on':
+        return trials_df.loc[mask_incorrect, 'npix_movOns'].as_matrix()
+    elif event_type is 'lc_on':
+        return trials_df.loc[mask_left&mask_correct, 'npix_movOns'].as_matrix()
+    elif event_type is 'li_on':
+        return trials_df.loc[mask_left&mask_incorrect, 'npix_movOns'].as_matrix()
+    elif event_type is 'rc_on':
+        return trials_df.loc[mask_right&mask_correct, 'npix_movOns'].as_matrix()
+    elif event_type is 'ri_on':
+        return trials_df.loc[mask_right&mask_incorrect, 'npix_movOns'].as_matrix()
+    if event_type is 'l_of':
         return trials_df.loc[mask_left, 'npix_trialOfs'].as_matrix()
-    elif event_type is 'r':
+    elif event_type is 'r_of':
         return trials_df.loc[mask_right, 'npix_trialOfs'].as_matrix()
-    elif event_type is 'c':
+    elif event_type is 'c_of':
         return trials_df.loc[mask_correct, 'npix_trialOfs'].as_matrix()
-    elif event_type is 'i':
+    elif event_type is 'i_of':
         return trials_df.loc[mask_incorrect, 'npix_trialOfs'].as_matrix()
-    elif event_type is 'lc':
+    elif event_type is 'lc_of':
         return trials_df.loc[mask_left&mask_correct, 'npix_trialOfs'].as_matrix()
-    elif event_type is 'li':
+    elif event_type is 'li_of':
         return trials_df.loc[mask_left&mask_incorrect, 'npix_trialOfs'].as_matrix()
-    elif event_type is 'rc':
+    elif event_type is 'rc_of':
         return trials_df.loc[mask_right&mask_correct, 'npix_trialOfs'].as_matrix()
-    elif event_type is 'ri':
+    elif event_type is 'ri_of':
         return trials_df.loc[mask_right&mask_incorrect, 'npix_trialOfs'].as_matrix()
     elif event_type is 'rr':
         return trials_df.loc[mask_rr, 'npix_rewards'].as_matrix()
@@ -172,7 +197,7 @@ def get_events(dp, f_behav, event_type, trial_on_i=2, reward_i=5, cue_i=4):
         return trials_df.loc[mask_cr, 'npix_rewards'].as_matrix()
 
 def get_trials_dataframe(f_behav, npix_trialOns=None, npix_trialOfs=None, npix_rewards=None, npix_tone_cues=None,
-                         include_wheel_data=False, wheel_position_index=9, object_position_index=10):
+                         include_wheel_data=False, wheel_position_index=14, wheel_velocity_index=13, object_position_index=9):
     ##TODO check indices of actual wheel movements
     '''
     Loads the trials-related information from the matlab data structure outputted by Virmen.
@@ -210,18 +235,6 @@ def get_trials_dataframe(f_behav, npix_trialOns=None, npix_trialOfs=None, npix_r
     for tr in df.index:
         df.loc[tr, 'trialside'] = 'left' if (df.loc[tr, 'trialside']==1) else 'right'
     
-    # Add wheel movement
-    if include_wheel_data:
-        df["object_position"] = np.nan;df["object_position"]=df["object_position"].astype(object)
-        df["wheel_position"] = np.nan;df["wheel_position"]=df["wheel_position"].astype(object)
-        with h5py.File(f_behav, 'r') as f:
-            for tr in df.index:
-                index=f['datastruct']['paqdata']['behav']['trials']['data']
-                obj=f[index[0,0]][:][object_position_index]
-                wheel=f[index[0,0]][:][wheel_position_index]
-                df.at[tr, 'object_position'] = obj
-                df.at[tr, 'wheel_position'] = wheel
-        
     # Add trial onsets and offsets in neuropixels time frame
     if npix_trialOns is not None:
         assert len(npix_trialOns)==len(df.index)
@@ -229,7 +242,24 @@ def get_trials_dataframe(f_behav, npix_trialOns=None, npix_trialOfs=None, npix_r
     if npix_trialOfs is not None:
         assert len(npix_trialOfs)==len(df.index)
         df['npix_trialOfs']=npix_trialOfs
-    
+
+    # Add wheel movement
+    if include_wheel_data:
+        df["object_position"] = np.nan;df["object_position"]=df["object_position"].astype(object)
+        df["wheel_position"] = np.nan;df["wheel_position"]=df["wheel_position"].astype(object)
+        df["wheel_velocity"] = np.nan;df["wheel_position"]=df["wheel_position"].astype(object)
+        with h5py.File(f_behav, 'r') as f:
+            for tr in df.index:
+                index=f['datastruct']['paqdata']['behav']['trials']['data']
+                obj=f[index[0,0]][:][object_position_index]
+                wheel_p=f[index[0,0]][:][wheel_position_index]
+                wheel_v=f[index[0,0]][:][wheel_velocity_index]
+                df.at[tr, 'object_position'] = obj
+                df.at[tr, 'wheel_position'] = wheel_p
+                df.at[tr, 'wheel_velocity'] = wheel_v
+                if npix_trialOns is not None:
+                    df.at[tr, 'npix_movOns'] = get_weel_movement_onset(wheel_velocity=wheel_v, npix_trialOn=df.at[tr, 'npix_trialOns'], paq_fs=5000)
+
     # Append random rewards, cued or not, at the end of the dataframe
     if npix_trialOfs is not None and npix_rewards is not None:
         rews=[]

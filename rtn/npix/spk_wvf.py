@@ -162,8 +162,10 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         - best_channels, numpy array of shape (n_units, 2).
           Column 1: unit indices, column 2: respective peak channel indices.
     '''
-    save=False # can only turn True if no units are fed
+    save=False # can only turn True if no (i.e. all) units are fed
     if ~np.any(units):
+        # If no units, load them all from dataset
+        # and prepare to save the FULL array of peak channels at the end
         units=get_units(dp, quality=quality)
         pc_fname='peak_channels_{}.npy'.format(quality)
         if op.exists(opj(dp, pc_fname)):
@@ -173,6 +175,8 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         else:
             save=True
     else:
+        # If units are fed, try to load the peak channels from the saved FULL array of peak channels
+        # else, just calculate the peak channels for the relevant units
         units=npa(units).flatten()
         if op.exists(opj(dp, 'peak_channels_all.npy')):
             peak_chans=np.load(opj(dp, 'peak_channels_all.npy'))
@@ -211,7 +215,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         peak_chans=peak_chans[depthIdx]
     
     if save:
-        np.save(opj(dp, pc_fname))
+        np.save(opj(dp, pc_fname), peak_chans)
     
     return peak_chans # units, channels
 

@@ -301,79 +301,8 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
 
     return autocorrelogram
 
-''''''
-#%% Power spectrum of autocorrelograms
-    
-def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=30000, ret=True, sav=True, prnt=True):
-    '''
-    ********
-    routine from routines_spikes
-    computes Power Density Spectrum - float64, in V**2/Hertz
-    ********
-    
-    - dp (string): DataPath to the Neuropixels dataset.
-    - u (list of ints): list of units indices
-    - bin_size: size of bins of binarized trains, in milliseconds.
-    (see scipy.signal.csd for below)
-    - window: Desired window to use. 
-    - nprerseg: Length of each segment.
-    - scaling: 'density' (Cross spectral density: V**2/Hz) or 'spectrum' (Cross spectrum: V**2)
-    - ret (bool - default False): if True, train returned by the routine.
-      if False, by definition of the routine, drawn to global namespace.
-      - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
-    
-      returns numpy array (Nunits, Nunits, nperseg/2+1)'''
-    # Preformat
-    dp=str(dp)
-    U = [U] if type(U)!=list else U
-    sortedU=list(np.sort(np.array(U)))
-    
-    # Search if the variable is already saved in dp/routinesMemory
-    dprm = dp+'/routinesMemory'
-    if not os.path.isdir(dprm):
-        os.makedirs(dprm)
-    if os.path.exists(dprm+'/PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_'))):
-        if prnt: print("File PSDxy{}_{}.npy found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
-        Pxy = np.load(dprm+'/PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_')))
-        Pxy = Pxy.astype(np.float64)
-    
-    # if not, compute it
-    else:
-        if prnt: print("File ccg_{}_{}.npy not found in routines memory. Will be computed from source files.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
-        Pxy = np.empty((len(sortedU), len(sortedU), int(nperseg/2)+1), dtype=np.float64)
-        for i, u1 in enumerate(sortedU):
-            trnb1 = trnb(dp, u1, bin_size)
-            for j, u2 in enumerate(sortedU):
-                trnb2 = trnb(dp, u2, bin_size)
-                (f, Pxy[i, j, :]) = sgnl.csd(trnb1, trnb2, fs=fs, window=window, nperseg=nperseg, scaling=scaling)
-        Pxy = Pxy.astype(np.float64)
-        # Save it
-        if sav:
-            np.save(dprm+'/PSDxy{}_{}.npy'.format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')), Pxy)
-    
-    # Back to the original order
-    sPxy = np.zeros(Pxy.shape)
-    sortedU=np.array(sortedU)
-    for i1, u1 in enumerate(U):
-        for i2, u2 in enumerate(U):
-            ii1, ii2 = np.nonzero(sortedU==u1)[0], np.nonzero(sortedU==u2)[0]
-            sPxy[i1,i2,:]=Pxy[ii1, ii2, :]
-    
-    # Either return or draw to global namespace
-    if ret:
-        PXY=sPxy.copy()
-        del sPxy
-        f = np.linspace(0, 15000, int(nperseg/2)+1)
-        return f, PXY
-    else:
-        # fn_ = ''
-        # for i in range(len(U)):
-        #     fn_+='_'+str(U[i])
-        # if prnt: print("PSDxy{}_{} and f defined into global namespace.".format(fn_, str(bin_size).replace('.','_')))
-        # exec("PSDxy{}_{} = sPxy".format(fn_, str(bin_size).replace('.','_')), globals())
-        del sPxy
 
-''''''
+
 #%% Pairwise correlations matrix and population coupling
 
 from elephant.spike_train_generation import SpikeTrain
@@ -1250,3 +1179,73 @@ def spike_time_tiling_coefficient(L, dt, dp):
                     1 - PB * TA)
     return index
 
+#%% Power spectrum of autocorrelograms
+    
+def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=30000, ret=True, sav=True, prnt=True):
+    '''
+    ********
+    routine from routines_spikes
+    computes Power Density Spectrum - float64, in V**2/Hertz
+    ********
+    
+    - dp (string): DataPath to the Neuropixels dataset.
+    - u (list of ints): list of units indices
+    - bin_size: size of bins of binarized trains, in milliseconds.
+    (see scipy.signal.csd for below)
+    - window: Desired window to use. 
+    - nprerseg: Length of each segment.
+    - scaling: 'density' (Cross spectral density: V**2/Hz) or 'spectrum' (Cross spectrum: V**2)
+    - ret (bool - default False): if True, train returned by the routine.
+      if False, by definition of the routine, drawn to global namespace.
+      - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
+    
+      returns numpy array (Nunits, Nunits, nperseg/2+1)'''
+    # Preformat
+    dp=str(dp)
+    U = [U] if type(U)!=list else U
+    sortedU=list(np.sort(np.array(U)))
+    
+    # Search if the variable is already saved in dp/routinesMemory
+    dprm = dp+'/routinesMemory'
+    if not os.path.isdir(dprm):
+        os.makedirs(dprm)
+    if os.path.exists(dprm+'/PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_'))):
+        if prnt: print("File PSDxy{}_{}.npy found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
+        Pxy = np.load(dprm+'/PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_')))
+        Pxy = Pxy.astype(np.float64)
+    
+    # if not, compute it
+    else:
+        if prnt: print("File ccg_{}_{}.npy not found in routines memory. Will be computed from source files.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
+        Pxy = np.empty((len(sortedU), len(sortedU), int(nperseg/2)+1), dtype=np.float64)
+        for i, u1 in enumerate(sortedU):
+            trnb1 = trnb(dp, u1, bin_size)
+            for j, u2 in enumerate(sortedU):
+                trnb2 = trnb(dp, u2, bin_size)
+                (f, Pxy[i, j, :]) = sgnl.csd(trnb1, trnb2, fs=fs, window=window, nperseg=nperseg, scaling=scaling)
+        Pxy = Pxy.astype(np.float64)
+        # Save it
+        if sav:
+            np.save(dprm+'/PSDxy{}_{}.npy'.format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')), Pxy)
+    
+    # Back to the original order
+    sPxy = np.zeros(Pxy.shape)
+    sortedU=np.array(sortedU)
+    for i1, u1 in enumerate(U):
+        for i2, u2 in enumerate(U):
+            ii1, ii2 = np.nonzero(sortedU==u1)[0], np.nonzero(sortedU==u2)[0]
+            sPxy[i1,i2,:]=Pxy[ii1, ii2, :]
+    
+    # Either return or draw to global namespace
+    if ret:
+        PXY=sPxy.copy()
+        del sPxy
+        f = np.linspace(0, 15000, int(nperseg/2)+1)
+        return f, PXY
+    else:
+        # fn_ = ''
+        # for i in range(len(U)):
+        #     fn_+='_'+str(U[i])
+        # if prnt: print("PSDxy{}_{} and f defined into global namespace.".format(fn_, str(bin_size).replace('.','_')))
+        # exec("PSDxy{}_{} = sPxy".format(fn_, str(bin_size).replace('.','_')), globals())
+        del sPxy

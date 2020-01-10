@@ -27,7 +27,6 @@ from rtn.utils import seabornColorsDic, npa, thresh
 from rtn.npix.io import get_npix_sync
 from rtn.npix.spk_t import trn, trnb, isi
 from rtn.npix.corr import ccg
-from rtn.npix.plot import hist_MB
 
 #%% Import time stamps from PaqIO
 

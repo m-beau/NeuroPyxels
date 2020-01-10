@@ -163,7 +163,8 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
           Column 1: unit indices, column 2: respective peak channel indices.
     '''
     save=False # can only turn True if no (i.e. all) units are fed
-    if ~np.any(units):
+    
+    if not any(units):
         # If no units, load them all from dataset
         # and prepare to save the FULL array of peak channels at the end
         units=get_units(dp, quality=quality)

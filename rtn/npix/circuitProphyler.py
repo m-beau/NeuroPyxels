@@ -174,7 +174,7 @@ class Prophyler:
         if op.exists(qualities_dp):
             qualities_old=pd.read_csv(qualities_dp, sep='	')
             # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
-            if not np.all(qualities.loc[:, 'dataset_i':'cluster_id']==qualities_old).loc[:, 'dataset_i':'cluster_id']:
+            if not np.all(qualities.loc[:, 'dataset_i':'cluster_id']==qualities_old.loc[:, 'dataset_i':'cluster_id']):
                 re_spksorted=True
         qualities.to_csv(qualities_dp, sep='	')
 

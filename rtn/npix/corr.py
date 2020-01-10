@@ -30,7 +30,6 @@ from rtn.stats import pdf_normal, fractile_normal
 
 def make_phy_like_spikeClustersTimes(dp, U, rec_section='all', prnt=True, trains={}):
     '''If provided, dic must be of the form {unit1:train1InSamples, unit2:...}'''
-    print('AAAAAAAAA', dp)
     if trains=={}:
         for iu, u in enumerate(U):
             # Even lists of strings can be dealt with as integers by being replaced by their indices
@@ -210,7 +209,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     dp=dp1;del dp1
     sortedU=U.copy()
     sortedU.sort()
-    
+    print('AAAAAAAAA', dp)
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
     # Search if the variable is already saved in dp/routinesMemory
     dprm = opj(dp,'routinesMemory')

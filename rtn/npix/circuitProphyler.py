@@ -172,7 +172,7 @@ class Prophyler:
         qualities.set_index('dataset_i', inplace=True)
         qualities_dp=opj(self.dp_pro, 'merged_cluster_group.tsv')
         if op.exists(qualities_dp):
-            qualities_old=pd.read_csv(qualities_dp, sep='	')
+            qualities_old=pd.read_csv(qualities_dp, sep='	', index_col='dataset_i')
             # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
             if not np.all(qualities.loc[:, 'dataset_i':'cluster_id']==qualities_old.loc[:, 'dataset_i':'cluster_id']):
                 re_spksorted=True

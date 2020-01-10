@@ -701,11 +701,11 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         saveDir=op.expanduser(saveDir)
         if not os.path.isdir(saveDir): os.mkdir(saveDir)
         if saveFig:
-            if pdf: fig.savefig(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}.pdf'%(uls[0], uls[1], cwin, cbin))
-            if png: fig.savefig(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}.png'%(uls[0], uls[1], cwin, cbin))
+            if pdf: fig.savefig(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}.pdf'.format(uls[0], uls[1], cwin, cbin))
+            if png: fig.savefig(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}.png'.format(uls[0], uls[1], cwin, cbin))
         if saveData:
-            np.save(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}_x.npy'%(uls[0], uls[1], cwin, cbin), x)
-            np.save(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}_y.npy'%(uls[0], uls[1], cwin, cbin), CCG)
+            np.save(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}_x.npy'.format(uls[0], uls[1], cwin, cbin), x)
+            np.save(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}_y.npy'.format(uls[0], uls[1], cwin, cbin), CCG)
         
     return fig
         

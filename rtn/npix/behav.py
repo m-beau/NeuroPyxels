@@ -10,6 +10,7 @@ import os.path as op; opj=op.join
 import h5py
 from ast import literal_eval as ale
 
+import math
 import numpy as np
 import scipy as sp
 import pandas as pd
@@ -27,6 +28,84 @@ from rtn.utils import seabornColorsDic, npa, thresh
 from rtn.npix.io import get_npix_sync
 from rtn.npix.spk_t import trn, trnb, isi
 from rtn.npix.corr import ccg
+
+#%% Process video data
+
+
+def monitor_rotary(a, b, aPrev, bPrev, sgn=1):
+    '''
+    Estimates live if a rotary encoder has been rotated,
+    based on current and past states of channels A and B.
+    
+    Can be used in a for loop or live as a video streams.
+    
+    Parameters:
+        - a: current state of channel A
+        - b: current state of channel B
+        - aPrev: previsous state of channel A
+        - bPrev: previous state of channel B
+        - sgn: 1 or -1, defines whether 'clockwise' is positive or negative movement
+        
+    Returns:
+        - step: increment of the rotary encoder
+    '''
+    assert sgn==1 or sgn==-1, 'WARNING sgn should be either -1 or 1!!'
+    
+    step=0
+    # If a state changed:
+    if a!=aPrev:
+        # if a and b states are different, the wheel moved clockwise
+        if b!=a:
+            step=1
+        # else, anticlockwise
+        else:
+            step=-1
+    # If b state changed (added to make the resolution 0.5 increments, not 1 increment):
+    elif b!=bPrev:
+        # if a and b states are different, the wheel moved anticlockwise
+        if b!=a:
+            step=-1
+        # else, clockwise
+        else:
+            step=1
+    
+    return step*sgn
+
+
+def convert_rot_to_pos(A, B, sr=100, d=200, rot_res=628, sgn=1):
+    '''
+    Converts array of rotary encoder channels data acquired at given rate
+    to array of wheel position from 0 to max, in mm.
+    
+    Parameters:
+        - A: np array of size Nframes, A channel values of rotary encoder
+        - B: same for B channel
+        - sr: sampling rate of video, in Hz
+        - d: diameter of wheel, in mm
+        - rot_res: rotary resolution, number of increments on the rotary perimeter
+        - sgn: 1 or -1, defines whether 'clockwise' is positive or negative movement
+        
+    Returns:
+        - P: np array of size Nframes, positions on the wheel with 0 being position at t=0
+    '''
+    
+    # Assert A and B arrays have same length and are binary
+    assert len(A)==len(B)
+    assert np.array_equal(A, A.astype(bool)) and np.array_equal(B, B.astype(bool))
+    
+    # Generate positions array - unit is half increments
+    P=npa(zeros=(len(A)))
+    aPrev, bPrev = A[0], B[0]
+    for i, (a,b) in enumerate(zip(A[1:],B[1:])):
+        P[i+1]=P[i]+monitor_rotary(a, b, aPrev, bPrev, sgn)
+        if a!=aPrev:aPrev=a
+        if b!=bPrev:bPrev=b
+            
+    # Convert half-increments to mm
+    inc_mm=np.round(d*math.pi/rot_res, 2) # perimeter/N increments
+    P=P*inc_mm/2 # half-increments
+    
+    return P
 
 #%% Import time stamps from PaqIO
 

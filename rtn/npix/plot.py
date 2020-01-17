@@ -877,7 +877,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
              pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0], acg_mn=None, acg_std=None, again=False):
-    assert type(unit)==int
+
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=unit)[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]

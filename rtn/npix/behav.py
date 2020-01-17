@@ -29,7 +29,12 @@ from rtn.npix.io import get_npix_sync
 from rtn.npix.spk_t import trn, trnb, isi
 from rtn.npix.corr import ccg
 
+import cv2
+
 #%% Process video data
+
+def 
+
 
 
 def monitor_rotary(a, b, aPrev, bPrev, sgn=1):

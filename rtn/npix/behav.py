@@ -33,10 +33,6 @@ import cv2
 
 #%% Process video data
 
-def 
-
-
-
 def monitor_rotary(a, b, aPrev, bPrev, sgn=1):
     '''
     Estimates live if a rotary encoder has been rotated,

@@ -561,7 +561,6 @@ class Prophyler:
             use_edge_key=False
 
         npe=self.get_edges(prophylerGraph=prophylerGraph, src_graph=src_graph)
-        [(mese[0], mese[1], ale(str(mese[2]))) for mese in me_subedges]
         edges_list_idx=npa([])
         for e in edges_list:
             try:

@@ -989,11 +989,12 @@ def map_sfcdf_on_graph(sfcdf, g, cbin, cwin, threshold, n_consec_bins):
                         make_edges=True
                     else:
                         if u1<u2:
-                            make_edges=True
+                            make_edges=True # edges are undirected, directions is deduced from attributes uSrc and uTrg
                     if make_edges:
                         for p in pks:
                             g.add_edge(u1, u2, uSrc=u1, uTrg=u2, 
                                        amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=0,
+                                       n_triplets=p[4], n_bincrossing=p[5], bin_heights=p[6], entropy=p[7],
                                        criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'nConsecBins':n_consec_bins})
                 except:
                     print('WARNING could not recover peak infos of {} and {}'.format(u1, u2))

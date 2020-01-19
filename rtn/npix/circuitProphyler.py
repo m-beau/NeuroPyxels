@@ -514,10 +514,13 @@ class Prophyler:
         # Select edges to keep if necessary
         if edges_list is None:
             dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=src_graph)
+            if not any(dfe):
+                print('WARNING prophyler.keep_edges function called but resulted in all edges being kept!')
+                return g
             if 'main' in edges_type:
                 if not np.any(dfe):
                     print('WARNING no edges found in graph{}! Use the method connect_graph() first. aborting.')
-                    return
+                    #return
                 #dfe.reset_index(inplace=True) # turn node1, node 2 and key in columns
                 keys=dfe.index.get_level_values('key')
                 # multiedges are rows where key is 1 (or more)- to get the list of edges with more than 1 edge, get unit couples with at least key=1
@@ -551,14 +554,11 @@ class Prophyler:
             else: # includes 'all'
                 edges_list=[]
         
-        if edges_list is []:
+        if not any(edges_list):
             print('WARNING prophyler.keep_edges function called but resulted in all edges being kept!')
             return g
             
-        # Drop edges not in the list of edges to keep
-        if not any(edges_list):
-            print(edges_list)
-            return
+
         if use_edge_key and len(edges_list[0])!=3:
             print('WARNING use_edge_key is set to True but edges of provided edges_list do not contain any key. Setting use_edge_key to False-> every edges between given pairs of nodes will be kept.')
             use_edge_key=False
@@ -716,7 +716,6 @@ class Prophyler:
         if keep_edges_types is not None:
             if type(keep_edges_types)!=list: keep_edges_types = [keep_edges_types]
             for et in keep_edges_types:assert et in ['-', '+', 'ci', 'main']
-            
             self.keep_edges(edges_type=keep_edges_types, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
         
         ew = [self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph) for e in g_plt.edges]

@@ -185,7 +185,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
                 units_mask=np.isin(peak_chans[:,0], units)
                 return peak_chans[units_mask]
     
-    if type(units[0])==np.str_:
+    if type(units[0])==np.str_ or type(units[0])==str:
         datasets={}
         for iu, u in enumerate(units):
             ds_i, u = u.split('_'); ds_i, u = ale(ds_i), ale(u)
@@ -207,7 +207,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
             peak_chans=np.vstack([peak_chans, peak_chans_dic[ds_i]])
 
     else:
-        peak_chans=npa(zeros=(units.shape[0],2),dtype='int64')
+        peak_chans=npa(zeros=(len(units),2),dtype='int64')
         for iu, u in enumerate(units):
             print("Getting peak channel of unit {}...".format(u))
             peak_chans[iu,0] = u

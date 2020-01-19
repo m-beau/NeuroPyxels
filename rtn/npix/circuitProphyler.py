@@ -513,7 +513,7 @@ class Prophyler:
         
         # Select edges to keep if necessary
         if edges_list is None:
-            print('AHAHAHA', prophylerGraph, src_graph)
+            print('AHAHAHA', prophylerGraph, src_graph.__repr__())
             dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=src_graph)
             if not any(dfe):
                 print('WARNING prophyler.keep_edges function called but the provided graph does not seem to have any edges to work on!')

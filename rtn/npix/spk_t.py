@@ -8,6 +8,7 @@ import os.path as op; opj=op.join
 from ast import literal_eval as ale
 
 import numpy as np
+import pandas as pd
                     
 from rtn.npix.gl import get_units
 from rtn.npix.io import read_spikeglx_meta
@@ -128,10 +129,17 @@ def trn(dp, unit, sav=True, prnt=False, rec_section='all', again=False):
         assert unit in get_units(dp), 'WARNING unit {} not found in dataset {}!'.format(unit, dp)
         if type(unit) in [str, np.str_]:
             ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)
-            spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npy'))
-            dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
-            train = spike_clusters_samples[dataset_mask&unit_mask, 2]
-            train=np.reshape(train, (max(train.shape), )).astype(np.int64)
+            ds_table=pd.read_csv(opj(dp, 'datasets_table.csv'), index_col='dataset_i')
+            if ds_table.shape[0]>1: # If several datasets in prophyler
+                spike_clusters_samples = np.load(opj(dp, 'merged_clusters_spikes.npy'))
+                dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
+                train = spike_clusters_samples[dataset_mask&unit_mask, 2]
+                train=np.reshape(train, (max(train.shape), )).astype(np.int64)
+            else:
+                spike_clusters = np.load(opj(ds_table['dp'][0],"spike_clusters.npy"))
+                spike_samples = np.load(opj(ds_table['dp'][0],'spike_times.npy'))
+                train = spike_samples[spike_clusters==unit]
+                train=np.reshape(train, (max(train.shape), )).astype(np.int64)
         else:
             try:unit=int(unit)
             except:pass

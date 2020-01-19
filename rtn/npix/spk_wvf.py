@@ -185,7 +185,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
                 units_mask=np.isin(peak_chans[:,0], units)
                 return peak_chans[units_mask]
     
-    if type(units[0])==np.str_ or type(units[0])==str:
+    if type(units[0]) in [str, np.str_]:
         datasets={}
         for iu, u in enumerate(units):
             ds_i, u = u.split('_'); ds_i, u = ale(ds_i), ale(u)

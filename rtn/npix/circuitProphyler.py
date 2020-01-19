@@ -513,15 +513,14 @@ class Prophyler:
         
         # Select edges to keep if necessary
         if edges_list is None:
-            print('AHAHAHA', prophylerGraph, src_graph.__repr__())
             dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=src_graph)
             if not any(dfe):
                 print('WARNING prophyler.keep_edges function called but the provided graph does not seem to have any edges to work on!')
                 return g
             if 'main' in edges_type:
-                if not np.any(dfe):
+                if not any(dfe):
                     print('WARNING no edges found in graph{}! Use the method connect_graph() first. aborting.')
-                    #return
+                    return
                 #dfe.reset_index(inplace=True) # turn node1, node 2 and key in columns
                 keys=dfe.index.get_level_values('key')
                 # multiedges are rows where key is 1 (or more)- to get the list of edges with more than 1 edge, get unit couples with at least key=1
@@ -551,9 +550,6 @@ class Prophyler:
                 
             if 'ci' in edges_type:
                 edges_list=dfe.index[(amp>0)&(t>-t_asym)&(t<t_asym)].tolist()
-                
-            else: # includes 'all'
-                edges_list=[]
         
         if not any(edges_list):
             print('WARNING prophyler.keep_edges function called but resulted in all edges being kept!')

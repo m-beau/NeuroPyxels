@@ -138,7 +138,7 @@ def trn(dp, unit, sav=True, prnt=False, rec_section='all', again=False):
             else:
                 spike_clusters = np.load(opj(ds_table['dp'][0],"spike_clusters.npy"))
                 spike_samples = np.load(opj(ds_table['dp'][0],'spike_times.npy'))
-                train = spike_samples[spike_clusters==unit]
+                train = spike_samples[spike_clusters==unt]
                 train=np.reshape(train, (max(train.shape), )).astype(np.int64)
         else:
             try:unit=int(unit)

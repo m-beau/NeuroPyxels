@@ -579,6 +579,7 @@ class Prophyler:
                 print('WARNING edge {} does not exist in graph {}! Abort.'.format(e, g))
         edges_list_idx=npa(edges_list_idx, dtype=np.int64).flatten()
         edges_to_remove=npe[~np.isin(np.arange(len(npe)),edges_list_idx)]
+        edges_to_remove=[(etr[0], etr[1], ale(str(etr[2]))) for etr in edges_to_remove] #handles case when key is string due to Utype of np array due to string type of units
         g.remove_edges_from(edges_to_remove)
         return g
     

@@ -230,7 +230,7 @@ class Prophyler:
         for ds_i in self.ds_table.index:
             ds=self.ds[ds_i]
             ds.get_peak_positions()
-            for u, pos in ds.peak_positions:
+            for u, pos in ds.peak_positions.items():
                 self.peak_positions['{}_{}'.format(ds_i,u)]=pos+npa([100,0])*ds_i # Every dataset is offset by 100um on x
             for u in ds.get_good_units():
                 unit=Unit(ds, u, self.undigraph) # Units are added to the same graph when initialized, even from different source datasets

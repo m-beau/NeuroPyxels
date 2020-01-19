@@ -515,7 +515,7 @@ class Prophyler:
                     return
                 #dfe.reset_index(inplace=True) # turn node1, node 2 and key in columns
                 keys=dfe.index.get_level_values('key')
-                # multiedges are rows where key is 1 or more - to get the list of edges with more than 1 edge, get unit couples with key=1
+                # multiedges are rows where key is 1 (or more)- to get the list of edges with more than 1 edge, get unit couples with at least key=1
                 multiedges=npa(dfe.index[keys==1].tolist())
                 multiedges[:,:2]=np.sort(multiedges[:,:2], axis=1)
                 multiedges=np.unique(multiedges, axis=0)
@@ -523,7 +523,7 @@ class Prophyler:
                 npe=self.get_edges(prophylerGraph='undigraph', src_graph=src_graph)
                 for me in multiedges:
                     me_subedges=npe[(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0])))]
-                    me_subedges=[tuple(mese) for mese in me_subedges]
+                    me_subedges=[(mese[0], mese[1], ale(str(mese[2]))) for mese in me_subedges]
                     me_amps=dfe['amp'][me_subedges]
                     subedge_to_keep=me_amps.index[me_amps.abs()==me_amps.abs().max()]
                     subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()

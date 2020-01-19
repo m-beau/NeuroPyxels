@@ -499,7 +499,7 @@ class Prophyler:
         if src_graph is provided, operations are performed on it and the resulting graph is returned.
         else, nothing is returned since operations are performed on self attribute undigraph or digraph.
         
-        edges_type must be in ['main', '-', '+', 'ci']# ci stands for common input.
+        edges_type must be in ['main', '-', '+', 'ci'] or a list of these # ci stands for common input.
         If edges_list is not None, the edges_list is kept and edges_type argument is ignored.
         '''
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
@@ -507,12 +507,14 @@ class Prophyler:
         if edges_list is None and edges_type is None:
             print('WARNING you should not call keep_edges() without providing any edges_list or edges_type to keep. Aborting.')
             return
-        assert edges_type in ['main', '-', '+', 'ci']# ci stands for common input
+        
+        edges_type=list(edges_type)
+        for et in edges_type: assert et in ['main', '-', '+', 'ci']# ci stands for common input
         
         # Select edges to keep if necessary
         if edges_list is None:
             dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=src_graph)
-            if edges_type=='main':
+            if 'main' in edges_type:
                 if not np.any(dfe):
                     print('WARNING no edges found in graph{}! Use the method connect_graph() first. aborting.')
                     return
@@ -535,35 +537,39 @@ class Prophyler:
 
             amp=dfe.loc[:,'amp']
             t=dfe.loc[:, 't']
-            if edges_type=='-':
+            if '-' in edges_type:
                 edges_list=dfe.index[(amp<0)&((t<-t_asym)|(t>t_asym))].tolist()
                 
-            elif edges_type=='+':
+            if '+' in edges_type:
                 ci=dfe.index[(amp>0)&(t>-t_asym)&(t<t_asym)].tolist()
                 edges_list=dfe.index[(amp>0)&((t<-t_asym)|(t>t_asym))].tolist()
                 [edges_list.remove(ci_e) for ci_e in ci]
                 
-            elif edges_type=='ci':
+            if 'ci' in edges_type:
                 edges_list=dfe.index[(amp>0)&(t>-t_asym)&(t<t_asym)].tolist()
                 
             else: # includes 'all'
                 edges_list=[]
         
+        if edges_list is []:
+            print('WARNING prophyler.keep_edges function called but resulted in all edges being kept!')
+            return g
+            
         # Drop edges not in the list of edges to keep
         if use_edge_key and len(edges_list[0])!=3:
             print('WARNING use_edge_key is set to True but edges of provided edges_list do not contain any key. Setting use_edge_key to False-> every edges between given pairs of nodes will be kept.')
             use_edge_key=False
-        if len(edges_list)==0:
-            return g
+
         npe=self.get_edges(prophylerGraph=prophylerGraph, src_graph=src_graph)
+        [(mese[0], mese[1], ale(str(mese[2]))) for mese in me_subedges]
         edges_list_idx=npa([])
         for e in edges_list:
             try:
                 if use_edge_key:
                     if g.__class__ is nx.classes.multidigraph.MultiDiGraph:
-                        edges_list_idx=np.append(edges_list_idx, np.nonzero(((npe[:,0]==e[0])&(npe[:,1]==e[1])&(npe[:,2]==e[2])))[0])
+                        edges_list_idx=np.append(edges_list_idx, np.nonzero(((npe[:,0]==e[0])&(npe[:,1]==e[1])&((npe[:,2]==e[2])|(npe[:,2]==str(e[2])))))[0])
                     elif g.__class__ is nx.classes.multigraph.MultiGraph:
-                        edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1])&(npe[:,2]==e[2]))|((npe[:,0]==e[1])&(npe[:,1]==e[0])&(npe[:,2]==e[2]))))[0])
+                        edges_list_idx=np.append(edges_list_idx, np.nonzero((((npe[:,0]==e[0])&(npe[:,1]==e[1])&((npe[:,2]==e[2])|(npe[:,2]==str(e[2]))))|((npe[:,0]==e[1])&(npe[:,1]==e[0])&((npe[:,2]==e[2])|(npe[:,2]==str(e[2]))))))[0])
                 else:
                     if g.__class__ is nx.classes.multidigraph.MultiDiGraph:
                         edges_list_idx=np.append(edges_list_idx, np.nonzero(((npe[:,0]==e[0])&(npe[:,1]==e[1])))[0])
@@ -706,9 +712,9 @@ class Prophyler:
             self.keep_edges(edges_list=edges_list, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
         if keep_edges_types is not None:
             if type(keep_edges_types)!=list: keep_edges_types = [keep_edges_types]
-            for et in keep_edges_types:
-                assert et in ['-', '+', 'ci', 'main']
-                self.keep_edges(edges_type=et, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
+            for et in keep_edges_types:assert et in ['-', '+', 'ci', 'main']
+            
+            self.keep_edges(edges_type=keep_edges_types, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
         
         ew = [self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph) for e in g_plt.edges]
         e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph), 2))\

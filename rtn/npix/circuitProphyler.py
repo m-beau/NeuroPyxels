@@ -580,6 +580,7 @@ class Prophyler:
         edges_list_idx=npa(edges_list_idx, dtype=np.int64).flatten()
         edges_to_remove=npe[~np.isin(np.arange(len(npe)),edges_list_idx)]
         g.remove_edges_from(edges_to_remove)
+        return g
     
     def label_nodes(self, prophylerGraph='undigraph', src_graph=None):
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
@@ -713,8 +714,10 @@ class Prophyler:
         if keep_edges_types is not None:
             if type(keep_edges_types)!=list: keep_edges_types = [keep_edges_types]
             for et in keep_edges_types:assert et in ['-', '+', 'ci', 'main']
-            self.keep_edges(edges_type=keep_edges_types, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
-        
+            edges_pre=len(g_plt.edges)
+            g_plt=self.keep_edges(edges_type=keep_edges_types, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
+            assert len(g_plt.edges)!=edges_pre, 'WARNING no edges were removed despite calling keep_edges!'
+            
         ew = [self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph) for e in g_plt.edges]
         e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph), 2))\
                   +'@'+str(np.round(self.get_edge_attribute(e, 't', prophylerGraph=prophylerGraph, src_graph=src_graph), 1))+'ms' for e in g_plt.edges}

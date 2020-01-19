@@ -146,6 +146,7 @@ class Prophyler:
             if predirname!=op.dirname(dp):
                 print('WARNING: all your datasets are not stored in the same pre-directory - {} is picked anyway.'.format(predirname))
         self.dp_pro=opj(predirname, 'prophyler'+ds_names)
+        self.name=ds_names
         print('Prophyler data (shared across {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_pro))
         if not op.isdir(self.dp_pro):
             os.mkdir(self.dp_pro)
@@ -511,8 +512,6 @@ class Prophyler:
         # Select edges to keep if necessary
         if edges_list is None:
             dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=src_graph)
-            amp=dfe.loc[:,'amp']
-            t=dfe.loc[:, 't']
             if edges_type=='main':
                 if not np.any(dfe):
                     print('WARNING no edges found in graph{}! Use the method connect_graph() first. aborting.')
@@ -533,8 +532,10 @@ class Prophyler:
                     subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()
                     dfe.drop(subedges_to_drop, inplace=True)
                 edges_list=dfe.index.tolist()
-            
-            elif edges_type=='-':
+
+            amp=dfe.loc[:,'amp']
+            t=dfe.loc[:, 't']
+            if edges_type=='-':
                 edges_list=dfe.index[(amp<0)&((t<-t_asym)|(t>t_asym))].tolist()
                 
             elif edges_type=='+':

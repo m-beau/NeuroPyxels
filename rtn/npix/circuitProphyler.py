@@ -225,13 +225,17 @@ class Prophyler:
         self.dpnet=opj(self.dp_pro, 'network')
         if not op.isdir(self.dpnet): os.mkdir(self.dpnet)
         
+        self.peak_positions={}
         self.units={}
         for ds_i in self.ds_table.index:
             ds=self.ds[ds_i]
             ds.get_peak_positions()
+            for u, pos in ds.peak_positions:
+                self.peak_positions['{}_{}'.format(ds_i,u)]=pos+npa([100,0])*ds_i # Every dataset is offset by 100um on x
             for u in ds.get_good_units():
                 unit=Unit(ds, u, self.undigraph) # Units are added to the same graph when initialized, even from different source datasets
                 self.units[unit.nodename]=unit
+                
     
     def get_graph(self, prophylerGraph='undigraph'):
         assert prophylerGraph in ['undigraph', 'digraph']
@@ -1060,6 +1064,7 @@ class Dataset:
                     spacing=x_spacing*1./(n1+1) 
                     boolidx=np.nonzero(boolarr)[0][i]
                     peak_pos[boolidx,1]=peak_pos[boolidx,1]-x_spacing*1./2+(i+1)*spacing # 1 is index of x value
+        
         self.peak_positions={int(pp[0]):pp[1:] for pp in peak_pos}
         
         

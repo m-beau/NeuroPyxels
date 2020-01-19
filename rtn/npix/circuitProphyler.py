@@ -713,7 +713,9 @@ class Prophyler:
             self.keep_edges(edges_list=edges_list, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
         if keep_edges_types is not None:
             if type(keep_edges_types)!=list: keep_edges_types = [keep_edges_types]
-            if 'main' in keep_edges_types: keep_edges_types=keep_edges_types.remove('main')+['main'] #put main at the end to ensure that it is the last edge filter
+            if 'main' in keep_edges_types:
+                keep_edges_types.remove('main')
+                keep_edges_types=keep_edges_types+['main'] #put main at the end to ensure that it is the last edge filter
             for et in keep_edges_types:
                 assert et in ['-', '+', 'ci', 'main']
                 edges_pre=len(g_plt.edges)

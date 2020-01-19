@@ -289,7 +289,8 @@ class Prophyler:
         else:
             ## TODO: JUST ALTER THIS FUNCTION
             print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
-            rtn.npix.corr.gen_sfc(self.dp_pro, cbin, cwin, threshold, n_consec_bins, rec_section, graph=g, again=again, againCCG=againCCG)
+            SFCDF, SFCM1, gu, bestChs, SFCMtime = rtn.npix.corr.gen_sfc(self.dp_pro, cbin, cwin, threshold, n_consec_bins, rec_section, again=again, againCCG=againCCG)
+            g = map_sfcdf_on_graph(SFCDF, g, cbin, cwin, threshold, n_consec_bins)
             if plotsfcdf: rtn.npix.plot.plot_sfcdf(self.dp_pro, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
                                                      rec_section=rec_section, ticks=False, again=again, saveFig=True, saveDir=self.dpnet)
     

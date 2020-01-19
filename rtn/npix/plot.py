@@ -781,12 +781,12 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         saveDir=op.expanduser(saveDir)
         if not os.path.isdir(saveDir): os.mkdir(saveDir)
         if saveFig:
-            if pdf: fig.savefig(saveDir+'/acg%d_%d_%.2f.pdf'%(unit, cwin, cbin))
-            if png: fig.savefig(saveDir+'/acg%d_%d_%.2f.png'%(unit, cwin, cbin))
+            if pdf: fig.savefig(saveDir+'/acg{}-{}_{:.2f}.pdf'.format(unit, cwin, cbin))
+            if png: fig.savefig(saveDir+'/acg{}-{}_{:.2f}.png'.format(unit, cwin, cbin))
         if saveData:
-            np.save(saveDir+'/acg%d_%d_%.2f_x.npy'%(unit, cwin, cbin), x)
-            np.save(saveDir+'/acg%d_%d_%.2f_y.npy'%(unit, cwin, cbin), ACG)
-    
+            np.save(saveDir+'/acg{}-{}_{:.2f}_x.npy'.format(unit, cwin, cbin), x)
+            np.save(saveDir+'/acg{}-{}_{:.2f}_y.npy'.format(unit, cwin, cbin), ACG)
+
     return fig
         
     
@@ -870,14 +870,14 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
     if saveFig:
         saveDir=op.expanduser(saveDir)
         if not os.path.isdir(saveDir): os.mkdir(saveDir)
-        if pdf: fig.savefig(saveDir+'/ccg%s-%d_%.2f.pdf'%(str(units).replace(' ', ''), cwin, cbin))
-        if png: fig.savefig(saveDir+'/ccg%s_%d_%.2f.png'%(str(units).replace(' ', ''), cwin, cbin))
+        if pdf: fig.savefig(saveDir+'/ccg{}-{}_{2:.2f}.pdf'.format(str(units).replace(' ', ''), cwin, cbin))
+        if png: fig.savefig(saveDir+'/ccg{}_{}_{2:.2f}.png'.format(str(units).replace(' ', ''), cwin, cbin))
         
     return fig
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
              pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0], acg_mn=None, acg_std=None, again=False):
-
+    assert type(unit)==int or type(unit)==str
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=unit)[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]

@@ -218,7 +218,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         os.makedirs(dprm)
     
     fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(rec_section)[0:50].replace(' ', ''))
-    if os.path.exists(dprm+fn) and not again:
+    if os.path.exists(opj(dprm,fn)) and not again:
         if prnt: print("File {} found in routines memory. Will be computed from source files.".format(fn))
         crosscorrelograms = np.load(opj(dprm,fn))
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')

@@ -542,6 +542,7 @@ def extract_hist_modulation_features(hist, hbin, threshold=2, n_consec_bins=3, e
         # So the probability of a bin height is pdf_normal(np.abs(bin_height), m=0, s=1).
         pi=pdf_normal(np.abs(cross[1,:]), m=0, s=1) 
         entropy=-np.mean(np.log(pi))
+        if np.inf in [entropy]:entropy=0
         if cross.shape[1]>=n_consec_bins:
             if cross[1,0]>0: # peak
                 peaks.append((l_ms, r_ms, y, t_ms, n_triplets, n_bincrossing, bin_heights, entropy))

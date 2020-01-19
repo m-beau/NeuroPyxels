@@ -978,21 +978,25 @@ def map_sfcdf_on_graph(sfcdf, g, cbin, cwin, threshold, n_consec_bins):
         for u2 in sfcdf.index:
             pks=sfcdf.loc[u1, str(u2)]
             if type(pks) is str:
-                pks=ale(pks)
-                # pks with positive and negative peaks are present twice in the SFCDF (cf. case where pks='all' in find_significant_hist_peak)
-                # these need to be only added if u1<u2
-                pkSgns=npa([sign(p[2]) for p in pks])
-                make_edges=False
-                if np.all(pkSgns==1) or np.all(pkSgns==-1):
-                    make_edges=True
-                else:
-                    if u1<u2:
+                if 'inf' in pks: pks=pks.replace('inf', '0')
+                try:
+                    pks=ale(pks)
+                    # pks with positive and negative peaks are present twice in the SFCDF (cf. case where pks='all' in find_significant_hist_peak)
+                    # these need to be only added if u1<u2
+                    pkSgns=npa([sign(p[2]) for p in pks])
+                    make_edges=False
+                    if np.all(pkSgns==1) or np.all(pkSgns==-1):
                         make_edges=True
-                if make_edges:
-                    for p in pks:
-                        g.add_edge(u1, u2, uSrc=u1, uTrg=u2, 
-                                   amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=0,
-                                   criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'nConsecBins':n_consec_bins})
+                    else:
+                        if u1<u2:
+                            make_edges=True
+                    if make_edges:
+                        for p in pks:
+                            g.add_edge(u1, u2, uSrc=u1, uTrg=u2, 
+                                       amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=0,
+                                       criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'nConsecBins':n_consec_bins})
+                except:
+                    print('WARNING could not recover peak infos of {} and {}'.format(u1, u2))
     return g
 
 class Dataset:

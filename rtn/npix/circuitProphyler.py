@@ -556,6 +556,9 @@ class Prophyler:
             return g
             
         # Drop edges not in the list of edges to keep
+        if not any(edges_list):
+            print(edges_list)
+            return
         if use_edge_key and len(edges_list[0])!=3:
             print('WARNING use_edge_key is set to True but edges of provided edges_list do not contain any key. Setting use_edge_key to False-> every edges between given pairs of nodes will be kept.')
             use_edge_key=False

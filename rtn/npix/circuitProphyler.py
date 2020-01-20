@@ -490,7 +490,7 @@ class Prophyler:
         if src_graph is not None:
             return g
     
-    def keep_edges(self, edges_list=None, edges_type=None, prophylerGraph='undigraph', src_graph=None, use_edge_key=True, t_asym=1):
+    def keep_edges(self, edges_list=None, edges_types=None, prophylerGraph='undigraph', src_graph=None, use_edge_key=True, t_asym=1):
         '''
         Remove edges not in edges_list if provided.
         edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
@@ -499,24 +499,27 @@ class Prophyler:
         if src_graph is provided, operations are performed on it and the resulting graph is returned.
         else, nothing is returned since operations are performed on self attribute undigraph or digraph.
         
-        edges_type must be in ['main', '-', '+', 'ci'] or a list of these # ci stands for common input.
+        edges_type must be either in ['main', '-', '+', 'ci'] or a list of these # ci stands for common input.
+        IF IT IS A LIST OF THESE, THE OR OPERATOR WILL BE USED BETWEEN THEM (['-', 'main'] will return some positive ccgs!)
         If edges_list is not None, the edges_list is kept and edges_type argument is ignored.
         '''
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
-        if edges_list is None and edges_type is None:
+        if edges_list is None and edges_types is None:
             print('WARNING you should not call keep_edges() without providing any edges_list or edges_type to keep. Aborting.')
             return
         
         # Select edges to keep if necessary
         if edges_list is None:
-            assert type(edges_type) in [str, np.str_]
+            for et in edges_type: assert et in ['main', '-', '+', 'ci']
+            edges_to_keep=[]
+            assert type(edges_types) in [list, np.ndarray]
             # Use dfe to store edges that one wants to keep or not
             dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=src_graph)
             if not any(dfe):
                 print('WARNING prophyler.keep_edges function called but the provided graph does not seem to have any edges to work on!')
                 return g
-            if edges_type=='main':
+            if 'main' in edges_types:
                 if not any(dfe):
                     print('WARNING no edges found in graph{}! Use the method connect_graph() first. aborting.')
                     return
@@ -531,27 +534,27 @@ class Prophyler:
                     me_subedges=npe[(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0])))]
                     me_subedges=[(mese[0], mese[1], ale(str(mese[2]))) for mese in me_subedges]
                     me_amps=dfe['amp'][me_subedges]
-                    subedge_to_keep=me_amps.index[me_amps.abs()==me_amps.abs().max()]
+                    edges_to_keep+=me_amps.index[me_amps.abs()==me_amps.abs().max()].tolist()
 
-            elif edges_type=='-':
+            if '-' in edges_types:
                 amp=dfe.loc[:,'amp']
                 t=dfe.loc[:, 't']
                 minus_mask=(amp<0)&((t<-t_asym)|(t>t_asym))
-                subedge_to_keep=dfe.index[minus_mask].tolist()
+                edges_to_keep+=dfe.index[minus_mask].tolist()
                 
-            elif edges_type=='+':
+            if '+' in edges_types:
                 amp=dfe.loc[:,'amp']
                 t=dfe.loc[:, 't']
                 plus_mask=(amp>0)&((t<-t_asym)|(t>t_asym))
-                subedge_to_keep=dfe.index[plus_mask].tolist()
+                edges_to_keep+=dfe.index[plus_mask].tolist()
                 
-            elif edges_type=='ci':
+            if 'ci' in edges_types:
                 amp=dfe.loc[:,'amp']
                 t=dfe.loc[:, 't']
                 ci_mask=(amp>0)&(t>-t_asym)&(t<t_asym)
-                subedge_to_keep=dfe.index[ci_mask].tolist()
+                edges_to_keep+=dfe.index[ci_mask].tolist()
 
-            subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()
+            subedges_to_drop=me_amps.drop(edges_to_keep).index.tolist()
             dfe.drop(subedges_to_drop, inplace=True)
             edges_list=dfe.index.tolist()
             
@@ -559,11 +562,9 @@ class Prophyler:
             print('WARNING prophyler.keep_edges function called but resulted in all edges being kept!')
             return g
             
-
         if use_edge_key and len(edges_list[0])!=3:
             print('WARNING use_edge_key is set to True but edges of provided edges_list do not contain any key. Setting use_edge_key to False-> every edges between given pairs of nodes will be kept.')
             use_edge_key=False
-
         
         npe=self.get_edges(prophylerGraph=prophylerGraph, src_graph=src_graph)
         edges_list_idx=npa([])
@@ -744,12 +745,13 @@ class Prophyler:
         if edges_list is not None:
             self.keep_edges(edges_list=edges_list, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
         if keep_edges_types is not None:
-            if type(keep_edges_types)!=list: keep_edges_types = [keep_edges_types]
-            if 'main' in keep_edges_types:
-                keep_edges_types.remove('main')
-                keep_edges_types=keep_edges_types+['main'] #put main at the end to ensure that it is the last edge filter
-            for et in keep_edges_types:
-                assert et in ['-', '+', 'ci', 'main']
+            if type(keep_edges_types)!=list: keep_edges_types = list(keep_edges_types)
+            for et in keep_edges_types:assert et in ['-', '+', 'ci', 'main']
+            assert keep_edges_type_operator in ['and', 'or']
+            if keep_edges_type_operator=='and':
+                for et in keep_edges_types:
+                    g_plt=self.keep_edges(edges_type=[et], src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
+            elif keep_edges_type_operator=='or':
                 g_plt=self.keep_edges(edges_type=keep_edges_types, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
             
         ew = [self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph) for e in g_plt.edges]

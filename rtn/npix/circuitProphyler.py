@@ -511,7 +511,7 @@ class Prophyler:
         
         # Select edges to keep if necessary
         if edges_list is None:
-            for et in edges_type: assert et in ['main', '-', '+', 'ci']
+            for et in edges_types: assert et in ['main', '-', '+', 'ci']
             edges_to_keep=[]
             assert type(edges_types) in [list, np.ndarray]
             # Use dfe to store edges that one wants to keep or not
@@ -750,9 +750,9 @@ class Prophyler:
             assert keep_edges_type_operator in ['and', 'or']
             if keep_edges_type_operator=='and':
                 for et in keep_edges_types:
-                    g_plt=self.keep_edges(edges_type=[et], src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
+                    g_plt=self.keep_edges(edges_types=[et], src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
             elif keep_edges_type_operator=='or':
-                g_plt=self.keep_edges(edges_type=keep_edges_types, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
+                g_plt=self.keep_edges(edges_types=keep_edges_types, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
             
         ew = [self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph) for e in g_plt.edges]
         e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph), 2))\

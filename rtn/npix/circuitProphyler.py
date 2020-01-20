@@ -508,20 +508,18 @@ class Prophyler:
             print('WARNING you should not call keep_edges() without providing any edges_list or edges_type to keep. Aborting.')
             return
         
-        edges_type=list(edges_type)
-        for et in edges_type: assert et in ['main', '-', '+', 'ci']# ci stands for common input
-        
         # Select edges to keep if necessary
         if edges_list is None:
+            assert type(edges_type) in [str, np.str_]
+            # Use dfe to store edges that one wants to keep or not
             dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=src_graph)
             if not any(dfe):
                 print('WARNING prophyler.keep_edges function called but the provided graph does not seem to have any edges to work on!')
                 return g
-            if 'main' in edges_type:
+            if edges_type=='main':
                 if not any(dfe):
                     print('WARNING no edges found in graph{}! Use the method connect_graph() first. aborting.')
                     return
-                #dfe.reset_index(inplace=True) # turn node1, node 2 and key in columns
                 keys=dfe.index.get_level_values('key')
                 # multiedges are rows where key is 1 (or more)- to get the list of edges with more than 1 edge, get unit couples with at least key=1
                 multiedges=npa(dfe.index[keys==1].tolist())
@@ -534,23 +532,29 @@ class Prophyler:
                     me_subedges=[(mese[0], mese[1], ale(str(mese[2]))) for mese in me_subedges]
                     me_amps=dfe['amp'][me_subedges]
                     subedge_to_keep=me_amps.index[me_amps.abs()==me_amps.abs().max()]
-                    subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()
-                    dfe.drop(subedges_to_drop, inplace=True)
-                edges_list=dfe.index.tolist()
 
-            amp=dfe.loc[:,'amp']
-            t=dfe.loc[:, 't']
-            if '-' in edges_type:
-                edges_list=dfe.index[(amp<0)&((t<-t_asym)|(t>t_asym))].tolist()
+            elif edges_type=='-':
+                amp=dfe.loc[:,'amp']
+                t=dfe.loc[:, 't']
+                minus_mask=(amp<0)&((t<-t_asym)|(t>t_asym))
+                subedge_to_keep=dfe.index[minus_mask].tolist()
                 
-            if '+' in edges_type:
-                ci=dfe.index[(amp>0)&(t>-t_asym)&(t<t_asym)].tolist()
-                edges_list=dfe.index[(amp>0)&((t<-t_asym)|(t>t_asym))].tolist()
-                [edges_list.remove(ci_e) for ci_e in ci]
+            elif edges_type=='+':
+                amp=dfe.loc[:,'amp']
+                t=dfe.loc[:, 't']
+                plus_mask=(amp>0)&((t<-t_asym)|(t>t_asym))
+                subedge_to_keep=dfe.index[plus_mask].tolist()
                 
-            if 'ci' in edges_type:
-                edges_list=dfe.index[(amp>0)&(t>-t_asym)&(t<t_asym)].tolist()
-        
+            elif edges_type=='ci':
+                amp=dfe.loc[:,'amp']
+                t=dfe.loc[:, 't']
+                ci_mask=(amp>0)&(t>-t_asym)&(t<t_asym)
+                subedge_to_keep=dfe.index[ci_mask].tolist()
+
+            subedges_to_drop=me_amps.drop(subedge_to_keep).index.tolist()
+            dfe.drop(subedges_to_drop, inplace=True)
+            edges_list=dfe.index.tolist()
+            
         if not any(edges_list):
             print('WARNING prophyler.keep_edges function called but resulted in all edges being kept!')
             return g
@@ -560,6 +564,7 @@ class Prophyler:
             print('WARNING use_edge_key is set to True but edges of provided edges_list do not contain any key. Setting use_edge_key to False-> every edges between given pairs of nodes will be kept.')
             use_edge_key=False
 
+        
         npe=self.get_edges(prophylerGraph=prophylerGraph, src_graph=src_graph)
         edges_list_idx=npa([])
         for e in edges_list:
@@ -580,6 +585,7 @@ class Prophyler:
         edges_to_remove=npe[~np.isin(np.arange(len(npe)),edges_list_idx)]
         edges_to_remove=[(etr[0], etr[1], ale(str(etr[2]))) for etr in edges_to_remove] #handles case when key is string due to Utype of np array due to string type of units
         g.remove_edges_from(edges_to_remove)
+        
         return g
     
     def label_nodes(self, prophylerGraph='undigraph', src_graph=None):
@@ -687,19 +693,45 @@ class Prophyler:
                 break
     
     ## TODO - remove self.peakchannels from drawing - handle datasets independently
-    def plot_graph(self, edge_labels=False, node_labels=True, prophylerGraph='undigraph', keep_edges_types=None, edges_list=None, src_graph=None, t_asym=1,
+    def plot_graph(self, edge_labels=False, node_labels=True, keep_edges_types=None, keep_edges_type_operator='and', edges_list=None, t_asym=1,
                    nodes_size=400, nodes_color='grey', nodes_outline_color='k', edges_width=5, edge_vmin=-7, edge_vmax=7, arrowsize=25, arrowstyle='-|>',
-                   ylim=[4000, 0], figsize=(6, 24), show_cmap=True, png=False, pdf=True, saveDir='~/Desktop', saveFig=False):
+                   ylim=[4000, 0], figsize=(6, 24), show_cmap=True, _format='pdf', saveDir='~/Desktop', saveFig=False, prophylerGraph='undigraph', src_graph=None):
         '''
-        2 ways to select edges:
-            - Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val)
-            - Pick a edges_type (predefined groups of edges): 'all' for everyone (default)
-              '+': edges whose t is >1ms or <-1ms and sign is 1,
-              '-': edges whose t is >1ms or <-1ms and sign is -1,
-              'sync': edges whose t is >1ms or <-1ms and sign is 1
+        Plotting parameters:
+            - edge_labels: bool, display labels on edges with edge info (amplitude, time...)
+            - node_labels: bool, display node labels (unit index, node attributes)
+            - node_size: nodes size | Default 400
+            - nodes_color: nodes color | Default': 'grey'
+            - nodes_outline_color: nodes outline color | Default': 'black'
+            - edges_width: edges width | Default: 5
+            - edge_vmin, edge_vmax: minimum and maximum value of edges colorbar (blue to red, centered on (edge_vmax-edge_vmin)/2)
+            - arrowsize: size of arrow heads
+            - arrowstyle: style of arrow heads | Default '-|>'
+            - ylim: limits of section of probe plotted, in um [bottom, top] | Default: [4000, 0]
+            - figsize: (x, y) | Default: (6, 24)
+            - show_cmap: whether to show colormap or not
+            - _format: save format | Default: pdf
+            - saveFig: boolean, whether to save figure or not at saveDir
+            
+        Edge selection parameters:
+            - t_asym: definition of crosscorrelogram assymmetry, defining +/- versus common_input (ms) | Default 1
+            - edges_list: Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val). Default: None
+            - keep_edges_type: list of edge types :
+              - None: everyone (default)
+              - '+': edges whose t is >1ms or <-1ms and sign is 1,
+              - '-': edges whose t is >1ms or <-1ms and sign is -1,
+              - 'ci': edges whose t is >1ms or <-1ms and sign is 1
+              - 'main': edge with highest absolute amplitude
+            - keep_edges_type_operator: 'and' or 'or'. E.g. allows to keep edges '-' AND 'main', or '-' OR '+'.
+              Warning: order of list matters, if keep_edges_type_operator is 'and'!
+              ['-', 'main'] will first filter out the negative edges, then take the one with the highest nabsolute amplitude.
+              ['main', '-'] will first remove the non main edges (some will be negative) then get rid of the non negative ones. So some negative will be gotten rid of.
+            
+            edges_list has the priority over edges_types.
         
-        edges_list has the priority over edges_types.
-        edges_type must be '-', '+', 'main', 'ci' or a list of either combination of these. Edges will be filtered ('kept') sequentially with respect to the order of these categories.
+        Other parameters:
+            - src_graph: graph to plot. | Default: None
+            - prophylerGraph: as usual, used when no src_graph is provided, pick between 'undigraph' or 'digraph' stored as a prophyler attribute.
         '''
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
@@ -781,8 +813,7 @@ class Prophyler:
         if saveFig:
             saveDir=op.expanduser(saveDir)
             if not os.path.isdir(saveDir): os.mkdir(saveDir)
-            if pdf: fig.savefig(saveDir+'/{}_graph_{}_{}-{}-{}-{}.pdf'.format(self.name, keep_edges_types, *criteria.values()))
-            if png: fig.savefig(saveDir+'/{}_graph_{}_{}-{}-{}-{}.png'.format(self.name, keep_edges_types, *criteria.values()))
+            fig.savefig(saveDir+'/{}_graph_{}_{}-{}-{}-{}.{}'.format(self.name, keep_edges_types, *criteria.values(), _format), format=_format)
         
         return fig
     

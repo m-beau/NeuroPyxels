@@ -560,6 +560,7 @@ class Prophyler:
             elif  operator=='and':
                 print('AND')
                 for m in [main_mask,plus_mask,minus_mask,ci_mask]:
+                    mask=(mask==mask)
                     if not any(m): m=(m==m) # neutral masks are full masks
                     mask=mask&m
                     print(np.count_nonzero(mask))

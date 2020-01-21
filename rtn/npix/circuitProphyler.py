@@ -552,18 +552,14 @@ class Prophyler:
                 # Also add back pairs of nodes which had only a single edge...
                 main_mask=main_mask|singleedges_mask
                     
-            if operator=='or':
-                print('OR')
+            if operator=='or': # starts from empty and gets filled
                 for m in [main_mask,plus_mask,minus_mask,ci_mask]:
                     mask=mask|m # neutral masks are empty masks
-                    print(np.count_nonzero(mask))
-            elif  operator=='and':
-                print('AND')
+            elif  operator=='and': # starts from fuill and gets emptied
+                mask=(mask==mask)
                 for m in [main_mask,plus_mask,minus_mask,ci_mask]:
-                    mask=(mask==mask)
                     if not any(m): m=(m==m) # neutral masks are full masks
                     mask=mask&m
-                    print(np.count_nonzero(mask))
             
             edges_to_keep=dfe.index[mask].tolist()
             edges_to_drop=dfe.drop(edges_to_keep).index.tolist()

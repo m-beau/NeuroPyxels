@@ -553,12 +553,16 @@ class Prophyler:
                 main_mask=main_mask|singleedges_mask
                     
             if operator=='or':
+                print('OR')
                 for m in [main_mask,plus_mask,minus_mask,ci_mask]:
                     mask=mask|m # neutral masks are empty masks
+                    print(np.count_nonzero(mask))
             elif  operator=='and':
+                print('AND')
                 for m in [main_mask,plus_mask,minus_mask,ci_mask]:
                     if not any(m): m=(m==m) # neutral masks are full masks
-                    mask=mask&m 
+                    mask=mask&m
+                    print(np.count_nonzero(mask))
             
             edges_to_keep=dfe.index[mask].tolist()
             edges_to_drop=dfe.drop(edges_to_keep).index.tolist()

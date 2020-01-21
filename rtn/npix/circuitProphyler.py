@@ -702,7 +702,7 @@ class Prophyler:
     
     ## TODO - remove self.peakchannels from drawing - handle datasets independently
     def plot_graph(self, edge_labels=False, node_labels=True, keep_edges_types=None, keep_edges_types_sequentially=True, keep_edges_types_operator='or', edges_list=None, t_asym=1,
-                   nodes_size=400, nodes_color='grey', nodes_outline_color='k', edges_width=5, edge_vmin=-7, edge_vmax=7, arrowsize=25, arrowstyle='-|>',
+                   draw_edges=1, nodes_size=400, nodes_color='grey', nodes_outline_color='k', edges_width=5, edge_vmin=-7, edge_vmax=7, arrowsize=25, arrowstyle='-|>',
                    ylim=[4000, 0], figsize=(6, 24), show_cmap=True, _format='pdf', saveDir='~/Desktop', saveFig=False, prophylerGraph='undigraph', src_graph=None):
         '''
         Plotting parameters:
@@ -800,25 +800,26 @@ class Prophyler:
             #nx.draw_networkx(g, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
         nx.draw_networkx_nodes(g_plt, pos=self.peak_positions, node_color=nodes_color, edgecolors=nodes_outline_color, linewidths=2, alpha=1, node_size=nodes_size)
         
-        edges_cmap=plt.cm.RdBu_r
-        nx.draw_networkx_edges(g_plt, pos=self.peak_positions, edge_color=ew, width=edges_width, alpha=1, 
-                               edge_cmap=edges_cmap, edge_vmin=edge_vmin, edge_vmax=edge_vmax, arrowsize=arrowsize, arrowstyle=arrowstyle)
-        if show_cmap:
-            sm = plt.cm.ScalarMappable(cmap=edges_cmap, norm=plt.Normalize(vmin = edge_vmin, vmax=edge_vmax))
-            sm._A = []
-            axins = inset_axes(ax,
-                   width="5%",  # width = 5% of parent_bbox width
-                   height="20%",  # height : 50%
-                   loc='lower left',
-                   bbox_to_anchor=(1.15, 0., 1, 1),
-                   bbox_transform=ax.transAxes,
-                   borderpad=0,
-                   )
-            fig.colorbar(sm, cax=axins)#, ticks=np.arange(edge_vmin, edge_vmax, 2))
-            axins.set_ylabel("z-score", labelpad=10, rotation=270, fontsize=14, fontweight='bold')
-            axins.set_yticklabels(npa(axins.get_yticks()).astype(int), fontsize=14, fontweight='bold')
+        if draw_edges:
+            edges_cmap=plt.cm.RdBu_r
+            nx.draw_networkx_edges(g_plt, pos=self.peak_positions, edge_color=ew, width=edges_width, alpha=1, 
+                                   edge_cmap=edges_cmap, edge_vmin=edge_vmin, edge_vmax=edge_vmax, arrowsize=arrowsize, arrowstyle=arrowstyle)
+            if show_cmap:
+                sm = plt.cm.ScalarMappable(cmap=edges_cmap, norm=plt.Normalize(vmin = edge_vmin, vmax=edge_vmax))
+                sm._A = []
+                axins = inset_axes(ax,
+                       width="5%",  # width = 5% of parent_bbox width
+                       height="20%",  # height : 50%
+                       loc='lower left',
+                       bbox_to_anchor=(1.15, 0., 1, 1),
+                       bbox_transform=ax.transAxes,
+                       borderpad=0,
+                       )
+                fig.colorbar(sm, cax=axins)#, ticks=np.arange(edge_vmin, edge_vmax, 2))
+                axins.set_ylabel("z-score", labelpad=10, rotation=270, fontsize=14, fontweight='bold')
+                axins.set_yticklabels(npa(axins.get_yticks()).astype(int), fontsize=14, fontweight='bold')
 
-        if edge_labels:
+        if draw_edges and edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 
         hfont = {'fontname':'Arial'}

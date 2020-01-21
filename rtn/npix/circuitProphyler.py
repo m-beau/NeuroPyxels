@@ -542,11 +542,12 @@ class Prophyler:
                     me_subedges_mask=(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0]))) # find all subedges of each listed multiedge
                     singleedges_mask=((singleedges_mask)&(~me_subedges_mask)) # use me_multiedges_mask to negatively define single edges
                     main_submask=(dfe['amp'].abs()==dfe['amp'][me_subedges_mask].abs().max()) # main edge: edge with absolute max value
-                    main_submask=main_submask&npa([el in dfe[me_subedges_mask].index.tolist()for el in dfe.index.tolist()]) # select subset of edges between same nodes (in the same ccg, handles cases where 2 different ccgs have the exact main peak value)
-                    if not np.count_nonzero(main_submask)==1: # >1 peaks r troughs at exact same height in same ccg...
-                        random_true_idx=np.random.choice(np.nonzero(main_submask)[0])
-                        main_submask=(amp!=amp)# reset
-                        main_submask[random_true_idx]=True # keep only one
+                    if not np.count_nonzero(main_submask)==1:
+                        main_submask=main_submask&npa([el in dfe[me_subedges_mask].index.tolist() for el in dfe.index.tolist()]) # select subset of edges between same nodes (in the same ccg, handles cases where 2 different ccgs have the exact main peak value)
+                        if not np.count_nonzero(main_submask)==1: # >1 peaks r troughs at exact same height in same ccg...
+                            random_true_idx=np.random.choice(np.nonzero(main_submask)[0])
+                            main_submask=(amp!=amp)# reset
+                            main_submask[random_true_idx]=True # keep only one
                     main_mask=main_mask|main_submask
                 # Also add back pairs of nodes which had only a single edge...
                 main_mask=main_mask|singleedges_mask

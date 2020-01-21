@@ -709,7 +709,9 @@ class Prophyler:
             - edge_labels: bool, display labels on edges with edge info (amplitude, time...)
             - node_labels: bool, display node labels (unit index, node attributes)
             - node_size: nodes size | Default 400
-            - nodes_color: nodes color | Default': 'grey'
+            - nodes_color: string, nodes color. | Default': 'grey'
+              Can be a dictionnary of {groundtruthCellTypeCategory:string color} such as
+              {'SSpk':(57./255,170./255,53./255), 'CSpk':(211./255,181./255,0./255), 'CNC':(185./255,163./255,203./255)}
             - nodes_outline_color: nodes outline color | Default': 'black'
             - edges_width: edges width | Default: 5
             - edge_vmin, edge_vmax: minimum and maximum value of edges colorbar (blue to red, centered on (edge_vmax-edge_vmin)/2)
@@ -769,21 +771,30 @@ class Prophyler:
                   +'@'+str(np.round(self.get_edge_attribute(e, 't', prophylerGraph=prophylerGraph, src_graph=src_graph), 1))+'ms' for e in g_plt.edges}
         
         fig, ax = plt.subplots(figsize=figsize)
-        if node_labels:
-            nlabs={}
+        if type(nodes_color) is dict:
+            if not 'other' in nodes_color.keys():
+                print("Dictionnary of colors was provided but no 'other' category was listed - using 'grey'");
+                nodes_color['other']='grey'
+        else:
+            assert type(nodes_color) in [str, np.str_]
+        if node_labels or (type(nodes_color) is dict):
+            if node_labels:nlabs={}
+            if type(nodes_color) is dict:nCols=[]
             for node in list(g_plt.nodes):
                 pct=self.get_node_attribute(node, 'groundtruthCellType', prophylerGraph=prophylerGraph, src_graph=src_graph)
-                cct=self.get_node_attribute(node, 'classifiedCellType', prophylerGraph=prophylerGraph, src_graph=src_graph)
-                l="{}".format(node)
-                if pct!='':
-                    l+="\nput:{}".format(pct)
-                if cct!='':
-                    l+="\ncla:{}".format(cct)
-                nlabs[node]=l
-                
-            nx.draw_networkx_labels(g_plt,self.peak_positions,nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
+                if type(nodes_color) is dict:nCols.append(nodes_color[pct])
+                if node_labels:
+                    cct=self.get_node_attribute(node, 'classifiedCellType', prophylerGraph=prophylerGraph, src_graph=src_graph)
+                    l="{}".format(node)
+                    if pct!='':
+                        l+="\nput:{}".format(pct)
+                    if cct!='':
+                        l+="\ncla:{}".format(cct)
+                    nlabs[node]=l
+            if type(nodes_color) is dict:nodes_color=nCols
+            if node_labels: nx.draw_networkx_labels(g_plt,self.peak_positions, nlabs, font_weight='bold', font_color='#000000FF', font_size=8)
             #nx.draw_networkx(g, pos=peak_pos, node_color='#FFFFFF00', edge_color='white', alpha=1, with_labels=True, font_weight='bold', font_color='#000000FF', font_size=6)
-        nx.draw_networkx_nodes(g_plt, pos=self.peak_positions, node_color=nodes_color, edgecolors=nodes_outline_color, alpha=0.8, node_size=nodes_size)
+        nx.draw_networkx_nodes(g_plt, pos=self.peak_positions, node_color=nodes_color, edgecolors=nodes_outline_color, linewidths=2, alpha=1, node_size=nodes_size)
         
         edges_cmap=plt.cm.RdBu_r
         nx.draw_networkx_edges(g_plt, pos=self.peak_positions, edge_color=ew, width=edges_width, alpha=1, 

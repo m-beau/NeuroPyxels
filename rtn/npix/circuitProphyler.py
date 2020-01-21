@@ -782,7 +782,11 @@ class Prophyler:
             if type(nodes_color) is dict:nCols=[]
             for node in list(g_plt.nodes):
                 pct=self.get_node_attribute(node, 'groundtruthCellType', prophylerGraph=prophylerGraph, src_graph=src_graph)
-                if type(nodes_color) is dict:nCols.append(nodes_color[pct])
+                if type(nodes_color) is dict:
+                    if pct in nodes_color.keys():
+                        nCols.append(nodes_color[pct])
+                    else:
+                        nCols.append(nodes_color['other'])
                 if node_labels:
                     cct=self.get_node_attribute(node, 'classifiedCellType', prophylerGraph=prophylerGraph, src_graph=src_graph)
                     l="{}".format(node)

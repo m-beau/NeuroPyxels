@@ -490,7 +490,7 @@ class Prophyler:
         if src_graph is not None:
             return g
     
-    def keep_edges(self, edges_list=None, edges_types=None, prophylerGraph='undigraph', src_graph=None, use_edge_key=True, t_asym=1):
+    def keep_edges(self, edges_list=None, edges_types=None, operator='and', prophylerGraph='undigraph', src_graph=None, use_edge_key=True, t_asym=1):
         '''
         Remove edges not in edges_list if provided.
         edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
@@ -512,51 +512,56 @@ class Prophyler:
         # Select edges to keep if necessary
         if edges_list is None:
             for et in edges_types: assert et in ['main', '-', '+', 'ci']
-            edges_to_keep=[]
             assert type(edges_types) in [list, np.ndarray]
             # Use dfe to store edges that one wants to keep or not
-            dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=src_graph)
+            dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=g)
+            npe=self.get_edges(prophylerGraph=prophylerGraph, src_graph=g)
             if not any(dfe):
-                print('WARNING prophyler.keep_edges function called but the provided graph does not seem to have any edges to work on!')
+                print('WARNING prophyler.keep_edges function called but the provided graph does not seem to have any edges to work on! Use connect_graph first. Aborting.')
                 return g
-            if 'main' in edges_types:
-                if not any(dfe):
-                    print('WARNING no edges found in graph{}! Use the method connect_graph() first. aborting.')
-                    return
-                keys=dfe.index.get_level_values('key')
-                # multiedges are rows where key is 1 (or more)- to get the list of edges with more than 1 edge, get unit couples with at least key=1
-                multiedges=npa(dfe.index[keys==1].tolist())
-                multiedges[:,:2]=np.sort(multiedges[:,:2], axis=1)
-                multiedges=np.unique(multiedges, axis=0)
-                multiedges=[tuple(me) for me in multiedges]
-                npe=self.get_edges(prophylerGraph='undigraph', src_graph=src_graph)
-                for me in multiedges:
-                    me_subedges=npe[(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0])))]
-                    me_subedges=[(mese[0], mese[1], ale(str(mese[2]))) for mese in me_subedges]
-                    me_amps=dfe['amp'][me_subedges]
-                    main_mask=(me_amps.abs()==me_amps.abs().max())
-                    edges_to_keep+=me_amps.index[main_mask].tolist()
-
-            if '-' in edges_types:
-                amp=dfe.loc[:,'amp']
-                t=dfe.loc[:, 't']
-                minus_mask=(amp<0)&((t<-t_asym)|(t>t_asym))
-                edges_to_keep+=dfe.index[minus_mask].tolist()
-                
+            
+            # get amplitudes and times
+            amp=dfe.loc[:,'amp']
+            t=dfe.loc[:, 't']
+            # Initiate masks
+            mask, main_mask, plus_mask, minus_mask, ci_mask = (amp!=amp), (amp!=amp), (amp!=amp), (amp!=amp), (amp!=amp) # empty
             if '+' in edges_types:
-                amp=dfe.loc[:,'amp']
-                t=dfe.loc[:, 't']
                 plus_mask=(amp>0)&((t<-t_asym)|(t>t_asym))
-                edges_to_keep+=dfe.index[plus_mask].tolist()
-                
+            if '-' in edges_types:
+                minus_mask=(amp<0)&((t<-t_asym)|(t>t_asym))
             if 'ci' in edges_types:
-                amp=dfe.loc[:,'amp']
-                t=dfe.loc[:, 't']
                 ci_mask=(amp>0)&(t>-t_asym)&(t<t_asym)
-                edges_to_keep+=dfe.index[ci_mask].tolist()
-
-            subedges_to_drop=dfe.drop(edges_to_keep).index.tolist()
-            dfe.drop(subedges_to_drop, inplace=True)
+            if 'main' in edges_types:
+                singleedges_mask=(amp==amp) # initiate as all and remove multi edges in fro loop later
+                # multiedges are rows where key is 1 (or more)- to get the list of edges with more than 1 edge, get unit couples with at least key=1
+                keys=dfe.index.get_level_values('key')
+                multiedges=npa(dfe.index[keys==1].tolist())
+                multiedges[:,:2]=np.sort(multiedges[:,:2], axis=1) # order every pair in the same way so that unique can find duplicates
+                multiedges=np.unique(multiedges, axis=0)
+                for me in multiedges:
+                    me_subedges_mask=(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0]))) # find all subedges of each listed multiedge
+                    singleedges_mask=((singleedges_mask)&(~me_subedges_mask)) # use me_multiedges_mask to negatively define single edges
+                    main_submask=(dfe['amp'].abs()==dfe['amp'][me_subedges_mask].abs().max()) # main edge: edge with absolute max value
+                    main_submask=main_submask&npa([el in dfe[me_subedges_mask].index.tolist()for el in dfe.index.tolist()]) # select subset of edges between same nodes (in the same ccg, handles cases where 2 different ccgs have the exact main peak value)
+                    if not np.count_nonzero(main_submask)==1: # >1 peaks r troughs at exact same height in same ccg...
+                        random_true_idx=np.random.choice(np.nonzero(main_submask)[0])
+                        main_submask=(amp!=amp)# reset
+                        main_submask[random_true_idx]=True # keep only one
+                    main_mask=main_mask|main_submask
+                # Also add back pairs of nodes which had only a single edge...
+                main_mask=main_mask|singleedges_mask
+                    
+            if operator=='or':
+                for m in [main_mask,plus_mask,minus_mask,ci_mask]:
+                    mask=mask|m # neutral masks are empty masks
+            elif  operator=='and':
+                for m in [main_mask,plus_mask,minus_mask,ci_mask]:
+                    if not any(m): m=(m==m) # neutral masks are full masks
+                    mask=mask&m 
+            
+            edges_to_keep=dfe.index[mask].tolist()
+            edges_to_drop=dfe.drop(edges_to_keep).index.tolist()
+            dfe.drop(edges_to_drop, inplace=True)
             edges_list=dfe.index.tolist()
             
         if not any(edges_list):
@@ -567,7 +572,6 @@ class Prophyler:
             print('WARNING use_edge_key is set to True but edges of provided edges_list do not contain any key. Setting use_edge_key to False-> every edges between given pairs of nodes will be kept.')
             use_edge_key=False
         
-        npe=self.get_edges(prophylerGraph=prophylerGraph, src_graph=src_graph)
         edges_list_idx=npa([])
         for e in edges_list:
             try:
@@ -695,7 +699,7 @@ class Prophyler:
                 break
     
     ## TODO - remove self.peakchannels from drawing - handle datasets independently
-    def plot_graph(self, edge_labels=False, node_labels=True, keep_edges_types=None, keep_edges_type_operator='and', edges_list=None, t_asym=1,
+    def plot_graph(self, edge_labels=False, node_labels=True, keep_edges_types=None, keep_edges_types_sequentially=True, keep_edges_types_operator='or', edges_list=None, t_asym=1,
                    nodes_size=400, nodes_color='grey', nodes_outline_color='k', edges_width=5, edge_vmin=-7, edge_vmax=7, arrowsize=25, arrowstyle='-|>',
                    ylim=[4000, 0], figsize=(6, 24), show_cmap=True, _format='pdf', saveDir='~/Desktop', saveFig=False, prophylerGraph='undigraph', src_graph=None):
         '''
@@ -724,7 +728,10 @@ class Prophyler:
               - '-': edges whose t is >1ms or <-1ms and sign is -1,
               - 'ci': edges whose t is >1ms or <-1ms and sign is 1
               - 'main': edge with highest absolute amplitude
-            - keep_edges_type_operator: 'and' or 'or'. E.g. allows to keep edges '-' AND 'main', or '-' OR '+'.
+            - keep_edges_types_sequentially: will keep edge types sequentially (first keep '-', then amongst these keep the main for instance).
+              If set to False, edges types are considered together and the keep_edges_types_operator can be used to set in which manner (e.g.'-'or '+'). | Default True
+            - keep_edges_types_operator: 'and' or 'or'. E.g. allows to keep edges '-' AND 'main', or '-' OR '+'.
+              Only applies when keep_edges_types_sequential is set to False (i.e. edge categories are considered together).
               Warning: order of list matters, if keep_edges_type_operator is 'and'!
               ['-', 'main'] will first filter out the negative edges, then take the one with the highest nabsolute amplitude.
               ['main', '-'] will first remove the non main edges (some will be negative) then get rid of the non negative ones. So some negative will be gotten rid of.
@@ -748,12 +755,12 @@ class Prophyler:
         if keep_edges_types is not None:
             if type(keep_edges_types)!=list: keep_edges_types = list(keep_edges_types)
             for et in keep_edges_types:assert et in ['-', '+', 'ci', 'main']
-            assert keep_edges_type_operator in ['and', 'or']
-            if keep_edges_type_operator=='and':
+            assert keep_edges_types_operator in ['and', 'or']
+            if keep_edges_types_sequentially:
                 for et in keep_edges_types:
-                    g_plt=self.keep_edges(edges_types=[et], src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
-            elif keep_edges_type_operator=='or':
-                g_plt=self.keep_edges(edges_types=keep_edges_types, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
+                    g_plt=self.keep_edges(edges_types=[et], operator=keep_edges_types_operator, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
+            else:
+                g_plt=self.keep_edges(edges_types=keep_edges_types, operator=keep_edges_types_operator, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
             
         ew = [self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph) for e in g_plt.edges]
         e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph), 2))\

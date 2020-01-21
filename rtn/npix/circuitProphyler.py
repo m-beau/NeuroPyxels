@@ -716,7 +716,7 @@ class Prophyler:
             - edges_width: edges width | Default: 5
             - edge_vmin, edge_vmax: minimum and maximum value of edges colorbar (blue to red, centered on (edge_vmax-edge_vmin)/2)
             - arrowsize: size of arrow heads
-            - arrowstyle: style of arrow heads | Default '-|>'
+            - arrowstyle: style of arrow heads (typically '-|'> or '-[')| Default '-|>'
             - ylim: limits of section of probe plotted, in um [bottom, top] | Default: [4000, 0]
             - figsize: (x, y) | Default: (6, 24)
             - show_cmap: whether to show colormap or not
@@ -808,34 +808,39 @@ class Prophyler:
             sm._A = []
             axins = inset_axes(ax,
                    width="5%",  # width = 5% of parent_bbox width
-                   height="10%",  # height : 50%
+                   height="20%",  # height : 50%
                    loc='lower left',
                    bbox_to_anchor=(1.15, 0., 1, 1),
                    bbox_transform=ax.transAxes,
                    borderpad=0,
                    )
             fig.colorbar(sm, cax=axins)#, ticks=np.arange(edge_vmin, edge_vmax, 2))
-            axins.set_ylabel("z-score", labelpad=10, rotation=270, fontsize=12)
+            axins.set_ylabel("z-score", labelpad=10, rotation=270, fontsize=14, fontweight='bold')
+            axins.set_yticklabels(npa(axins.get_yticks()).astype(int), fontsize=14, fontweight='bold')
 
         if edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 
-        ax.set_ylabel('Depth (um)', fontsize=16, fontweight='bold')
-        ax.set_xlabel('Lat. position (um)', fontsize=16, fontweight='bold')
-        ax.set_ylim(ylim)
+        hfont = {'fontname':'Arial'}
+        ax.set_ylabel('Depth (um)', fontsize=16, fontweight='bold', **hfont)
+        ax.set_xlabel('Lat. position (um)', fontsize=16, fontweight='bold', **hfont)
+        ax.set_ylim(ylim) # flips the plot upside down
         ax.set_xlim([0,70])
-        ax.tick_params(axis='both', reset=True, labelsize=12)
+        ax.tick_params(axis='both', reset=True, labelsize=12, top=0)
+        ax.set_yticklabels(npa(ax.get_yticks()).astype(int), fontsize=12, fontweight='bold', **hfont)
+        ax.set_xticklabels(ax.get_xticks(), fontsize=12, fontweight='bold', **hfont)
         ax2 = ax.twinx()
-        ax2.set_ylabel('Channel #', fontsize=16, fontweight='bold', rotation=270)
-        ax2.set_yticks(ax.get_yticks())
-        ax2.set_yticklabels([int(yt/10 - 16) for yt in ax.get_yticks()], fontsize=12)
-        ax2.set_ylim(ylim[::-1])
+        ax2.set_ylabel('Channel #', fontsize=16, fontweight='bold', rotation=270, va='bottom', **hfont)
+        ax2.set_ylim(ylim)
+        ax2.set_yticklabels([int(384-yt/10) for yt in ax.get_yticks()], fontsize=12, fontweight='bold', **hfont) # SIMPLY RERUN THIS IS YOU SCALE PLOT ON QT GUI
+
+        fig.tight_layout(rect=[0, 0.03, 0.9, 0.95])
         try:
             criteria=self.get_edge_attribute(list(g_plt.edges)[0], 'criteria', prophylerGraph=prophylerGraph, src_graph=src_graph)
-            ax.set_title("Dataset:{}\n Significance criteria:{}".format(self.name, criteria))
+            ax.set_title("Dataset:{}\n Significance criteria:\n{} {}ms bins beyond {}sd (window:{}ms).".format(self.name, criteria['nConsecBins'], criteria['cbin'], criteria['threshold'], criteria['cwin']), fontsize=14, fontweight='bold')
         except:
             print('Graph not connected! Run self.connect_graph()')
-        plt.tight_layout()
+        
         
         if saveFig:
             saveDir=op.expanduser(saveDir)

@@ -534,7 +534,8 @@ class Prophyler:
                     me_subedges=npe[(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0])))]
                     me_subedges=[(mese[0], mese[1], ale(str(mese[2]))) for mese in me_subedges]
                     me_amps=dfe['amp'][me_subedges]
-                    edges_to_keep+=me_amps.index[me_amps.abs()==me_amps.abs().max()].tolist()
+                    main_mask=(me_amps.abs()==me_amps.abs().max())
+                    edges_to_keep+=me_amps.index[main_mask].tolist()
 
             if '-' in edges_types:
                 amp=dfe.loc[:,'amp']
@@ -554,7 +555,7 @@ class Prophyler:
                 ci_mask=(amp>0)&(t>-t_asym)&(t<t_asym)
                 edges_to_keep+=dfe.index[ci_mask].tolist()
 
-            subedges_to_drop=me_amps.drop(edges_to_keep).index.tolist()
+            subedges_to_drop=dfe.drop(edges_to_keep).index.tolist()
             dfe.drop(subedges_to_drop, inplace=True)
             edges_list=dfe.index.tolist()
             

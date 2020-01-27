@@ -219,12 +219,21 @@ def get_all_up_to_median(arr, window_a, window_b, hbin):
     return arr<(window_a+(med_idx*hbin))
 
 def get_half_centered_on_mode(arr, window_a, window_b, hbin):
+    '''
+    Splits a distribution in two parts with equal AUC, centered on the mode of the distribution.
+    Parameters:
+        - arr: array from which distribution will be drawn,
+        between window_a and window_b with bin hbin
+        - window_a, window_b, hbin: cf. above
+    Returns:
+        - Boolean array sized as the input array, with True values for indices around the mode.
+    '''
     hist=np.histogram(arr, bins=np.arange(window_a, window_b, hbin))
     
     mode_idx=np.nonzero(hist[0]==max(hist[0]))[0][0]
     AUC=sum(hbin*hist[0])
     win=0
-    for win in np.arange(0, mode_idx, 1):
+    for win in np.arange(0, mode_idx, 1):# win centered on mode
         AUC_win=sum(hbin*hist[0][mode_idx-win:mode_idx+win])
         if (AUC_win/AUC)>=0.5:
             break
@@ -233,6 +242,36 @@ def get_half_centered_on_mode(arr, window_a, window_b, hbin):
     th_b=window_a+(mode_idx+win)*hbin
     
     return (arr>th_a)&(arr<th_b)
+
+def split_distr_N(arr, N, window_a=None, window_b=None, equalAUC=False):
+    '''
+    Splits a distribution in N parts with equal bin window (and optionally equal AUC).
+    (the AUC of all the chunks is set the the AUC of the chunk with smallest AUC).
+    Parameters:
+        - arr: array from which distribution will be drawn,
+        between window_a and window_b with bin hbin
+        - window_a, window_b: cf. above. If None, will take 15th and 85th percentiles. | Default: None
+        - N: integer, number of chunks the distribution will be split in
+    Returns:
+        - list of N boolean masks, each corresponding to a distribution chunk.
+        - list of windows used to 
+    '''
+    assert type(N) in [int, np.int]
+    pc=15
+    if window_a is None or window_b is None:
+        window_a=np.percentile(arr, pc).round()
+        window_b=np.percentile(arr, 100-pc).round()
+    
+    N_wins=npa([[window_a+i*(window_b-window_a)/N, window_a+(i+1)*(window_b-window_a)/N] for i in range(N)])
+    N_masks=npa([(arr>w1)&(arr<w2) for (w1,w2) in N_wins])
+    
+    if equalAUC:
+        min_1=min([np.count_nonzero(m) for m in N_masks])
+        for i,m in enumerate(N_masks):
+            m_1=np.nonzero(m)[0]
+            N_masks[i]=np.isin(np.arange(len(m)), m_1[np.random.choice(range(len(m_1)), min_1, replace=False)])
+            
+    return N_masks, N_wins
 
 #%% Extract time stamps with given properties
 # (developed to extract subsets of spikes for GRC 2019)

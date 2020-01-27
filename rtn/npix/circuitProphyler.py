@@ -703,7 +703,7 @@ class Prophyler:
     ## TODO - remove self.peakchannels from drawing - handle datasets independently
     def plot_graph(self, edge_labels=False, node_labels=True, keep_edges_types=None, keep_edges_types_sequentially=True, keep_edges_types_operator='or', edges_list=None, t_asym=1,
                    draw_edges=1, nodes_size=400, nodes_color='grey', nodes_outline_color='k', edges_width=5, edge_vmin=-7, edge_vmax=7, arrowsize=25, arrowstyle='-|>',
-                   ylim=[4000, 0], figsize=(6, 24), show_cmap=True, _format='pdf', saveDir='~/Desktop', saveFig=False, prophylerGraph='undigraph', src_graph=None):
+                   ylim=[4000, 0], figsize=(9, 24), show_cmap=True, _format='pdf', saveDir='~/Desktop', saveFig=False, prophylerGraph='undigraph', src_graph=None):
         '''
         Plotting parameters:
             - edge_labels: bool, display labels on edges with edge info (amplitude, time...)
@@ -808,32 +808,32 @@ class Prophyler:
                 sm = plt.cm.ScalarMappable(cmap=edges_cmap, norm=plt.Normalize(vmin = edge_vmin, vmax=edge_vmax))
                 sm._A = []
                 axins = inset_axes(ax,
-                       width="5%",  # width = 5% of parent_bbox width
+                       width="8%",  # width = 5% of parent_bbox width
                        height="20%",  # height : 50%
                        loc='lower left',
-                       bbox_to_anchor=(1.15, 0., 1, 1),
+                       bbox_to_anchor=(1.25, 0., 1, 1),
                        bbox_transform=ax.transAxes,
                        borderpad=0,
                        )
                 fig.colorbar(sm, cax=axins)#, ticks=np.arange(edge_vmin, edge_vmax, 2))
-                axins.set_ylabel("z-score", labelpad=10, rotation=270, fontsize=14, fontweight='bold')
-                axins.set_yticklabels(npa(axins.get_yticks()).astype(int), fontsize=14, fontweight='bold')
+                axins.set_ylabel("z-score", labelpad=10, rotation=270, fontsize=30, fontweight='bold')
+                axins.set_yticklabels(npa(axins.get_yticks()).astype(int), fontsize=26, fontweight='bold')
 
         if draw_edges and edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 
         hfont = {'fontname':'Arial'}
-        ax.set_ylabel('Depth (um)', fontsize=16, fontweight='bold', **hfont)
-        ax.set_xlabel('Lat. position (um)', fontsize=16, fontweight='bold', **hfont)
+        ax.set_ylabel('Depth (\u03BCm)', fontsize=40, fontweight='bold', **hfont)
+        ax.set_xlabel('Lat. position (\u03BCm)', fontsize=40, fontweight='bold', **hfont)
         ax.set_ylim(ylim) # flips the plot upside down
         ax.set_xlim([0,70])
         ax.tick_params(axis='both', reset=True, labelsize=12, top=0)
-        ax.set_yticklabels(npa(ax.get_yticks()).astype(int), fontsize=12, fontweight='bold', **hfont)
-        ax.set_xticklabels(ax.get_xticks(), fontsize=12, fontweight='bold', **hfont)
+        ax.set_yticklabels(npa(ax.get_yticks()).astype(int), fontsize=30, fontweight='bold', **hfont)
+        ax.set_xticklabels(ax.get_xticks().astype(int), fontsize=30, fontweight='bold', **hfont)
         ax2 = ax.twinx()
-        ax2.set_ylabel('Channel #', fontsize=16, fontweight='bold', rotation=270, va='bottom', **hfont)
+        ax2.set_ylabel('Channel #', fontsize=40, fontweight='bold', rotation=270, va='bottom', **hfont)
         ax2.set_ylim(ylim)
-        ax2.set_yticklabels([int(384-yt/10) for yt in ax.get_yticks()], fontsize=12, fontweight='bold', **hfont) # SIMPLY RERUN THIS IS YOU SCALE PLOT ON QT GUI
+        ax2.set_yticklabels([int(384-yt/10) for yt in ax.get_yticks()], fontsize=30, fontweight='bold', **hfont) # SIMPLY RERUN THIS IS YOU SCALE PLOT ON QT GUI
 
         fig.tight_layout(rect=[0, 0.03, 0.9, 0.95])
         try:
@@ -846,7 +846,7 @@ class Prophyler:
         if saveFig:
             saveDir=op.expanduser(saveDir)
             if not os.path.isdir(saveDir): os.mkdir(saveDir)
-            fig.savefig(saveDir+'/{}_graph_{}_{}-{}-{}-{}.{}'.format(self.name, keep_edges_types, *criteria.values(), _format), format=_format)
+            fig.savefig(saveDir+'/{}_graph_{}_{}-{}-{}-{}noCSnoEdges.{}'.format(self.name, keep_edges_types, *criteria.values(), _format), format=_format)
         
         return fig
     

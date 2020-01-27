@@ -33,11 +33,11 @@ import pyqtgraph as pg
 import networkx as nx
 
 #%% regular histogram
-def hist_MB(arr, a, b, s, title='MB hist', xlabel='', ylabel=''):
+def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None):
     hist=np.histogram(arr, bins=np.arange(a,b,s))
     y=hist[0]
     x=hist[1][:-1]
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots() if ax is None else ax.get_figure(), ax
     ax.bar(x=x, height=y, width=s)
     ax.set_title(title)
     ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Window:[{},{}] - binsize:{}'.format(a,b,s))
@@ -656,7 +656,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
 
     if ccg_mn is not None and ccg_std is not None:
         ax2 = ax.twinx()
-        ax2.set_ylabel('Crosscorrelation (Hz)', fontsize=20, rotation=270, va='bottom')
+        ax2.set_ylabel('Crosscorrelation (Hz)', fontsize=20, rotation=270ax2.set_ylabel)
         ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels(ax2ticks, fontsize=20)

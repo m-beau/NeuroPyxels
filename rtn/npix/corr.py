@@ -225,7 +225,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     # if not, compute it
     else:
         if prnt: print("File {} not found in routines memory.".format(fn))
-        crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, rec_section=rec_section, prnt=prnt)#####################
+        crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, rec_section=rec_section, prnt=prnt)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
         if normalize in ['Hertz', 'Pearson', 'zscore']:
             for i1,u1 in enumerate(sortedU):

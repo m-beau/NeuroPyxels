@@ -656,7 +656,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
 
     if ccg_mn is not None and ccg_std is not None:
         ax2 = ax.twinx()
-        ax2.set_ylabel('Crosscorrelation (Hz)', fontsize=20, rotation=270ax2.set_ylabel)
+        ax2.set_ylabel('Crosscorrelation (Hz)', fontsize=20, rotation=270)
         ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels(ax2ticks, fontsize=20)

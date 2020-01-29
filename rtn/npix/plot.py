@@ -12,6 +12,7 @@ import pandas as pd
 from scipy import signal as sgnl
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import AutoLocator
 import seaborn as sns
 
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
@@ -32,7 +33,87 @@ import pyqtgraph as pg
 
 import networkx as nx
 
-#%% regular histogram
+#%% regular histogram, utilities
+def get_labels_from_ticks(ticks):
+    nflt=0
+    for i, t in enumerate(ticks):
+        if t != round(t, 0):
+            nflt=1
+            if t != round(t, 1):
+                nflt=2
+    ticks_labels=npa(ticks).astype(int) if nflt==0 else np.round(ticks, nflt)
+    if nflt!=0: ticks_labels=[str(l)+'0'*(nflt+2-len(str(l))) for l in ticks_labels]
+    return ticks_labels, nflt
+    
+def mplp(fig, ax, figsize=(8,6),
+         xlim=None, ylim=None, xlabel=None, ylabel=None,
+         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None,
+         axlab_w='bold', axlab_s=20,
+         ticklab_w='regular',ticklab_s=16, lw=2,
+         title_w='bold', title_s=24,
+         hide_top_right=False, hide_axis=False):
+    '''
+    make plots pretty
+    matplotlib plots
+    '''
+    hfont = {'fontname':'Arial'}
+    fig.set_figwidth(figsize[0])
+    fig.set_figheight(figsize[1])
+    # Opportunity to easily hide everything
+    if hide_axis:
+        ax.axis('off')
+        return fig, ax
+    else:
+        ax.axis('on')
+    
+    # Axis labels
+    if ylabel is None:ylabel=ax.get_ylabel()
+    if xlabel is None:xlabel=ax.get_xlabel()
+    ax.set_ylabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
+    ax.set_xlabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
+    
+    # Setup limits BEFORE changing tick labels because tick labels remain unchanged despite limits change!
+    if xlim is not None: ax.set_xlim(xlim)
+    if ylim is not None: ax.set_ylim(ylim)
+    
+    # Ticks and ticks labels
+    if xticks is None:
+        ax.xaxis.set_major_locator(AutoLocator())
+        xticks= ax.get_xticks()
+        if xlim is None:xticks=xticks[1:-1]
+    if yticks is None:
+        ax.yaxis.set_major_locator(AutoLocator())
+        yticks= ax.get_yticks()
+        if ylim is None: yticks=yticks[1:-1]
+    ax.set_xticks(xticks)
+    ax.set_yticks(yticks)
+    
+    if xtickslabels is None:
+        xtickslabels,x_nflt=get_labels_from_ticks(xticks)
+    else:
+        assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/fey xtickslabels!'
+    if ytickslabels is None:
+        ytickslabels,y_nflt=get_labels_from_ticks(yticks)
+    else:
+        assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/fey ytickslabels!'
+    
+    rot=45 if (x_nflt==2) and (fig.get_figwidth()<=6) else 0
+    ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=rot)
+    ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont)
+
+    ax.set_title(ax.get_title(), size=title_s, weight=title_w)
+    
+    ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=6)
+    if hide_top_right: [ax.spines[sp].set_visible(False) for sp in ['top', 'right']]
+    else: [ax.spines[sp].set_visible(True) for sp in ['top', 'right']]
+        
+    for sp in ['left', 'bottom', 'top', 'right']:
+        ax.spines[sp].set_lw(lw)
+    
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    
+    return fig, ax
+
 def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None):
     hist=np.histogram(arr, bins=np.arange(a,b,s))
     y=hist[0]
@@ -964,8 +1045,7 @@ def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=
     else:
         return fig
 
-#%% Connectivity inferred from correlograms
-    
+## Connectivity inferred from correlograms
 def plot_sfcdf(dp, cbin=0.2, cwin=100, threshold=3, n_consec_bins=3, text=True, markers=False, rec_section='all', 
                ticks=True, again = False, saveFig=True, saveDir=None, againCCG=False):
     '''
@@ -1018,7 +1098,6 @@ def plot_dataset_CCGs(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, rec_s
     prct=0; sig=0;
     for i1, u1 in enumerate(gu):
         for i2, u2 in enumerate(gu):
-            end = '\r' if (i1*len(gu)+i2)<(len(gu)**2-1) else ''
             if prct!=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2))):
                 prct=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2)))
                 #print('{}%...'.format(prct), end=end)

@@ -127,7 +127,7 @@ def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None):
         fig, ax = ax.get_figure(), ax
     ax.bar(x=x, height=y, width=s)
     ax.set_title(title)
-    ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Window:[{},{}] - binsize:{}'.format(a,b,s))
+    ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Binsize:{}'.format(a,b,s))
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
     
     fig,ax=mplp(fig,ax)

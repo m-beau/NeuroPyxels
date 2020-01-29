@@ -243,26 +243,27 @@ def get_half_centered_on_mode(arr, window_a, window_b, hbin):
     
     return (arr>th_a)&(arr<th_b)
 
-def split_distr_N(arr, N, window_a=None, window_b=None, equalAUC=False):
+def split_distr_N(arr, N, bin_val, window_a=None, window_b=None, equalAUC=False, a_pc=10, b_cp=70):
     '''
     Splits a distribution in N parts with equal bin window (and optionally equal AUC).
     (the AUC of all the chunks is set the the AUC of the chunk with smallest AUC).
     Parameters:
         - arr: array from which distribution will be drawn,
         between window_a and window_b with bin hbin
-        - window_a, window_b: cf. above. If None, will take 15th and 85th percentiles. | Default: None
         - N: integer, number of chunks the distribution will be split in
+        - bin_val: value that will be used to compute the histogram
+        - window_a, window_b: cf. above. If None, will take 15th and 85th percentiles. | Default: None
     Returns:
         - list of N boolean masks, each corresponding to a distribution chunk.
         - list of windows used to 
     '''
     assert type(N) in [int, np.int]
     if window_a is None or window_b is None:
-        window_a=np.percentile(arr, 10).round()
-        window_b=np.percentile(arr, 85).round()
+        window_a=np.percentile(arr, a_pc).round()
+        window_b=np.percentile(arr, b_cp).round()
     
     N_wins=npa([[window_a+i*(window_b-window_a)/N, window_a+(i+1)*(window_b-window_a)/N] for i in range(N)])
-    N_masks=npa([(arr>w1)&(arr<w2) for (w1,w2) in N_wins])
+    N_masks=npa([(arr>=w1)&(arr<w2) for (w1,w2) in N_wins])
     
     if equalAUC:
         min_1=min([np.count_nonzero(m) for m in N_masks])

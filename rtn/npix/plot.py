@@ -73,7 +73,7 @@ def mplp(fig=None, ax=None, figsize=(8,6),
     if ylabel is None:ylabel=ax.get_ylabel()
     if xlabel is None:xlabel=ax.get_xlabel()
     ax.set_ylabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
-    ax.set_xlabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
+    ax.set_xlabel(xlabel, weight=axlab_w, size=axlab_s, **hfont)
     
     # Setup limits BEFORE changing tick labels because tick labels remain unchanged despite limits change!
     if xlim is not None: ax.set_xlim(xlim)
@@ -129,6 +129,9 @@ def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None):
     ax.set_title(title)
     ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Window:[{},{}] - binsize:{}'.format(a,b,s))
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
+    
+    fig,ax=mplp(fig,ax)
+    
     return fig
 
 #%% Waveforms or raw data

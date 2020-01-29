@@ -257,10 +257,9 @@ def split_distr_N(arr, N, window_a=None, window_b=None, equalAUC=False):
         - list of windows used to 
     '''
     assert type(N) in [int, np.int]
-    pc=15
     if window_a is None or window_b is None:
-        window_a=np.percentile(arr, pc).round()
-        window_b=np.percentile(arr, 100-pc).round()
+        window_a=np.percentile(arr, 10).round()
+        window_b=np.percentile(arr, 85).round()
     
     N_wins=npa([[window_a+i*(window_b-window_a)/N, window_a+(i+1)*(window_b-window_a)/N] for i in range(N)])
     N_masks=npa([(arr>w1)&(arr<w2) for (w1,w2) in N_wins])

@@ -45,7 +45,7 @@ def get_labels_from_ticks(ticks):
     if nflt!=0: ticks_labels=[str(l)+'0'*(nflt+2-len(str(l))) for l in ticks_labels]
     return ticks_labels, nflt
     
-def mplp(fig, ax, figsize=(8,6),
+def mplp(fig=None, ax=None, figsize=(8,6),
          xlim=None, ylim=None, xlabel=None, ylabel=None,
          xticks=None, yticks=None, xtickslabels=None, ytickslabels=None,
          axlab_w='bold', axlab_s=20,
@@ -56,6 +56,9 @@ def mplp(fig, ax, figsize=(8,6),
     make plots pretty
     matplotlib plots
     '''
+    if fig is None: fig=plt.gcf()
+    if ax is None: ax=plt.gca()
+    
     hfont = {'fontname':'Arial'}
     fig.set_figwidth(figsize[0])
     fig.set_figheight(figsize[1])
@@ -118,7 +121,10 @@ def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None):
     hist=np.histogram(arr, bins=np.arange(a,b,s))
     y=hist[0]
     x=hist[1][:-1]
-    fig, ax = plt.subplots() if ax is None else ax.get_figure(), ax
+    if ax is None:
+        (fig, ax) = plt.subplots()
+    else:
+        fig, ax = ax.get_figure(), ax
     ax.bar(x=x, height=y, width=s)
     ax.set_title(title)
     ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Window:[{},{}] - binsize:{}'.format(a,b,s))

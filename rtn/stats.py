@@ -251,7 +251,7 @@ def split_distr_N(arr, N, bin_val, window_a=None, window_b=None, equalAUC=False,
         - arr: array from which distribution will be drawn,
         between window_a and window_b with bin hbin
         - N: integer, number of chunks the distribution will be split in
-        - bin_val: value that will be used to compute the histogram
+        - bin_val: value that will be used to compute the histogram later on - used to ensure that windows are multiples of bins
         - window_a, window_b: cf. above. If None, will take 15th and 85th percentiles. | Default: None
     Returns:
         - list of N boolean masks, each corresponding to a distribution chunk.
@@ -259,9 +259,10 @@ def split_distr_N(arr, N, bin_val, window_a=None, window_b=None, equalAUC=False,
     '''
     assert type(N) in [int, np.int]
     if window_a is None or window_b is None:
-        window_a=np.percentile(arr, a_pc).round()
-        window_b=np.percentile(arr, b_cp).round()
-    
+        window_a=np.percentile(arr, a_pc)
+        window_b=np.percentile(arr, b_cp)
+    window_a=np.round(window_a-window_a%bin_val, 2)
+    window_b=np.round(window_b+window_b%bin_val, 2)
     N_wins=npa([[window_a+i*(window_b-window_a)/N, window_a+(i+1)*(window_b-window_a)/N] for i in range(N)])
     N_masks=npa([(arr>=w1)&(arr<w2) for (w1,w2) in N_wins])
     

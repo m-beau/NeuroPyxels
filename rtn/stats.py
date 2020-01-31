@@ -243,7 +243,7 @@ def get_half_centered_on_mode(arr, window_a, window_b, hbin):
     
     return (arr>th_a)&(arr<th_b)
 
-def split_distr_N(arr, N, bin_val, window_a=None, window_b=None, equalAUC=False, a_pc=10, b_cp=70):
+def split_distr_N(arr, N, bin_val, window_a=None, window_b=None, equalAUC=False, a_pc=10, b_cp=70, center_mode=False):
     '''
     Splits a distribution in N parts with equal bin window (and optionally equal AUC).
     (the AUC of all the chunks is set the the AUC of the chunk with smallest AUC).
@@ -259,8 +259,12 @@ def split_distr_N(arr, N, bin_val, window_a=None, window_b=None, equalAUC=False,
     '''
     assert type(N) in [int, np.int]
     if window_a is None or window_b is None:
-        window_a=np.percentile(arr, a_pc)
-        window_b=np.percentile(arr, b_cp)
+        if center_mode:
+            window_a=stt.mode(arr)[0][0]+np.std(arr)
+            window_b=stt.mode(arr)[0][0]-np.std(arr)
+        else:
+            window_a=np.percentile(arr, a_pc)
+            window_b=np.percentile(arr, b_cp)
     window_a=np.round(window_a-window_a%bin_val, 2)
     window_b=np.round(window_b+window_b%bin_val, 2)
     N_wins=npa([[window_a+i*(window_b-window_a)/N, window_a+(i+1)*(window_b-window_a)/N] for i in range(N)])

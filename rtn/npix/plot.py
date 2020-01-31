@@ -91,9 +91,9 @@ def mplp(fig=None, ax=None, figsize=(8,6),
     ax.set_xticks(xticks)
     ax.set_yticks(yticks)
     
+    x_nflt=0
     if xtickslabels is None:
         xtickslabels,x_nflt=get_labels_from_ticks(xticks)
-    else:
         assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/fey xtickslabels!'
     if ytickslabels is None:
         ytickslabels,y_nflt=get_labels_from_ticks(yticks)

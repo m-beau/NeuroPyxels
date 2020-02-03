@@ -50,7 +50,7 @@ def mplp(fig=None, ax=None, figsize=(8,6),
          xticks=None, yticks=None, xtickslabels=None, ytickslabels=None,
          axlab_w='bold', axlab_s=20,
          ticklab_w='regular',ticklab_s=16, lw=2,
-         title_w='bold', title_s=24,
+         title=None, title_w='bold', title_s=24,
          hide_top_right=False, hide_axis=False):
     '''
     make plots pretty
@@ -104,7 +104,8 @@ def mplp(fig=None, ax=None, figsize=(8,6),
     ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=rot)
     ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont)
 
-    ax.set_title(ax.get_title(), size=title_s, weight=title_w)
+    if title is None: title=ax.get_title()
+    ax.set_title(title, size=title_s, weight=title_w)
     
     ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=6)
     if hide_top_right: [ax.spines[sp].set_visible(False) for sp in ['top', 'right']]

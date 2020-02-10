@@ -107,7 +107,7 @@ def mplp(fig=None, ax=None, figsize=(8,6),
     if title is None: title=ax.get_title()
     ax.set_title(title, size=title_s, weight=title_w)
     
-    ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=6)
+    ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=6, direction='in')
     if hide_top_right: [ax.spines[sp].set_visible(False) for sp in ['top', 'right']]
     else: [ax.spines[sp].set_visible(True) for sp in ['top', 'right']]
         

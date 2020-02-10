@@ -204,7 +204,7 @@ def get_event_types():
           'cr': 'reward onsets for left correct trials'}
     return dic
 
-def get_events(dp, f_behav, event_type, trial_on_i=2, reward_i=5, cue_i=4):
+def get_events(dp, f_behav, event_type, trial_on_i=2, reward_i=5, cue_i=4,include_wheel_data=1):
     '''
     Parameters:
         - dp: string, datapath to directory with binary file (and eventually sync_chan subdirectory)
@@ -230,7 +230,7 @@ def get_events(dp, f_behav, event_type, trial_on_i=2, reward_i=5, cue_i=4):
     
     ons, ofs = get_npix_sync(dp) # sync channels onsets and offsets
     trials_df=get_trials_dataframe(f_behav, npix_trialOns=ons[trial_on_i], npix_trialOfs=ofs[trial_on_i], npix_rewards=ons[reward_i], npix_tone_cues=ons[cue_i],
-                                   include_wheel_data=1)
+                                   include_wheel_data=include_wheel_data)
     
     mask_left=(trials_df['trialside']=='left')
     mask_right=(trials_df['trialside']=='right')

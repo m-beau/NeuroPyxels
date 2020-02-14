@@ -121,6 +121,19 @@ def mplp(fig=None, ax=None, figsize=(8,6),
     
     return fig, ax
 
+def format_colors(colors):
+    '''
+    Turns single color or iterable of colors into an iterable of colors.
+    '''
+    # If string: single letter or hex, can simply use flatten
+    if type(npa([colors]).flatten()[0]) in [str, np.str_]:
+        colors=npa([colors]).flatten()
+    # if list of tuples, cannot flatten them!
+    else:
+        if type(colors[0]) in [float, np.float16, np.float32, np.float64]:
+            colors=npa([colors])
+    return colors
+
 def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None):
     hist=np.histogram(arr, bins=np.arange(a,b,s))
     y=hist[0]
@@ -606,8 +619,8 @@ def raster_plot(dp, units, events, events_toplot=None, window=[-1000, 1000], rem
         title='raster_{}'.format(units)
     
     if len(units)==1 and colors is None: colors='k'
-    colors = mpl_colors if colors is None else npa([colors]).flatten()
-    
+    if colors is None: colors = mpl_colors
+    colors=format_colors(colors)
     assert len(colors)>=len(units)
     for i,u in enumerate(units):
         times=trn(dp, u)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']

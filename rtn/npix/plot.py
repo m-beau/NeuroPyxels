@@ -131,7 +131,7 @@ def format_colors(colors):
     # if list of tuples, cannot flatten them!
     else:
         if type(colors[0]) in [float, np.float16, np.float32, np.float64]:
-            colors=npa([colors])
+            colors=npa([colors,])
         else:
             colors=npa(colors)
     return colors
@@ -627,7 +627,7 @@ def raster_plot(dp, units, events, events_toplot=None, window=[-1000, 1000], rem
     for i,u in enumerate(units):
         times=trn(dp, u)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
         fig=raster_plt(times, events, events_toplot, window, remove_empty_trials,
-           title, colors[i], size, figsize, saveDir, saveFig, saveData, _format, ax=ax, i_N=[i,len(units)])
+           title, npa([colors[i],]), size, figsize, saveDir, saveFig, saveData, _format, ax=ax, i_N=[i,len(units)])
     
     return fig
 

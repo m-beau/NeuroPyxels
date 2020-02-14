@@ -594,7 +594,7 @@ def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
     return fig
 
 def raster_plot(dp, units, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
-           title='', colors=None, figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
+           title='', colors=None, size=10, figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
     
     units=npa([units]).flatten()
     
@@ -602,8 +602,8 @@ def raster_plot(dp, units, events, events_toplot=None, window=[-1000, 1000], rem
     if title == '':
         title='raster_{}'.format(units)
     
-    if colors is None:
-        colors=mpl_colors
+    colors = mpl_colors if colors is None else npa([colors]).flatten()
+    
     for i,u in enumerate(units):
         times=trn(dp, u)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
         fig=raster_plt(times, events, events_toplot, window, remove_empty_trials,

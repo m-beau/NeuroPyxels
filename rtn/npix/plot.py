@@ -607,7 +607,7 @@ def raster_plot(dp, units, events, events_toplot=None, window=[-1000, 1000], rem
     for i,u in enumerate(units):
         times=trn(dp, u)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
         fig=raster_plt(times, events, events_toplot, window, remove_empty_trials,
-           title, colors[i], 10, figsize, saveDir, saveFig, saveData, _format, ax=ax, i_N=[i,len(units)])
+           title, colors[i], size, figsize, saveDir, saveFig, saveData, _format, ax=ax, i_N=[i,len(units)])
     
     return fig
 

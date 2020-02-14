@@ -132,6 +132,8 @@ def format_colors(colors):
     else:
         if type(colors[0]) in [float, np.float16, np.float32, np.float64]:
             colors=npa([colors])
+        else:
+            colors=npa(colors)
     return colors
 
 def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None):
@@ -672,7 +674,7 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
         i=np.argsort(list(at.keys()))[npa(list(at.keys()))==e][0]
         y=[y_ticks[i]+y_span[i_N[0]]]*len(ts)
         ts=npa(ts)*1000 # convert to ms
-        ax.scatter(ts, y, size=size, color=color, alpha=1)
+        ax.scatter(ts, y, s=size, c=color, alpha=1)
     
     if title == '':
         title='raster'

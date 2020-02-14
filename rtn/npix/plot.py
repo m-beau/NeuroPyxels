@@ -491,7 +491,7 @@ def ifr_plot(dp, unit, events, b=5, window=[-1000,1000], remove_empty_trials=Fal
     times=trn(dp, unit)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     
     if title == '':
-        title='raster_{}'.format(unit)
+        title='psth_{}'.format(unit)
         
     return ifr_plt(times, events, b, window, remove_empty_trials,
              zscore, zscoretype, convolve, gw, gsd, title, figsize, 
@@ -624,6 +624,8 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
     Returns:
         - fig: matplotlib figure.
     '''
+    
+    times*=1000 # convert to ms
     
     if events_toplot is None:
         events_toplot=npa([0])

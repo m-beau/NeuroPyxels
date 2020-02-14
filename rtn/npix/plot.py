@@ -596,7 +596,7 @@ def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
 def raster_plot(dp, units, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
            title='', colors=None, figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
     
-    if type(units) is not list: units=list(units)
+    units=npa(units)
     
     fig,ax=plt.subplots()
     if title == '':

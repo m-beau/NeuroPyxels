@@ -243,7 +243,7 @@ def trnb(dp, unit, bin_size, sav=True, prnt=False, constrainBin=False, rec_secti
         if prnt: 
             print('''File trnb{}_{}.npy not found in routines memory.
               Will be computed from source files.'''.format(unit, bin_size))
-        train = trn(dp, unit, ret=True, sav=False, rec_section=rec_section)
+        train = trn(dp, unit, rec_section=rec_section)
         phy_st = np.load(dp+'/spike_times.npy')
         last_st = phy_st[-1,0] # in samples
         del phy_st

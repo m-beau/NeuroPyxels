@@ -24,7 +24,7 @@ from rtn.npix.gl import get_units
 from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
 from rtn.npix.spk_t import trn
 from rtn.npix.corr import acg, ccg, gen_sfc, extract_hist_modulation_features, make_cm, make_matrix_2xNevents, crosscorr_cyrille
-from rtn.npix.behav import get_processed_ifr
+from rtn.npix.behav import align_times, get_processed_ifr
 from mpl_toolkits.mplot3d import axes3d
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -480,13 +480,32 @@ def ifr_subplots(times_list, events_list, titles_list, figsize=(8,4)):
     
     return fig
 
-def ifr_plot(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
+def ifr_plot(dp, unit, events, b=5, window=[-1000,1000], remove_empty_trials=False,
              zscore=False, zscoretype='overall', convolve=True, gw=64, gsd=1,
              title='', figsize=(10,4), color=seabornColorsDic[0],
              plot_all_traces=False, zslines=False, plot_sem=True,
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf'):
     '''
     '''
+    
+    times=trn(dp, unit)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+    
+    if title == '':
+        title='raster_{}'.format(unit)
+        
+    return ifr_plt(times, events, b, window, remove_empty_trials,
+             zscore, zscoretype, convolve, gw, gsd, title, figsize, 
+             color, plot_all_traces, zslines, plot_sem, saveDir,
+             saveFig, saveData, _format)
+
+def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
+             zscore=False, zscoretype='overall', convolve=True, gw=64, gsd=1,
+             title='', figsize=(10,4), color=seabornColorsDic[0],
+             plot_all_traces=False, zslines=False, plot_sem=True,
+             saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf'):
+    '''
+    '''
+    
     # Get ifr +- zscored +- smoothed (processed)
     x, y, y_mn, y_p, y_p_sem = get_processed_ifr(times, events, b, window, remove_empty_trials,
                       zscore, zscoretype, convolve, gw, gsd)
@@ -551,8 +570,12 @@ def ifr_plot(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
     
     ax.plot([0,0], ax.get_ylim(), color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
     ax.set_xlabel('Time from event (ms).')
+    if title == '':
+        title='psth'
     ax.set_title(title)
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    ax, fig = mplp(ax,fig)
 
     # Save data and.or figure
     saveDir=op.expanduser(saveDir)
@@ -563,101 +586,79 @@ def ifr_plot(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
         np.save(opj(saveDir,title+'_y_processed.npy'), y_p)
         np.save(opj(saveDir,title+'_y_p_sem.npy'), y_p_sem)
     if saveFig:
-        title='_'+title
-        fig.savefig(opj(saveDir, 'psth{}.{}'.format(title, _format)), format=_format)
-    
+        fig.savefig(opj(saveDir, '{}.{}'.format(title, _format)), format=_format)
+
     return fig
 
-# def psth(times, events, window=[-1000, 1000], binsize=1, title='',
-#            figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
-#     '''
-#     Make a peristimulus time histogram of the provided 'times' aligned on the provided 'events', from window[0] to window[1].
+def raster(dp, unit, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
+           title='', figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
     
-#     Parameters:
-#         - times: list/array of time points, in seconds.
-#         - events: list/array of events, in seconds.
-#         - windows: list/array of shape (2,), in milliseconds: the raster will be plotted from events-window[0] to events-window[1] | Default: [-1000,1000]
-#         - binsize: float, in milliseconds
-#         - title: string, title of tehe plot + if saved file name will be raster_title._format.
-#         - figsize: tuple, (x,y) figure size
-#         - saveDir: save directory to save data and figure
-#         - saevFig: boolean, if 1 saves figure with name raster_title._format at saveDir
-#         - saveData: boolean, if 1 saves data as 2D array 2xlen(times), with first line being the event index and second line the relative timestamp time in seconds.
-#         - _format: string, format used to save figure if saveFig=1 | Default: 'pdf'
+    times=trn(dp, unit)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     
-#     Returns:
-#         - fig: matplotlib figure.
-#     '''
-#     # to make it across datasets: juste make a function which add +10000000seconds to the times and events of dataset 2,
-#     # concatenates them all and here you go!
-#     # use correlogram function!
-#     events_dic={0:events,1:times}
-#     events_times=make_matrix_2xNevents(events_dic)
-#     psth_full=crosscorr_cyrille(events_times[1,:], events_times[0,:], win_size=max(np.abs(window)), bin_size, fs=30000, symmetrize=True)
+    if title == '':
+        title='raster_{}'.format(unit)
     
-    
-#     if saveFig:
-#         saveDir=op.expanduser(saveDir)
-#         if not os.path.isdir(saveDir): os.mkdir(saveDir)
-#         title='_'+title
-#         fig.savefig(opj(saveDir, 'raster{}.{}'.format(title, _format)), format=_format)
-        
-#     return fig
+    return rastr(times, events, events_toplot, window, remove_empty_trials,
+           title, figsize, saveDir, saveFig, saveData, _format)
 
-# def raster(times, events, events_toplot=None, window=[-1000, 1000], title='',
-#            figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
-#     '''
-#     Make a raster plot of the provided 'times' aligned on the provided 'events', from window[0] to window[1].
-#     By default, there will be len(events) lines. you can pick a subset of events to plot
-#     by providing their indices as a list.array with 'events_toplot'.
+def rastr(times, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
+           title='', figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
+    '''
+    Make a raster plot of the provided 'times' aligned on the provided 'events', from window[0] to window[1].
+    By default, there will be len(events) lines. you can pick a subset of events to plot
+    by providing their indices as a list.array with 'events_toplot'.
     
-#     Parameters:
-#         - times: list/array of time points, in seconds.
-#         - events: list/array of events, in seconds.
-#         - events_toplot: list/array of events indices to display on the raster | Default: None (plots everything)
-#         - windows: list/array of shape (2,): the raster will be plotted from events-window[0] to events-window[1] | Default: [-1000,1000]
-#         - title: string, title of tehe plot + if saved file name will be raster_title._format.
-#         - figsize: tuple, (x,y) figure size
-#         - saveDir: save directory to save data and figure
-#         - saevFig: boolean, if 1 saves figure with name raster_title._format at saveDir
-#         - saveData: boolean, if 1 saves data as 2D array 2xlen(times), with first line being the event index and second line the relative timestamp time in seconds.
-#         - _format: string, format used to save figure if saveFig=1 | Default: 'pdf'
+    Parameters:
+        - times: list/array of time points, in seconds.
+        - events: list/array of events, in seconds.
+        - events_toplot: list/array of events indices to display on the raster | Default: None (plots everything)
+        - window: list/array of shape (2,): the raster will be plotted from events-window[0] to events-window[1] | Default: [-1000,1000]
+        - remove_empty_trials: boolean, if True only plots trials with at least one spike
+        - title: string, title of tehe plot + if saved file name will be raster_title._format.
+        - figsize: tuple, (x,y) figure size
+        - saveDir: save directory to save data and figure
+        - saevFig: boolean, if 1 saves figure with name raster_title._format at saveDir
+        - saveData: boolean, if 1 saves data as 2D array 2xlen(times), with first line being the event index and second line the relative timestamp time in seconds.
+        - _format: string, format used to save figure if saveFig=1 | Default: 'pdf'
     
-#     Returns:
-#         - fig: matplotlib figure.
-#     '''
+    Returns:
+        - fig: matplotlib figure.
+    '''
     
-#     if events_toplot is None:
-#         events_toplot=np.arange(len(events))
-#     else:
-#         assert len(events_toplot)<=len(events), 'WARNING you asked to plot more events than you provided!'
+    if events_toplot is None:
+        events_toplot=npa([0])
     
-#     fig, axes = plt.subplots(figsize=figsize)
-#     for ti, trg in enumerate(triggersnames):
-#         ax=axes[ti] if len(triggersnames)>1 else axes
+    at, atb = align_times(times, events, window=window, remove_empty_trials=remove_empty_trials)
+    
+    fig, ax = plt.subplots()
+    
+    # Handles indexing of empty trials
+    y_ticks=np.arange(len(at))+1
+    y_ticks_labels=np.nonzero(np.isin(np.sort(events),np.sort(list(at.keys()))))[0]+1
+    
+    for e, ts in at.items():
+        i=np.argsort(list(at.keys()))[npa(list(at.keys()))==e][0]
+        y=[y_ticks[i]]*len(ts)
+        ax.scatter(ts, y, s=10, c='k', alpha=1)
+    
+    if title == '':
+        title='raster'
+    
+    fig,ax=mplp(fig=fig, ax=ax, figsize=figsize,
+         xlim=window, ylim=[y_ticks[-1]+1, 0], xlabel="Time (ms)", ylabel="Trials",
+         xticks=None, yticks=y_ticks, xtickslabels=None, ytickslabels=y_ticks_labels,
+         axlab_w='bold', axlab_s=20,
+         ticklab_w='regular',ticklab_s=16, lw=2,
+         title=title, title_w='bold', title_s=24,
+         hide_top_right=True, hide_axis=False)
+    
+    for etp in events_toplot:
+        ax.plot([etp,etp], ax.get_ylim(), ls='--', lw=2, c='k')
+
+    if saveFig:
+        fig.savefig(opj(saveDir, '{}.{}'.format(title, _format)), format=_format)
         
-#         triggers = triggersDic[trg]
-#         at, atb = align_unit(dp, u, triggers, window=window) if (type(u)==int or type(u)==list) else align_licks(dp, triggers, window=window, source=licks_source)
-#         print('Number of licks/spikes:', len([item for sublist in at for item in sublist]))
-#         for i, trial in enumerate(at):
-#             ax.scatter(trial, i+1+np.zeros((len(trial))), color='black', s=2)
-#         ax.plot([0,0], ax.get_ylim(), ls='--', lw=1, color='black')
-#         if trg[0]=='C':
-#             ax.plot([-500, -500], ax.get_ylim(), ls='--', lw=1, color='black')
-#         ax.set_ylim([0, len(at)])
-#         ax.invert_yaxis()
-#         ax.set_ylabel('Trial')
-#         ax.set_xlabel('Time from {} (ms)'.format(trgnDic[trg]))
-#         ax.set_xlim(window[0], window[1])
-#     fig.suptitle(title) if len(title)!=0 else fig.suptitle('Unit {}.'.format(u))
-#     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    
-#     if saveFig:
-#         saveDir=op.expanduser(saveDir)
-#         title='_'+title
-#         fig.savefig(opj(saveDir, 'raster{}.{}'.format(title, _format)), format=_format)
-        
-#     return fig
+    return fig
 
 # def raster_old(dp, u, triggersnames, title='', window=[-1000,1000], show=True, licks_source = 'GLX'):
     

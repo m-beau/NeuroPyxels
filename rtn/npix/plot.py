@@ -590,7 +590,7 @@ def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
 
     return fig
 
-def raster(dp, unit, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
+def raster_plot(dp, unit, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
            title='', figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
     
     times=trn(dp, unit)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
@@ -598,10 +598,10 @@ def raster(dp, unit, events, events_toplot=None, window=[-1000, 1000], remove_em
     if title == '':
         title='raster_{}'.format(unit)
     
-    return rastr(times, events, events_toplot, window, remove_empty_trials,
+    return raster_plt(times, events, events_toplot, window, remove_empty_trials,
            title, figsize, saveDir, saveFig, saveData, _format)
 
-def rastr(times, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
+def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
            title='', figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
     '''
     Make a raster plot of the provided 'times' aligned on the provided 'events', from window[0] to window[1].

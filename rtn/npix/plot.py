@@ -654,7 +654,7 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
         i=np.argsort(list(at.keys()))[npa(list(at.keys()))==e][0]
         y=[y_ticks[i]+y_span[i_N[0]]]*len(ts)
         ts=npa(ts)*1000 # convert to ms
-        ax.scatter(ts, y, s=size, c='k', alpha=1)
+        ax.scatter(ts, y, s=size, c=color, alpha=1)
     
     if title == '':
         title='raster'

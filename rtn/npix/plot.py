@@ -669,7 +669,7 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
     # Handles indexing of empty trials
     y_ticks=np.arange(len(at))+1
     y_ticks_labels=np.nonzero(np.isin(np.sort(events),np.sort(list(at.keys()))))[0]+1
-    y_span=np.linspace(-0.25,0.25,i_N[1]) if i_N[1]>1 else [0]
+    y_span=np.linspace(-0.2,0.2,i_N[1]) if i_N[1]>1 else [0]
     for e, ts in at.items():
         i=np.argsort(list(at.keys()))[npa(list(at.keys()))==e][0]
         y=[y_ticks[i]+y_span[i_N[0]]]*len(ts)

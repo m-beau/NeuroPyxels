@@ -502,7 +502,7 @@ def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
              zscore=False, zscoretype='overall', convolve=True, gw=64, gsd=1,
              title='', figsize=(10,4), color=seabornColorsDic[0],
              plot_all_traces=False, zslines=False, plot_sem=True,
-             saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf'):
+             saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None):
     '''
     '''
     
@@ -510,7 +510,10 @@ def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
     x, y, y_mn, y_p, y_p_sem = get_processed_ifr(times, events, b, window, remove_empty_trials,
                       zscore, zscoretype, convolve, gw, gsd)
     # plot
-    fig, ax = plt.subplots(figsize=figsize)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig=ax.get_figure()
     ylims=[]
     if zscore:
         if not convolve:
@@ -590,19 +593,23 @@ def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
 
     return fig
 
-def raster_plot(dp, unit, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
+def raster_plot(dp, units, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
            title='', figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
     
-    times=trn(dp, unit)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
-    
+    fig,ax=plt.subplots()
     if title == '':
-        title='raster_{}'.format(unit)
+        title='raster_{}'.format(units)
     
-    return raster_plt(times, events, events_toplot, window, remove_empty_trials,
-           title, figsize, saveDir, saveFig, saveData, _format)
+    for i,u in enumerate(units):
+        times=trn(dp, u)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+        fig=raster_plt(times, events, events_toplot, window, remove_empty_trials,
+           title, mpl_colors[i], 10, figsize, saveDir, saveFig, saveData, _format, ax=ax)
+    
+    return fig
 
 def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
-           title='', figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
+           title='', color='k', size=10, figsize=(10,5),
+           saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf', ax=None):
     '''
     Make a raster plot of the provided 'times' aligned on the provided 'events', from window[0] to window[1].
     By default, there will be len(events) lines. you can pick a subset of events to plot
@@ -630,7 +637,10 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
     
     at, atb = align_times(times, events, window=window, remove_empty_trials=remove_empty_trials)
     
-    fig, ax = plt.subplots()
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig=ax.get_figure()
     
     # Handles indexing of empty trials
     y_ticks=np.arange(len(at))+1
@@ -654,7 +664,7 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
          hide_top_right=True, hide_axis=False)
     
     for etp in events_toplot:
-        ax.plot([etp,etp], ax.get_ylim(), ls='--', lw=2, c=mpl_colors[0])
+        ax.plot([etp,etp], ax.get_ylim(), ls='--', lw=3, c='r', zorder=-1)
 
     if saveFig:
         fig.savefig(opj(saveDir, '{}.{}'.format(title, _format)), format=_format)

@@ -645,7 +645,7 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
     if title == '':
         title='raster'
     
-    fig,ax=mplp(fig=fig, ax=ax, figsize=(figsize[0], max(figsize[1], len(at)//2)),
+    fig,ax=mplp(fig=fig, ax=ax, figsize=(figsize[0], max(figsize[1], len(at)//4)),
          xlim=window, ylim=[y_ticks[-1]+1, 0], xlabel="Time (ms)", ylabel="Trials",
          xticks=None, yticks=y_ticks, xtickslabels=None, ytickslabels=y_ticks_labels,
          axlab_w='bold', axlab_s=20,
@@ -661,57 +661,6 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
         
     return fig
 
-# def raster_old(dp, u, triggersnames, title='', window=[-1000,1000], show=True, licks_source = 'GLX'):
-    
-#     # Sanity check triggers
-#     if type(u)!=list:
-#         if u =='licks' and licks_source=='PAQ':
-#             triggersDic = mk_PAQtriggersDic(dp)
-#         elif type(u)==int or type(u)==float or (u =='licks' and licks_source=='GLX'):
-#             triggersDic = mk_GLXtriggersDic(dp)
-#         else:
-#             print("WARNING u must be an int, float, 'licks' or list of ints. Exitting now.")
-#             return
-#     else:
-#         for unt in u:
-#             if type(unt)!=int:
-#                 print("WARNING u must be an int, float, 'licks' or list of ints. Exitting now.")
-#                 return
-#         triggersDic = mk_GLXtriggersDic(dp)
-    
-#     trgnDic = {'RR':'random real reward onset', 'CR':'cued real reward onset', 
-#                'RF':'random fictive reward onset', 'CO':'cued omitted reward onset'}
-#     if type(triggersnames)!=list: triggersnames = list(triggersnames)
-#     try:
-#         for trgn in triggersnames:
-#             assert trgn in trgnDic.keys()
-#     except:
-#         print('WARNING the triggersname should be one of: {}. Exit now.'.format(trgnDic.keys()))
-#         return
-#     # plot
-#     fig, axes = plt.subplots(len(triggersnames), figsize=(8,2.5*len(triggersnames)))
-#     for ti, trg in enumerate(triggersnames):
-#         ax=axes[ti] if len(triggersnames)>1 else axes
-        
-#         triggers = triggersDic[trg]
-#         at, atb = align_unit(dp, u, triggers, window=window) if (type(u)==int or type(u)==list) else align_licks(dp, triggers, window=window, source=licks_source)
-#         print('Number of licks/spikes:', len([item for sublist in at for item in sublist]))
-#         for i, trial in enumerate(at):
-#             ax.scatter(trial, i+1+np.zeros((len(trial))), color='black', s=2)
-#         ax.plot([0,0], ax.get_ylim(), ls='--', lw=1, color='black')
-#         if trg[0]=='C':
-#             ax.plot([-500, -500], ax.get_ylim(), ls='--', lw=1, color='black')
-#         ax.set_ylim([0, len(at)])
-#         ax.invert_yaxis()
-#         ax.set_ylabel('Trial')
-#         ax.set_xlabel('Time from {} (ms)'.format(trgnDic[trg]))
-#         ax.set_xlim(window[0], window[1])
-#     fig.suptitle(title) if len(title)!=0 else fig.suptitle('Unit {}.'.format(u))
-#     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-#     if not show:
-#         plt.close(fig)
-#     return fig
-        
 #%% Correlograms
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True, 

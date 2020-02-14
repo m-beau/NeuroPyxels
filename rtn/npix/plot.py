@@ -602,8 +602,10 @@ def raster_plot(dp, units, events, events_toplot=None, window=[-1000, 1000], rem
     if title == '':
         title='raster_{}'.format(units)
     
+    if len(units)==1 and colors is None: colors='k'
     colors = mpl_colors if colors is None else npa([colors]).flatten()
     
+    assert len(colors)>=len(units)
     for i,u in enumerate(units):
         times=trn(dp, u)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
         fig=raster_plt(times, events, events_toplot, window, remove_empty_trials,

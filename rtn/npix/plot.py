@@ -625,8 +625,6 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
         - fig: matplotlib figure.
     '''
     
-    times*=1000 # convert to ms
-    
     if events_toplot is None:
         events_toplot=npa([0])
     
@@ -641,6 +639,7 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
     for e, ts in at.items():
         i=np.argsort(list(at.keys()))[npa(list(at.keys()))==e][0]
         y=[y_ticks[i]]*len(ts)
+        ts*=1000 # convert to ms
         ax.scatter(ts, y, s=10, c='k', alpha=1)
     
     if title == '':

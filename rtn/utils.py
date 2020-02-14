@@ -2,6 +2,7 @@
 
 import numpy as np
 import seaborn as sns
+import matplotlib.pyplot as plt
 
 from six import integer_types
 from statsmodels.nonparametric.smoothers_lowess import lowess
@@ -36,6 +37,8 @@ seabornColorsDic = {
     8:sns.color_palette()[8],
     9:sns.color_palette()[9]
     }
+
+mpl_colors=plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 DistinctColors20 = [(127,127,127),(0,0,143),(182,0,0),(0,140,0),(195,79,255),(1,165,202),(236,157,0),(118,255,0),(255,127,0),
     (255,117,152),(148,0,115),(0,243,204),(72,83,255),(0,127,255),(0,67,1),(237,183,255),(138,104,0),(97,0,163),(92,0,17),(255,245,133)]

@@ -17,7 +17,7 @@ import seaborn as sns
 
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
                     npa, sign, minus_is_1, thresh, smooth, \
-                    _as_array, _unique, _index_of
+                    _as_array, _unique, _index_of, mpl_colors
                     
 from rtn.npix.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
 from rtn.npix.gl import get_units
@@ -645,7 +645,7 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
     if title == '':
         title='raster'
     
-    fig,ax=mplp(fig=fig, ax=ax, figsize=figsize,
+    fig,ax=mplp(fig=fig, ax=ax, figsize=(figsize[0], max(figsize[1], len(at)//2)),
          xlim=window, ylim=[y_ticks[-1]+1, 0], xlabel="Time (ms)", ylabel="Trials",
          xticks=None, yticks=y_ticks, xtickslabels=None, ytickslabels=y_ticks_labels,
          axlab_w='bold', axlab_s=20,
@@ -654,7 +654,7 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
          hide_top_right=True, hide_axis=False)
     
     for etp in events_toplot:
-        ax.plot([etp,etp], ax.get_ylim(), ls='--', lw=2, c='k')
+        ax.plot([etp,etp], ax.get_ylim(), ls='--', lw=2, c=mpl_colors[0])
 
     if saveFig:
         fig.savefig(opj(saveDir, '{}.{}'.format(title, _format)), format=_format)

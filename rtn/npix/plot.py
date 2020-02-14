@@ -668,7 +668,7 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
          hide_top_right=True, hide_axis=False)
     
     for etp in events_toplot:
-        ax.plot([etp,etp], ax.get_ylim(), ls='--', lw=3, c='r', zorder=-1)
+        ax.plot([etp,etp], ax.get_ylim(), ls='--', lw=2, c='r', zorder=-1)
 
     if saveFig:
         fig.savefig(opj(saveDir, '{}.{}'.format(title, _format)), format=_format)

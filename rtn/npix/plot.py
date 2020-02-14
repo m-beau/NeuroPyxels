@@ -99,7 +99,10 @@ def mplp(fig=None, ax=None, figsize=(8,6),
         ytickslabels,y_nflt=get_labels_from_ticks(yticks)
     else:
         assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/fey ytickslabels!'
-    
+
+    if xlim is not None: ax.set_xlim(xlim)
+    if ylim is not None: ax.set_ylim(ylim)
+
     rot=45 if (x_nflt==2) and (fig.get_figwidth()<=6) else 0
     ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=rot)
     ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont)

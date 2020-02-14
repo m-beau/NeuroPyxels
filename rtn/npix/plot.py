@@ -594,22 +594,26 @@ def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
     return fig
 
 def raster_plot(dp, units, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
-           title='', figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
+           title='', colors=None, figsize=(10,5), saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf'):
+    
+    if type(units) is not list: units=list(units)
     
     fig,ax=plt.subplots()
     if title == '':
         title='raster_{}'.format(units)
     
+    if colors is None:
+        colors=mpl_colors
     for i,u in enumerate(units):
         times=trn(dp, u)/read_spikeglx_meta(dp, subtype='ap')['sRateHz']
         fig=raster_plt(times, events, events_toplot, window, remove_empty_trials,
-           title, mpl_colors[i], 10, figsize, saveDir, saveFig, saveData, _format, ax=ax)
+           title, colors[i], 10, figsize, saveDir, saveFig, saveData, _format, ax=ax, i_N=[i,len(units)])
     
     return fig
 
 def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_empty_trials=False,
            title='', color='k', size=10, figsize=(10,5),
-           saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf', ax=None):
+           saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf', ax=None, i_N=[0,1]):
     '''
     Make a raster plot of the provided 'times' aligned on the provided 'events', from window[0] to window[1].
     By default, there will be len(events) lines. you can pick a subset of events to plot
@@ -645,10 +649,10 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
     # Handles indexing of empty trials
     y_ticks=np.arange(len(at))+1
     y_ticks_labels=np.nonzero(np.isin(np.sort(events),np.sort(list(at.keys()))))[0]+1
-    
+    y_span=np.linspace(-0.4,0.4,i_N[1]) if i_N[1]>1 else [0]
     for e, ts in at.items():
         i=np.argsort(list(at.keys()))[npa(list(at.keys()))==e][0]
-        y=[y_ticks[i]]*len(ts)
+        y=[y_ticks[i]+y_span[i_N[0]]]*len(ts)
         ts=npa(ts)*1000 # convert to ms
         ax.scatter(ts, y, s=10, c='k', alpha=1)
     

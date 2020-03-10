@@ -1106,8 +1106,8 @@ class Dataset:
         self.fs=self.meta['sRateHz']
         self.endTime=int(np.load(opj(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
         self.chan_map=chan_map(self.dp, y_orig='surface')
-        assert np.all(np.isin(chan_map(self.dp, y_orig='surface', probe_version='local')[:,0], self.chan_map[:,0])), \
-        "Local channel map comprises channels not found in expected channels given matafile probe type."
+        if np.all(np.isin(chan_map(self.dp, y_orig='surface', probe_version='local')[:,0], self.chan_map[:,0])):
+            print("WARNING Local channel map comprises channels not found in expected channels given matafile probe type.")
         
     def get_units(self):
         return rtn.npix.gl.get_units(self.dp)

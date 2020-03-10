@@ -65,7 +65,7 @@ def get_units(dp, quality='all'):
             if quality=='all':
                 units = np.unique(np.load(Path(dp, 'spike_clusters.npy')))
             else:
-                units = cl_grp.loc[np.nonzero(cl_grp['group']==quality)[0], 'cluster_id']
+                units = cl_grp.loc[np.nonzero(npa(cl_grp['group']==quality))[0], 'cluster_id']
         return np.array(units, dtype=np.int64)
 
 def get_good_units(dp):

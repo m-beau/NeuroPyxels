@@ -34,3 +34,23 @@ RTNpush(){
         RTNinstall
     fi
 }```
+
+Or directly from the command line:
+
+# Push changes to remote github repo
+cd path/to/gitRepo
+git add.
+git commit -m "message"
+git push
+
+# Reinstall python module from local git repo
+conda activate gabi
+pip uninstall rtn
+python setup.py develop #(could also install from remote repo by doing: pip ginstall git+http://m-beau/routines@Gabi)
+
+# Test that fix works...
+python
+>>> import rtn
+>>> rtn blahblahblah # NO ERROR YIHAAAA
+
+# Pull request to Maxime's master branch using the online github green button...

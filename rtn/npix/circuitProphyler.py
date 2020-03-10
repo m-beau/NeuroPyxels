@@ -54,6 +54,8 @@ import operator
 import time
 import imp
 import os.path as op; opj=op.join
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import numpy as np
@@ -145,13 +147,13 @@ class Prophyler:
             ds_names+='_'+self.ds[ds_i].name
             if predirname!=op.dirname(dp):
                 print('WARNING: all your datasets are not stored in the same pre-directory - {} is picked anyway.'.format(predirname))
-        self.dp_pro=opj(predirname, 'prophyler'+ds_names)
+        self.dp_pro= Path(predirname) / ('prophyler'+ds_names) #Path(predirname, 'prophyler'+ds_names)
         self.name=ds_names
         print('Prophyler data (shared across {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_pro))
         if not op.isdir(self.dp_pro):
             os.mkdir(self.dp_pro)
         else:
-            ds_table=pd.read_csv(opj(self.dp_pro, 'datasets_table.csv'), index_col='dataset_i')
+            ds_table=pd.read_csv(Path(self.dp_pro, 'datasets_table.csv'), index_col='dataset_i') #pd.read_csv(Path(self.dp_pro, 'datasets_table.csv'), index_col='dataset_i')
             for ds_i in ds_table.index:
                 try:
                     assert self.ds_table.loc[ds_i, 'probe']==ds_table.loc[ds_i, 'probe']
@@ -161,7 +163,7 @@ class Prophyler:
                               If you wish to use the same probe names as before, re-instanciate prophyler with these.\
                               '''.format(len(self.ds_table.index), ds_table['probe'].tolist(), ds_table.index.tolist(), self.ds_table['probe'].tolist()))
             del ds_table
-        self.ds_table.to_csv(opj(self.dp_pro, 'datasets_table.csv'))
+        self.ds_table.to_csv(Path(self.dp_pro, 'datasets_table.csv')) # self.ds_table.to_csv(Path(self.dp_pro, 'datasets_table.csv'))
         
         # Load and save units qualities
         # + check whether datasets have been re-spike sorted if not first instanciation
@@ -172,7 +174,7 @@ class Prophyler:
             cl_grp.insert(0, 'dataset_i', ds_i)
             qualities=qualities.append(cl_grp, ignore_index=True)
         qualities.set_index('dataset_i', inplace=True)
-        qualities_dp=opj(self.dp_pro, 'merged_cluster_group.tsv')
+        qualities_dp=Path(self.dp_pro, 'merged_cluster_group.tsv')#Path(self.dp_pro, 'merged_cluster_group.tsv')
         if op.exists(qualities_dp):
             qualities_old=pd.read_csv(qualities_dp, sep='	', index_col='dataset_i')
             # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
@@ -184,14 +186,14 @@ class Prophyler:
         if len(self.ds_table.index)>1:
             # Only if merged_clusters_times does not exist already or does but re-spikesorting has been detected
             merge_fname='merged_clusters_spikes'
-            if (not op.exists(opj(self.dp_pro, merge_fname+'.npy'))) or re_spksorted:
+            if (not op.exists(Path(self.dp_pro, merge_fname+'.npy'))) or re_spksorted:
                 print("Loading independent spike trains of {} datasets...".format(len(self.ds_table.index)))
                 spike_times, spike_clusters, sync_signals = [], [], []
                 for ds_i in self.ds_table.index:
                     ds=self.ds[ds_i]
                     ons, offs = get_npix_sync(ds.dp)
-                    spike_times.append(np.load(opj(ds.dp, 'spike_times.npy')).flatten())
-                    spike_clusters.append(np.load(opj(ds.dp, 'spike_clusters.npy')).flatten())
+                    spike_times.append(np.load(Path(ds.dp, 'spike_times.npy')).flatten())
+                    spike_clusters.append(np.load(Path(ds.dp, 'spike_clusters.npy')).flatten())
                     if ds.probe_version == '3A':
                         ds.sync_chan_ons=ons[sync_idx3A]
                     elif ds.probe_version in ['1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']:
@@ -211,19 +213,19 @@ class Prophyler:
                     merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
                     cum_Nspikes+=Nspikes
                 merged_clusters_spikes=merged_clusters_spikes[np.argsort(merged_clusters_spikes[:,2])]
-                np.save(opj(self.dp_pro, merge_fname+'.npy'), merged_clusters_spikes)
+                np.save(Path(self.dp_pro, merge_fname+'.npy'), merged_clusters_spikes)
                 print('{} saved at {}.'.format(merge_fname+'.npy', self.dp_pro))
-                self.merged_clusters_spikes=np.memmap(opj(self.dp_pro, merge_fname+'.npy'))
+                self.merged_clusters_spikes=np.memmap(Path(self.dp_pro, merge_fname+'.npy'))
                 del spike_times, spike_clusters, sync_signals, merged_clusters_spikes
             
             print('{} found at {} and memory mapped at self.merged_clusters_spikes.'.format(merge_fname+'.npy', self.dp_pro))
-            self.merged_clusters_spikes=np.memmap(opj(self.dp_pro, merge_fname+'.npy'))
+            self.merged_clusters_spikes=np.memmap(Path(self.dp_pro, merge_fname+'.npy'))
         
         # CREATE A KEYWORD IN CCG FUNCTION: MERGED_DATASET=TRUE OR FALSE - IF TRUE, HANDLES LOADED FILE AS 3xNspikes ARRAY RATHER THAN 2 LOADED ARRAYS
         
         # Create a networkX graph whose nodes are Units()
         self.undigraph=nx.MultiGraph() # Undirected multigraph - directionality is given by uSrc and uTrg. Several peaks -> several edges -> multigraph.
-        self.dpnet=opj(self.dp_pro, 'network')
+        self.dpnet=Path(self.dp_pro, 'network')
         if not op.isdir(self.dpnet): os.mkdir(self.dpnet)
         
         self.peak_positions={}
@@ -265,10 +267,10 @@ class Prophyler:
         if len(graphs)>0:
             while 1:
                 load_choice=input("""Saved graphs found in {}:{}.
-                      Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(opj(self.dp, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
+                      Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(Path(self.dp, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
                 try: # works if an int is inputed
                     load_choice=int(ale(load_choice))
-                    g=self.import_graph(opj(self.dpnet, graphs[load_choice]))
+                    g=self.import_graph(Path(self.dpnet, graphs[load_choice]))
                     print("Building Dataset.graph from file {}.".format(graphs[load_choice]))
                     if graphs[load_choice].split('.')[-1]!='gpickle':
                         print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
@@ -283,8 +285,8 @@ class Prophyler:
                         if plotsfcdf:rtn.npix.plot.plot_sfcdf(self.dp_pro, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
                                                      rec_section=rec_section, ticks=False, again = again, saveFig=True, saveDir=self.dpnet)
                         break
-                    elif op.isfile(opj(self.dpnet, load_choice)):
-                        g=self.import_graph(opj(self.dpnet, load_choice))
+                    elif op.isfile(Path(self.dpnet, load_choice)):
+                        g=self.import_graph(Path(self.dpnet, load_choice))
                         print("Building Dataset.graph from file {}.".format(load_choice))
                         if load_choice.split('.')[-1]!='gpickle':
                             print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
@@ -686,7 +688,7 @@ class Prophyler:
                     pass
             
             file='graph_{}.{}'.format(name, frmt)
-            if op.isfile(opj(self.dpnet,file)):
+            if op.isfile(Path(self.dpnet,file)):
                 ow=input(" || Warning, name already taken - overwrite? <y>/<n>:")
                 if ow=='y':
                     print(" || Overwriting graph {}.".format(file))
@@ -859,8 +861,8 @@ class Prophyler:
         if g is None: return
         
         assert frmt in ['edgelist', 'adjlist', 'gexf', 'gml', 'gpickle']
-        file=opj(self.dpnet, prophylerGraph+'_'+name+'_'+op.basename(self.dp_pro)+'.'+frmt)
-        filePickle=opj(self.dpnet, prophylerGraph+'_'+name+'_'+op.basename(self.dp_pro)+'.gpickle')
+        file=Path(self.dpnet, prophylerGraph+'_'+name+'_'+op.basename(self.dp_pro)+'.'+frmt)
+        filePickle=Path(self.dpnet, prophylerGraph+'_'+name+'_'+op.basename(self.dp_pro)+'.gpickle')
         
         if op.isfile(filePickle) and not ow:
             print("File name {} already taken. Pick another name or run the function with ow=True to overwrite file.")
@@ -901,7 +903,7 @@ class Prophyler:
     ## TODO - adapt export feat table by handling the new waveform function (and main channels finders etc)
     def export_feat(self, rec_section='all'):
         # TO SET HERE - RECORDING SECTIONS TO CONSIDER TO COMPUTE THE FEATURES TABLE
-        endTime = int(np.load(opj(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)# above max in seconds
+        endTime = int(np.load(Path(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)# above max in seconds
 #                t1 = 0 # in seconds
 #                t2 = 2000 # in seconds
 #                rec_section = [(t1, t2)] # list of tuples (t1, t2) delimiting the recording sections in seconds
@@ -1032,7 +1034,7 @@ class Prophyler:
                                             controller.batch_size_waveforms)
                 channel_ids=np.arange(controller.model.n_channels_dat) #gets all channels
                 wave = controller.model.get_waveforms(spike_ids, channel_ids)'''
-                map_nchannels = np.load(opj(dp, 'channel_map.npy'), mmap_mode='r').squeeze().shape[0]
+                map_nchannels = np.load(Path(dp, 'channel_map.npy'), mmap_mode='r').squeeze().shape[0]
                 bunchs_set = controller._get_waveforms(clust, channel_ids=np.arange(0, map_nchannels, 1)) ## HERE IT SHOULD BE 384 FOR REGULAR NEUROPIXELS RECORDINGS
                 wave = bunchs_set.data #
                 spl, peak, trough, sp_width, pt_ratio, endslope, ind_endslope, best_channel, wvf_amp = compute_waveforms_features(wave)
@@ -1100,11 +1102,11 @@ class Dataset:
         self.ds_i=dataset_index
         self.name=self.dp.split('/')[-1] if dataset_name is None else dataset_name
         self.prb_name=probe_name
-        self.params={}; params=imp.load_source('params', opj(self.dp,'params.py'))
+        self.params={}; params=imp.load_source('params', Path(self.dp,'params.py'))
         for p in dir(params):
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
         self.fs=self.meta['sRateHz']
-        self.endTime=int(np.load(opj(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
+        self.endTime=int(np.load(Path(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
         self.chan_map=chan_map(self.dp, y_orig='surface')
         assert np.all(np.isin(chan_map(self.dp, y_orig='surface', probe_version='local')[:,0], self.chan_map[:,0])), \
             "Local channel map comprises channels not found in expected channels given matafile probe type."

@@ -1,0 +1,17 @@
+numpy
+scipy
+pandas
+matplotlib
+seaborn
+six
+elephant
+vispy
+statsmodels
+progressbar
+scikit-learn
+umap-learn
+networkx
+psutil
+pyqtgraph
+imutils
+opencv-contrib-python

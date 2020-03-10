@@ -1102,14 +1102,19 @@ class Dataset:
         self.ds_i=dataset_index
         self.name=self.dp.split('/')[-1] if dataset_name is None else dataset_name
         self.prb_name=probe_name
-        self.params={}; params=imp.load_source('params', Path(self.dp,'params.py'))
+        self.params={}; params=imp.load_source('params', Path(self.dp,'params.py').absolute().as_posix())
         for p in dir(params):
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
         self.fs=self.meta['sRateHz']
         self.endTime=int(np.load(Path(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
         self.chan_map=chan_map(self.dp, y_orig='surface')
-        assert np.all(np.isin(chan_map(self.dp, y_orig='surface', probe_version='local')[:,0], self.chan_map[:,0])), \
-            "Local channel map comprises channels not found in expected channels given matafile probe type."
+        sk_output_cm=chan_map(self.dp, y_orig='surface', probe_version='local')
+        if not np.all(np.isin(sk_output_cm[:,0], self.chan_map[:,0])):
+            if len(sk_output_cm[:,0])>len(self.chan_map[:,0]):
+                print("WARNING looks like the channel map outputted by kilosort has more channels than expected ({})...".format(len(sk_output_cm[:,0])))
+                self.chan_map=sk_output_cm
+            else:
+                raise "Local channel map comprises channels not found in expected channels given matafile probe type."
         
     def get_units(self):
         return rtn.npix.gl.get_units(self.dp)

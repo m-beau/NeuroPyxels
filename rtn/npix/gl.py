@@ -8,6 +8,7 @@ Dataset: Neuropixels dataset -> dp is phy directory (kilosort or spyking circus 
 """
 import os
 import os.path as op
+from pathlib import Path
 from ast import literal_eval as ale
 
 import numpy as np
@@ -15,22 +16,22 @@ import pandas as pd
 
 def assert_multidatasets(dp):
     'Returns unpacked merged_clusters_spikes.npz if it exists in dp, None otherwise.'
-    if op.exists(op.join(dp, 'merged_clusters_spikes.npz')):
-        mcs=np.load(op.join(dp, 'merged_clusters_spikes.npz'))
+    if op.exists(Path(dp, 'merged_clusters_spikes.npz')):
+        mcs=np.load(Path(dp, 'merged_clusters_spikes.npz'))
         return mcs[list(mcs.keys())[0]]
 
 
 def load_units_qualities(dp):
     f1='cluster_group.tsv'
     f2='cluster_groups.csv'
-    if os.path.isfile(op.join(dp, f1)):
-        qualities = pd.read_csv(op.join(dp, f1),delimiter='	')
-    elif os.path.isfile(op.join(dp, 'merged_'+f1)):
-        qualities = pd.read_csv(op.join(dp, 'merged_'+f1), delimiter='	', index_col='dataset_i')
+    if os.path.isfile(Path(dp, f1)):
+        qualities = pd.read_csv(Path(dp, f1),delimiter='	')
+    elif os.path.isfile(Path(dp, 'merged_'+f1)):
+        qualities = pd.read_csv(Path(dp, 'merged_'+f1), delimiter='	', index_col='dataset_i')
     elif os.path.isfile(f2):
-        qualities = pd.read_csv(op.join(dp, f2), delimiter=',')
+        qualities = pd.read_csv(Path(dp, f2), delimiter=',')
     elif os.path.isfile(f2):
-        qualities = pd.read_csv(op.join(dp, 'merged_'+f2), delimiter=',', index_col='dataset_i')
+        qualities = pd.read_csv(Path(dp, 'merged_'+f2), delimiter=',', index_col='dataset_i')
     else:
         print('cluster groups table not found in provided data path. Exiting.')
         return
@@ -44,11 +45,11 @@ def get_units(dp, quality='all'):
     if cl_grp.index.name=='dataset_i':
         if quality=='all':
             for ds_i in cl_grp.index.unique():
-                ds_table=pd.read_csv(op.join(dp, 'datasets_table.csv'), index_col='dataset_i')
+                ds_table=pd.read_csv(Path(dp, 'datasets_table.csv'), index_col='dataset_i')
                 ds_dp=ds_table['dp'][ds_i]
                 assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
-                Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], op.join(dp, 'datasets_table.csv'))
-                ds_units=np.unique(np.load(op.join(ds_dp, 'spike_clusters.npy')))
+                Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], Path(dp, 'datasets_table.csv'))
+                ds_units=np.unique(np.load(Path(ds_dp, 'spike_clusters.npy')))
                 units += ['{}_{}'.format(ds_i, u) for u in ds_units]
         else:
             for ds_i in cl_grp.index.unique():
@@ -62,7 +63,7 @@ def get_units(dp, quality='all'):
             units=[]
         except:
             if quality=='all':
-                units = np.unique(np.load(op.join(dp, 'spike_clusters.npy')))
+                units = np.unique(np.load(Path(dp, 'spike_clusters.npy')))
             else:
                 units = cl_grp.loc[np.nonzero(cl_grp['group']==quality)[0], 'cluster_id']
         return np.array(units, dtype=np.int64)
@@ -76,9 +77,9 @@ def get_prophyler_source(dp_pro, u):
     '''
     if op.basename(dp_pro)[:9]=='prophyler':
         ds_i, u = u.split('_'); ds_i, u = ale(ds_i), ale(u)
-        ds_table=pd.read_csv(op.join(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
+        ds_table=pd.read_csv(Path(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
         ds_dp=ds_table['dp'][ds_i]
         assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
-        Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], op.join(dp_pro, 'datasets_table.csv'))
+        Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], Path(dp_pro, 'datasets_table.csv'))
         dp_pro=ds_dp
     return dp_pro, u

@@ -1,0 +1,5 @@
+# Additional packages to make rtn work
+
+h5py
+paq2py
+PyQt5

@@ -106,6 +106,20 @@ def sign(x):
 def minus_is_1(x):
     return abs(1-1*x)*1./2
 
+def are_n_consec_ones(X, n_consec):
+    '''
+    The trick below finds whether there are n_consec consecutive ones in the array comp
+    by adding each element with its neighbour.
+    At least 2 consec ones: add them 1 time and check if there is a 2=2**1 somewhere.
+    At least 2 consec ones: add them 3 times and check if there is a 4=2**2 somewhere.
+    ...
+    '''
+    X=npa(X).astype(np.int)
+    assert np.all((X==0)|(X==1)), 'X array should be only 0s and 1s!'
+    for i in range(n_consec-1):
+        X = X[:-1]+X[1:]
+    
+    return np.any(X==2**(n_consec-1))
 
 def thresh(arr, th, sgn=1):
     '''Returns indices of the data points just following a directed threshold crossing.

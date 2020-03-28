@@ -6,6 +6,8 @@
 
 import os
 import os.path as op; opj=op.join
+from pathlib import Path
+
 import imp
 from ast import literal_eval as ale
 import numpy as np
@@ -19,7 +21,7 @@ from rtn.utils import _as_array, npa
 
 #%% Concise home made function
 
-def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False, again=False):
+def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False, again=False):
     '''
     ********
     routine from rtn.npix.spk_wvf
@@ -31,7 +33,8 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
         - unit:
         - n_waveforms:
         - t_waveforms:
-        - wvf_subset_selection: either 'regular' (homogeneous selection or in batches) or 'random'
+        - wvf_subset_selection: either 'regular' (homogeneous selection or in batches), 'random',
+                                                  or a list of time chunks [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
         - wvf_batch_size: if >1 and 'regular' selection, selects ids as batches of spikes.
     
     Returns:
@@ -40,31 +43,25 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', 
     '''
     dp, u = get_prophyler_source(dp, u)
 
-    dprm = dp+'/routinesMemory'
+    dprm = Path(dp,'routinesMemory')
+    fn="wvf{}_{}-{}_{}.npy".format(u, n_waveforms, t_waveforms, str(subset_selection)[0:10].replace(' ', ''))
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
-    if os.path.exists(dprm+'/wvf{}_{}-{}.npy'.format(u, n_waveforms, t_waveforms)) and not again:
-        if prnt: print("File wvf{}_{}-{}.npy found in routines memory.".format(u, n_waveforms, t_waveforms))
-        waveforms = np.load(dprm+'/wvf{}_{}-{}.npy'.format(u, n_waveforms, t_waveforms))
+    if os.path.exists(Path(dprm,fn)) and not again:
+        if prnt: print("File {} found in routines memory.".format(fn))
+        waveforms = np.load(Path(dprm,fn))
 
     # if not, compute it
     else:
-        dpme = dp+'/manualExports'
-        fn="/wvf_[{}].npy".format(u)
-        if n_waveforms==100 and t_waveforms==82 and os.path.exists(dpme+fn):
-            waveforms = np.load(dpme+fn)
-            if prnt: print("File wvf_[{}].npy found in phy manual exports(snippet reminder :export_wvf).".format(u))
-        else:
-            waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size)
-                
+        waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size)
         # Save it
         if sav:
-            np.save(dprm+'/wvf{}_{}-{}.npy'.format(u, n_waveforms, t_waveforms), waveforms)
+            np.save(Path(dprm,fn), waveforms)
 
     return waveforms
 
 
-def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10):
+def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10):
     '''Function to extract a subset of waveforms from a given unit.
     Parameters:
         - dp:
@@ -79,13 +76,13 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     
     '''
     # Extract metadata
-    channel_ids_abs = np.load(opj(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
+    channel_ids_abs = np.load(Path(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
     channel_ids_rel = np.arange(channel_ids_abs.shape[0])
     params={}; par=imp.load_source('params', opj(dp,'params.py'))
     for p in dir(par):
         exec("if '__'not in '{}': params['{}']=par.{}".format(p, p, p))
     params['filter_order'] = None if params['hp_filtered'] is False else 3
-    dat_path=opj(dp, params['dat_path'])
+    dat_path=Path(dp, params['dat_path'])
     
     # Compute traces from binary file
     item_size = np.dtype(params['dtype']).itemsize
@@ -95,8 +92,8 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, wvf_subset_selection
     traces = ConcatenatedArrays([trc], channel_ids_abs, scaling=None) # Here, the ABSOLUTE channel indices must be used to extract the correct channels
 
     # Get spike times subset
-    spike_samples = np.load(opj(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
-    spike_ids_subset=get_ids_subset(dp, unit, n_waveforms, wvf_batch_size, wvf_subset_selection)
+    spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
+    spike_ids_subset=get_ids_subset(dp, unit, n_waveforms, wvf_batch_size, subset_selection)
     
     # Extract waveforms i.e. bits of traces at spike times subset
     waveform_loader=WaveformLoader(traces=traces,
@@ -169,8 +166,8 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         # and prepare to save the FULL array of peak channels at the end
         units=get_units(dp, quality=quality)
         pc_fname='peak_channels_{}.npy'.format(quality)
-        if op.exists(opj(dp, pc_fname)):
-            peak_chans=np.load(opj(dp, pc_fname))
+        if op.exists(Path(dp, pc_fname)):
+            peak_chans=np.load(Path(dp, pc_fname))
             if np.all(np.isin(units, peak_chans[:,0])):
                 return peak_chans
         else:
@@ -179,8 +176,8 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         # If units are fed, try to load the peak channels from the saved FULL array of peak channels
         # else, just calculate the peak channels for the relevant units
         units=npa(units).flatten()
-        if op.exists(opj(dp, 'peak_channels_all.npy')):
-            peak_chans=np.load(opj(dp, 'peak_channels_all.npy'))
+        if op.exists(Path(dp, 'peak_channels_all.npy')):
+            peak_chans=np.load(Path(dp, 'peak_channels_all.npy'))
             if np.all(np.isin(units, peak_chans[:,0])):
                 units_mask=np.isin(peak_chans[:,0], units)
                 return peak_chans[units_mask]
@@ -216,7 +213,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         peak_chans=peak_chans[depthIdx]
     
     if save:
-        np.save(opj(dp, pc_fname), peak_chans)
+        np.save(Path(dp, pc_fname), peak_chans)
     
     return peak_chans # units, channels
 
@@ -227,7 +224,7 @@ def get_chDis(dp, ch1, ch2):
     returns distance in um.'''
     assert 1<=ch1<=384
     assert 1<=ch2<=384
-    ch_pos = np.load(opj(dp,'channel_positions.npy')) # positions in um	
+    ch_pos = np.load(Path(dp,'channel_positions.npy')) # positions in um	
     ch_pos1=ch_pos[ch1-1] # convert from ch number to ch relative index	
     ch_pos2=ch_pos[ch2-1] # convert from ch number to ch relative index	
     chDis=np.sqrt((ch_pos1[0]-ch_pos2[0])**2+(ch_pos1[1]-ch_pos2[1])**2)
@@ -251,39 +248,43 @@ def templates(dp, u):
     dp, u = get_prophyler_source(dp, u)
 
     IDs=ids(dp,u)
-    #mean_amp=np.mean(np.load(opj(dp,'amplitudes.npy'))[IDs])
-    template_ids=np.unique(np.load(opj(dp,'spike_templates.npy'))[IDs])
-    templates = np.load(opj(dp, 'templates.npy'))[template_ids]#*mean_amp
+    #mean_amp=np.mean(np.load(Path(dp,'amplitudes.npy'))[IDs])
+    template_ids=np.unique(np.load(Path(dp,'spike_templates.npy'))[IDs])
+    templates = np.load(Path(dp, 'templates.npy'))[template_ids]#*mean_amp
                 
     return templates
 
 #%% get_wvf utilities
     
-def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, subset):
-    assert subset in ['regular', 'random']
-    if n_waveforms in (None, 0):
-        ids_subset = ids(dp, unit)
+def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, subset_selection):
+    if type(subset_selection) not in [str, np.str_]:
+        ids_subset = ids(dp, unit, subset_selection=subset_selection)
+        print('In subset {}, {} waveforms were found (parameter n_waveforms={} ignored).'.format(subset_selection, len(ids_subset), n_waveforms))
     else:
-        assert n_waveforms > 0
-        spike_ids = ids(dp, unit)
-        if subset == 'regular':
-            # Regular subselection.
-            if batch_size_waveforms is None or len(spike_ids) <= max(batch_size_waveforms, n_waveforms):
-                step = ceil(np.clip(1. / n_waveforms * len(spike_ids),
-                             1, len(spike_ids)))
-                ids_subset = spike_ids[0::step][:n_waveforms] #regular_subset(spike_ids, n_spikes_max=n_samples_waveforms)
-            else:
-                # Batch selections of spikes.
-                n_excerpts=n_waveforms // batch_size_waveforms
-                excerpt_size=batch_size_waveforms
-                ids_subset = np.concatenate([data_chunk(spike_ids, chunk)
-                          for chunk in excerpts(len(spike_ids),
-                                                n_excerpts=n_excerpts,
-                                                excerpt_size=excerpt_size)]) #get_excerpts(spike_ids, n_samples_waveforms // batch_size_waveforms, batch_size_waveforms)
-        elif subset == 'random' and len(spike_ids) > n_waveforms:
-            # Random subselection.
-            ids_subset = np.unique(np.random.choice(spike_ids, n_waveforms, replace=False))
-            
+        assert subset_selection in ['regular', 'random', 'all']
+        if n_waveforms in (None, 0) or subset_selection=='all':
+            ids_subset = ids(dp, unit)
+        else:
+            assert n_waveforms > 0
+            spike_ids = ids(dp, unit)
+            if subset_selection == 'regular':
+                # Regular subselection.
+                if batch_size_waveforms is None or len(spike_ids) <= max(batch_size_waveforms, n_waveforms):
+                    step = ceil(np.clip(1. / n_waveforms * len(spike_ids),
+                                 1, len(spike_ids)))
+                    ids_subset = spike_ids[0::step][:n_waveforms] #regular_subset(spike_ids, n_spikes_max=n_samples_waveforms)
+                else:
+                    # Batch selections of spikes.
+                    n_excerpts=n_waveforms // batch_size_waveforms
+                    excerpt_size=batch_size_waveforms
+                    ids_subset = np.concatenate([data_chunk(spike_ids, chunk)
+                              for chunk in excerpts(len(spike_ids),
+                                                    n_excerpts=n_excerpts,
+                                                    excerpt_size=excerpt_size)]) #get_excerpts(spike_ids, n_samples_waveforms // batch_size_waveforms, batch_size_waveforms)
+            elif subset_selection == 'random' and len(spike_ids) > n_waveforms:
+                # Random subselection.
+                ids_subset = np.unique(np.random.choice(spike_ids, n_waveforms, replace=False))
+                
     return ids_subset
 
 def data_chunk(data, chunk, with_overlap=False):

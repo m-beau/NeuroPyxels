@@ -5,6 +5,8 @@
 """
 import os
 import os.path as op; opj=op.join
+from pathlib import Path
+
 import ast
 
 import numpy as np
@@ -18,7 +20,8 @@ import seaborn as sns
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
                     npa, sign, minus_is_1, thresh, smooth, \
                     _as_array, _unique, _index_of, mpl_colors
-                    
+from rtn.stats import fractile_normal, fractile_poisson
+
 from rtn.npix.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
 from rtn.npix.gl import get_units
 from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
@@ -136,7 +139,7 @@ def format_colors(colors):
             colors=npa(colors)
     return colors
 
-def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None):
+def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None, color=None):
     hist=np.histogram(arr, bins=np.arange(a,b,s))
     y=hist[0]
     x=hist[1][:-1]
@@ -144,12 +147,49 @@ def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None):
         (fig, ax) = plt.subplots()
     else:
         fig, ax = ax.get_figure(), ax
-    ax.bar(x=x, height=y, width=s)
+    ax.bar(x=x, height=y, width=s, color=color)
     ax.set_title(title)
     ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Binsize:{}'.format(s))
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
     
     fig,ax=mplp(fig,ax)
+    
+    return fig
+
+
+#%% Stats related plots
+    
+def plot_pval_borders(X, p, dist='poisson', X_pred=None, gauss_baseline=1, x=None, ax=None, color=None):
+    '''
+    Function to plot array X and the upper and lower borders for a given p value.
+    Parameters:
+        - X: np array
+        - p:float, p value [0-1]
+        - dist: whether to assume Poisson or Normal distribution
+    '''
+    X=npa(X)
+    assert 0<p<1
+    assert dist in ['poisson', 'normal']
+    if ax is None: fig, ax = plt.subplots()
+    else: fig=ax.get_figure()
+    
+    if dist=='poisson':
+        assert (X_pred is not None) and (len(X_pred)==len(X)), 'When plotting Poisson distribution, you need to provide a predictor with the same shape as X!'
+        fp1=[fractile_poisson(p, l=c) for c in X_pred]
+        fp2=[fractile_poisson(1-p, l=c) for c in X_pred]
+    elif dist=='normal':
+        X_baseline=np.append(X[:int(len(X)*gauss_baseline/2)],X[int(len(X)*(1-gauss_baseline/2)):])
+        X_pred=np.ones(X.shape[0])*np.mean(X_baseline)
+        fp1=np.ones(X.shape[0])*fractile_normal(p=p, m=np.mean(X_baseline), s=np.std(X_baseline))
+        fp2=np.ones(X.shape[0])*fractile_normal(p=1-p, m=np.mean(X_baseline), s=np.std(X_baseline))
+    
+    if x is None: x=np.arange(len(X))
+    ax.plot(x,X, c=color)
+    ax.plot(x,X_pred, c='k', ls='--')
+    ax.plot(x,fp1, c='r', ls='--')
+    ax.plot(x,fp2, c='r', ls='--')
+    
+    mplp()
     
     return fig
 
@@ -260,9 +300,9 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     
     if saveFig:
         assert _format in ['png', 'pdf', 'eps']
-        fig.savefig(opj(saveDir, title+'.{}'.format(_format)), format=_format)
+        fig.savefig(Path(saveDir, title+'.{}'.format(_format)), format=_format)
     if saveData:
-        np.save(opj(saveDir, title+'.npy'), waveforms)
+        np.save(Path(saveDir, title+'.npy'), waveforms)
     
     return fig
 
@@ -351,7 +391,7 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
             saveDir=op.expanduser(saveDir)
             rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
             rcn=rcn+'_whitened' if whiten else rcn+'_raw'
-            fig.savefig(opj(saveDir, '{}.{}'.format(rcn, _format)), format=_format)
+            fig.savefig(Path(saveDir, '{}.{}'.format(rcn, _format)), format=_format)
         
         return fig
     
@@ -480,7 +520,7 @@ def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Do
         saveDir=op.expanduser(saveDir)
         rcn = '{}_{}_t{}-{}_ch{}-{}'.format(op.basename(dp), units, times[0], times[1], channels[0], channels[-1]) # raw chunk name
         rcn=rcn+'_whitened' if whiten else rcn+'_raw'
-        fig.savefig(opj(saveDir, '{}.{}'.format(rcn, _format)), format=_format)
+        fig.savefig(Path(saveDir, '{}.{}'.format(rcn, _format)), format=_format)
     
     if pyqtgraph:fig[1].autoRange()
     return fig
@@ -602,12 +642,12 @@ def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
     saveDir=op.expanduser(saveDir)
     if not os.path.isdir(saveDir): os.mkdir(saveDir)
     if saveData:
-        np.save(opj(saveDir, title+'_x.npy'), x)
-        np.save(opj(saveDir,title+'_y.npy'), y)
-        np.save(opj(saveDir,title+'_y_processed.npy'), y_p)
-        np.save(opj(saveDir,title+'_y_p_sem.npy'), y_p_sem)
+        np.save(Path(saveDir, title+'_x.npy'), x)
+        np.save(Path(saveDir,title+'_y.npy'), y)
+        np.save(Path(saveDir,title+'_y_processed.npy'), y_p)
+        np.save(Path(saveDir,title+'_y_p_sem.npy'), y_p_sem)
     if saveFig:
-        fig.savefig(opj(saveDir, '{}.{}'.format(title, _format)), format=_format)
+        fig.savefig(Path(saveDir, '{}.{}'.format(title, _format)), format=_format)
 
     return fig
 
@@ -691,14 +731,14 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
         ax.plot([etp,etp], ax.get_ylim(), ls='--', lw=2, c='r', zorder=-1)
 
     if saveFig:
-        fig.savefig(opj(saveDir, '{}.{}'.format(title, _format)), format=_format)
+        fig.savefig(Path(saveDir, '{}.{}'.format(title, _format)), format=_format)
         
     return fig
 
 #%% Correlograms
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True, 
-            show=True, pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, 
+            show=True, _format='pdf', rec_section='all', labels=True, std_lines=True, title=None, color=-1, 
             saveData=False, ylim1=0, ylim2=0, normalize='Hertz', ccg_mn=None, ccg_std=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
@@ -717,7 +757,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     x=np.linspace(-cwin*1./2, cwin*1./2, CCG.shape[0])
     assert x.shape==CCG.shape
     if ylim1==0 and ylim2==0:
-        if normalize=='Hertz':
+        if normalize in ['Hertz','Counts']:
             ylim1=0
             yl=max(CCG); ylim2=int(yl)+5-(yl%5);
         elif normalize=='Pearson':
@@ -738,7 +778,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         ax2.set_yticklabels(ax2ticks, fontsize=20)
         ax2.set_ylim([ylim1, ylim2])
         
-    if normalize=='Hertz' or normalize=='Pearson':
+    if normalize in ['Hertz', 'Pearson', 'Counts']:
         y=CCG.copy()
     elif normalize=='zscore':
         y=CCG.copy()+abs(ylim1)
@@ -756,6 +796,8 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
                     ax.plot([x[0], x[-1]], [mn-st*std,mn-st*std], ls="--", c=[0,0,0.5], lw=0.5)
             else:
                 ax.plot([x[0], x[-1]], [0,0], ls="--", c=[0,0,0], lw=2)
+        if normalize=='Counts':
+            ax.set_ylabel("Crosscorrelation (Counts)", size=20)
         if normalize=='Hertz':
             ax.set_ylabel("Crosscorrelation (Hz)", size=20)
         elif normalize=='Pearson':
@@ -777,8 +819,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         saveDir=op.expanduser(saveDir)
         if not os.path.isdir(saveDir): os.mkdir(saveDir)
         if saveFig:
-            if pdf: fig.savefig(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}.pdf'.format(uls[0], uls[1], cwin, cbin))
-            if png: fig.savefig(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}.png'.format(uls[0], uls[1], cwin, cbin))
+            fig.savefig(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}.{4}'.format(uls[0], uls[1], cwin, cbin,_format))
         if saveData:
             np.save(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}_x.npy'.format(uls[0], uls[1], cwin, cbin), x)
             np.save(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}_y.npy'.format(uls[0], uls[1], cwin, cbin), CCG)
@@ -786,7 +827,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     return fig
         
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=True, 
-            show=True, pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, 
+            show=True, _format='pdf', rec_section='all', labels=True, title=None, ref_per=True, saveData=False, 
             ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
@@ -804,7 +845,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     x=np.linspace(-cwin*1./2, cwin*1./2, ACG.shape[0])
     assert x.shape==ACG.shape
     if ylim1==0 and ylim2==0:
-        if normalize=='Hertz':
+        if normalize in ['Hertz','Counts']:
             ylim1=0
             yl=max(ACG); ylim2=int(yl)+5-(yl%5);
         elif normalize=='Pearson':
@@ -825,13 +866,15 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         ax2.set_yticklabels(ax2ticks, fontsize=20)
         ax2.set_ylim([ylim1, ylim2])
 
-    if normalize=='Hertz' or normalize=='Pearson':
+    if normalize in ['Hertz', 'Pearson', 'Counts']:
         y=ACG.copy()
     elif normalize=='zscore':
         y=ACG.copy()+abs(ylim1)
     ax.bar(x=x, height=y, width=cbin, color=color, edgecolor=color, bottom=ylim1) # Potentially: set bottom=0 for zscore
     
     if labels:
+        if normalize=='Counts':
+            ax.set_ylabel("Autocorrelation (Counts)", size=20)
         if normalize=='Hertz':
             ax.set_ylabel("Autocorrelation (Hz)", size=20)
         elif normalize=='Pearson':
@@ -857,8 +900,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         saveDir=op.expanduser(saveDir)
         if not os.path.isdir(saveDir): os.mkdir(saveDir)
         if saveFig:
-            if pdf: fig.savefig(saveDir+'/acg{}-{}_{:.2f}.pdf'.format(unit, cwin, cbin))
-            if png: fig.savefig(saveDir+'/acg{}-{}_{:.2f}.png'.format(unit, cwin, cbin))
+            fig.savefig(saveDir+'/acg{}-{}_{:.2f}.{}'.format(unit, cwin, cbin, _format))
         if saveData:
             np.save(saveDir+'/acg{}-{}_{:.2f}_x.npy'.format(unit, cwin, cbin), x)
             np.save(saveDir+'/acg{}-{}_{:.2f}_y.npy'.format(unit, cwin, cbin), ACG)
@@ -867,76 +909,49 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         
     
 def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, saveDir='~/Downloads', 
-                     saveFig=False, prnt=False, show=True, pdf=True, png=False, rec_section='all', 
-                     labels=True, title=None, std_lines=True, ylim1=0, ylim2=0, normalize='zscore'):
-    colorsDic = {
-    0:(53./255, 127./255, 255./255),
-    1:(255./255, 0./255, 0./255),
-    2:(255./255,215./255,0./255),
-    3:(238./255, 53./255, 255./255),
-    4:(84./255, 255./255, 28./255),
-    5:(255./255,165./255,0./255),
-    -1:(0., 0., 0.),
-    }
-    #print(cwin*1./CCGs.shape[2])
-    #assert cbin==cwin*1./CCGs.shape[2]
-
-    fig, ax = plt.subplots(len(units), len(units), figsize=(16, 10), dpi=80)
+                     saveFig=False, prnt=False, show=True, _format='pdf', rec_section='all', 
+                     labels=True, title=None, std_lines=False, ylim1=0, ylim2=0, normalize='zscore'):
+    
+    fig, ax = plt.subplots(len(units), len(units), figsize=(3*len(units), 3*len(units)), dpi=80)
     for i in range(len(units)):
         for j in range(len(units)):
             r, c = i, j
-            if (i==j):
-                color=colorsDic[i]#'#A785BD'#
+            if i>j:
+                mplp(ax=ax[r, c], hide_axis=True)
             else:
-                color=colorsDic[-1]
-            x=np.linspace(-cwin*1./2, cwin*1./2, CCGs.shape[2])
-            y=CCGs[i,j,:]
-            ax[r, c].bar(x=x, height=y, width=cbin, color=color, edgecolor=color)
-            if ylim1==0 and ylim2==0:
-                if normalize=='Hertz':
-                    ylim1=0
-                    yl=max(y); ylim2=int(yl)+5-(yl%5);
-                elif normalize=='Pearson':
-                    ylim1=0
-                    yl=max(y); ylim2=yl+0.01-(yl%0.01);
-                elif normalize=='zscore':
-                    yl1=min(y);yl2=max(y)
-                    ylim1=yl1-0.5+(abs(yl1)%0.5);ylim2=yl2+0.5-(yl2%0.5)
-                    ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
-                    ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
-            ax[r, c].set_ylim([ylim1, ylim2])
-            
-            if normalize=='Hertz' or normalize=='Pearson':
-                yy=y.copy()
-            elif normalize=='zscore':
-                yy=y.copy()+abs(ylim1)
-            ax[r, c].bar(x=x, height=yy, width=cbin, color=color, edgecolor=color, bottom=ylim1) # Potentially: set bottom=0 for zscore
-            
-            if labels:
-                if j==0:
-                    if normalize=='Hertz':
-                        ax[r, c].set_ylabel("Crosscorr. (Hz)", size=12)
-                    elif normalize=='Pearson':
-                        ax[r, c].set_ylabel("Crosscorr. (Pearson)", size=12)
-                    elif normalize=='zscore':
-                        ax[r, c].set_ylabel("Crosscorr. (z-score)", size=12)
-                if i==len(units)-1:
-                    ax[r, c].set_xlabel('Time (ms)', size=12)
-                ax[r, c].set_xlim([-cwin*1./2, cwin*1./2])
-                if type(bChs)!=list:
-                    title="{}->{} ({})s".format(units[i], units[j], str(rec_section)[0:50].replace(' ',  ''))
+                if (i==j):
+                    color=phyColorsDic[i%6]
                 else:
-                    title="{}@{}->{}@{} ({})s".format(units[i], bChs[i], units[j], bChs[j], str(rec_section)[0:50].replace(' ',  ''))
-                ax[r, c].set_title(title, size=12)
-                ax[r, c].tick_params(labelsize=20)
-                if i!=j:
-                    mn = np.mean(np.append(y[:int(len(y)*2./5)], y[int(len(y)*3./5):]))
-                    std = np.std(np.append(y[:int(len(y)*2./5)], y[int(len(y)*3./5):]))
-                    if std_lines:
-                        ax[r, c].plot([x[0], x[-1]], [mn,mn], ls="--", c=[0,0,0], lw=1)
-                        for st in [1,2,3]:
-                            ax[r, c].plot([x[0], x[-1]], [mn+st*std,mn+st*std], ls="--", c=[0.5,0,0], lw=0.5)
-                            ax[r, c].plot([x[0], x[-1]], [mn-st*std,mn-st*std], ls="--", c=[0,0,0.5], lw=0.5)
+                    color=phyColorsDic[-1]
+                x=np.arange(-cwin/2, cwin/2+cbin, cbin)
+                y=CCGs[i,j,:]
+
+                ax[r, c].plot(x, y, color=color, alpha=0)
+                ax[r, c].set_xlim([-cwin*1./2, cwin*1./2])
+                
+                if normalize in ['Hertz','Pearson','Counts']:
+                    ax[r, c].set_ylim([0, ax[r, c].get_ylim()[1]])
+                    ax[r, c].fill_between(x, np.zeros(len(x)), y, color=color)
+                elif normalize=='zscore':
+                    ylmax=max(np.abs(ax[r, c].get_ylim()))
+                    ax[r, c].set_ylim([-ylmax, ylmax])
+                    ax[r, c].fill_between(x, -ylmax*np.ones(len(x)), y, color=color)
+                    
+                if labels:
+                    if j==0 and i==0:
+                        ax[r, c].set_ylabel("Crosscorr. ({})".format(normalize), size=12)
+                    if j==len(units)-1 and i==len(units)-1:
+                        ax[r, c].set_xlabel('Time (ms)', size=12)
+                    
+                    if any(bChs):
+                        title="{}@{}->{}@{}".format(units[i], bChs[i], units[j], bChs[j])
+                    else:
+                        title="{}->{}".format(units[i], units[j])
+                    
+                    mplp(ax=ax[r, c], figsize=(3*len(units), 3*len(units)),
+                         title=title, title_s=12, title_w='regular',
+                         axlab_s=12, axlab_w='regular',
+                         ticklab_s=12, ticklab_w='regular')
     
     
     if Title:
@@ -946,16 +961,15 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
     if saveFig:
         saveDir=op.expanduser(saveDir)
         if not os.path.isdir(saveDir): os.mkdir(saveDir)
-        if pdf: fig.savefig(saveDir+'/ccg{}-{}_{2:.2f}.pdf'.format(str(units).replace(' ', ''), cwin, cbin))
-        if png: fig.savefig(saveDir+'/ccg{}_{}_{2:.2f}.png'.format(str(units).replace(' ', ''), cwin, cbin))
+        fig.savefig(saveDir+'/ccg{0}-{1}_{2:.2f}.{3}'.format(str(units).replace(' ', ''), cwin, cbin, _format))
         
     return fig
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0], acg_mn=None, acg_std=None, again=False):
+             _format='pdf', rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0], acg_mn=None, acg_std=None, again=False):
     assert type(unit)==int or type(unit)==str
     saveDir=op.expanduser(saveDir)
-    bChs=get_depthSort_peakChans(dp, units=unit)[:,1].flatten()
+    bChs=get_depthSort_peakChans(dp, units=[unit])[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
 
     ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section, again=again)
@@ -964,13 +978,13 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
         acg25, acg35 = ACG_hertz[:int(len(ACG_hertz)*2./5)], ACG_hertz[int(len(ACG_hertz)*3./5):]
         acg_std=np.std(np.append(acg25, acg35))
         acg_mn=np.mean(np.append(acg25, acg35))
-    fig=plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, pdf=pdf, png=png, 
+    fig=plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, _format=_format, 
             rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, acg_mn=acg_mn, acg_std=acg_std)
     
     return fig
     
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
-             pdf=True, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=[0,0], ccg_mn=None, ccg_std=None, again=False):
+             _format='pdf', rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=[0,0], ccg_mn=None, ccg_std=None, again=False):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=units)[:,1].flatten()
@@ -978,17 +992,17 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
 
     if CCG is None:
         CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section, again=again)
-        assert CCG is not None
-        if normalize=='zscore':
-            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section, again=again)[0,1,:]
-            ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
-            ccg_std=np.std(np.append(ccg25, ccg35))
-            ccg_mn=np.mean(np.append(ccg25, ccg35))
-        if CCG.shape[0]==2:
-            fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, pdf, png, rec_section=rec_section, 
-                          labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std)
+    assert CCG is not None
+    if normalize=='zscore':
+        CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section, again=again)[0,1,:]
+        ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
+        ccg_std=np.std(np.append(ccg25, ccg35))
+        ccg_mn=np.mean(np.append(ccg25, ccg35))
+    if CCG.shape[0]==2:
+        fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, _format, rec_section=rec_section, 
+                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std)
     else:
-        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, pdf, png, rec_section=rec_section, 
+        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, _format, rec_section=rec_section, 
                                labels=labels, title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
         
     return fig
@@ -1084,7 +1098,7 @@ def plot_sfcdf(dp, cbin=0.2, cwin=100, threshold=3, n_consec_bins=3, text=True, 
     fig = hm.get_figure()
     if saveFig:
         if saveDir is None: saveDir=dp
-        fig.savefig(opj(saveDir,'heatmap_{}_{}_{}_{}.pdf'.format(cbin, cwin, threshold, n_consec_bins)))
+        fig.savefig(Path(saveDir,'heatmap_{}_{}_{}_{}.pdf'.format(cbin, cwin, threshold, n_consec_bins)))
     
     return fig
 

@@ -12,6 +12,7 @@ setup(name='rtn',
       #package_dir={'rtn': 'rtn'},
       install_requires=['numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'six', 'elephant', 'vispy', 'statsmodels', 'progressbar',
-      'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'pyqtgraph', 'imutils', 'opencv-contrib-python'],
+      'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'pyqtgraph', 'imutils', 'opencv-contrib-python',
+      'h5py'],
       dependency_links=['https://github.com/llerussell/paq2py/tarball/master'],
       keywords='phy,data analysis,electrophysiology,neuroscience')

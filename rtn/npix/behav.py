@@ -7,6 +7,8 @@ Behavior analysis tools.
 
 import os
 import os.path as op; opj=op.join
+from pathlib import Path
+
 import h5py
 from ast import literal_eval as ale
 

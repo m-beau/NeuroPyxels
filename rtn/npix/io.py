@@ -11,6 +11,7 @@ import psutil
 import os
 from ast import literal_eval as ale
 import os.path as op; opj=op.join
+from pathlib import Path
 
 import numpy as np
 from math import floor
@@ -26,7 +27,7 @@ def read_spikeglx_meta(dp, subtype='ap'):
     metafile=''
     for file in os.listdir(dp):
         if file.endswith(".{}.meta".format(subtype)):
-            metafile=opj(dp, file)
+            metafile=Path(dp, file)
             break
     if metafile=='':
         raise FileNotFoundError('*.{}.meta not found in directory. Aborting.'.format(subtype))
@@ -168,7 +169,7 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
     fname=''
     onsets={}
     offsets={}
-    sync_dp=opj(dp, 'sync_chan')
+    sync_dp=Path(dp, 'sync_chan')
     
     # Tries to directly generate and output onsets and offsets
     if op.exists(sync_dp) and not output_binary:
@@ -179,10 +180,10 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
                 for file in os.listdir(sync_dp):
                     if file.endswith("on.npy"):
                         file_i = ale(file[-7])
-                        onsets[file_i]=np.load(opj(sync_dp,file))
+                        onsets[file_i]=np.load(Path(sync_dp,file))
                     elif file.endswith("of.npy"):
                         file_i = ale(file[-7])
-                        offsets[file_i]=np.load(opj(sync_dp,file))
+                        offsets[file_i]=np.load(Path(sync_dp,file))
                     
                 return onsets, offsets
 
@@ -193,7 +194,7 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
             if file.endswith("_sync.npz"):
                 fname=file[:-9]
                 sync_fname=fname+'_sync'
-                binary=np.load(opj(sync_dp, sync_fname+'.npz'))
+                binary=np.load(Path(sync_dp, sync_fname+'.npz'))
                 binary=binary[dir(binary.f)[0]].astype(np.int8)
                 meta=read_spikeglx_meta(dp, fname[-2:])
                 break
@@ -221,8 +222,8 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
         #syncChan=nchan-ale(meta['acqApLfSy'].split(',')[-1])
     
         dt=np.dtype(np.int16)
-        nsamples = os.path.getsize(opj(dp, fname+'.bin')) / (nchan * dt.itemsize)
-        syncdat=np.memmap(opj(dp, fname+'.bin'),
+        nsamples = os.path.getsize(Path(dp, fname+'.bin')) / (nchan * dt.itemsize)
+        syncdat=np.memmap(Path(dp, fname+'.bin'),
                         mode='r',
                         dtype=dt,
                         shape=(int(nsamples), int(nchan)))[:,-1]
@@ -230,7 +231,7 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
         
         print('Unpacking {}...'.format(fname+'.bin'))
         binary = unpackbits(syncdat.flatten(),16).astype(np.int8)
-        np.savez_compressed(opj(sync_dp, sync_fname+'.npz'), binary)
+        np.savez_compressed(Path(sync_dp, sync_fname+'.npz'), binary)
 
     if output_binary:
         return binary
@@ -244,12 +245,12 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
         ons = sync_idx_onset[0][
               sync_idx_onset[1] == ichan]/srate
         onsets[ichan] = ons
-        np.save(opj(sync_dp, sync_fname+'{}on.npy'.format(ichan)), ons)
+        np.save(Path(sync_dp, sync_fname+'{}on.npy'.format(ichan)), ons)
     for ichan in np.unique(sync_idx_offset[1]):
         ofs = sync_idx_offset[0][
               sync_idx_offset[1] == ichan]/srate
         offsets[ichan] = ofs
-        np.save(opj(sync_dp, sync_fname+'{}of.npy'.format(ichan)), ofs)
+        np.save(Path(sync_dp, sync_fname+'{}of.npy'.format(ichan)), ofs)
     
     return onsets,offsets
 
@@ -276,7 +277,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     fname=''
     for file in os.listdir(dp):
         if file.endswith(".{}.bin".format(subtype)):
-            fname=opj(dp, file)
+            fname=Path(dp, file)
             break
     if fname=='':
         raise FileNotFoundError('*.{}.bin not found in directory. Aborting.'.format(subtype))
@@ -293,7 +294,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
     bn = op.basename(fname) # binary name
     rcn = '{}_t{}-{}_ch{}-{}.npy'.format(bn, times[0], times[1], channels[0], channels[-1]) # raw chunk name
-    rcp = opj(dp, rcn)
+    rcp = Path(dp, rcn)
     
     if os.path.isfile(rcp):
         return np.load(rcp)

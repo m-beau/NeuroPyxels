@@ -22,40 +22,60 @@ from rtn.utils import npa
 
 #%% Laws
 
-def pdf_normal(x, m=0, s=1):
+def pdf_normal(X, m=0, s=1):
     'Normal probability density function.'
-    x=npa([x]).flatten()
-    return np.exp(-1./2*((x-m)/s)**2)/(s*np.sqrt(2*np.pi))
+    X=npa([X]).flatten()
+    # try:
+    #     return np.exp(-1./2*((X-m)/s)**2)/(s*np.sqrt(2*np.pi))
+    # except:
+    return stt.norm.pdf(X, m, s)
 
 def pdf_poisson(X, l=1):
     'Poisson probability density function.'
     X=npa([X]).flatten()
+    # p=npa(zeros=X.shape)
+    # try:
+    #     for i, x in enumerate(X):
+    #         assert x>=0 and round(x)==x, "A Poisson law only accepts natural integers as inputs!"
+    #         p[i]=np.exp(-l)*l**x/math.factorial(x)
+    #     return p
+    # except:
+    return stt.poisson.pmf(X, l)
+
+def cdf(X, _pdf, w1, b, *args):
+    X=npa([X]).flatten()
     p=npa(zeros=X.shape)
     for i, x in enumerate(X):
-        assert x>=0 and type(x) is int, "A Poisson law only accepts natural integers as inputs!"
-        p[i]=np.exp(-l)*l**x/math.factorial(x)
+        p[i]=np.sum(_pdf(np.arange(w1, x+b, b), *args)*b)
     return p
 
-def fractile_law(p, law, w1=-5, w2=5, b=0.01):
-    assert type(p) is float
-    X=np.arange(w1, w2, b)
-    P=0
-    for i in X:
-        try: P+=law[0](i, *law[1])*b
-        except:  P+=law[0](i, law[1])*b
-        if P>=p:return np.round(i, 4)
+def cdf_normal(X, m=0, s=1):
+    'Normal probability cumulative function.'
+    #return cdf(X, pdf_normal, m-4*s, s/100, m, s)
+    return stt.norm.cdf(X, m, s)
 
-def fractile_normal(p=0.95, m=0, s=1, w1=-5, w2=5, b=0.01):
+def cdf_poisson(X, l=1):
+    'Poisson probability cumulative function.'
+    #return cdf(X, pdf_poisson, 0, 1, l)
+    return stt.poisson.cdf(X, l)
+
+def fractile(p, _cdf, w1, w2, b, *args):
+    X=np.arange(w1,w2+b,b)
+    return np.round(w1+np.nonzero(_cdf(X, *args)>=p)[0][0]*b, 4)
+
+def fractile_normal(p=0.975, m=0, s=1):
     '''Fractile of order p drawn from the normal cumulative probability density function.
-    Ex: fractile_normal(0.975) will be 1.96 (the normal cumulative pdf reaches 0.975 for x=1.96.)
+    Ex: fractile_normal(0.975) will be 1.98 (the normal cumulative pdf reaches 0.975 for x=1.96.)
     So 95% of samples of a normal distribution will be between mean+/-1.96*std.
     '''
-    return fractile_law(p, [pdf_normal, (m,s)], w1, w2, b)
+    w1,w2,b=m-4*s, m+4*s, s/100
+    return fractile(p, cdf_normal, w1, w2, b, m, s)
 
-def fractile_poisson(p=0.95, l=0, w1=-5, w2=5, b=0.01):
-    '''Fractile of order p drawn from the poisson cumulative probability density function.
+def fractile_poisson(p=0.975, l=1):
+    '''Same for Poisson distribution.
     '''
-    return fractile_law(p, [pdf_poisson, l], w1, w2, b)
+    w1,w2,b=0, l+3*l, 1
+    return fractile(p, cdf_poisson, w1, w2, b, l)
 
 #%% A] Statistical tests assumptions checkpoints: 1) no outliers, 2) normal distribution
 def check_outliers(x, th_sd=2, remove=False):

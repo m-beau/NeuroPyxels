@@ -7,8 +7,10 @@
 Dataset: Neuropixels dataset -> dp is phy directory (kilosort or spyking circus output)
 """
 import os
+from rtn.utils import npa
 import os.path as op
 from pathlib import Path
+
 from ast import literal_eval as ale
 
 import numpy as np

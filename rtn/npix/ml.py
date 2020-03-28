@@ -6,6 +6,8 @@
 Machine learning tools to cluster/classify cell types.
 """
 
+from pathlib import Path
+
 #%% General import
 import numpy as np
 import pandas as pd

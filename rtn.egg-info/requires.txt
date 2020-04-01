@@ -15,3 +15,4 @@ psutil
 pyqtgraph
 imutils
 opencv-contrib-python
+h5py

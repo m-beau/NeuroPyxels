@@ -738,7 +738,7 @@ def raster_plt(times, events, events_toplot=None, window=[-1000, 1000], remove_e
 #%% Correlograms
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True, 
-            show=True, _format='pdf', rec_section='all', labels=True, std_lines=True, title=None, color=-1, 
+            show=True, _format='pdf', subset_selection='all', labels=True, std_lines=True, title=None, color=-1, 
             saveData=False, ylim1=0, ylim2=0, normalize='Hertz', ccg_mn=None, ccg_std=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
@@ -808,9 +808,9 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         ax.set_xlim([-cwin*1./2, cwin*1./2])
         if type(title)!=str:
             if bChs is None:
-                title="Units {}->{} ({})s".format(uls[0], uls[1], str(rec_section)[0:50].replace(' ',  ''))
+                title="Units {}->{} ({})s".format(uls[0], uls[1], str(subset_selection)[0:50].replace(' ',  ''))
             else:
-                title="Units {}@{}->{}@{} ({})s".format(uls[0], bChs[0], uls[1], bChs[1], str(rec_section)[0:50].replace(' ',  ''))
+                title="Units {}@{}->{}@{} ({})s".format(uls[0], bChs[0], uls[1], bChs[1], str(subset_selection)[0:50].replace(' ',  ''))
         ax.set_title(title, size=22)
         ax.tick_params(labelsize=20)
     fig.tight_layout()
@@ -827,7 +827,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     return fig
         
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=True, 
-            show=True, _format='pdf', rec_section='all', labels=True, title=None, ref_per=True, saveData=False, 
+            show=True, _format='pdf', subset_selection='all', labels=True, title=None, ref_per=True, saveData=False, 
             ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
@@ -885,10 +885,10 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         ax.set_xlim([-cwin*1./2, cwin*1./2])
         if type(title)!=str:
             if  bChs is None:
-                title="Unit {} ({})s".format(unit, str(rec_section)[0:50].replace(' ',  ''))
+                title="Unit {} ({})s".format(unit, str(subset_selection)[0:50].replace(' ',  ''))
             else:
                 assert len(bChs)==1
-                title="Unit {}@{} ({})s".format(unit, bChs[0], str(rec_section)[0:50].replace(' ',  ''))
+                title="Unit {}@{} ({})s".format(unit, bChs[0], str(subset_selection)[0:50].replace(' ',  ''))
         ax.set_title(title, size=22)
         ax.tick_params(labelsize=20)
         if ref_per:
@@ -909,7 +909,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         
     
 def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, saveDir='~/Downloads', 
-                     saveFig=False, prnt=False, show=True, _format='pdf', rec_section='all', 
+                     saveFig=False, prnt=False, show=True, _format='pdf', subset_selection='all', 
                      labels=True, title=None, std_lines=False, ylim1=0, ylim2=0, normalize='zscore'):
     
     fig, ax = plt.subplots(len(units), len(units), figsize=(3*len(units), 3*len(units)), dpi=80)
@@ -966,50 +966,50 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
     return fig
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
-             _format='pdf', rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0], acg_mn=None, acg_std=None, again=False):
+             _format='pdf', subset_selection='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0], acg_mn=None, acg_std=None, again=False):
     assert type(unit)==int or type(unit)==str
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=[unit])[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
 
-    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section, again=again)
+    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, subset_selection=subset_selection, again=again)
     if normalize=='zscore':
-        ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section)
+        ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, subset_selection=subset_selection)
         acg25, acg35 = ACG_hertz[:int(len(ACG_hertz)*2./5)], ACG_hertz[int(len(ACG_hertz)*3./5):]
         acg_std=np.std(np.append(acg25, acg35))
         acg_mn=np.mean(np.append(acg25, acg35))
     fig=plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, _format=_format, 
-            rec_section=rec_section, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, acg_mn=acg_mn, acg_std=acg_std)
+            subset_selection=subset_selection, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, acg_mn=acg_mn, acg_std=acg_std)
     
     return fig
     
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
-             _format='pdf', rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=[0,0], ccg_mn=None, ccg_std=None, again=False):
+             _format='pdf', subset_selection='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=[0,0], ccg_mn=None, ccg_std=None, again=False):
     assert type(units)==list
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=units)[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
 
     if CCG is None:
-        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, rec_section=rec_section, again=again)
+        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, subset_selection=subset_selection, again=again)
     assert CCG is not None
     if normalize=='zscore':
-        CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, rec_section=rec_section, again=again)[0,1,:]
+        CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, subset_selection=subset_selection, again=again)[0,1,:]
         ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
         ccg_std=np.std(np.append(ccg25, ccg35))
         ccg_mn=np.mean(np.append(ccg25, ccg35))
     if CCG.shape[0]==2:
-        fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, _format, rec_section=rec_section, 
+        fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, _format, subset_selection=subset_selection, 
                       labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std)
     else:
-        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, _format, rec_section=rec_section, 
+        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, None, saveDir, saveFig, prnt, show, _format, subset_selection=subset_selection, 
                                labels=labels, title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
         
     return fig
 
 # Plot correlation matrix of variables x ovservations 2D arrray
     
-def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=0, cmap='viridis', rec_section='all', ret_cm=False, saveDir='~/Downloads', saveFig=False, pdf=1, png=0):
+def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=0, cmap='viridis', subset_selection='all', ret_cm=False, saveDir='~/Downloads', saveFig=False, pdf=1, png=0):
     '''Plot correlation matrix.
     dp: datapath
     units: units list of the same dataset
@@ -1028,7 +1028,7 @@ def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=
     units, channels = mainChans[:,0], mainChans[:,1]
     
     # make correlation matrix of units sorted by depth
-    cm = make_cm(dp, units, b, cwin, cbin, corrEvaluator, vmax, vmin, rec_section)
+    cm = make_cm(dp, units, b, cwin, cbin, corrEvaluator, vmax, vmin, subset_selection)
     
     # Plot correlation matrix
     cm[np.eye(cm.shape[0], dtype=bool)]=0 # set diag values to 0
@@ -1055,7 +1055,7 @@ def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=
         return fig
 
 ## Connectivity inferred from correlograms
-def plot_sfcdf(dp, cbin=0.2, cwin=100, threshold=3, n_consec_bins=3, text=True, markers=False, rec_section='all', 
+def plot_sfcdf(dp, cbin=0.2, cwin=100, threshold=3, n_consec_bins=3, text=True, markers=False, subset_selection='all', 
                ticks=True, again = False, saveFig=True, saveDir=None, againCCG=False):
     '''
     Visually represents the connectivity datafrane otuputted by 'gen_cdf'.
@@ -1063,7 +1063,7 @@ def plot_sfcdf(dp, cbin=0.2, cwin=100, threshold=3, n_consec_bins=3, text=True, 
     Each intersection is a square split in a varying amount of columns,
     each column representing a positive or negatively significant peak collored accordingly to its size s.
     '''
-    df, hmm, gu, bestChs, hmmT = gen_sfc(dp, cbin, cwin, threshold, n_consec_bins, rec_section=rec_section, _format='peaks_infos', again=again, againCCG=againCCG)
+    df, hmm, gu, bestChs, hmmT = gen_sfc(dp, cbin, cwin, threshold, n_consec_bins, subset_selection=subset_selection, _format='peaks_infos', again=again, againCCG=againCCG)
     plt.figure()
     hm = sns.heatmap(hmm, yticklabels=True, xticklabels=True, cmap="RdBu_r", center=0, vmin=-5, vmax=5, cbar_kws={'label': 'Crosscorrelogram peak (s.d.)'})
     #hm = sns.heatmap(hmmT, yticklabels=False, xticklabels=False, alpha=0.0)
@@ -1102,7 +1102,7 @@ def plot_sfcdf(dp, cbin=0.2, cwin=100, threshold=3, n_consec_bins=3, text=True, 
     
     return fig
 
-def plot_dataset_CCGs(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, rec_section='all'):
+def plot_dataset_CCGs(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, subset_selection='all'):
     gu = get_units(dp, quality='good') # get good units
     prct=0; sig=0;
     for i1, u1 in enumerate(gu):
@@ -1112,13 +1112,13 @@ def plot_dataset_CCGs(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, rec_s
                 #print('{}%...'.format(prct), end=end)
             if i1<i2:
                 print('Assessing CCG {}x{}... {}%'.format(u1, u2, prct))
-                hist=ccg(dp, [u1,u2], cbin, cwin, fs=30000, normalize='Hertz', prnt=False, rec_section=rec_section)[0,1,:]
+                hist=ccg(dp, [u1,u2], cbin, cwin, fs=30000, normalize='Hertz', prnt=False, subset_selection=subset_selection)[0,1,:]
                 pks = extract_hist_modulation_features(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn='all')
                 if np.array(pks).any():
                     sig+=1
                     print("{}th significant CCG...".format(sig))
                     plot_ccg(dp, [u1,u2], cbin, cwin, savedir=dp+'/significantCCGs_{}_{}_{}_{}'.format(cbin, cwin, threshold, n_consec_bins), \
-                             saveFig=True, prnt=False, show=False, pdf=False, png=True, rec_section=rec_section, CCG=hist)
+                             saveFig=True, prnt=False, show=False, pdf=False, png=True, subset_selection=subset_selection, CCG=hist)
     return
 
 def plot_dataset_ACGs(dp, cbin=0.5, cwin=80):

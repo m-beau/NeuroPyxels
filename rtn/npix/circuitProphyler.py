@@ -22,7 +22,7 @@ DPs = {'dataset name 1': path/to/dataset1,...} # dic listing the datasets paths
 pro = Prophyler(DPs['dataset name 1'])
 
 # Connect the graph
-pro.connect_graph()multipro = Prophyler(dp)
+pro.connect_graph()
 
 
 # Plot the graph
@@ -1124,9 +1124,7 @@ class Dataset:
         return rtn.npix.gl.get_units(self.dp, quality='good')
     
     def get_peak_channels(self):
-        print('CODE GOT UPDATED??', self.dp)
         self.peak_channels = get_depthSort_peakChans(self.dp, quality='good')# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
-
         
     def get_peak_positions(self):
         self.get_peak_channels()
@@ -1151,9 +1149,6 @@ class Dataset:
         
         self.peak_positions={int(pp[0]):pp[1:] for pp in peak_pos}
         
-        
-        
-        
 class Unit:
     '''The object Unit does not store anything itself except from its dataset and index.
     It makes it possible to call its various features.
@@ -1173,6 +1168,7 @@ class Unit:
         self.get_peak_position()
         # self refers to the instance not the class, hehe
         self.nodename=str(self.ds.ds_i)+'_'+str(self.idx)
+
         self.undigraph.add_node(self.nodename, unit=self, X=self.peak_position_real[0], Y=self.peak_position_real[1], posReal=self.peak_position_real, putativeCellType=self.putativeCellType, groundtruthCellType=self.groundtruthCellType, classifiedCellType=self.classifiedCellType) 
     
     def get_peak_channel(self):

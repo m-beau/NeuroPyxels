@@ -115,7 +115,7 @@ def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
 
     
 
-def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
+def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enforced_rp=0):
     '''
     ********
     routine from routines_spikes
@@ -129,6 +129,7 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - subset_selection = 'all' or [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
     - again: boolean, if True recomputes data from source files without checking routines memory.
+    - enforced_rp: enforced refractory period, in millisecond. 0 by default (only pure duplicates are removed)
     '''
     
     # Search if the variable is already saved in dp/routinesMemory
@@ -170,6 +171,10 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
         if type(unit) not in [str, np.str_, int]:
             print('WARNING unit {} type ({}) not handled!'.format(unit, type(unit)))
             return
+        
+        # Filter out spike duplicates (spikes following an ISI shorter than enforced_rp)
+        fs=read_spikeglx_meta(dp)['sRateHz']
+        train=train[np.append(True, np.diff(train)>=enforced_rp*fs/1000)]
         
         # Optional selection of a section of the recording.
         if type(subset_selection) not in [str,np.str_]: # else, eq to subset_selection=[(0, spike_samples[-1])] # in samples

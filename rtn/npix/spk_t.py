@@ -65,43 +65,41 @@ def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
     if not op.isdir(dprm): os.makedirs(dprm)
     if op.exists(Path(dprm,fn)) and not again:
         if prnt: print("File {} found in routines memory.".format(fn))
-        indices = np.load(Path(dprm,fn))
-        indices=np.asarray(indices, dtype='int64')
+        return np.asarray(np.load(Path(dprm,fn)), dtype='int64')
     # if not, compute it
+    if prnt:
+        print("File {} not found in routines memory. Will be computed from source files.".format(fn))
+    if type(unit) in [str, np.str_]:
+        ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)
+        spike_clusters_samples = np.load(Path(dp, 'merged_clusters_spikes.npy'))
+        dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
+        indices = np.nonzero(dataset_mask&unit_mask)[0]
+        indices=np.reshape(indices, (max(indices.shape), ))
     else:
-        if prnt:
-            print("File {} not found in routines memory. Will be computed from source files.".format(fn))
-        if type(unit) in [str, np.str_]:
-            ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)
-            spike_clusters_samples = np.load(Path(dp, 'merged_clusters_spikes.npy'))
-            dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
-            indices = np.nonzero(dataset_mask&unit_mask)[0]
-            indices=np.reshape(indices, (max(indices.shape), ))
-        else:
-            try:unit=int(unit)
-            except:pass
-        if type(unit) is int:
-            spike_clusters = np.load(Path(dp,"spike_clusters.npy"))
-            indices = np.nonzero(spike_clusters==unit)[0]
-            indices=np.reshape(indices, (max(indices.shape), ))
-        if type(unit) not in [str, np.str_, int]:
-            print('WARNING unit {} type ({}) not handled!'.format(unit, type(unit)))
-            return
-        
-        # Optional selection of a section of the recording.
-        if type(subset_selection) not in [str,np.str_]: # else, eq to subset_selection=[(0, spike_samples[-1])] # in samples
-            try: subset_selection[0][0]
-            except: raise TypeError("ERROR subset_selection should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
-            fs=read_spikeglx_meta(dp)['sRateHz']
-            train=trn(dp, unit, subset_selection=subset_selection)
-            sec_bool=np.zeros(len(train), dtype=np.bool)
-            for section in subset_selection:
-                sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
-            indices=indices[sec_bool]
-        
-        # Save it
-        if sav:
-            np.save(Path(dprm,fn), indices)
+        try:unit=int(unit)
+        except:pass
+    if type(unit) is int:
+        spike_clusters = np.load(Path(dp,"spike_clusters.npy"))
+        indices = np.nonzero(spike_clusters==unit)[0]
+        indices=np.reshape(indices, (max(indices.shape), ))
+    if type(unit) not in [str, np.str_, int]:
+        print('WARNING unit {} type ({}) not handled!'.format(unit, type(unit)))
+        return
+    
+    # Optional selection of a section of the recording.
+    if type(subset_selection) not in [str,np.str_]: # else, eq to subset_selection=[(0, spike_samples[-1])] # in samples
+        try: subset_selection[0][0]
+        except: raise TypeError("ERROR subset_selection should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
+        fs=read_spikeglx_meta(dp)['sRateHz']
+        train=trn(dp, unit, again=again)
+        sec_bool=np.zeros(len(train), dtype=np.bool)
+        for section in subset_selection:
+            sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
+        indices=indices[sec_bool]
+    
+    # Save it
+    if sav:
+        np.save(Path(dprm,fn), indices)
     # Either return or draw to global namespace
     return indices
 

@@ -738,10 +738,12 @@ def extract_hist_modulation_features(hist, hbin, threshold=0.01, n_consec_bins=3
         
     return ret
 
-def ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', name=None, sav=True):
+def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', name=None, sav=True):
     '''
     Routine generating a stack of correlograms for faster subsequent analysis,
     between all U_src and U_trg units.
+    In order to save a stack and retrieve it later, it is mandatory to provide a 'name' argument.
+    It is possible to retrieve a stack with a given name without providing the corresponding units.
     Parameters:
         - dp:        string, datapath
         - U_src:     list/array, source units of correlograms
@@ -760,20 +762,27 @@ def ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', name=None, sav=T
     if name is not None:
         norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
         fn='ccgstack_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin)
+        fnu='ccgstack_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin)
         
         if op.exists(dprm/fn):
-            return np.load(dprm/fn)
+            stack=np.load(dprm/fn)
+            stacku=np.load(dprm/fnu)
+            return stack, stacku
     
+    assert len(U_src)>0 and len(U_trg)>0, 'You need to provide at least one source and one target unit!'
     bins=get_bins(cwin, cbin)
+    stacku=npa(zeros=(len(U_src), len(U_trg), 2))
     stack=npa(zeros=(len(U_src), len(U_trg), len(bins)))
     for i1, u1 in enumerate(U_src):
         for i2, u2 in enumerate(U_trg):
+            stacku[i1, i2, :]=[u1,u2]
             stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize)[0,1,:]
             
     if sav and name is not None:
         np.save(dprm/fn, stack)
+        np.save(dprm/fnu, stacku)
     
-    return stack
+    return stack, stacku
 
 def sfcdf(dp, U_src=None, U_trg=None, cbin=0.2, cwin=100, threshold=0.01, consec_bins=3, subset_selection='all', _format='peaks_infos', again=False, againCCG=False):
     '''

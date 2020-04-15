@@ -55,8 +55,8 @@ def get_units(dp, quality='all', chan_range=None):
             for ds_i in cl_grp.index.unique():
                 ds_table=pd.read_csv(Path(dp, 'datasets_table.csv'), index_col='dataset_i')
                 ds_dp=ds_table['dp'][ds_i]
-                assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
-                Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], Path(dp, 'datasets_table.csv'))
+                assert op.exists(ds_dp), """WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\
+                Please add the new path of dataset {} in the csv file {}.""".format(ds_dp, ds_table['dataset_name'][ds_i], Path(dp, 'datasets_table.csv'))
                 ds_units=np.unique(np.load(Path(ds_dp, 'spike_clusters.npy')))
                 units += ['{}_{}'.format(ds_i, u) for u in ds_units]
         else:
@@ -70,11 +70,16 @@ def get_units(dp, quality='all', chan_range=None):
             units=[]
         except:
             if quality=='all':
-                units = np.unique(np.load(Path(dp, 'spike_clusters.npy')))
+                units = cl_grp.loc[:, 'cluster_id'].values.astype(np.int64)
+                if 'unsorted' not in cl_grp['group'].unique():
+                    units1 = cl_grp.loc[:, 'cluster_id'].astype(np.int64)
+                    units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
+                    unsort_u=units[~np.isin(units, units1)]
+                    unsort_df=pd.DataFrame({'cluster_id':unsort_u, 'group':['unsorted']*len(unsort_u)}) 
+                    cl_grp=cl_grp.append(unsort_df, ignore_index=True)
+                    cl_grp.to_csv(Path(dp, 'cluster_group.tsv'), sep='	', index=False)
             else:
-                units = cl_grp.loc[np.nonzero(npa(cl_grp['group']==quality))[0], 'cluster_id']
-        units=np.array(units, dtype=np.int64)
-        
+                units = cl_grp.loc[np.nonzero(npa(cl_grp['group']==quality))[0], 'cluster_id'].values.astype(np.int64)
         
     if chan_range is None:
         return units
@@ -98,8 +103,8 @@ def get_prophyler_source(dp_pro, u):
         ds_i, u = u.split('_'); ds_i, u = ale(ds_i), ale(u)
         ds_table=pd.read_csv(Path(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
         ds_dp=ds_table['dp'][ds_i]
-        assert op.exists(ds_dp), "WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\ \
-        Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], Path(dp_pro, 'datasets_table.csv'))
+        assert op.exists(ds_dp), """WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\
+        Please add the new path of dataset {} in the csv file {}.""".format(ds_dp, ds_table['dataset_name'][ds_i], Path(dp_pro, 'datasets_table.csv'))
         dp_pro=ds_dp
     return dp_pro, u
 

@@ -14,5 +14,4 @@ setup(name='rtn',
       'six', 'elephant', 'vispy', 'statsmodels', 'progressbar',
       'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'pyqtgraph', 'imutils', 'opencv-contrib-python',
       'h5py'],
-      dependency_links=['https://github.com/llerussell/paq2py/tarball/master'],
       keywords='phy,data analysis,electrophysiology,neuroscience')

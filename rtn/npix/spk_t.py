@@ -14,7 +14,7 @@ import pandas as pd
 from rtn.npix.gl import get_units
 from rtn.npix.io import read_spikeglx_meta
 
-def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
+def binarize(X, bin_size, fs, rec_len=None):
     '''Function to turn a spike train (array of time stamps)
        into a binarized spike train (array of 0 or 1 
                                      of length rec_len with a given bin_size.).
@@ -24,29 +24,21 @@ def binarize(X, bin_size, fs, rec_len=None, constrainBin=False):
        - fs: sampling frequency, in Hertz.'''
     
     # Process bin_size
-    if bin_size>1:
-        print('''/!\ Provided binsize>1ms! 
-              It is likely that more than one spike will be binned together.''')
-        if constrainBin:
-            print('->>> Bin size set at 1ms.')
-            bin_size=1
-            bin_size = np.clip(bin_size, 1000/fs, 1)  # in milliseconds
-    bin_size = int(np.ceil(fs * float(bin_size)/1000))  # Conversion ms->samples
+    bin_size = int(np.ceil(fs*bin_size/1000))  # Conversion ms->samples
     
     # Process rec_len
     if rec_len==None:
         rec_len=X[-1]
     
     # Binarize spike train
-    if bin_size==0:
-        (X_unq, X_cnt) = np.unique(X, return_counts=True)
-        if np.any(X_cnt>=2):
-            n_redundant = np.count_nonzero(X_cnt>=2)
-            print('''/!\ {} spikes were present more than once in the provided train.'''.format(n_redundant))
-        del X_cnt
-    else:
-        X_unq = X
-    Xb = np.histogram(X_unq, bins=np.arange(0, rec_len, bin_size))[0]
+    Xb = np.histogram(X, bins=np.arange(0, rec_len, bin_size))[0]
+    
+    # Decrease array size as much as possible
+    for encode in [32,16,8]:
+        if not np.all(Xb==Xb.astype('int{}'.format(encode))):
+            break
+        Xb=Xb.astype('int{}'.format(encode))
+    
     return Xb
 
 
@@ -101,7 +93,7 @@ def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
             try: subset_selection[0][0]
             except: raise TypeError("ERROR subset_selection should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
             fs=read_spikeglx_meta(dp)['sRateHz']
-            train=trn(dp, unit)
+            train=trn(dp, unit, subset_selection=subset_selection)
             sec_bool=np.zeros(len(train), dtype=np.bool)
             for section in subset_selection:
                 sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
@@ -237,7 +229,7 @@ def isi(dp, unit, sav=True, prnt=False, subset_selection='all', fs=30000, again=
         
 
 
-def trnb(dp, unit, bin_size, sav=True, prnt=False, constrainBin=False, subset_selection='all', fs=30000, again=False):
+def trnb(dp, unit, bin_size, sav=True, prnt=False, subset_selection='all', fs=30000, again=False):
     '''
     ********
     routine from routines_spikes
@@ -269,7 +261,7 @@ def trnb(dp, unit, bin_size, sav=True, prnt=False, constrainBin=False, subset_se
         phy_st = np.load(dp+'/spike_times.npy')
         last_st = phy_st[-1,0] # in samples
         del phy_st
-        train_binarized = binarize(train, bin_size, fs=fs, rec_len=last_st, constrainBin=constrainBin)
+        train_binarized = binarize(train, bin_size, fs=fs, rec_len=last_st)
         train_binarized = np.asarray(train_binarized, dtype='int16') #0s and 1s -> int8 to save memory
         # Save it
         if sav:

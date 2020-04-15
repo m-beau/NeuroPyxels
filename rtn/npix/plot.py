@@ -18,7 +18,7 @@ from matplotlib.ticker import AutoLocator
 import seaborn as sns
 
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
-                    npa, sign, minus_is_1, thresh, smooth, \
+                    npa, sign, minus_is_1, thresh, smooth, zscore, \
                     _as_array, _unique, _index_of, mpl_colors
 from rtn.stats import fractile_normal, fractile_poisson
 
@@ -159,7 +159,7 @@ def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None, colo
 
 #%% Stats related plots
     
-def plot_pval_borders(X, p, dist='poisson', X_pred=None, gauss_baseline=1, x=None, ax=None, color=None):
+def plot_pval_borders(X, p, dist='poisson', X_pred=None, gauss_baseline_fract=1, x=None, ax=None, color=None):
     '''
     Function to plot array X and the upper and lower borders for a given p value.
     Parameters:
@@ -178,7 +178,7 @@ def plot_pval_borders(X, p, dist='poisson', X_pred=None, gauss_baseline=1, x=Non
         fp1=[fractile_poisson(p, l=c) for c in X_pred]
         fp2=[fractile_poisson(1-p, l=c) for c in X_pred]
     elif dist=='normal':
-        X_baseline=np.append(X[:int(len(X)*gauss_baseline/2)],X[int(len(X)*(1-gauss_baseline/2)):])
+        X_baseline=np.append(X[:int(len(X)*gauss_baseline_fract/2)],X[int(len(X)*(1-gauss_baseline_fract/2)):])
         X_pred=np.ones(X.shape[0])*np.mean(X_baseline)
         fp1=np.ones(X.shape[0])*fractile_normal(p=p, m=np.mean(X_baseline), s=np.std(X_baseline))
         fp2=np.ones(X.shape[0])*fractile_normal(p=1-p, m=np.mean(X_baseline), s=np.std(X_baseline))
@@ -539,7 +539,7 @@ def ifr_subplots(times_list, events_list, titles_list, figsize=(8,4)):
     return fig
 
 def ifr_plot(dp, unit, events, b=5, window=[-1000,1000], remove_empty_trials=False,
-             zscore=False, zscoretype='overall', convolve=True, gw=64, gsd=1,
+             z_score=False, zscoretype='overall', convolve=True, gw=64, gsd=1,
              title='', figsize=(10,4), color=seabornColorsDic[0],
              plot_all_traces=False, zslines=False, plot_sem=True,
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf'):
@@ -552,12 +552,12 @@ def ifr_plot(dp, unit, events, b=5, window=[-1000,1000], remove_empty_trials=Fal
         title='psth_{}'.format(unit)
         
     return ifr_plt(times, events, b, window, remove_empty_trials,
-             zscore, zscoretype, convolve, gw, gsd, title, figsize, 
+             z_score, zscoretype, convolve, gw, gsd, title, figsize, 
              color, plot_all_traces, zslines, plot_sem, saveDir,
              saveFig, saveData, _format)
 
 def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
-             zscore=False, zscoretype='overall', convolve=True, gw=64, gsd=1,
+             z_score=False, zscoretype='overall', convolve=True, gw=64, gsd=1,
              title='', figsize=(10,4), color=seabornColorsDic[0],
              plot_all_traces=False, zslines=False, plot_sem=True,
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None):
@@ -566,14 +566,14 @@ def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
     
     # Get ifr +- zscored +- smoothed (processed)
     x, y, y_mn, y_p, y_p_sem = get_processed_ifr(times, events, b, window, remove_empty_trials,
-                      zscore, zscoretype, convolve, gw, gsd)
+                      z_score, zscoretype, convolve, gw, gsd)
     # plot
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     else:
         fig=ax.get_figure()
     ylims=[]
-    if zscore:
+    if z_score:
         if not convolve:
             if not plot_sem:
                 ax.bar(x, y_p, width=b, color=color, edgecolor=color, linewidth=1)
@@ -607,7 +607,7 @@ def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
         ax.set_ylim([-1, 2])
         ax.set_ylabel('Inst.F.R. (s.d.)')
     
-    elif not zscore:
+    elif not z_score:
         if plot_all_traces:
             for i in range(y.shape[0]):
                     ax.plot(x, y[i,:], lw=0.3, color=color, alpha=0.2)
@@ -916,23 +916,31 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
     for i in range(len(units)):
         for j in range(len(units)):
             r, c = i, j
+            x=np.arange(-cwin/2, cwin/2+cbin, cbin)
+            if normalize!='mixte':normalize1=normalize
             if i>j:
                 mplp(ax=ax[r, c], hide_axis=True)
             else:
                 if (i==j):
                     color=phyColorsDic[i%6]
+                    y=CCGs[i,j,:]
+                    if normalize=='mixte':
+                        normalize1='Hertz'
                 else:
                     color=phyColorsDic[-1]
-                x=np.arange(-cwin/2, cwin/2+cbin, cbin)
-                y=CCGs[i,j,:]
-
+                    if normalize=='mixte':
+                        y=zscore(CCGs[i,j,:], 4./5)
+                        normalize1='zscore'
+                    else:
+                        y=CCGs[i,j,:]
+                
                 ax[r, c].plot(x, y, color=color, alpha=0)
                 ax[r, c].set_xlim([-cwin*1./2, cwin*1./2])
                 
-                if normalize in ['Hertz','Pearson','Counts']:
+                if normalize1 in ['Hertz','Pearson','Counts']:
                     ax[r, c].set_ylim([0, ax[r, c].get_ylim()[1]])
                     ax[r, c].fill_between(x, np.zeros(len(x)), y, color=color)
-                elif normalize=='zscore':
+                elif normalize1=='zscore':
                     ylmax=max(np.abs(ax[r, c].get_ylim()))
                     ax[r, c].set_ylim([-ylmax, ylmax])
                     ax[r, c].fill_between(x, -ylmax*np.ones(len(x)), y, color=color)
@@ -984,21 +992,25 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
     return fig
     
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
-             _format='pdf', subset_selection='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=[0,0], ccg_mn=None, ccg_std=None, again=False):
+             _format='pdf', subset_selection='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=[0,0], ccg_mn=None, ccg_std=None, again=False, trains=None):
     assert type(units)==list
+    _, _idx=np.unique(units, return_index=True)
+    units=npa(units)[np.sort(_idx)].tolist()
+    assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'],"WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte']."
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=units)[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
 
     if CCG is None:
-        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, subset_selection=subset_selection, again=again)
+        normalize1 = normalize if normalize!='mixte' else 'Hertz'
+        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, prnt=prnt, subset_selection=subset_selection, again=again, trains=trains)
     assert CCG is not None
-    if normalize=='zscore':
-        CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, subset_selection=subset_selection, again=again)[0,1,:]
-        ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
-        ccg_std=np.std(np.append(ccg25, ccg35))
-        ccg_mn=np.mean(np.append(ccg25, ccg35))
     if CCG.shape[0]==2:
+        if normalize=='zscore':
+            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, subset_selection=subset_selection, again=again, trains=trains)[0,1,:]
+            ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
+            ccg_std=np.std(np.append(ccg25, ccg35))
+            ccg_mn=np.mean(np.append(ccg25, ccg35))
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, show, _format, subset_selection=subset_selection, 
                       labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2, normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std)
     else:

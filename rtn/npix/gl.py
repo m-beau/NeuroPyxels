@@ -11,17 +11,23 @@ from rtn.utils import npa
 import os.path as op
 from pathlib import Path
 
+from rtn.npix.io import read_spikeglx_meta
+
 from ast import literal_eval as ale
 
 import numpy as np
 import pandas as pd
+
+def get_rec_len(dp, unit='s'):
+    fs=read_spikeglx_meta(dp)['sRateHz']
+    t_end=np.load(Path(dp,'spike_times.npy'))[-1]
+    return t_end*fs if unit=='s' else t_end
 
 def assert_multidatasets(dp):
     'Returns unpacked merged_clusters_spikes.npz if it exists in dp, None otherwise.'
     if op.exists(Path(dp, 'merged_clusters_spikes.npz')):
         mcs=np.load(Path(dp, 'merged_clusters_spikes.npz'))
         return mcs[list(mcs.keys())[0]]
-
 
 def load_units_qualities(dp):
     f1='cluster_group.tsv'
@@ -39,7 +45,7 @@ def load_units_qualities(dp):
         return
     return qualities
 
-def get_units(dp, quality='all'):
+def get_units(dp, quality='all', chan_range=None):
     assert quality in ['all', 'good', 'mua', 'noise']
     
     cl_grp = load_units_qualities(dp)
@@ -57,7 +63,6 @@ def get_units(dp, quality='all'):
             for ds_i in cl_grp.index.unique():
                 # np.all(cl_grp.loc[ds_i, 'group'][cl_grp.loc[ds_i, 'cluster_id']==u]==quality)
                 units += ['{}_{}'.format(ds_i, u) for u in cl_grp.loc[(cl_grp['group']==quality)&(cl_grp.index==ds_i), 'cluster_id']]
-        return units
         
     else:
         try:
@@ -68,7 +73,19 @@ def get_units(dp, quality='all'):
                 units = np.unique(np.load(Path(dp, 'spike_clusters.npy')))
             else:
                 units = cl_grp.loc[np.nonzero(npa(cl_grp['group']==quality))[0], 'cluster_id']
-        return np.array(units, dtype=np.int64)
+        units=np.array(units, dtype=np.int64)
+        
+        
+    if chan_range is None:
+        return units
+    
+    assert len(chan_range)==2, 'chan_range should be a list or array with 2 elements!'
+    
+    peak_channels=get_depthSort_peakChans(dp, units=[], quality=quality)
+    chan_mask=(peak_channels[:,1]>=chan_range[0])&(peak_channels[:,1]<=chan_range[1])
+    units=peak_channels[chan_mask,0].flatten()
+    
+    return units
 
 def get_good_units(dp):
     return get_units(dp, quality='good')
@@ -85,3 +102,5 @@ def get_prophyler_source(dp_pro, u):
         Please add the new path of dataset {} in the csv file {}.".format(ds_dp, ds_table['dataset_name'][ds_i], Path(dp_pro, 'datasets_table.csv'))
         dp_pro=ds_dp
     return dp_pro, u
+
+from rtn.npix.spk_wvf import get_depthSort_peakChans

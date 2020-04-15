@@ -261,10 +261,8 @@ class Prophyler:
         if g is None: return
         
         g.remove_edges_from(list(g.edges)) # reset
-        graphs=[]
-        for f in os.listdir(self.dpnet):
-            if 'graph' in f:
-                graphs.append(f)
+        graphs=[f for f in os.listdir(self.dpnet) if 'graph' in f] # Load list of saved graphs
+                
         if len(graphs)>0:
             while 1:
                 load_choice=input("""Saved graphs found in {}:{}.

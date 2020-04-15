@@ -106,35 +106,138 @@ def sign(x):
 def minus_is_1(x):
     return abs(1-1*x)*1./2
 
-def are_n_consec_ones(X, n_consec):
+def any_n_consec(X, n_consec, where=False):
     '''
     The trick below finds whether there are n_consec consecutive ones in the array comp
     by adding each element with its neighbour.
     At least 2 consec ones: add them 1 time and check if there is a 2=2**1 somewhere.
     At least 2 consec ones: add them 3 times and check if there is a 4=2**2 somewhere.
     ...
+    Parameters:
+        - X: array of booleans or binary
+        - n_consec: int, number of consecutive True/False values to find
+        - where: bool, returns array of indices if True
     '''
     X=npa(X).astype(np.int)
     assert np.all((X==0)|(X==1)), 'X array should be only 0s and 1s!'
     for i in range(n_consec-1):
         X = X[:-1]+X[1:]
-    
-    return np.any(X==2**(n_consec-1))
+    b=np.any(X==2**(n_consec-1))
+    if not where:
+        return b
+    if b:
+        i=np.nonzero(X==2**(n_consec-1))[0]
+        i_edges1=i[np.append(0,np.diff(i))!=1]
+        i_edges2=(i+n_consec-1)[np.append(np.diff(i), 0)!=1]
+        return b, [np.arange(i_edges1[e],i_edges2[e]+1) for e in range(len(i_edges1))]
+    return b, npa([])
 
-def thresh(arr, th, sgn=1):
-    '''Returns indices of the data points just following a directed threshold crossing.
+def thresh_consec0(arr, th, n_consec, sgn=1, exclude_edges=True):
+    '''
+    SLOWER THAN thresh_consec AND FORCED TO PROVIDE N_CONSEC -> SHITTY
+    Returns indices and values of threshold crosses lasting >=n_consec consecutive samples in arr.
+    Parameters:
+        - arr: numpy array to threshold
+        - th: float, threshold
+        - n_consec: int, minimum number of consecutive elements beyond threshold
+        - sgn: int, positive (for cases above threshold) or negative (below threshold)
+        - exclude_edges: bool, if true edges of arr are not considered as threshold crosses
+                         in cases where arr starts or ends beyond threshold
+    '''
+    arr=npa(arr)
+    assert arr.ndim==1
+    
+    arr= (arr-th)*sign(sgn)+th # Flips the array around threshold if sgn==-1
+    comp = (arr>=th)
+        
+    crosses=any_n_consec(comp, n_consec, where=True)[1]
+    
+    if exclude_edges:
+        if crosses[0][0]==0: # starts beyond threshold and lasts >=n_consec_bins
+            crosses=crosses[1:]
+        if crosses[-1][-1]==len(arr)-1: # starts beyond threshold and lasts >=n_consec_bins
+            crosses=crosses[:-1]
+    
+    return [np.vstack([cross, arr[cross]]) for cross in crosses]
+
+def thresh(arr, th, sgn=1, pos=1):
+    '''Returns indices of the data points closest to a directed crossing of th.
     - data: numpy array.
     - th: threshold value.
-    - sgn: direction of the threshold crossing, either positive or negative.'''
-    arr=np.asarray(arr)
+    - sgn: 1 or -1, direction of the threshold crossing, either positive (1) or negative (-1).
+    - pos: 1 or -1, position of closest value, just following or just preceeding.'''
+    assert pos in [-1,1]
+    assert sgn in [-1,1]
+    arr=npa(arr)
     assert arr.ndim==1
-    sgn=sign(sgn) # Turns into eiter 1 or -1
     arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
-    i=np.nonzero(arr>=th)[0]
+    
+    i=np.nonzero(arr>=th)[0] if pos==1 else np.nonzero(arr<=th)[0]
     # If no value is above the threshold or all of them are already above the threshold
     if len(i)==0 or len(i)==len(arr): 
         return np.array([])
-    return (i-1)[arr[np.clip(i-1, 0, len(arr)-1)]<th]+1
+    return  i[arr[np.clip(i-1, 0, len(arr)-1)]<th] if pos==1 else i[arr[np.clip(i+1, 0, len(arr)-1)]>th]
+
+def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False):
+    '''
+    Returns indices and values of threshold crosses lasting >=n_consec consecutive samples in arr.
+    Parameters:
+        - arr: numpy array to threshold
+        - th: float, threshold
+        - sgn: 1 or -1, positive (for cases above threshold) or negative (below threshold)
+        - n_consec: optional int, minimum number of consecutive elements beyond threshold | Defult 0 (any cross)
+        - exclude_edges: bool, if true edges of arr are not considered as threshold crosses
+                         in cases where arr starts or ends beyond threshold
+        - only_max: bool, if True returns only the most prominent threshold cross.
+    Returns:
+        - crosses, list of 2d np arrays [indices, array values]
+    '''
+    arr=npa(arr)
+    assert arr.ndim==1
+    assert sgn in [-1,1]
+    arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
+    
+    cross_thp, cross_thn = thresh(arr, th, 1, 1), thresh(arr, th, -1, -1)
+    if exclude_edges:
+        if len(cross_thp)+len(cross_thn)<=1: cross_thp, cross_thn = [], [] # Only one cross at the beginning or the end e.g.
+        else:
+            flag0, flag1=False,False
+            if cross_thp[-1]>cross_thn[-1]: flag1=True # if + cross at the end
+            if cross_thn[0]<cross_thp[0]: flag0=True # if - cross at the beginning
+            if flag1: cross_thp=cross_thp[:-1] # remove last + cross
+            if flag0: cross_thn=cross_thn[1:] # remove first - cross
+    else:
+        flag0, flag1=False,False
+        if cross_thp[-1]>cross_thn[-1]: flag1=True # if + cross at the end
+        if cross_thn[0]<cross_thp[0]: flag0=True # if - cross at the beginning
+        if flag1: cross_thn=np.append(cross_thn, len(arr)) # add fake - cross at the end
+        if flag0: cross_thp=np.append(0,cross_thp) # add fake + cross at the beginning
+
+    assert len(cross_thp)==len(cross_thn)
+        
+    crosses=[np.vstack([np.arange(cross_thp[i], cross_thn[i]+1, 1), ((arr-th)*sgn+th)[cross_thp[i]:cross_thn[i]+1]]) for i in range(len(cross_thp)) if cross_thn[i]+1-cross_thp[i]>=n_consec]
+    
+    if only_max:
+        cross=crosses[0]
+        for c in crosses[1:]:
+            if max(abs(c[1,:]))>max(abs(cross[1,:])): cross = c
+        crosses=[cross]
+    
+    return crosses
+
+def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
+    '''
+    Returns z-scored (centered, reduced) array using outer edges of array to compute mean and std.
+    Parameters:
+        - arr: 1D np array
+        - frac: fraction of array used to compute mean and standard deviation
+        - mn_ext: optional, provide mean computed outside of function
+        - sd_ext: optional, provide standard deviation computed outside of function
+    '''
+    assert 0<frac<=1
+    mn = np.mean(np.append(arr[:int(len(arr)*frac/2)], arr[int(len(arr)*(1-frac/2)):])) if mn_ext is None else mn_ext
+    sd = np.std(np.append(arr[:int(len(arr)*frac/2)], arr[int(len(arr)*(1-frac/2)):])) if sd_ext is None else sd_ext
+    return (arr-mn)*1./sd
 
 def smooth(arr, frac=0.06, it=0, frac2=0.005, spec='acg', cbin=0.1, cwin=100, lms=3):
     '''cbin and cwin in milliseconds.
@@ -150,6 +253,13 @@ def smooth(arr, frac=0.06, it=0, frac2=0.005, spec='acg', cbin=0.1, cwin=100, lm
     else:
         sarr=lowess(arr, np.arange(len(arr)), is_sorted=True, frac=frac, it=it)[:,1].flatten()
     return sarr
+
+def get_bins(cwin, cbin):
+    mod2=(cwin/cbin)%2
+    if mod2==0: # even
+        return np.arange(-cwin/2, cwin/2+cbin, cbin)
+    else: # odd
+        return np.arange(-cwin/2+cbin/2, cwin/2+cbin/2, cbin)
 
 def align_timeseries(timeseries, sync_signals):
     '''

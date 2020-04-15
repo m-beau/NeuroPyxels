@@ -12,5 +12,5 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mpl_colors, mark_dict,\
-                    npa, sign, minus_is_1, thresh, smooth, \
+                    npa, sign, minus_is_1, thresh, smooth, zscore, \
                     _as_array, _unique, _index_of

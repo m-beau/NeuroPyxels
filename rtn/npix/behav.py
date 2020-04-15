@@ -21,13 +21,13 @@ import seaborn as sns
 
 import scipy.signal as sgnl
 import scipy.stats as stats
-import paq2py
+
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.decomposition import PCA
 
 from rtn.utils import seabornColorsDic, npa, thresh
 
-from rtn.npix.io import get_npix_sync
+from rtn.npix.io import get_npix_sync, paq_read
 from rtn.npix.spk_t import trn, trnb, isi
 from rtn.npix.corr import ccg
 
@@ -125,7 +125,7 @@ def import_PAQdata(dp, variables='all'):
               'ROTreal':'analog', 'CameraFrames':'digital', 'LICKS_Piezo':'digital', 'LICKS_elec':'digital'}
     paq_dp = dp+'/behavior'
     paq_f = next(list_files(paq_dp, 'paq'))
-    paq = paq2py.paq_read(paq_dp+'/'+paq_f)
+    paq = paq_read(paq_dp+'/'+paq_f)
     allVariables = np.array(paq['chan_names'])
     if type(variables)==list:
         variables=np.array(variables)

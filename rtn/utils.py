@@ -145,7 +145,9 @@ def thresh_consec0(arr, th, n_consec, sgn=1, exclude_edges=True):
                          in cases where arr starts or ends beyond threshold
     '''
     arr=npa(arr)
-    assert arr.ndim==1
+    if not arr.ndim==1:
+        assert 1 in arr.shape
+        arr=arr.flatten()
     
     arr= (arr-th)*sign(sgn)+th # Flips the array around threshold if sgn==-1
     comp = (arr>=th)
@@ -178,6 +180,7 @@ def thresh(arr, th, sgn=1, pos=1):
         return np.array([])
     return  i[arr[np.clip(i-1, 0, len(arr)-1)]<th] if pos==1 else i[arr[np.clip(i+1, 0, len(arr)-1)]>th]
 
+
 def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False):
     '''
     Returns indices and values of threshold crosses lasting >=n_consec consecutive samples in arr.
@@ -192,38 +195,51 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
     Returns:
         - crosses, list of 2d np arrays [indices, array values]
     '''
-    arr=npa(arr)
-    assert arr.ndim==1
-    assert sgn in [-1,1]
-    arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
-    
-    cross_thp, cross_thn = thresh(arr, th, 1, 1), thresh(arr, th, -1, -1)
-    if exclude_edges:
-        if len(cross_thp)+len(cross_thn)<=1: cross_thp, cross_thn = [], [] # Only one cross at the beginning or the end e.g.
+    def thresh_cons(arr, th, sgn=1, n_consec=0, exclude_edges=True):
+        arr=npa(arr)
+        if not arr.ndim==1:
+            assert 1 in arr.shape
+            arr=arr.flatten()
+            
+        assert sgn in [-1,1]
+        arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
+        
+        cross_thp, cross_thn = thresh(arr, th, 1, 1), thresh(arr, th, -1, -1)
+        if exclude_edges:
+            if len(cross_thp)+len(cross_thn)<=1: cross_thp, cross_thn = [], [] # Only one cross at the beginning or the end e.g.
+            else:
+                flag0, flag1=False,False
+                if cross_thp[-1]>cross_thn[-1]: flag1=True # if + cross at the end
+                if cross_thn[0]<cross_thp[0]: flag0=True # if - cross at the beginning
+                if flag1: cross_thp=cross_thp[:-1] # remove last + cross
+                if flag0: cross_thn=cross_thn[1:] # remove first - cross
         else:
             flag0, flag1=False,False
             if cross_thp[-1]>cross_thn[-1]: flag1=True # if + cross at the end
             if cross_thn[0]<cross_thp[0]: flag0=True # if - cross at the beginning
-            if flag1: cross_thp=cross_thp[:-1] # remove last + cross
-            if flag0: cross_thn=cross_thn[1:] # remove first - cross
-    else:
-        flag0, flag1=False,False
-        if cross_thp[-1]>cross_thn[-1]: flag1=True # if + cross at the end
-        if cross_thn[0]<cross_thp[0]: flag0=True # if - cross at the beginning
-        if flag1: cross_thn=np.append(cross_thn, len(arr)) # add fake - cross at the end
-        if flag0: cross_thp=np.append(0,cross_thp) # add fake + cross at the beginning
-
-    assert len(cross_thp)==len(cross_thn)
-        
-    crosses=[np.vstack([np.arange(cross_thp[i], cross_thn[i]+1, 1), ((arr-th)*sgn+th)[cross_thp[i]:cross_thn[i]+1]]) for i in range(len(cross_thp)) if cross_thn[i]+1-cross_thp[i]>=n_consec]
+            if flag1: cross_thn=np.append(cross_thn, len(arr)) # add fake - cross at the end
+            if flag0: cross_thp=np.append(0,cross_thp) # add fake + cross at the beginning
     
-    if only_max:
+        assert len(cross_thp)==len(cross_thn)
+            
+        crosses=[np.vstack([np.arange(cross_thp[i], cross_thn[i]+1, 1), ((arr-th)*sgn+th)[cross_thp[i]:cross_thn[i]+1]]) for i in range(len(cross_thp)) if cross_thn[i]+1-cross_thp[i]>=n_consec]
+        
+        return crosses
+    
+    sgn=[-1,1] if sgn==0 else [sgn]
+    crosses=[]
+    for s in sgn:
+        crosses+=thresh_cons(arr, th, s, n_consec, exclude_edges)
+            
+    if only_max and len(crosses)>0:
         cross=crosses[0]
         for c in crosses[1:]:
             if max(abs(c[1,:]))>max(abs(cross[1,:])): cross = c
         crosses=[cross]
-    
+        assert len(crosses)==1
+        
     return crosses
+
 
 def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
     '''

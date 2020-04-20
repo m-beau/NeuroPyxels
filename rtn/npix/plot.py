@@ -26,7 +26,7 @@ from rtn.npix.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dat
 from rtn.npix.gl import get_units
 from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
 from rtn.npix.spk_t import trn
-from rtn.npix.corr import acg, ccg, gen_sfc, extract_hist_modulation_features, make_cm, make_matrix_2xNevents, crosscorr_cyrille
+from rtn.npix.corr import acg, ccg, gen_sfc, get_ccg_sig, make_cm, make_matrix_2xNevents, crosscorr_cyrille
 from rtn.npix.behav import align_times, get_processed_ifr
 from mpl_toolkits.mplot3d import axes3d
 from mpl_toolkits.mplot3d import Axes3D
@@ -159,7 +159,8 @@ def hist_MB(arr, a, b, s, title='Histogram', xlabel='', ylabel='', ax=None, colo
 
 #%% Stats related plots
     
-def plot_pval_borders(X, p, dist='poisson', X_pred=None, gauss_baseline_fract=1, x=None, ax=None, color=None):
+def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1, x=None, ax=None, color=None,
+                      ylabel=None, xlabel=None, title=None):
     '''
     Function to plot array X and the upper and lower borders for a given p value.
     Parameters:
@@ -167,29 +168,30 @@ def plot_pval_borders(X, p, dist='poisson', X_pred=None, gauss_baseline_fract=1,
         - p:float, p value [0-1]
         - dist: whether to assume Poisson or Normal distribution
     '''
-    X=npa(X)
+    Y=npa(Y)
     assert 0<p<1
     assert dist in ['poisson', 'normal']
     if ax is None: fig, ax = plt.subplots()
     else: fig=ax.get_figure()
     
     if dist=='poisson':
-        assert (X_pred is not None) and (len(X_pred)==len(X)), 'When plotting Poisson distribution, you need to provide a predictor with the same shape as X!'
-        fp1=[fractile_poisson(p, l=c) for c in X_pred]
-        fp2=[fractile_poisson(1-p, l=c) for c in X_pred]
+        assert (Y_pred is not None) and (len(Y_pred)==len(Y)), 'When plotting Poisson distribution, you need to provide a predictor with the same shape as X!'
+        fp1=[fractile_poisson(p/2, l=c) for c in Y_pred]
+        fp2=[fractile_poisson(1-p/2, l=c) for c in Y_pred]
     elif dist=='normal':
-        X_baseline=np.append(X[:int(len(X)*gauss_baseline_fract/2)],X[int(len(X)*(1-gauss_baseline_fract/2)):])
-        X_pred=np.ones(X.shape[0])*np.mean(X_baseline)
-        fp1=np.ones(X.shape[0])*fractile_normal(p=p, m=np.mean(X_baseline), s=np.std(X_baseline))
-        fp2=np.ones(X.shape[0])*fractile_normal(p=1-p, m=np.mean(X_baseline), s=np.std(X_baseline))
+        Y_baseline=np.append(Y[:int(len(Y)*gauss_baseline_fract/2)],Y[int(len(Y)*(1-gauss_baseline_fract/2)):])
+        Y_pred=np.ones(Y.shape[0])*np.mean(Y_baseline)
+        fp1=np.ones(Y.shape[0])*fractile_normal(p=p/2, m=np.mean(Y_baseline), s=np.std(Y_baseline))
+        fp2=np.ones(Y.shape[0])*fractile_normal(p=1-p/2, m=np.mean(Y_baseline), s=np.std(Y_baseline))
     
-    if x is None: x=np.arange(len(X))
-    ax.plot(x,X, c=color)
-    ax.plot(x,X_pred, c='k', ls='--')
-    ax.plot(x,fp1, c='r', ls='--')
+    if x is None: x=np.arange(len(Y))
+    ax.plot(x,Y, c=color)
+    ax.plot(x,Y_pred, c='k', ls='--', label='predictor')
+    ax.plot(x,fp1, c='r', ls='--', label='pval:{}'.format(p))
     ax.plot(x,fp2, c='r', ls='--')
+    ax.legend(fontsize=14)
     
-    mplp()
+    fig, ax = mplp(fig, ax, ylabel=ylabel, xlabel=xlabel, title=title)
     
     return fig
 
@@ -1125,7 +1127,7 @@ def plot_dataset_CCGs(dp, cbin=0.1, cwin=10, threshold=2, n_consec_bins=3, subse
             if i1<i2:
                 print('Assessing CCG {}x{}... {}%'.format(u1, u2, prct))
                 hist=ccg(dp, [u1,u2], cbin, cwin, fs=30000, normalize='Hertz', prnt=False, subset_selection=subset_selection)[0,1,:]
-                pks = extract_hist_modulation_features(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn='all')
+                pks = get_ccg_sig(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn='all')
                 if np.array(pks).any():
                     sig+=1
                     print("{}th significant CCG...".format(sig))
@@ -1192,7 +1194,7 @@ def network_plot_3D(G, angle, save=False):
     ax.set_axis_off()
 
     if save is not False:
-        plt.savefig("C:\scratch\\data\ "+str(angle).zfill(3)+".png")
+        plt.savefig(str(angle).zfill(3)+".png")
         plt.close('all')
     else:
          plt.show()

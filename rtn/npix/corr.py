@@ -11,6 +11,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import progressbar as pgb
+
 from rtn.utils import npa, sign, thresh_consec, smooth, zscore, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec
                     
@@ -30,7 +32,7 @@ def make_phy_like_spikeClustersTimes(dp, U, subset_selection='all', prnt=True, t
             trains_dic[iu]=trn(dp, u, sav=True, subset_selection=subset_selection, prnt=prnt) # trains in samples
     else:
         assert len(trains)>1
-        for iu, t in enumerate(trains):
+        for iu, t in enumerate(trains.values()):
             trains_dic[iu]=t
     spikes=make_matrix_2xNevents(trains_dic).astype('int64')
     
@@ -200,6 +202,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     # Preformat
     assert len(U)>=2
     U=list(U)
+    if U[0]==U[1]: U=[U[0]]
     same_ds=all(u[0] == U[0][0] for u in U) if type(U[0]) is str else False
     U_=U.copy()
     for iu,u in enumerate(U_):
@@ -293,8 +296,107 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
       returns numpy array (win_size/bin_size)
       '''
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
-    return ccg(dp, u, bin_size, win_size, fs, normalize, ret, sav, prnt, subset_selection, again)[0,0,:]
+    return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, prnt, subset_selection, again)[0,0,:]
 
+def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all_to_all=False, name=None, sav=True, again=False):
+    '''
+    Routine generating a stack of correlograms for faster subsequent analysis,
+    between all U_src and U_trg units.
+    In order to save a stack and retrieve it later, it is mandatory to provide a 'name' argument.
+    It is possible to retrieve a stack with a given name without providing the corresponding units.
+    Parameters:
+        - dp:        string, datapath
+        - U_src:     list/array, source units of correlograms
+        - U_trg:     list/array, target units of correlograms
+          If no U_src or U_trg are provided but a name is provided, 2 empty arrays will be returned.
+        - cbin:      float, correlograms bin size (ms)
+        - cwin:      float, correlogram window size (ms)
+        - normalize: string, normalization of correlograms | Default: Counts
+        - all_to_all: bool, if True returns a U_src x U_trg x bins array (all U_src to U_trg ccgs are computed)
+                            else returns a U_src=U_trg x bins array (only the list of pairs U_src[i], U_trg[i] ccgs are computed)
+        - name:      string, name of ccg stack (e.g. corticonuclear).
+                     HAS to be provided so that the stack can be saved!
+        - sav:       bool, whether to save the stack in routines memory.
+                     Will only be saved if a name is provided!
+    '''
+    dprm = Path(dp,'routinesMemory')
+    if not os.path.isdir(dprm):
+        os.makedirs(dprm)
+    Nu=len(U_src)+len(U_trg)
+    if name is not None:
+        norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
+        fn='ccgstack_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin)
+        fnu='ccgstack_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin)
+        
+        if op.exists(dprm/fn) and not again:
+            stack=np.load(dprm/fn)
+            ustack=np.load(dprm/fnu)
+            if all_to_all:
+                assert stack.ndim==3
+            else:
+                assert stack.ndim==2
+            return stack, ustack
+        else:
+            if Nu==0: return npa([]),npa([])
+        
+    assert len(U_src)>0 and len(U_trg)>0, 'You need to provide at least one source and one target unit!'
+    #print('Computing ccg stack...\n'.format())
+    bins=get_bins(cwin, cbin)
+    if all_to_all:
+        pgbar=pgb.ProgressBar(max_value=len(U_src)*len(U_trg)).start()
+        ustack=npa(zeros=(len(U_src), len(U_trg), 2))
+        stack=npa(zeros=(len(U_src), len(U_trg), len(bins)))
+        # Case where every CCG would be computed twice - gotta save time if you can
+        if np.all(U_src==U_trg): 
+            for i1, u1 in enumerate(U_src):
+                for i2, u2 in enumerate(U_trg):
+                    pgbar.update(i1*len(U_trg)+i2+1)
+                    ustack[i1, i2, :]=[u1,u2]
+                    if i1==i2:
+                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False)
+                    elif i2>i1:
+                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False)[0,1,:]
+                        stack[i2, i1, :]=stack[i1, i2, ::-1]
+        else:
+            for i1, u1 in enumerate(U_src):
+                for i2, u2 in enumerate(U_trg):
+                    pgbar.update(i1*len(U_trg)+i2+1)
+                    ustack[i1, i2, :]=[u1,u2]
+                    stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False)[0,1,:]
+    else:
+        assert len(U_src)==len(U_trg)
+        assert not np.any(U_src==U_trg), 'Looks like you requested to compute a CCG between a unit an ditself - check U_src and U_trg.'
+        pgbar=pgb.ProgressBar(max_value=len(U_src)).start()
+        ustack=npa(zeros=(len(U_src), 2))
+        stack=npa(zeros=(len(U_src), len(bins)))
+        for i, (u1, u2) in enumerate(zip(U_src, U_trg)):
+            pgbar.update(i+1)
+            ustack[i, :]=[u1,u2]
+            stack[i, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False)[0,1,:]
+    
+    if sav and name is not None:
+        np.save(dprm/fn, stack)
+        np.save(dprm/fnu, ustack)
+    
+    return stack, ustack
+
+def get_ustack_i(U, ustack):
+    '''
+    Finds indices of units inside a ccg stack.
+    Parameters:
+        - U: 2d array or unit pairs
+        - ustack: 2d or 3d array, units matching a ccg stack (returned by ccg_stack())
+    '''
+    U=npa(U)
+    if U.ndim==1:
+        assert U.shape[0]==2
+        U=U.reshape((1,2))
+    assert U.shape[1]==2, 'U must be 2d array or unit pairs!'
+    ii=np.zeros(U.shape) if ustack.ndim==3 else np.zeros(U.shape[0])
+    for i, u in enumerate(U):
+        mask=(ustack==np.tile([u[0], u[1]], ustack.shape[:-1]+(1,)))
+        ii[i]=npa(np.nonzero(np.all(mask, axis=ustack.ndim-1))).flatten()
+    return ii.astype(np.int64)
 
 #%% Pairwise correlations matrix and population coupling
 
@@ -504,13 +606,14 @@ def canUse_Nbins(a=0.05, w=100, b=0.2, n_bins=3):
     if n_bins==3: expected_triplets=a*(a*n-2)*(a*n-4)/(8*(n-1))
     elif n_bins==2: expected_triplets=a*(a*n-2)*(a*n-2)/(4*(n-1))
     if a>expected_triplets:
-        print("You can use this test, of confidence {0} since the probability of encountering a triplet by chance is {1:.3f}.".format(a, expected_triplets))
+        #print("You can use this test, of confidence {0} since the probability of encountering a triplet by chance is {1:.3f}.".format(a, expected_triplets))
         return True
     else:
         print("You CANNOT use this test, of confidence {0} since the probability of encountering a triplet by chance is {1:.3f}.".format(a, expected_triplets))
         return False
 
-def KopelowitzCohen2014_ccg_significance(CCG, cbin=0.2, cwin=100, law='Normal', alpha=0.05, n_consec_bins=3, multi_comp=False, bin_wise=False, pkSgn='-'):
+def KopelowitzCohen2014_ccg_significance(CCG, cbin=0.2, cwin=100, p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5,
+                                         law='Normal', multi_comp=False, bin_wise=False, ret_values=True, only_max=True, plot=False):
     '''Function to assess whether a correlogram is significant or not.
     Parameters:
     - a: alpha, confidence level
@@ -528,26 +631,32 @@ def KopelowitzCohen2014_ccg_significance(CCG, cbin=0.2, cwin=100, law='Normal', 
     '''
     
     assert law in ['Poisson', 'Normal']
-    assert 0<alpha<1
-    out_fraction=0.4;out_fraction/=2
-    Ho_ccg = np.concatenate([CCG[:int(out_fraction*cwin/cbin)], CCG[int((1-out_fraction)*cwin/cbin):]]) # It is assumed that before -40/after +40ms, there is no more correlation
+    assert 0<p_th<1
+    assert sgn in [-1,1]
+
     if n_consec_bins in [2,3]:
         assert law=='Normal', "Using more than 1 bin is not handled when assuming a Poisson distribution."
-        assert canUse_Nbins(alpha, cwin, cbin, n_consec_bins)
+        assert canUse_Nbins(p_th, cwin, cbin, n_consec_bins)
     if not bin_wise: # else: compute one CI for each bin
         if law=='Poisson':
-            peaks=[] # Poisson not handled yet - how to end up with natural integers as ccg values? Spike counts? Can multiplie by random big number?
+            crosses=[] # Poisson not handled yet - how to end up with natural integers as ccg values? Spike counts? Can multiplie by random big number?
         elif law=='Normal':
-            m=np.mean(Ho_ccg)
-            s=np.std(Ho_ccg)
-            fr_a=fractile_normal(1-(alpha/2), 0, 1)
-            peaks=extract_hist_modulation_features(CCG, cbin, fr_a, n_consec_bins, m, s, pkSgn, win_fract_baseline=0.5)
+            threshold=fractile_normal(1-p_th/2)*sgn
+            CCG=zscore(CCG, frac=fract_baseline) # Z-score
+            crosses=thresh_consec(CCG, threshold, sgn=sgn, n_consec=n_consec_bins, only_max=only_max)
     else:
-        peaks=[] # bin_wise not handled yet
+        crosses=[] # bin_wise not handled yet
+    
+    if plot:
+        fig=plot_pval_borders(CCG, p_th, dist='normal', gauss_baseline_fract=fract_baseline, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
+                          xlabel='Time (ms)', ylabel='crosscorrelation (z-score)', title='Test: Kopelowitz et al. 2014'.format(p_th))
+        return fig
+        
+    if ret_values:
+        return crosses
+    return np.any(crosses)
 
-    return 1 if np.any(peaks) else 0
-
-def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, cross_sign=-1):
+def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, sgn=-1):
     '''
     Predictor and p-values for CCG using convolution.
     
@@ -558,9 +667,9 @@ def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, cross_
                                   'rect' - of W samples; equivalent to jittering one spike train by a rectangular window of width W
                                   'triang' - of ~2W samples; equivalent to jittering both trains by a rectangular window of width W
         - CALP: bool, if true compute p value based on a poisson ditribution with a continuity correction
-        - cross_sign: -1 or 1, whether to return small p-values for troughs or peaks
+        - sgn: -1 or 1, whether to return small p-values for troughs or peaks
      Returns:
-        - PVALS       p-values (bin-wise) for higher (if cross_sign is '+') or lower than (if '-') chance.
+        - PVALS       p-values (bin-wise) for higher (if sgn is '+') or lower than (if '-') chance.
                       If p-val<0.001 at a given point, 
         - PRED        predictor(expected values)
     
@@ -596,7 +705,7 @@ def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, cross_
 
     ## Preprocess arguments
     
-    assert cross_sign in [1,-1]
+    assert sgn in [1,-1]
     
     assert sum(CCG<0) <= 0, 'CCG seems to contain negative integers!'
     
@@ -642,18 +751,18 @@ def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, cross_
     else:
         pvals = np.nan
     
-    if cross_sign==-1: pvals = 1-pvals # deficient
+    if sgn==-1: pvals = 1-pvals # deficient
     
     return pred, pvals
 
-def StarkAbeles2009_ccg_significance(CCG, cbin, pval_thresh=0.01, n_consec=3, cross_sign=-1, W_sd=10, ret_values=True, plot=False, only_max=False):
+def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_values=True, plot=False, only_max=True):
     '''
     Parameters:
         - CCG: numpy array, crosscorrelogram in Counts
         - cbin: float, CCG bins value, in milliseconds. Used to convert W_sd (ms) in samples.
         - pval_thresh: float [0-1], threshold of modulation, in pvalue (based on Poisson distribution with continuity correction)
         - n_consec: int, number of consecutive
-        - cross_sign: 1 or -1, direction of threshold crossing, either positive (1) or negative (-1)
+        - sgn: 1 or -1, direction of threshold crossing, either positive (1) or negative (-1)
         - W_sd: float, sd of convolution window, in millisecond
           (this is the standard deviation of the gaussian used to compute the predictor = convolved CCG).
           E.g. if looking for monosynaptic event, use 5 millisecond.
@@ -661,58 +770,73 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, pval_thresh=0.01, n_consec=3, cr
     '''
     
     assert np.all(CCG==np.round(CCG)), 'CCG should be in counts -> integers!'
-    assert 0<pval_thresh<1, 'pval_thresh should be between 0 and 1!'
+    assert 0<p_th<1, 'pval_thresh should be between 0 and 1!'
     
     W_sd=int(W_sd/cbin)
-    pred, pvals = StarkAbeles2009_ccg_sig(CCG, W=2*W_sd, WINTYPE='gauss', HF=None, CALCP=True, cross_sign=cross_sign)
+    pred, pvals = StarkAbeles2009_ccg_sig(CCG, W=2*W_sd, WINTYPE='gauss', HF=None, CALCP=True, sgn=sgn)
     pred, pvals = pred.flatten(), pvals.flatten()
     
     if plot:
-        plot_pval_borders(CCG, pval_thresh, dist='poisson', X_pred=pred)
+        fig=plot_pval_borders(CCG, p_th, dist='poisson', Y_pred=pred, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
+                          xlabel='Time (ms)', ylabel='crosscorrelation (Counts)', title='Test: Stark et al. 2009'.format(p_th))
+        return fig
     
     if ret_values:
-        sig_pvals=thresh_consec(pvals, pval_thresh, sgn=cross_sign, n_consec=n_consec, only_max=only_max)
+        sig_pvals=thresh_consec(pvals, p_th/2, sgn=-1, n_consec=n_consec, only_max=only_max)
         poisson_zscore=(CCG-pred)/np.sqrt(pred)
         for sp in sig_pvals: sp[1,:]=poisson_zscore[sp[0,:].astype(np.int)]
         return sig_pvals
     
-    comp = (pvals<=pval_thresh)
+    comp = (pvals<=p_th/2)
     return any_n_consec(comp, n_consec, where=False)
     
 
-def extract_hist_modulation_features(hist, hbin, threshold=0.01, n_consec_bins=3, pkSgn='all', fract_baseline=4./5, W_sd=10, dist='Poisson_Abeles'):
+def get_ccg_sig(CCG, cbin, cwin, p_th=0.01, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', ret_features=True, only_max=True):
     '''
-        - hist is a 1d array, 
-        - hbin is in ms, 
+        - CCG: 1d array, 
+        - hbin: float (ms)
         - th is the threshold in hist unit,
         - n_consec_bins is the number of consecutive bins which  have to cross the threshold for a peak to be called a peak,
-        - pkSgn can be '+', '-' or 'all' -> dictates whether to return peaks, troughs or both.
+        - sgn can be 1, -1 or 0 -> dictates whether to return peaks, troughs or both.
         - win_fract_baseline: fraction of the window used to compute the Ho mean and std, is no ext_mn or ext_std are provided. If 0.6, 0:0.3 and 0.7:1 will be used.
         Returns:
         - peaks+troughs: [(l_ms, r_ms, y, t_ms, n_triplets, n_bincrossing, bin_heights, entropy), ...]
         where l_ms, r_ms, y, t_ms stand for left edge, right edge, y value (std), time
         and n_triplets, n_bincrossing, bin_heights, entropy for the 4 correlation strength metrics of Kopelowitz et al.'''
     
-    assert pkSgn in ['+', '-', 'all'], "pkSgn has an odd value, should be  '+', '-' or 'all'."
+    assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
+    assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
+    crosses=[]
+    if test=='Normal_Kopelowitz':
+        if sgn==0 or sgn==1:
+            crosses+=KopelowitzCohen2014_ccg_significance(CCG, cbin, cwin, p_th, n_consec_bins, 1, fract_baseline, ret_values=True, only_max=only_max)
+        if sgn==0 or sgn==-1:
+            crosses+=KopelowitzCohen2014_ccg_significance(CCG, cbin, cwin, p_th, n_consec_bins, -1, fract_baseline, ret_values=True, only_max=only_max)
+    elif test=='Poisson_Stark':
+        if sgn==0 or sgn==1:
+            crosses+=StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec_bins, 1, W_sd, ret_values=True, only_max=only_max)
+        if sgn==0 or sgn==-1:
+            crosses+=StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec_bins, -1, W_sd, ret_values=True, only_max=only_max)
     
-    if dist=='normal':
-        threshold=fractile_normal(1-threshold/2)
-        hist=zscore(hist, frac=fract_baseline) # Z-score
-        crosses=thresh_consec(hist, threshold, sgn=1, n_consec=n_consec_bins)+thresh_consec(hist, -threshold, sgn=-1, n_consec=n_consec_bins)
-    elif dist=='Poisson_Abeles':
-        peaks=StarkAbeles2009_ccg_significance(hist, hbin, threshold, n_consec_bins, 1, W_sd, ret_values=True, only_max=False)
-        troughs=StarkAbeles2009_ccg_significance(hist, hbin, threshold, n_consec_bins, -1, W_sd, ret_values=True, only_max=False)
-        crosses=peaks+troughs
-    peaks, troughs = [], []
+    if only_max and len(crosses)>0:
+        cross=crosses[0]
+        for c in crosses[1:]:
+            if max(abs(c[1,:]))>max(abs(cross[1,:])): cross = c
+        crosses=[cross]
+        assert len(crosses)==1
+        
+    if not ret_features: return crosses
     
+    # Compute features of peak/trough
+    cross_feats=[]
     for cross in crosses:
         # for positive crosses, l_ind is the index of the first bin above threshold;
         # r_ind is the index of the first bin below threshold.
         l_ind, r_ind = cross[0,0], cross[0,-1]+1
-        l_ms, r_ms = (l_ind-(len(hist)-1)*1./2)*hbin, (r_ind-(len(hist)-1)*1./2)*hbin
-        y=max(np.abs(cross[1,:]))*sign(cross[1,0])
-        t_ind=cross[0,:][cross[1,:]==y][0] # If there are 2 equal maxima, the 1st one is picked
-        t_ms=(t_ind-(len(hist)-1)*1./2)*hbin
+        l_ms, r_ms = (l_ind-(len(CCG)-1)*1./2)*cbin, (r_ind-(len(CCG)-1)*1./2)*cbin
+        amp_z=max(np.abs(cross[1,:]))*sign(cross[1,0])
+        t_ind=cross[0,:][cross[1,:]==amp_z][0] # If there are 2 equal maxima, the 1st one is picked
+        t_ms=(t_ind-(len(CCG)-1)*1./2)*cbin
         n_triplets=cross.shape[1]//3
         n_bincrossing=cross.shape[1]
         bin_heights=np.mean(cross[1,:])
@@ -724,349 +848,224 @@ def extract_hist_modulation_features(hist, hbin, threshold=0.01, n_consec_bins=3
         pi=pdf_normal(np.abs(cross[1,:]), m=0, s=1) 
         entropy=-np.mean(np.log(pi))
         if np.inf in [entropy]:entropy=0
-        if cross[1,0]>0: # peak
-            peaks.append((l_ms, r_ms, y, t_ms, n_triplets, n_bincrossing, bin_heights, entropy))
-        elif cross[1,0]<0:  # trough
-            troughs.append((l_ms, r_ms, y, t_ms, n_triplets, n_bincrossing, bin_heights, entropy))
+        cross_feats.append((l_ms, r_ms, amp_z, t_ms, n_triplets, n_bincrossing, bin_heights, entropy))
         
-    if pkSgn=='+':
-        ret = peaks
-    elif pkSgn=='-':
-        ret = troughs
-    elif pkSgn=='all':
-        ret = peaks+troughs # Concatenates (python list). Distinguish peaks and troughs with their peak value sign.
-        
-    return ret
+    return cross_feats
 
-def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', name=None, sav=True):
+def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name='ctx-dcn',
+                  p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', again=False, againCCG=False, ret_features=False):
     '''
-    Routine generating a stack of correlograms for faster subsequent analysis,
-    between all U_src and U_trg units.
-    In order to save a stack and retrieve it later, it is mandatory to provide a 'name' argument.
-    It is possible to retrieve a stack with a given name without providing the corresponding units.
-    Parameters:
-        - dp:        string, datapath
-        - U_src:     list/array, source units of correlograms
-        - U_trg:     list/array, target units of correlograms
-        - cbin:      float, correlograms bin size (ms)
-        - cwin:      float, correlogram window size (ms)
-        - normalize: string, normalization of correlograms | Default: Counts
-        - name:      string, name of ccg stack (e.g. corticonuclear).
-                     HAS to be provided so that the stack can be saved!
-        - sav:       bool, whether to save the stack in routines memory.
-                     Will only be saved if a name is provided!
+    
     '''
-    dprm = Path(dp,'routinesMemory')
-    if not os.path.isdir(dprm):
-        os.makedirs(dprm)
+    assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
+    assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
+    
+    # Directly load sig stack if was already computed
     if name is not None:
-        norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
-        fn='ccgstack_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin)
-        fnu='ccgstack_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin)
-        
-        if op.exists(dprm/fn):
-            stack=np.load(dprm/fn)
-            stacku=np.load(dprm/fnu)
-            return stack, stacku
+        signame=name+'-{}-{}-{}-{}-{}'.format(test, p_th, n_consec_bins, fract_baseline, W_sd)
+        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=again)
+        if np.any(sigstack):
+            return sigstack, sigustack
     
-    assert len(U_src)>0 and len(U_trg)>0, 'You need to provide at least one source and one target unit!'
-    bins=get_bins(cwin, cbin)
-    stacku=npa(zeros=(len(U_src), len(U_trg), 2))
-    stack=npa(zeros=(len(U_src), len(U_trg), len(bins)))
-    for i1, u1 in enumerate(U_src):
-        for i2, u2 in enumerate(U_trg):
-            stacku[i1, i2, :]=[u1,u2]
-            stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize)[0,1,:]
-            
-    if sav and name is not None:
-        np.save(dprm/fn, stack)
-        np.save(dprm/fnu, stacku)
-    
-    return stack, stacku
+    ptdic={1:'peak', -1:'trough'}
+    sigustack=[]
+    if ret_features: feats=[]
+    stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG)
+    same_src_trg=np.all(U_src==U_trg) if len(U_src)==len(U_trg) else False
+    for i in range(stack.shape[0]):
+        for j in range(stack.shape[1]):
+            if same_src_trg and i<=j: continue
+            CCG=stack[i, j, :]
+            pks=get_ccg_sig(CCG, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features=ret_features)
+            if np.any(pks):
+                print('Significant {}: {}->{}'.format(ptdic[sign(pks[0][2])], *ustack[i, j, :]))
+                sigustack.append(ustack[i, j, :])
+                assert len(pks)==1, 'only_max should be true and only the largest peak/trough should be returned but it is not!'
+                if ret_features: feats.append(pks[0])
 
-def sfcdf(dp, U_src=None, U_trg=None, cbin=0.2, cwin=100, threshold=0.01, consec_bins=3, subset_selection='all', _format='peaks_infos', again=False, againCCG=False):
+    sigustack=npa(sigustack)
+    sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True)
+    if ret_features:
+        data=np.hstack([sigustack,npa(feats)])
+        features=pd.DataFrame(data=data,columns=['U_src', 'U_trg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
+        return sigstack, sigustack, features
+    return sigstack, sigustack
+
+def gen_sfc(dp, cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+             metric='amp_z', again=False, againCCG=False, subset_selection='all'):
     '''
-    Function generating a significant correlation dataframe from a sorted Kilosort output at 'dp'
-    between U_src source and U_trg target units.
-    sfcdf[i,j] is a tuple (t, a)
-    where t is the latency of the peak or trough in ms and a is its amplitude in zscore values.
-    '''
-    assert _format in ['peaks_infos', 'raw_ccgs'],'WARNING {} must be in {}! Exitting now.'.format(_format, str(['peaks_infos', 'raw_sig_ccgs']))
-        
-    peakChs=get_depthSort_peakChans(dp, quality='good')
-    gu, bestChs = peakChs[:,0], peakChs[:,1].astype('int64')
-    
-    # histo=False
-    # if os.path.isfile(dp+'/FeaturesTable/FeaturesTable_histo.csv'):
-    #     fth = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_histo.csv', sep=',', index_col=0)
-    #     depthIdx = np.argsort(bestChs)[::-1] # From surface (high ch) to DCN (low ch)
-    #     histo_str=np.array(fth["Histology_str"])
-    #     histo_str=histo_str[depthIdx]
-    #     histo=True
-    
-    dprm = Path(dp,'routinesMemory')
-    if not op.isdir(dprm): os.makedirs(dprm)
-    
-    if _format=='peaks_infos':
-        fn1='SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(subset_selection)[0:50].replace(' ', ''), _format)
-        fn2='SFCM'+fn1[6:]
-        fn3='SFCMtime'+fn1[6:-4]+'.npy'
-        if op.exists(Path(dprm,fn1)) and not again:
-            print("File {} found in routines memory.".format(fn1))
-            SFCDF = pd.read_csv(Path(dprm,fn1), index_col='Unit')
-            SFCDF.replace('0', 0, inplace=True) # Loading a csv turns all the values into strings - now only detected peaks are strings
-            SFCDF.replace(0.0, 0, inplace=True)
-            SFCM1 = pd.read_csv(Path(dprm,fn2), index_col='Unit')
-            SFCMtime = np.load(Path(dprm,fn3))
-
-            return SFCDF, SFCM1, gu, bestChs, SFCMtime
-            
-    elif _format=='raw_ccgs':
-        fn='SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(subset_selection)[0:50].replace(' ', ''), _format)
-        if op .exists(Path(dprm,fn)) and not again:
-            print("File {} found in routines memory.".format(fn))
-            SFCDF = pd.read_csv(Path(dprm,fn), index_col='Unit')
-            return SFCDF
-        
-    if _format=='peaks_infos':
-        gu12=np.array([[u]*12 for u in gu]).flatten()
-        SFCDF = pd.DataFrame(index=gu, columns=gu) 
-        SFCM = np.zeros((len(gu), len(gu)*12))
-        SFCMtime = np.zeros((len(gu), len(gu)*12))
-    elif _format=='raw_ccgs':
-        #spec, frac, frac2, lms = 'acg', 0.03, 0.005, 2.5
-        all_gu_x_all_gu = ['{}->{}'.format(u1,u2) for i1, u1 in enumerate(gu) for i2, u2 in enumerate(gu) if (i1!=i2)]
-        if (cwin*1./cbin)%2==0: # even
-            bins=np.arange(-cwin*1./2, cwin*1./2+cbin, cbin)
-        elif (cwin*1./cbin)%2==1: # odd
-            bins=np.arange(-cwin*1./2+cbin*1./2, cwin*1./2+cbin*1./2, cbin)
-        SFCDF = pd.DataFrame(index=all_gu_x_all_gu, columns=[str(b) for b in bins])
-        #if histo: SFCDF.insert(loc=0, column='regions', value=np.nan)
-        SFCDF.insert(loc=0, column='pattern', value=np.nan)
-
-
-    prct=0
-    print('Significant functional correlations (sfc) extraction started!')
-    for i1, u1 in enumerate(gu):
-        for i2, u2 in enumerate(gu):
-            skip=0
-            if prct!=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2))):
-                prct=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2)))
-                print('{}%...'.format(prct))
-            if i1!=i2:
-                print('(Checking ccg:{}->{}...)'.format(u1,u2))
-                hist=ccg(dp, [u1, u2], cbin, cwin, normalize='Hertz', prnt=False, subset_selection=subset_selection, again=againCCG)[0,1,:]
-                #hist_wide=ccg(dp, [i,j], 0.5, 50, prnt=False)[0,1,:]
-                #mn=np.mean(hist); std=np.std(hist)
-                pkSgn='+' if i2>i1 else '-'
-                pks = extract_hist_modulation_features(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn=pkSgn, win_fract_baseline=0.5)
-                #pks=[(pk[:4]) for pk in pks]
-                if _format=='peaks_infos':
-                    SFCDF.loc[u1, u2]=pks if np.array(pks).any() else int(0)
-                    if np.array(pks).any():
-                        vsplit=len(pks)
-                        print('>> Significantly modulated ccg:{}->{}! <<'.format(u1,u2))
-                        if 12%vsplit==0: # dividers of 12
-                            heatpks=np.array([[p[2]]*int(12*1./vsplit) for p in pks]).flatten()
-                            heatpksT=np.array([[p[3]]*int(12*1./vsplit) for p in pks]).flatten()
-                        else:
-                            if vsplit<=12: # not divider but still smaller
-                                heatpks=np.array([p[2] for p in pks]+[0]*(12-vsplit)).flatten()
-                                heatpksT=np.array([p[3] for p in pks]+[0]*(12-vsplit)).flatten()
-                            else:
-                                skip=1
-                                print('WARNING more than 12 peaks found - your threshold is too permissive or CCG f*cked up (units {} and {}), aborting.'.format(u1, u2))
-                    if (not np.array(pks).any()) or skip:
-                        heatpks=np.array([0]*12)
-                        heatpksT=np.array([np.nan]*12)
-                    
-                    for col in range(12): # 12 columns per unit to make the heatmap
-                         SFCM[i1,12*i2:12*i2+12]=heatpks
-                         SFCMtime[i1,12*i2:12*i2+12]=heatpksT
-                elif _format=='raw_ccgs':
-                    if np.array(pks).any():
-                        #shist=smooth(hist, frac=frac, it=0, frac2=frac2, spec=spec, cbin=cbin, cwin=cwin, lms=lms)
-                        colBin1=SFCDF.columns[1] #SFCDF.columns[2] if histo else SFCDF.columns[1]
-                        SFCDF.loc['{}->{}'.format(u1,u2),colBin1:]=hist
-                        TY = np.array([[p[3], p[2]] for p in pks])
-                        TY = TY[np.argsort(TY[:,0])] # sort by crescent peak time
-                        pkSgnReal = ['+' if p[1]>0 else '-' if p[1]<0 else '0' for p in TY]
-                        pkSymReal = ['\\' if p[0]<-0.4 else '/' if p[0]>0.4 else '|'  for p in TY]
-                        pattern='';
-                        for sgn, sym in zip(pkSgnReal, pkSymReal):
-                            pattern+= sgn+sym
-                        
-                        SFCDF.loc['{}->{}'.format(u1,u2),'pattern']=pattern
-                        # if histo: SFCDF.loc['{}->{}'.format(u1,u2),'regions']='{}->{}'.format(fth.loc[u1, 'Histology_str'], fth.loc[u2, 'Histology_str'])
-                    else:
-                        SFCDF.drop(['{}->{}'.format(u1,u2)], inplace=True)
-    print('Job done.')
-    if _format=='peaks_infos':
-        SFCM1 = pd.DataFrame(data=SFCM);
-        SFCM1.index=gu; SFCM1.columns=gu12; # 12 columns to split vertically the heatmap pixel of each unit in either 1, 2, 3 or 4 equally sized columns.
-        SFCDF.index.name = 'Unit'
-        SFCM1.index.name = 'Unit'
-        SFCDF.to_csv(Path(dprm,fn1))
-        SFCM1.to_csv(Path(dprm,fn2))
-        np.save(Path(dprm,fn3), SFCMtime)
-
-        return SFCDF, SFCM1, gu, bestChs, SFCMtime
-
-    elif _format=='raw_ccgs':
-        SFCDF.to_csv(Path(dprm,fn))
-        return SFCDF
-
-def gen_sfc(dp, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, subset_selection='all', _format='peaks_infos', again=False, againCCG=False):
-    '''
-    Function generating a NxN functional correlation dataframe SFCDF and matrix SFCM
+    Function generating a NxN functional correlation dataframe sfc and matrix sfcm
     from a sorted Kilosort output at 'dp' containing 'N' good units
-    with cdf(i,j) is a list of a varying number of (l, r, s) tuples
-    where l is the left edge in ms, r is the right edge in ms and s is the size in std
-    of significant peaks (either positive or negative).
-    
-    '''
-    assert _format in ['peaks_infos', 'raw_ccgs'],'WARNING {} must be in {}! Exitting now.'.format(_format, str(['peaks_infos', 'raw_sig_ccgs']))
+    with cdf(i,j) a list of ('l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy') tuples
+
+    Parameters:
         
-    peakChs=get_depthSort_peakChans(dp, quality='good')
-    gu, bestChs = peakChs[:,0], peakChs[:,1].astype('int64')
+        
+    Returns:
+        - sfc: Pandas DataFrame, the features of every significant functional correlations
+        of the MOST significant functional correlation peak/trough (1 per correlogram):
+        U_src: source unit of the correlogram,
+        U_trg: target unit of the correlogram,
+        l_ms:  the left edge in ms,
+        r_ms:  the right edge in ms,
+        amp_z: the amplitude in z-score units (standard deviations from predictor depending of the distribution used),
+        t_ms:  the time of the highest peak/deepest trough,
+        and the ones below as defined in KopelowitzCohen2014:
+            n_triplets:    the number of triplets of consecutive bins beyond the significance threshold (depends on bin size),
+            n_bincrossing: the number of consecutive bins beyond the significance threshold (depends on bin size),
+            bin_heights:   the mean amp_z across all significant bins,
+            entropy:       see KopelowitzCohen2014
+    '''
+    # Get depth-sorted units
+    peakChs = get_depthSort_peakChans(dp, quality='good').astype('int64')
+    gu = peakChs[:,0]
 
     dprm = Path(dp,'routinesMemory')
     if not op.isdir(dprm): os.makedirs(dprm)
-    
-    if _format=='peaks_infos':
-        fn1='SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(subset_selection)[0:50].replace(' ', ''), _format)
-        fn2='SFCM'+fn1[6:]
-        fn3='SFCMtime'+fn1[6:-4]+'.npy'
-        if op.exists(Path(dprm,fn1)) and not again:
-            print("File {} found in routines memory.".format(fn1))
-            SFCDF = pd.read_csv(Path(dprm,fn1), index_col='Unit')
-            SFCDF.replace('0', 0, inplace=True) # Loading a csv turns all the values into strings - now only detected peaks are strings
-            SFCDF.replace(0.0, 0, inplace=True)
-            SFCM1 = pd.read_csv(Path(dprm,fn2), index_col='Unit')
-            SFCMtime = np.load(Path(dprm,fn3))
-
-            return SFCDF, SFCM1, gu, bestChs, SFCMtime
             
-    elif _format=='raw_ccgs':
-        fn='SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(subset_selection)[0:50].replace(' ', ''), _format)
-        if op .exists(Path(dprm,fn)) and not again:
-            print("File {} found in routines memory.".format(fn))
-            SFCDF = pd.read_csv(Path(dprm,fn), index_col='Unit')
-            return SFCDF
+    sigstack, sigustack, sfc = ccg_sig_stack(dp, gu, gu, cbin, cwin, 'good-all_to_all',
+                  p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True)
+    
+    sfcm = np.zeros((len(gu),len(gu)))
+    for i, (u1,u2) in enumerate(sigustack):
+        if sign(sfc.loc[(sfc['U_src']==u1)&(sfc['U_trg']==u2), 'amp_z'].values)==1:
+            sfcm[gu==u1,gu==u2]=sfc.loc[(sfc['U_src']==u1)&(sfc['U_trg']==u2), metric].values
+        else:
+            sfcm[gu==u2,gu==u1]=sfc.loc[(sfc['U_src']==u1)&(sfc['U_trg']==u2), metric].values
+    
+    return sfc, sfcm
+    
+# def sfcdf(dp, U_src=None, U_trg=None, cbin=0.2, cwin=100, threshold=0.01, consec_bins=3, subset_selection='all', _format='peaks_infos', again=False, againCCG=False):
+#     '''
+#     Function generating a significant correlation dataframe from a sorted Kilosort output at 'dp'
+#     between U_src source and U_trg target units.
+#     sfcdf[i,j] is a tuple (t, a)
+#     where t is the latency of the peak or trough in ms and a is its amplitude in zscore values.
+#     '''
+#     assert _format in ['peaks_infos', 'raw_ccgs'],'WARNING {} must be in {}! Exitting now.'.format(_format, str(['peaks_infos', 'raw_sig_ccgs']))
         
-    if _format=='peaks_infos':
-        gu12=np.array([[u]*12 for u in gu]).flatten()
-        SFCDF = pd.DataFrame(index=gu, columns=gu) 
-        SFCM = np.zeros((len(gu), len(gu)*12))
-        SFCMtime = np.zeros((len(gu), len(gu)*12))
-    elif _format=='raw_ccgs':
-        #spec, frac, frac2, lms = 'acg', 0.03, 0.005, 2.5
-        all_gu_x_all_gu = ['{}->{}'.format(u1,u2) for i1, u1 in enumerate(gu) for i2, u2 in enumerate(gu) if (i1!=i2)]
-        if (cwin*1./cbin)%2==0: # even
-            bins=np.arange(-cwin*1./2, cwin*1./2+cbin, cbin)
-        elif (cwin*1./cbin)%2==1: # odd
-            bins=np.arange(-cwin*1./2+cbin*1./2, cwin*1./2+cbin*1./2, cbin)
-        SFCDF = pd.DataFrame(index=all_gu_x_all_gu, columns=[str(b) for b in bins])
-        #if histo: SFCDF.insert(loc=0, column='regions', value=np.nan)
-        SFCDF.insert(loc=0, column='pattern', value=np.nan)
+#     peakChs=get_depthSort_peakChans(dp, quality='good')
+#     gu, bestChs = peakChs[:,0], peakChs[:,1].astype('int64')
+    
+#     # histo=False
+#     # if os.path.isfile(dp+'/FeaturesTable/FeaturesTable_histo.csv'):
+#     #     fth = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_histo.csv', sep=',', index_col=0)
+#     #     depthIdx = np.argsort(bestChs)[::-1] # From surface (high ch) to DCN (low ch)
+#     #     histo_str=np.array(fth["Histology_str"])
+#     #     histo_str=histo_str[depthIdx]
+#     #     histo=True
+    
+#     dprm = Path(dp,'routinesMemory')
+#     if not op.isdir(dprm): os.makedirs(dprm)
+    
+#     if _format=='peaks_infos':
+#         fn1='SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(subset_selection)[0:50].replace(' ', ''), _format)
+#         fn2='SFCM'+fn1[6:]
+#         fn3='SFCMtime'+fn1[6:-4]+'.npy'
+#         if op.exists(Path(dprm,fn1)) and not again:
+#             print("File {} found in routines memory.".format(fn1))
+#             SFCDF = pd.read_csv(Path(dprm,fn1), index_col='Unit')
+#             SFCDF.replace('0', 0, inplace=True) # Loading a csv turns all the values into strings - now only detected peaks are strings
+#             SFCDF.replace(0.0, 0, inplace=True)
+#             SFCM1 = pd.read_csv(Path(dprm,fn2), index_col='Unit')
+#             SFCMtime = np.load(Path(dprm,fn3))
+
+#             return SFCDF, SFCM1, gu, bestChs, SFCMtime
+            
+#     elif _format=='raw_ccgs':
+#         fn='SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(subset_selection)[0:50].replace(' ', ''), _format)
+#         if op .exists(Path(dprm,fn)) and not again:
+#             print("File {} found in routines memory.".format(fn))
+#             SFCDF = pd.read_csv(Path(dprm,fn), index_col='Unit')
+#             return SFCDF
+        
+#     if _format=='peaks_infos':
+#         gu12=np.array([[u]*12 for u in gu]).flatten()
+#         SFCDF = pd.DataFrame(index=gu, columns=gu) 
+#         SFCM = np.zeros((len(gu), len(gu)*12))
+#         SFCMtime = np.zeros((len(gu), len(gu)*12))
+#     elif _format=='raw_ccgs':
+#         #spec, frac, frac2, lms = 'acg', 0.03, 0.005, 2.5
+#         all_gu_x_all_gu = ['{}->{}'.format(u1,u2) for i1, u1 in enumerate(gu) for i2, u2 in enumerate(gu) if (i1!=i2)]
+#         if (cwin*1./cbin)%2==0: # even
+#             bins=np.arange(-cwin*1./2, cwin*1./2+cbin, cbin)
+#         elif (cwin*1./cbin)%2==1: # odd
+#             bins=np.arange(-cwin*1./2+cbin*1./2, cwin*1./2+cbin*1./2, cbin)
+#         SFCDF = pd.DataFrame(index=all_gu_x_all_gu, columns=[str(b) for b in bins])
+#         #if histo: SFCDF.insert(loc=0, column='regions', value=np.nan)
+#         SFCDF.insert(loc=0, column='pattern', value=np.nan)
 
 
-    prct=0
-    print('Significant functional correlations (sfc) extraction started!')
-    for i1, u1 in enumerate(gu):
-        for i2, u2 in enumerate(gu):
-            skip=0
-            if prct!=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2))):
-                prct=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2)))
-                print('{}%...'.format(prct))
-            if i1!=i2:
-                print('(Checking ccg:{}->{}...)'.format(u1,u2))
-                hist=ccg(dp, [u1, u2], cbin, cwin, normalize='Hertz', prnt=False, subset_selection=subset_selection, again=againCCG)[0,1,:]
-                #hist_wide=ccg(dp, [i,j], 0.5, 50, prnt=False)[0,1,:]
-                #mn=np.mean(hist); std=np.std(hist)
-                pkSgn='+' if i2>i1 else '-'
-                pks = extract_hist_modulation_features(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn=pkSgn, win_fract_baseline=0.5)
-                #pks=[(pk[:4]) for pk in pks]
-                if _format=='peaks_infos':
-                    SFCDF.loc[u1, u2]=pks if np.array(pks).any() else int(0)
-                    if np.array(pks).any():
-                        vsplit=len(pks)
-                        print('>> Significantly modulated ccg:{}->{}! <<'.format(u1,u2))
-                        if 12%vsplit==0: # dividers of 12
-                            heatpks=np.array([[p[2]]*int(12*1./vsplit) for p in pks]).flatten()
-                            heatpksT=np.array([[p[3]]*int(12*1./vsplit) for p in pks]).flatten()
-                        else:
-                            if vsplit<=12: # not divider but still smaller
-                                heatpks=np.array([p[2] for p in pks]+[0]*(12-vsplit)).flatten()
-                                heatpksT=np.array([p[3] for p in pks]+[0]*(12-vsplit)).flatten()
-                            else:
-                                skip=1
-                                print('WARNING more than 12 peaks found - your threshold is too permissive or CCG f*cked up (units {} and {}), aborting.'.format(u1, u2))
-                    if (not np.array(pks).any()) or skip:
-                        heatpks=np.array([0]*12)
-                        heatpksT=np.array([np.nan]*12)
+#     prct=0
+#     print('Significant functional correlations (sfc) extraction started!')
+#     for i1, u1 in enumerate(gu):
+#         for i2, u2 in enumerate(gu):
+#             skip=0
+#             if prct!=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2))):
+#                 prct=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2)))
+#                 print('{}%...'.format(prct))
+#             if i1!=i2:
+#                 print('(Checking ccg:{}->{}...)'.format(u1,u2))
+#                 hist=ccg(dp, [u1, u2], cbin, cwin, normalize='Hertz', prnt=False, subset_selection=subset_selection, again=againCCG)[0,1,:]
+#                 #hist_wide=ccg(dp, [i,j], 0.5, 50, prnt=False)[0,1,:]
+#                 #mn=np.mean(hist); std=np.std(hist)
+#                 pkSgn='+' if i2>i1 else '-'
+#                 pks = extract_hist_modulation_features(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn=pkSgn, win_fract_baseline=0.5)
+#                 #pks=[(pk[:4]) for pk in pks]
+#                 if _format=='peaks_infos':
+#                     SFCDF.loc[u1, u2]=pks if np.array(pks).any() else int(0)
+#                     if np.array(pks).any():
+#                         vsplit=len(pks)
+#                         print('>> Significantly modulated ccg:{}->{}! <<'.format(u1,u2))
+#                         if 12%vsplit==0: # dividers of 12
+#                             heatpks=np.array([[p[2]]*int(12*1./vsplit) for p in pks]).flatten()
+#                             heatpksT=np.array([[p[3]]*int(12*1./vsplit) for p in pks]).flatten()
+#                         else:
+#                             if vsplit<=12: # not divider but still smaller
+#                                 heatpks=np.array([p[2] for p in pks]+[0]*(12-vsplit)).flatten()
+#                                 heatpksT=np.array([p[3] for p in pks]+[0]*(12-vsplit)).flatten()
+#                             else:
+#                                 skip=1
+#                                 print('WARNING more than 12 peaks found - your threshold is too permissive or CCG f*cked up (units {} and {}), aborting.'.format(u1, u2))
+#                     if (not np.array(pks).any()) or skip:
+#                         heatpks=np.array([0]*12)
+#                         heatpksT=np.array([np.nan]*12)
                     
-                    for col in range(12): # 12 columns per unit to make the heatmap
-                         SFCM[i1,12*i2:12*i2+12]=heatpks
-                         SFCMtime[i1,12*i2:12*i2+12]=heatpksT
-                elif _format=='raw_ccgs':
-                    if np.array(pks).any():
-                        #shist=smooth(hist, frac=frac, it=0, frac2=frac2, spec=spec, cbin=cbin, cwin=cwin, lms=lms)
-                        colBin1=SFCDF.columns[1] #SFCDF.columns[2] if histo else SFCDF.columns[1]
-                        SFCDF.loc['{}->{}'.format(u1,u2),colBin1:]=hist
-                        TY = np.array([[p[3], p[2]] for p in pks])
-                        TY = TY[np.argsort(TY[:,0])] # sort by crescent peak time
-                        pkSgnReal = ['+' if p[1]>0 else '-' if p[1]<0 else '0' for p in TY]
-                        pkSymReal = ['\\' if p[0]<-0.4 else '/' if p[0]>0.4 else '|'  for p in TY]
-                        pattern='';
-                        for sgn, sym in zip(pkSgnReal, pkSymReal):
-                            pattern+= sgn+sym
+#                     for col in range(12): # 12 columns per unit to make the heatmap
+#                          SFCM[i1,12*i2:12*i2+12]=heatpks
+#                          SFCMtime[i1,12*i2:12*i2+12]=heatpksT
+#                 elif _format=='raw_ccgs':
+#                     if np.array(pks).any():
+#                         #shist=smooth(hist, frac=frac, it=0, frac2=frac2, spec=spec, cbin=cbin, cwin=cwin, lms=lms)
+#                         colBin1=SFCDF.columns[1] #SFCDF.columns[2] if histo else SFCDF.columns[1]
+#                         SFCDF.loc['{}->{}'.format(u1,u2),colBin1:]=hist
+#                         TY = np.array([[p[3], p[2]] for p in pks])
+#                         TY = TY[np.argsort(TY[:,0])] # sort by crescent peak time
+#                         pkSgnReal = ['+' if p[1]>0 else '-' if p[1]<0 else '0' for p in TY]
+#                         pkSymReal = ['\\' if p[0]<-0.4 else '/' if p[0]>0.4 else '|'  for p in TY]
+#                         pattern='';
+#                         for sgn, sym in zip(pkSgnReal, pkSymReal):
+#                             pattern+= sgn+sym
                         
-                        SFCDF.loc['{}->{}'.format(u1,u2),'pattern']=pattern
-                        # if histo: SFCDF.loc['{}->{}'.format(u1,u2),'regions']='{}->{}'.format(fth.loc[u1, 'Histology_str'], fth.loc[u2, 'Histology_str'])
-                    else:
-                        SFCDF.drop(['{}->{}'.format(u1,u2)], inplace=True)
-    print('Job done.')
-    if _format=='peaks_infos':
-        SFCM1 = pd.DataFrame(data=SFCM);
-        SFCM1.index=gu; SFCM1.columns=gu12; # 12 columns to split vertically the heatmap pixel of each unit in either 1, 2, 3 or 4 equally sized columns.
-        SFCDF.index.name = 'Unit'
-        SFCM1.index.name = 'Unit'
-        SFCDF.to_csv(Path(dprm,fn1))
-        SFCM1.to_csv(Path(dprm,fn2))
-        np.save(Path(dprm,fn3), SFCMtime)
+#                         SFCDF.loc['{}->{}'.format(u1,u2),'pattern']=pattern
+#                         # if histo: SFCDF.loc['{}->{}'.format(u1,u2),'regions']='{}->{}'.format(fth.loc[u1, 'Histology_str'], fth.loc[u2, 'Histology_str'])
+#                     else:
+#                         SFCDF.drop(['{}->{}'.format(u1,u2)], inplace=True)
+#     print('Job done.')
+#     if _format=='peaks_infos':
+#         SFCM1 = pd.DataFrame(data=SFCM);
+#         SFCM1.index=gu; SFCM1.columns=gu12; # 12 columns to split vertically the heatmap pixel of each unit in either 1, 2, 3 or 4 equally sized columns.
+#         SFCDF.index.name = 'Unit'
+#         SFCM1.index.name = 'Unit'
+#         SFCDF.to_csv(Path(dprm,fn1))
+#         SFCM1.to_csv(Path(dprm,fn2))
+#         np.save(Path(dprm,fn3), SFCMtime)
 
-        return SFCDF, SFCM1, gu, bestChs, SFCMtime
+#         return SFCDF, SFCM1, gu, bestChs, SFCMtime
 
-    elif _format=='raw_ccgs':
-        SFCDF.to_csv(Path(dprm,fn))
-        return SFCDF
-    
-def make_acg_df(dp, cbin=0.1, cwin=80, subset_selection='all'):
-    # Get good units
-    gu = get_units(dp, quality='good') # get good units
-    
-    # Initialize ACG dataframe
-    if (cwin*1./cbin)%2==0: # even
-        bins=np.arange(-cwin*1./2, cwin*1./2+cbin, cbin)
-    elif (cwin*1./cbin)%2==1: # odd
-        bins=np.arange(-cwin*1./2+cbin*1./2, cwin*1./2+cbin*1./2, cbin)
-    
-    ACGDF = pd.DataFrame(index=gu, columns=bins)
-    
-    # Populate ACG dataframe
-    # smooth center less than sides
-    spec, frac, frac2, lms = 'acg', 0.06, 0.005, 3
-    prct=0
-    for i, u in enumerate(gu):
-        prct=int(i*100./len(gu))
-        print('{}%...'.format(prct), end='\r')
-        ACG=acg(dp, u, cbin, cwin, ret=True, sav=True, prnt=False, subset_selection=subset_selection)
-        ACGDF.loc[u, :]=smooth(ACG, frac=frac, it=0, frac2=frac2, spec=spec, cbin=cbin, cwin=cwin, lms=lms)
-    print('Job done.')
-    
-    return ACGDF
-
+#     elif _format=='raw_ccgs':
+#         SFCDF.to_csv(Path(dprm,fn))
+#         return SFCDF
 #%% Work in progress
 
 def spike_time_tiling_coefficient(L, dt, dp):

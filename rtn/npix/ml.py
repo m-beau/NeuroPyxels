@@ -20,7 +20,7 @@ from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, Distinct
                     _as_array, _unique, _index_of
                     
 from rtn.npix.gl import get_good_units
-from rtn.npix.corr import acg, make_acg_df
+from rtn.npix.corr import acg
 
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.colors import ListedColormap

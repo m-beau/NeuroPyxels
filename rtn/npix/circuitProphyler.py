@@ -179,7 +179,7 @@ class Prophyler:
         if op.exists(qualities_dp):
             qualities_old=pd.read_csv(qualities_dp, sep='	', index_col='dataset_i')
             # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
-            if not np.all(qualities.loc[:, 'dataset_i':'cluster_id']==qualities_old.loc[:, 'dataset_i':'cluster_id']):
+            if not np.all(np.isin(qualities_old.loc[:, 'cluster_id'], qualities.loc[:, 'cluster_id'])):
                 re_spksorted=True
         qualities.to_csv(qualities_dp, sep='	')
 
@@ -1052,32 +1052,20 @@ class Prophyler:
         # Save the updated features table
         save_featuresTable(direct, ft, goodClusters, Features)                              
 
-def map_sfcdf_on_graph(sfcdf, g, cbin, cwin, threshold, n_consec_bins):
+def map_sfc_on_graph(g, dp, cbin=0.5, cwin=100, p_th=0.01, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', name=None, metric='amp_z', again=True, againCCG=True):
     # If called in the context of CircuitProphyler, add the connection to the graph
-    for u1 in sfcdf.index:
-        for u2 in sfcdf.index:
-            pks=sfcdf.loc[u1, str(u2)]
-            if type(pks) is str:
-                if 'inf' in pks: pks=pks.replace('inf', '0')
-                try:
-                    pks=ale(pks)
-                    # pks with positive and negative peaks are present twice in the SFCDF (cf. case where pks='all' in find_significant_hist_peak)
-                    # these need to be only added if u1<u2
-                    pkSgns=npa([sign(p[2]) for p in pks])
-                    make_edges=False
-                    if np.all(pkSgns==1) or np.all(pkSgns==-1):
-                        make_edges=True
-                    else:
-                        if u1<u2:
-                            make_edges=True # edges are undirected, directions is deduced from attributes uSrc and uTrg
-                    if make_edges:
-                        for p in pks:
-                            g.add_edge(u1, u2, uSrc=u1, uTrg=u2, 
-                                       amp=p[2], t=p[3], sign=sign(p[2]), width=p[1]-p[0], label=0,
-                                       n_triplets=p[4], n_bincrossing=p[5], bin_heights=p[6], entropy=p[7],
-                                       criteria={'cbin':cbin, 'cwin':cwin, 'threshold':threshold, 'nConsecBins':n_consec_bins})
-                except:
-                    print('WARNING could not recover peak infos of {} and {}'.format(u1, u2))
+    sfc, sfcm = gen_sfc(dp, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, metric, again, againCCG)
+    if test=='Normal_Kopelowitz':
+        criteria={'cbin':cbin, 'cwin':cwin, 'p_th':p_th, 'n_consec_bins':n_consec_bins, 'fract_baseline':fract_baseline, }
+    elif test=='':
+        criteria={'cbin':cbin, 'cwin':cwin, 'p_th':p_th, 'n_consec_bins':n_consec_bins, 'W_sd':W_sd}
+    for i in sfc.index:
+        (u1,u2)=sfc.loc[i,'U_src':'U_trg']
+        f=sfc.loc[i,'l_ms':].data
+        g.add_edge(u1, u2, uSrc=u1, uTrg=u2, 
+                   amp=f[2], t=f[3], sign=sign(f[2]), width=f[1]-f[0], label=0,
+                   n_triplets=f[4], n_bincrossing=f[5], bin_heights=f[6], entropy=f[7],
+                   criteria=criteria)
     return g
 
 class Dataset:
@@ -1123,6 +1111,7 @@ class Dataset:
     
     def get_peak_channels(self):
         self.peak_channels = get_depthSort_peakChans(self.dp, quality='good')# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
+        return self.peak_channels
         
     def get_peak_positions(self):
         self.get_peak_channels()
@@ -1146,6 +1135,7 @@ class Dataset:
                     peak_pos[boolidx,1]=peak_pos[boolidx,1]-x_spacing*1./2+(i+1)*spacing # 1 is index of x value
         
         self.peak_positions={int(pp[0]):pp[1:] for pp in peak_pos}
+        return self.peak_positions
         
 class Unit:
     '''The object Unit does not store anything itself except from its dataset and index.

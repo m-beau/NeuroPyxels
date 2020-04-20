@@ -386,7 +386,8 @@ def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=Fal
     '''
     t = np.sort(times)
     aligned_t = {}
-    aligned_tb = np.zeros((len(events), int((window[1]-window[0])*1./b)))
+    tbins=np.arange(window[0], window[1], b)
+    aligned_tb = np.zeros((len(events), len(tbins)))
     for i, e in enumerate(events):
         ts = t-e # ts: t shifted
         tsc = ts[(ts>=window[0]/1000)&(ts<=window[1]/1000)] # tsc: ts clipped

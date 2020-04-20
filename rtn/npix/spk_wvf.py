@@ -128,11 +128,12 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='re
     return  waveforms
 
 
-def get_peak_chan(dp, unit):
+def get_peak_chan(dp, unit, use_template=False):
     '''
     Parameters:
         - datapath, string
         - unit, integer or string
+        - use_template: bool, whether to use templates instead of raw waveform to find peak channel.
     Returns:
         - best_channel, integer indexing the channel
           where the unit averaged raw waveform (n=100 spanning the whole recording)
@@ -140,13 +141,16 @@ def get_peak_chan(dp, unit):
     '''
     dp, unit = get_prophyler_source(dp, unit)
     cm=chan_map(dp, probe_version='local')
-    waveforms=wvf(dp, unit, 200)
+    if use_template:
+        waveforms=templates(dp, unit)
+    else:
+        waveforms=wvf(dp, unit, 200)
     wvf_m = np.mean(waveforms, axis=0)
     max_min_wvf=np.max(wvf_m,0)-np.min(wvf_m,0)
-    peak_chan = int(np.nonzero(np.max(max_min_wvf)==max_min_wvf)[0])
+    peak_chan = int(np.nonzero(np.max(max_min_wvf)==max_min_wvf)[0][0])
     return cm[:,0][peak_chan]
 
-def get_depthSort_peakChans(dp, units=[], quality='all'):
+def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False):
     '''
     Usage:
         Either feed in a list of units - the function will return their indices/channels sorted by depth in a n_units x 2 array,
@@ -165,7 +169,8 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         # If no units, load them all from dataset
         # and prepare to save the FULL array of peak channels at the end
         units=get_units(dp, quality=quality)
-        pc_fname='peak_channels_{}.npy'.format(quality)
+        strdic={True:'templates', False:'raw-waveforms'}
+        pc_fname='peak_channels_{}_{}.npy'.format(strdic[use_template], quality)
         if op.exists(Path(dp, pc_fname)):
             peak_chans=np.load(Path(dp, pc_fname))
             if np.all(np.isin(units, peak_chans[:,0])):
@@ -180,6 +185,11 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         units=npa(units).flatten()
         if op.exists(Path(dp, 'peak_channels_all.npy')):
             peak_chans=np.load(Path(dp, 'peak_channels_all.npy'))
+            if np.all(np.isin(units, peak_chans[:,0])):
+                units_mask=np.isin(peak_chans[:,0], units)
+                return peak_chans[units_mask]
+        elif op.exists(Path(dp, 'peak_channels_good.npy')):
+            peak_chans=np.load(Path(dp, 'peak_channels_good.npy'))
             if np.all(np.isin(units, peak_chans[:,0])):
                 units_mask=np.isin(peak_chans[:,0], units)
                 return peak_chans[units_mask]
@@ -198,7 +208,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
             ds_i = ale(u.split('_')[0])
             if ds_i>=1: iu=iu%datasets[ds_i-1]
             peak_chans_dic[ds_i][iu,0] = u
-            peak_chans_dic[ds_i][iu,1] = int(get_peak_chan(dp, u))
+            peak_chans_dic[ds_i][iu,1] = int(get_peak_chan(dp, u, use_template))
         peak_chans=npa(zeros=(0,2),dtype='<U6')
         for ds_i in sorted(datasets.keys()):
             depthIdx = np.argsort(peak_chans_dic[ds_i].astype('int64')[:,1])[::-1]
@@ -210,7 +220,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
         for iu, u in enumerate(units):
             print("Getting peak channel of unit {}...".format(u))
             peak_chans[iu,0] = u
-            peak_chans[iu,1] = int(get_peak_chan(dp, u))
+            peak_chans[iu,1] = int(get_peak_chan(dp, u, use_template))
         depthIdx = np.argsort(peak_chans[:,1])[::-1] # From surface (high ch) to DCN (low ch)
         peak_chans=peak_chans[depthIdx]
     
@@ -219,7 +229,11 @@ def get_depthSort_peakChans(dp, units=[], quality='all'):
     
     return peak_chans # units, channels
 
-
+def get_peak_pos(dp, unit, use_template=False):
+    peak_chan=get_peak_chan(dp, unit, use_template)
+    pos = np.load(Path(dp,'channel_positions.npy'))
+    return pos[peak_chan-1]
+    
 def get_chDis(dp, ch1, ch2):
     '''dp: datapath to dataset
     ch1, ch2: channel indices (1 to 384)

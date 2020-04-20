@@ -41,7 +41,7 @@ def load_units_qualities(dp):
     elif os.path.isfile(f2):
         qualities = pd.read_csv(Path(dp, 'merged_'+f2), delimiter=',', index_col='dataset_i')
     else:
-        print('cluster groups table not found in provided data path. Exiting.')
+        print('cluster groups table not found in provided data path.')
         return
     return qualities
 
@@ -49,6 +49,11 @@ def get_units(dp, quality='all', chan_range=None):
     assert quality in ['all', 'good', 'mua', 'noise']
     
     cl_grp = load_units_qualities(dp)
+    if cl_grp is None:
+        units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
+        cl_grp=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
+        cl_grp.to_csv(Path(dp, 'cluster_group.tsv'), sep='	', index=False)
+        
     units=[]
     if cl_grp.index.name=='dataset_i':
         if quality=='all':

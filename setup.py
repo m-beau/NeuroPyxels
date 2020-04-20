@@ -11,7 +11,7 @@ setup(name='rtn',
       packages=['rtn', 'rtn.npix'],
       #package_dir={'rtn': 'rtn'},
       install_requires=['numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
-      'six', 'elephant', 'vispy', 'statsmodels', 'progressbar',
+      'six', 'elephant', 'vispy', 'statsmodels', 'progressbar2',
       'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'pyqtgraph', 'imutils', 'opencv-contrib-python',
       'h5py'],
       keywords='phy,data analysis,electrophysiology,neuroscience')

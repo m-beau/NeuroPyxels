@@ -32,7 +32,7 @@ def make_phy_like_spikeClustersTimes(dp, U, subset_selection='all', prnt=True, t
             trains_dic[iu]=trn(dp, u, sav=True, subset_selection=subset_selection, prnt=prnt) # trains in samples
     else:
         assert len(trains)>1
-        for iu, t in enumerate(trains.values()):
+        for iu, t in enumerate(trains):
             trains_dic[iu]=t
     spikes=make_matrix_2xNevents(trains_dic).astype('int64')
     
@@ -203,7 +203,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     assert len(U)>=2
     U=list(U)
     if U[0]==U[1]: U=[U[0]]
-    same_ds=all(u[0] == U[0][0] for u in U) if type(U[0]) is str else False
+    same_ds=all(u[0] == U[0][0] for u in U) if (type(U[0]) in [str, np.str_]) else False
     U_=U.copy()
     for iu,u in enumerate(U_):
         (dp1, U_[iu]) = get_prophyler_source(dp, u) if same_ds else (dp, u)
@@ -318,6 +318,9 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                      HAS to be provided so that the stack can be saved!
         - sav:       bool, whether to save the stack in routines memory.
                      Will only be saved if a name is provided!
+    Returns:
+        - sigstack: np array, ccg stack containing the ccgs, of shape U_src=U_trg x cwin//cbin+1 if all_to_all=False or U_src x U_trg x cwin//cbin+1 else
+        - sigustack: np array, matching unit pairs for each ccg, of shape U_src=U_trg if all_to_all=False or U_src x U_trg else
     '''
     dprm = Path(dp,'routinesMemory')
     if not os.path.isdir(dprm):
@@ -344,13 +347,13 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
     bins=get_bins(cwin, cbin)
     if all_to_all:
         pgbar=pgb.ProgressBar(max_value=len(U_src)*len(U_trg)).start()
-        ustack=npa(zeros=(len(U_src), len(U_trg), 2))
-        stack=npa(zeros=(len(U_src), len(U_trg), len(bins)))
+        ustack=npa(zeros=(len(U_src), len(U_trg), 2)).astype(npa(U_src).dtype)
+        stack=npa(zeros=(len(U_src), len(U_trg), len(bins))).astype(float)
         # Case where every CCG would be computed twice - gotta save time if you can
         if np.all(U_src==U_trg): 
             for i1, u1 in enumerate(U_src):
                 for i2, u2 in enumerate(U_trg):
-                    pgbar.update(i1*len(U_trg)+i2+1)
+                    #pgbar.update(i1*len(U_trg)+i2+1)
                     ustack[i1, i2, :]=[u1,u2]
                     if i1==i2:
                         stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False)
@@ -365,7 +368,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                     stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False)[0,1,:]
     else:
         assert len(U_src)==len(U_trg)
-        assert not np.any(U_src==U_trg), 'Looks like you requested to compute a CCG between a unit an ditself - check U_src and U_trg.'
+        assert not np.any(U_src==U_trg), 'Looks like you requested to compute a CCG between a unit and itself - check U_src and U_trg.'
         pgbar=pgb.ProgressBar(max_value=len(U_src)).start()
         ustack=npa(zeros=(len(U_src), 2))
         stack=npa(zeros=(len(U_src), len(bins)))
@@ -631,9 +634,10 @@ def KopelowitzCohen2014_ccg_significance(CCG, cbin=0.2, cwin=100, p_th=0.01, n_c
     '''
     
     assert law in ['Poisson', 'Normal']
-    assert 0<p_th<1
+    assert 0<p_th<1, "p_th should be between 0 and 1!"
     assert sgn in [-1,1]
-
+    assert n_consec_bins>=1 and round(n_consec_bins)==n_consec_bins
+    
     if n_consec_bins in [2,3]:
         assert law=='Normal', "Using more than 1 bin is not handled when assuming a Poisson distribution."
         assert canUse_Nbins(p_th, cwin, cbin, n_consec_bins)
@@ -770,7 +774,8 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
     '''
     
     assert np.all(CCG==np.round(CCG)), 'CCG should be in counts -> integers!'
-    assert 0<p_th<1, 'pval_thresh should be between 0 and 1!'
+    assert 0<p_th<1, "p_th should be between 0 and 1!"
+    assert n_consec>=1 and round(n_consec)==n_consec
     
     W_sd=int(W_sd/cbin)
     pred, pvals = StarkAbeles2009_ccg_sig(CCG, W=2*W_sd, WINTYPE='gauss', HF=None, CALCP=True, sgn=sgn)
@@ -791,121 +796,14 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
     return any_n_consec(comp, n_consec, where=False)
     
 
-def get_ccg_sig(CCG, cbin, cwin, p_th=0.01, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', ret_features=True, only_max=True):
-    '''
-        - CCG: 1d array, 
-        - hbin: float (ms)
-        - th is the threshold in hist unit,
-        - n_consec_bins is the number of consecutive bins which  have to cross the threshold for a peak to be called a peak,
-        - sgn can be 1, -1 or 0 -> dictates whether to return peaks, troughs or both.
-        - win_fract_baseline: fraction of the window used to compute the Ho mean and std, is no ext_mn or ext_std are provided. If 0.6, 0:0.3 and 0.7:1 will be used.
-        Returns:
-        - peaks+troughs: [(l_ms, r_ms, y, t_ms, n_triplets, n_bincrossing, bin_heights, entropy), ...]
-        where l_ms, r_ms, y, t_ms stand for left edge, right edge, y value (std), time
-        and n_triplets, n_bincrossing, bin_heights, entropy for the 4 correlation strength metrics of Kopelowitz et al.'''
-    
-    assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
-    assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
-    crosses=[]
-    if test=='Normal_Kopelowitz':
-        if sgn==0 or sgn==1:
-            crosses+=KopelowitzCohen2014_ccg_significance(CCG, cbin, cwin, p_th, n_consec_bins, 1, fract_baseline, ret_values=True, only_max=only_max)
-        if sgn==0 or sgn==-1:
-            crosses+=KopelowitzCohen2014_ccg_significance(CCG, cbin, cwin, p_th, n_consec_bins, -1, fract_baseline, ret_values=True, only_max=only_max)
-    elif test=='Poisson_Stark':
-        if sgn==0 or sgn==1:
-            crosses+=StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec_bins, 1, W_sd, ret_values=True, only_max=only_max)
-        if sgn==0 or sgn==-1:
-            crosses+=StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec_bins, -1, W_sd, ret_values=True, only_max=only_max)
-    
-    if only_max and len(crosses)>0:
-        cross=crosses[0]
-        for c in crosses[1:]:
-            if max(abs(c[1,:]))>max(abs(cross[1,:])): cross = c
-        crosses=[cross]
-        assert len(crosses)==1
-        
-    if not ret_features: return crosses
-    
-    # Compute features of peak/trough
-    cross_feats=[]
-    for cross in crosses:
-        # for positive crosses, l_ind is the index of the first bin above threshold;
-        # r_ind is the index of the first bin below threshold.
-        l_ind, r_ind = cross[0,0], cross[0,-1]+1
-        l_ms, r_ms = (l_ind-(len(CCG)-1)*1./2)*cbin, (r_ind-(len(CCG)-1)*1./2)*cbin
-        amp_z=max(np.abs(cross[1,:]))*sign(cross[1,0])
-        t_ind=cross[0,:][cross[1,:]==amp_z][0] # If there are 2 equal maxima, the 1st one is picked
-        t_ms=(t_ind-(len(CCG)-1)*1./2)*cbin
-        n_triplets=cross.shape[1]//3
-        n_bincrossing=cross.shape[1]
-        bin_heights=np.mean(cross[1,:])
-        # Assuming that the sides of the correlogram have a normal distribution,
-        # the Z-scored crosscorrelogram with the mean and std of the correlogram sides
-        # should have a normal distribution if not modulated.
-        # Hence the Ho PDF of the Z-scored correlogram is the N(0,1) distribution.
-        # So the probability of a bin height is pdf_normal(np.abs(bin_height), m=0, s=1).
-        pi=pdf_normal(np.abs(cross[1,:]), m=0, s=1) 
-        entropy=-np.mean(np.log(pi))
-        if np.inf in [entropy]:entropy=0
-        cross_feats.append((l_ms, r_ms, amp_z, t_ms, n_triplets, n_bincrossing, bin_heights, entropy))
-        
-    return cross_feats
-
-def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name='ctx-dcn',
-                  p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', again=False, againCCG=False, ret_features=False):
-    '''
-    
-    '''
-    assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
-    assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
-    
-    # Directly load sig stack if was already computed
-    if name is not None:
-        signame=name+'-{}-{}-{}-{}-{}'.format(test, p_th, n_consec_bins, fract_baseline, W_sd)
-        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=again)
-        if np.any(sigstack):
-            return sigstack, sigustack
-    
-    ptdic={1:'peak', -1:'trough'}
-    sigustack=[]
-    if ret_features: feats=[]
-    stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG)
-    same_src_trg=np.all(U_src==U_trg) if len(U_src)==len(U_trg) else False
-    for i in range(stack.shape[0]):
-        for j in range(stack.shape[1]):
-            if same_src_trg and i<=j: continue
-            CCG=stack[i, j, :]
-            pks=get_ccg_sig(CCG, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features=ret_features)
-            if np.any(pks):
-                print('Significant {}: {}->{}'.format(ptdic[sign(pks[0][2])], *ustack[i, j, :]))
-                sigustack.append(ustack[i, j, :])
-                assert len(pks)==1, 'only_max should be true and only the largest peak/trough should be returned but it is not!'
-                if ret_features: feats.append(pks[0])
-
-    sigustack=npa(sigustack)
-    sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True)
-    if ret_features:
-        data=np.hstack([sigustack,npa(feats)])
-        features=pd.DataFrame(data=data,columns=['U_src', 'U_trg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
-        return sigstack, sigustack, features
-    return sigstack, sigustack
-
-def gen_sfc(dp, cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-             metric='amp_z', again=False, againCCG=False, subset_selection='all'):
-    '''
-    Function generating a NxN functional correlation dataframe sfc and matrix sfcm
-    from a sorted Kilosort output at 'dp' containing 'N' good units
-    with cdf(i,j) a list of ('l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy') tuples
-
+def get_cross_features(cross, cbin, cwin):
+    '''Returns features of a correlogram modulation as defined in Kopelowitz et al. 2014.
     Parameters:
-        
-        
+        - cross: 2d array, with cross[0] being the indices and cross[1] the values of a CCG significant modulation.
+        - cbin: ccg bin size (ms)
+        - cwin: ccg window size (ms)
     Returns:
-        - sfc: Pandas DataFrame, the features of every significant functional correlations
-        of the MOST significant functional correlation peak/trough (1 per correlogram):
-        U_src: source unit of the correlogram,
-        U_trg: target unit of the correlogram,
+        - a tuple of 8 features below:
         l_ms:  the left edge in ms,
         r_ms:  the right edge in ms,
         amp_z: the amplitude in z-score units (standard deviations from predictor depending of the distribution used),
@@ -916,156 +814,310 @@ def gen_sfc(dp, cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, sgn=0, fract_bas
             bin_heights:   the mean amp_z across all significant bins,
             entropy:       see KopelowitzCohen2014
     '''
-    # Get depth-sorted units
-    peakChs = get_depthSort_peakChans(dp, quality='good').astype('int64')
+    nbins=cwin/cbin+1
+    # for positive crosses, l_ind is the index of the first bin above threshold;
+    # r_ind is the index of the first bin below threshold.
+    l_ind, r_ind = cross[0,0], cross[0,-1]+1
+    l_ms, r_ms = (l_ind-(nbins-1)*1./2)*cbin, (r_ind-(nbins-1)*1./2)*cbin
+    amp_z=max(np.abs(cross[1,:]))*sign(cross[1,0])
+    t_ind=cross[0,:][cross[1,:]==amp_z][0] # If there are 2 equal maxima, the 1st one is picked
+    t_ms=(t_ind-(nbins-1)*1./2)*cbin
+    n_triplets=cross.shape[1]//3
+    n_bincrossing=cross.shape[1]
+    bin_heights=np.mean(cross[1,:])
+    # Assuming that the sides of the correlogram have a normal distribution,
+    # the Z-scored crosscorrelogram with the mean and std of the correlogram sides
+    # should have a normal distribution if not modulated.
+    # Hence the Ho PDF of the Z-scored correlogram is the N(0,1) distribution.
+    # So the probability of a bin height is pdf_normal(np.abs(bin_height), m=0, s=1).
+    pi=pdf_normal(np.abs(cross[1,:]), m=0, s=1) 
+    entropy=-np.mean(np.log(pi))
+    if np.inf in [entropy]:entropy=0
+        
+    return (l_ms, r_ms, amp_z, t_ms, n_triplets, n_bincrossing, bin_heights, entropy)
+
+def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', ret_features=True, only_max=True):
+    '''
+    Parameters:
+        - CCG: 1d array, 
+        - cbin: float, CCG bin size (ms)
+        - cwin: float, CCG window size (ms)
+        - p_th: float, significance threshold in pvalues
+        - n_consec_bins: int, number of bins beyond significance threshold,
+        - sgn: -1, 0 or 1, sign of the modulation (negative, either or positive).
+               WARNING if sgn=0 and only_max=True, only the largest modulation will be returned in absolute value
+               so there can be different results for sgn=-1 (or 1) and 0!
+        - fract_baseline: float, fraction of the CCG used to compute the Ho mean and std if test='Normal_Kopelowitz'. | Default 4./5
+        - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
+        - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
+        - ret_features: bool, whether to return or not the features tuples instead of the crosses indices and values.
+        - only_max: bool, whether to return only the largest significant modulation of the correlogram (there can be several!)
+        
+        Returns:
+            if ret_features==False:
+                - crosses: list of 2xNbins 2d arrays [indices, values] where 'indices' are the ccg indices of the significant modulation and 'values' the respective ccg values,
+                           in units of standard deviations from predictor (based on normal or poisson distribution)
+            else:
+                - features: list of tuples (1 per modulation) containing the features (see get_cross_features() doc)
+        '''
+    
+    assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
+    assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
+    
+    crosses=[]
+    if test=='Normal_Kopelowitz':
+        if sgn==0 or sgn==1:
+            crosses+=KopelowitzCohen2014_ccg_significance(CCG, cbin, cwin, p_th, n_consec_bins, 1, fract_baseline, ret_values=True, only_max=False)
+        if sgn==0 or sgn==-1:
+            crosses+=KopelowitzCohen2014_ccg_significance(CCG, cbin, cwin, p_th, n_consec_bins, -1, fract_baseline, ret_values=True, only_max=False)
+    elif test=='Poisson_Stark':
+        if sgn==0 or sgn==1:
+            crosses+=StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec_bins, 1, W_sd, ret_values=True, only_max=False)
+        if sgn==0 or sgn==-1:
+            crosses+=StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec_bins, -1, W_sd, ret_values=True, only_max=False)
+    
+    if only_max and len(crosses)>0:
+        cross=crosses[0]
+        for c in crosses[1:]:
+            if max(abs(c[1,:]))>max(abs(cross[1,:])): cross = c
+        crosses=[cross]
+        assert len(crosses)==1
+        
+    if not ret_features: return crosses
+    
+    # Compute and return crosses features
+    return [get_cross_features(cross, cbin, cwin) for cross in crosses]
+
+
+def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
+                  p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', again=False, againCCG=False, ret_features=False, only_max=True):
+    '''
+    Parameters:
+        - dp: string, datapath to manually curated kilosort output
+        - U_src: list/array of source units of the correlograms to consider for significance assessment
+        - U_trg: list/array of target units of the correlograms to consider for significance assessment
+        - cbin: float, CCG bin size (ms)
+        - cwin: float, CCG window size (ms)
+        - name: name of the ccg stack to consider for significance assessment. HAS to be provided to be able to save and reload the ccg stack in the future.
+        - p_th: float, significance threshold in pvalues
+        - n_consec_bins: int, number of bins beyond significance threshold,
+        - sgn: -1, 0 or 1, sign of the modulation (negative, either or positive).
+               WARNING if sgn=0 and only_max=True, only the largest modulation will be returned in absolute value
+               so there can be different results for sgn=-1 (or 1) and 0!
+        - fract_baseline: float, fraction of the CCG used to compute the Ho mean and std if test='Normal_Kopelowitz'. | Default 4./5
+        - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
+        - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
+        - again: bool, whether to reassess significance of ccg stack rather than loading from memory if already computed in the past.
+        - againCCG: bool, whether to recompute ccg stack rather than loading from memory if already computed in the past.
+        - ret_features: bool, whether to return or not the features dataframe instead of the crosses indices and values.
+        
+        Returns:
+            if ret_features==False:
+                - sigstack: np array, ccg stack containing the significant ccgs, of shape NsignificantUnits x cwin//cbin+1
+                - sigustack: np array, matching unit pairs for each significant ccg, of shape NsignificantUnits
+            else:
+                - sigstack: see above.
+                - sigustack: see above.
+                - features: dataframe of NsignificantUnits x 
+                            ['uSrc'', uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
+                            (see __doc__ of get_ccg_sig() for features description)
+        '''
+    assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
+    assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
+    
+    # Directly load sig stack if was already computed
+    if name is not None:
+        signame=name+'-{}-{}-{}-{}-{}'.format(test, p_th, n_consec_bins, fract_baseline, W_sd)
+        dprm = Path(dp,'routinesMemory');
+        if not op.isdir(dprm): os.makedirs(dprm)
+        feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_features.csv'.format(signame, 'Counts', cbin, cwin, sgn, only_max))
+        
+        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=again)
+        if np.any(sigstack): # will be empty if the array exists but again=True
+            if not ret_features:
+                return sigstack, sigustack
+            if op.exists(feat_path):
+                features=pd.read_csv(feat_path)
+                return sigstack, sigustack, features
+            features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
+            for i,c in enumerate(sigstack):
+                pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
+                for p in pks:
+                    features=features.append(dict(zip(features.columns,np.append(sigustack[i, :], p))), ignore_index=True)
+            features.to_csv(feat_path, index=False)
+            return sigstack, sigustack, features
+    
+    ptdic={1:'peak', -1:'trough'}
+    sigustack=[]
+    if ret_features: features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
+    stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG)
+    same_src_trg=np.all(U_src==U_trg) if len(U_src)==len(U_trg) else False
+    for i in range(stack.shape[0]):
+        for j in range(stack.shape[1]):
+            if same_src_trg and i<=j: continue
+            CCG=stack[i, j, :]
+            pks=get_ccg_sig(CCG, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
+            if np.any(pks):
+                print('Significant {}: {}->{}'.format(ptdic[sign(pks[0][2])], *ustack[i, j, :]))
+                sigustack.append(ustack[i, j, :])
+                if ret_features:
+                    for p in pks:
+                        features=features.append(dict(zip(features.columns,np.append(ustack[i, j, :], p))), ignore_index=True)
+
+    sigustack=npa(sigustack)
+    sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True)
+    if ret_features:
+        if name is not None:
+            features.to_csv(feat_path, index=False)
+        return sigstack, sigustack, features
+    return sigstack, sigustack
+
+def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude']):
+    '''
+    Function generating a functional correlation dataframe sfc (Nsig x 2+8 features) and matrix sfcm (Nunits x Nunits)
+    from a sorted Kilosort output at 'dp' containing 'N' good units
+    with cdf(i,j) a list of ('l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy') tuples
+
+    Parameters:
+        - dp: string, datapath to manually curated kilosort output
+        - corr_type: string in ['main', 'synchrony', 'excitation', 'inhibition']
+            - main: among all modulations, take the biggest one.
+                    Positive mods will be plotted in the bottomleft corner, negatives ones in the other.
+            - synchrony: among all positive modulations, take the one between -1 and 1ms
+                         Mods will be plotted symmetrically in both corners.
+            - excitation: among all positive modulations, take the one between 1 and 2.5ms
+                          Mods a->b will be plotted in the upper right corner, b->a in the other, if chan(a)>chan(b)
+            - inhibition: among all negative modulations, take the one between 1 and 2.5ms
+                          Mods a->b will be plotted in the upper right corner, b->a in the other, if chan(a)>chan(b)
+            - connections: among all modulations, take the one between 1 and 2.5ms
+                          Inhibitions will be plotted in the upper right corner, excitations in the other.
+        - metric: string, feature used to fill the sfc matrix | Default: amp_z
+        - again: bool, whether to reassess significance of ccg stack rather than loading from memory if already computed in the past.
+        - cbin: float, correlogram bin size | Default 0.5
+        - cwin: float, correlogram window size | Default 100
+        - p_th: float, significance threshold in p value | Default 0.02
+        - n_consec_bins: int, number of bins beyons significance threshold required | Default 3
+        - fract_baseline: float, fraction of the CCG used to compute the Ho mean and std if test='Normal_Kopelowitz'. | Default 4./5
+        - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
+        - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
+        - againCCG: bool, whether to recompute ccg stack rather than loading from memory if already computed in the past.
+        
+    Returns:
+        - sfc: Pandas dataframe of NsignificantUnits x 
+               ['uSrc'', uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
+               (see __doc__ of get_ccg_sig() for features description)
+        - sfcm: np array, Nunits x Nunit with 0 if no significant correlation and metric if significant correlation.
+    '''
+    assert corr_type in ['all', 'main', 'synchrony', 'excitations', 'inhibitions', 'connections']
+    # filter for main modulation irrespectively of sign
+    sgn=0
+    only_max=False
+    if corr_type=='all':
+        tfilt=[]
+        sfilt=[]
+    elif corr_type=='main':
+        tfilt=[]
+        sfilt=[]
+        only_max=True
+    elif corr_type=='synchrony':
+        tfilt=[[-1,1]]
+        sfilt=1
+    elif corr_type=='excitations':
+        tfilt=[[-2.5,-1],[1,2.5]]
+        sfilt=1
+    elif corr_type=='inhibitions':
+        tfilt=[[-2.5,-1],[1,2.5]]
+        sfilt=-1
+    elif corr_type=='connections':
+        tfilt=[[-2.5,-1],[1,2.5]]
+        sfilt=[]
+    
+    # Get depth-sorted units and sig ccg stack
+    peakChs = get_depthSort_peakChans(dp, quality='good')
     gu = peakChs[:,0]
-
-    dprm = Path(dp,'routinesMemory')
-    if not op.isdir(dprm): os.makedirs(dprm)
-            
     sigstack, sigustack, sfc = ccg_sig_stack(dp, gu, gu, cbin, cwin, 'good-all_to_all',
-                  p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True)
+                  p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True, only_max=only_max)
     
-    sfcm = np.zeros((len(gu),len(gu)))
-    for i, (u1,u2) in enumerate(sigustack):
-        if sign(sfc.loc[(sfc['U_src']==u1)&(sfc['U_trg']==u2), 'amp_z'].values)==1:
-            sfcm[gu==u1,gu==u2]=sfc.loc[(sfc['U_src']==u1)&(sfc['U_trg']==u2), metric].values
-        else:
-            sfcm[gu==u2,gu==u1]=sfc.loc[(sfc['U_src']==u1)&(sfc['U_trg']==u2), metric].values
+    # If filtering of connections wishes to be done at a later stage, simply return
+    if corr_type=='all': return sfc, np.zeros((len(gu),len(gu))), peakChs 
     
-    return sfc, sfcm
-    
-# def sfcdf(dp, U_src=None, U_trg=None, cbin=0.2, cwin=100, threshold=0.01, consec_bins=3, subset_selection='all', _format='peaks_infos', again=False, againCCG=False):
-#     '''
-#     Function generating a significant correlation dataframe from a sorted Kilosort output at 'dp'
-#     between U_src source and U_trg target units.
-#     sfcdf[i,j] is a tuple (t, a)
-#     where t is the latency of the peak or trough in ms and a is its amplitude in zscore values.
-#     '''
-#     assert _format in ['peaks_infos', 'raw_ccgs'],'WARNING {} must be in {}! Exitting now.'.format(_format, str(['peaks_infos', 'raw_sig_ccgs']))
+    # Else, proceed to filtering
+    if corr_type!='main': # then only_max is always False
+        # Filter out based on sign
+        def drop_sign(sfc,sfilt):
+            s=sfc['amp_z'].values
+            s_mask=np.zeros((sfc.shape[0])).astype('bool')
+            if np.any(sfilt):
+                s_mask=(sign(s)!=sfilt)
+            sfc.drop(index=sfc.index[np.isin(sfc.index, sfc.index[s_mask])], inplace=True)
+            sfc.reset_index(inplace=True, drop=True)
+            return sfc
         
-#     peakChs=get_depthSort_peakChans(dp, quality='good')
-#     gu, bestChs = peakChs[:,0], peakChs[:,1].astype('int64')
-    
-#     # histo=False
-#     # if os.path.isfile(dp+'/FeaturesTable/FeaturesTable_histo.csv'):
-#     #     fth = pd.read_csv(dp+'/FeaturesTable/FeaturesTable_histo.csv', sep=',', index_col=0)
-#     #     depthIdx = np.argsort(bestChs)[::-1] # From surface (high ch) to DCN (low ch)
-#     #     histo_str=np.array(fth["Histology_str"])
-#     #     histo_str=histo_str[depthIdx]
-#     #     histo=True
-    
-#     dprm = Path(dp,'routinesMemory')
-#     if not op.isdir(dprm): os.makedirs(dprm)
-    
-#     if _format=='peaks_infos':
-#         fn1='SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(subset_selection)[0:50].replace(' ', ''), _format)
-#         fn2='SFCM'+fn1[6:]
-#         fn3='SFCMtime'+fn1[6:-4]+'.npy'
-#         if op.exists(Path(dprm,fn1)) and not again:
-#             print("File {} found in routines memory.".format(fn1))
-#             SFCDF = pd.read_csv(Path(dprm,fn1), index_col='Unit')
-#             SFCDF.replace('0', 0, inplace=True) # Loading a csv turns all the values into strings - now only detected peaks are strings
-#             SFCDF.replace(0.0, 0, inplace=True)
-#             SFCM1 = pd.read_csv(Path(dprm,fn2), index_col='Unit')
-#             SFCMtime = np.load(Path(dprm,fn3))
-
-#             return SFCDF, SFCM1, gu, bestChs, SFCMtime
+        # Filter out based on time
+        def drop_time(sfc,tfilt):
+            t=sfc['t_ms'].values
+            t_mask=np.zeros((sfc.shape[0])).astype('bool')
+            if np.any(tfilt):
+                for tm in tfilt:
+                    t_mask=t_mask|(t>=tm[0])&(t<=tm[1])
+                t_mask=~t_mask
+            sfc.drop(index=sfc.index[np.isin(sfc.index, sfc.index[t_mask])], inplace=True)
+            sfc.reset_index(inplace=True, drop=True)
+            return sfc
+        
+        # Filter out based on max amplitude
+        def drop_amp(sfc, afilt):
+            z_mask=np.zeros((sfc.shape[0])).astype('bool')
+            dgp=sfc.groupby(['uSrc','uTrg'])
+            duplicates=npa(list(dgp.indices.values()))[dgp.size()>1]
+            for d in duplicates:
+                zz=sfc.loc[d, 'amp_z'].abs()
+                largest=zz.max()
+                z_mask=z_mask|np.isin(sfc.index,d[zz!=largest])
+            sfc.drop(index=sfc.index[np.isin(sfc.index, sfc.index[z_mask])], inplace=True)
+            sfc.reset_index(inplace=True, drop=True)
+            return sfc
             
-#     elif _format=='raw_ccgs':
-#         fn='SFCDF{}-{}_{}-{}({})_{}.csv'.format(cbin, cwin, threshold, n_consec_bins, str(subset_selection)[0:50].replace(' ', ''), _format)
-#         if op .exists(Path(dprm,fn)) and not again:
-#             print("File {} found in routines memory.".format(fn))
-#             SFCDF = pd.read_csv(Path(dprm,fn), index_col='Unit')
-#             return SFCDF
-        
-#     if _format=='peaks_infos':
-#         gu12=np.array([[u]*12 for u in gu]).flatten()
-#         SFCDF = pd.DataFrame(index=gu, columns=gu) 
-#         SFCM = np.zeros((len(gu), len(gu)*12))
-#         SFCMtime = np.zeros((len(gu), len(gu)*12))
-#     elif _format=='raw_ccgs':
-#         #spec, frac, frac2, lms = 'acg', 0.03, 0.005, 2.5
-#         all_gu_x_all_gu = ['{}->{}'.format(u1,u2) for i1, u1 in enumerate(gu) for i2, u2 in enumerate(gu) if (i1!=i2)]
-#         if (cwin*1./cbin)%2==0: # even
-#             bins=np.arange(-cwin*1./2, cwin*1./2+cbin, cbin)
-#         elif (cwin*1./cbin)%2==1: # odd
-#             bins=np.arange(-cwin*1./2+cbin*1./2, cwin*1./2+cbin*1./2, cbin)
-#         SFCDF = pd.DataFrame(index=all_gu_x_all_gu, columns=[str(b) for b in bins])
-#         #if histo: SFCDF.insert(loc=0, column='regions', value=np.nan)
-#         SFCDF.insert(loc=0, column='pattern', value=np.nan)
+        # Drop stuff
+        drop_dic={'sign':drop_sign,'time':drop_time,'max_amplitude':drop_amp,
+                  'signfilt':sfilt, 'timefilt':tfilt, 'max_amplitudefilt':None}
+        for drop in drop_seq:
+            sfc=drop_dic[drop](sfc, drop_dic[drop+'filt'])
 
+    sfcm = np.zeros((len(gu),len(gu)))
+    for i in sfc.index:
+        u1,u2=sfc.loc[i,'uSrc':'uTrg']
+        ui1,ui2=np.nonzero(gu==u1)[0][0], np.nonzero(gu==u2)[0][0]
+        v=sfc.loc[i, metric]
+        # If showing all main modulations or all connections,
+        # plotting inhibitions top right corner and excitations bottom left corner
+        if corr_type in ['main', 'connections']:
+            i1,i2 = (ui1,ui2) if ui1<ui2 else (ui2,ui1)
+            if sign(v)==-1:
+                sfcm[i1,i2]=v
+            else:
+                sfcm[i2,i1]=v
+        # If plotting synchrony, which is symmetrical,
+        # plotting symmetrically
+        elif corr_type=='synchrony':
+            sfcm[ui1,ui2]=sfcm[ui2,ui1]=v
+            
+        # If plotting inhibitions xor excitations,
+        # plotting u1-> u2 in top right corner
+        # u2 -> u1 in bottom left corner
+        elif corr_type in ['excitations', 'inhibitions']:
+            t=sfc.loc[i, 't_ms']
+            tmask1=(t>=tfilt[1][0])&(t<=tfilt[1][1])
+            tmask2=(t>=tfilt[0][0])&(t<=tfilt[0][1])
+            if np.any(tmask1):
+                sfcm[ui1,ui2]=v[tmask1]
+            elif np.any(tmask2):
+                sfcm[ui2,ui1]=v[tmask2]
+    
+    return sfc, sfcm, peakChs
+    
 
-#     prct=0
-#     print('Significant functional correlations (sfc) extraction started!')
-#     for i1, u1 in enumerate(gu):
-#         for i2, u2 in enumerate(gu):
-#             skip=0
-#             if prct!=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2))):
-#                 prct=int(100*((i1*len(gu)+i2+1)*1./(len(gu)**2)))
-#                 print('{}%...'.format(prct))
-#             if i1!=i2:
-#                 print('(Checking ccg:{}->{}...)'.format(u1,u2))
-#                 hist=ccg(dp, [u1, u2], cbin, cwin, normalize='Hertz', prnt=False, subset_selection=subset_selection, again=againCCG)[0,1,:]
-#                 #hist_wide=ccg(dp, [i,j], 0.5, 50, prnt=False)[0,1,:]
-#                 #mn=np.mean(hist); std=np.std(hist)
-#                 pkSgn='+' if i2>i1 else '-'
-#                 pks = extract_hist_modulation_features(hist, cbin, threshold, n_consec_bins, ext_mn=None, ext_std=None, pkSgn=pkSgn, win_fract_baseline=0.5)
-#                 #pks=[(pk[:4]) for pk in pks]
-#                 if _format=='peaks_infos':
-#                     SFCDF.loc[u1, u2]=pks if np.array(pks).any() else int(0)
-#                     if np.array(pks).any():
-#                         vsplit=len(pks)
-#                         print('>> Significantly modulated ccg:{}->{}! <<'.format(u1,u2))
-#                         if 12%vsplit==0: # dividers of 12
-#                             heatpks=np.array([[p[2]]*int(12*1./vsplit) for p in pks]).flatten()
-#                             heatpksT=np.array([[p[3]]*int(12*1./vsplit) for p in pks]).flatten()
-#                         else:
-#                             if vsplit<=12: # not divider but still smaller
-#                                 heatpks=np.array([p[2] for p in pks]+[0]*(12-vsplit)).flatten()
-#                                 heatpksT=np.array([p[3] for p in pks]+[0]*(12-vsplit)).flatten()
-#                             else:
-#                                 skip=1
-#                                 print('WARNING more than 12 peaks found - your threshold is too permissive or CCG f*cked up (units {} and {}), aborting.'.format(u1, u2))
-#                     if (not np.array(pks).any()) or skip:
-#                         heatpks=np.array([0]*12)
-#                         heatpksT=np.array([np.nan]*12)
-                    
-#                     for col in range(12): # 12 columns per unit to make the heatmap
-#                          SFCM[i1,12*i2:12*i2+12]=heatpks
-#                          SFCMtime[i1,12*i2:12*i2+12]=heatpksT
-#                 elif _format=='raw_ccgs':
-#                     if np.array(pks).any():
-#                         #shist=smooth(hist, frac=frac, it=0, frac2=frac2, spec=spec, cbin=cbin, cwin=cwin, lms=lms)
-#                         colBin1=SFCDF.columns[1] #SFCDF.columns[2] if histo else SFCDF.columns[1]
-#                         SFCDF.loc['{}->{}'.format(u1,u2),colBin1:]=hist
-#                         TY = np.array([[p[3], p[2]] for p in pks])
-#                         TY = TY[np.argsort(TY[:,0])] # sort by crescent peak time
-#                         pkSgnReal = ['+' if p[1]>0 else '-' if p[1]<0 else '0' for p in TY]
-#                         pkSymReal = ['\\' if p[0]<-0.4 else '/' if p[0]>0.4 else '|'  for p in TY]
-#                         pattern='';
-#                         for sgn, sym in zip(pkSgnReal, pkSymReal):
-#                             pattern+= sgn+sym
-                        
-#                         SFCDF.loc['{}->{}'.format(u1,u2),'pattern']=pattern
-#                         # if histo: SFCDF.loc['{}->{}'.format(u1,u2),'regions']='{}->{}'.format(fth.loc[u1, 'Histology_str'], fth.loc[u2, 'Histology_str'])
-#                     else:
-#                         SFCDF.drop(['{}->{}'.format(u1,u2)], inplace=True)
-#     print('Job done.')
-#     if _format=='peaks_infos':
-#         SFCM1 = pd.DataFrame(data=SFCM);
-#         SFCM1.index=gu; SFCM1.columns=gu12; # 12 columns to split vertically the heatmap pixel of each unit in either 1, 2, 3 or 4 equally sized columns.
-#         SFCDF.index.name = 'Unit'
-#         SFCM1.index.name = 'Unit'
-#         SFCDF.to_csv(Path(dprm,fn1))
-#         SFCM1.to_csv(Path(dprm,fn2))
-#         np.save(Path(dprm,fn3), SFCMtime)
-
-#         return SFCDF, SFCM1, gu, bestChs, SFCMtime
-
-#     elif _format=='raw_ccgs':
-#         SFCDF.to_csv(Path(dprm,fn))
-#         return SFCDF
 #%% Work in progress
 
 def spike_time_tiling_coefficient(L, dt, dp):

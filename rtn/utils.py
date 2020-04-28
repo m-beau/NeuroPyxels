@@ -101,7 +101,9 @@ def npa(arr=[], **kwargs):
 
 def sign(x):
     "Returns the sign of the input number (1 or -1). 1 for 0 or -0."
-    return int(x*1./abs(x)) if x!=0 else 1
+    x=npa(x)
+    x[x==0]=1
+    return (x/np.abs(x)).astype(int)
 
 def minus_is_1(x):
     return abs(1-1*x)*1./2
@@ -214,11 +216,13 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
                 if flag1: cross_thp=cross_thp[:-1] # remove last + cross
                 if flag0: cross_thn=cross_thn[1:] # remove first - cross
         else:
-            flag0, flag1=False,False
-            if cross_thp[-1]>cross_thn[-1]: flag1=True # if + cross at the end
-            if cross_thn[0]<cross_thp[0]: flag0=True # if - cross at the beginning
-            if flag1: cross_thn=np.append(cross_thn, len(arr)) # add fake - cross at the end
-            if flag0: cross_thp=np.append(0,cross_thp) # add fake + cross at the beginning
+            if len(cross_thp)+len(cross_thn)<=1: cross_thp, cross_thn = [], [] # Only one cross at the beginning or the end e.g.
+            else:
+                flag0, flag1=False,False
+                if cross_thp[-1]>cross_thn[-1]: flag1=True # if + cross at the end
+                if cross_thn[0]<cross_thp[0]: flag0=True # if - cross at the beginning
+                if flag1: cross_thn=np.append(cross_thn, len(arr)) # add fake - cross at the end
+                if flag0: cross_thp=np.append(0,cross_thp) # add fake + cross at the beginning
     
         assert len(cross_thp)==len(cross_thn)
             
@@ -250,7 +254,7 @@ def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
         - mn_ext: optional, provide mean computed outside of function
         - sd_ext: optional, provide standard deviation computed outside of function
     '''
-    assert 0<frac<=1
+    assert 0<frac<=1, 'Z-score fraction should be between 0 and 1!'
     mn = np.mean(np.append(arr[:int(len(arr)*frac/2)], arr[int(len(arr)*(1-frac/2)):])) if mn_ext is None else mn_ext
     sd = np.std(np.append(arr[:int(len(arr)*frac/2)], arr[int(len(arr)*(1-frac/2)):])) if sd_ext is None else sd_ext
     return (arr-mn)*1./sd

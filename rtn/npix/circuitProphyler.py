@@ -68,6 +68,7 @@ from rtn.utils import npa, sign, align_timeseries
 from rtn.npix.io import read_spikeglx_meta, get_npix_sync, chan_map
 from rtn.npix.gl import load_units_qualities
 from rtn.npix.spk_wvf import get_depthSort_peakChans, get_peak_chan
+from rtn.npix.corr import gen_sfc
                     
 import networkx as nx
 
@@ -246,6 +247,7 @@ class Prophyler:
         if prophylerGraph=='undigraph':
             return self.undigraph
         elif prophylerGraph=='digraph':
+            if 'digraph' not in dir(self): self.make_directed_graph()
             return self.digraph
         else:
             print("WARNING graph should be either 'undigraphundigraph=nx.MultiGraph()' to pick self.undigraph or 'digraph' to pick self.digaph. Aborting.")
@@ -254,8 +256,8 @@ class Prophyler:
     def get_graph_copy(self, prophylerGraph='undigraph'):
         return self.get_graph(prophylerGraph).copy()
         
-    ##TODO
-    def connect_graph(self, cbin=0.2, cwin=100, threshold=2, n_consec_bins=3, rec_section='all', again=False, againCCG=False, plotsfcdf=False, prophylerGraph='undigraph', src_graph=None):
+    def connect_graph(self, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3,
+                      fract_baseline=4./5, W_sd=10, test='Poisson_Stark', again=False, againCCG=False, plotsfcm=False, drop_seq=['sign', 'time', 'max_amplitude'], prophylerGraph='undigraph', src_graph=None):
         
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
         if g is None: return
@@ -273,32 +275,39 @@ class Prophyler:
                     print("Building Dataset.graph from file {}.".format(graphs[load_choice]))
                     if graphs[load_choice].split('.')[-1]!='gpickle':
                         print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
-                    break
+                    return
                 except: # must be a normal or empty string
                     if load_choice=='sfc':
-                        print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
-                        ## TODO: JUST ALTER THIS FUNCTION
-                        SFCDF, SFCM1, gu, bestChs, SFCMtime = rtn.npix.corr.gen_sfc(self.dp_pro, cbin, cwin, threshold, n_consec_bins, rec_section, again=again, againCCG=againCCG)
-                        g = map_sfcdf_on_graph(SFCDF, g, cbin, cwin, threshold, n_consec_bins)
-                        del SFCDF, SFCM1, gu, bestChs, SFCMtime
-                        if plotsfcdf:rtn.npix.plot.plot_sfcdf(self.dp_pro, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
-                                                     rec_section=rec_section, ticks=False, again = again, saveFig=True, saveDir=self.dpnet)
                         break
                     elif op.isfile(Path(self.dpnet, load_choice)):
                         g=self.import_graph(Path(self.dpnet, load_choice))
                         print("Building Dataset.graph from file {}.".format(load_choice))
                         if load_choice.split('.')[-1]!='gpickle':
                             print("WARNING loaded does not have gpickle format - 'unit' attribute of graph nodes are not saved in this file.")
-                        break
+                        return
                     else:
                         print("Filename or 'sfc' misspelled. Try again.")
-        else:
-            ## TODO: JUST ALTER THIS FUNCTION
-            print("Building graph connections from significant functional correlations table with cbin={}, cwin={}, threshold={}, n_consec_bins={}".format(cbin, cwin, threshold, n_consec_bins))
-            SFCDF, SFCM1, gu, bestChs, SFCMtime = rtn.npix.corr.gen_sfc(self.dp_pro, cbin, cwin, threshold, n_consec_bins, rec_section, again=again, againCCG=againCCG)
-            g = map_sfcdf_on_graph(SFCDF, g, cbin, cwin, threshold, n_consec_bins)
-            if plotsfcdf: rtn.npix.plot.plot_sfcdf(self.dp_pro, cbin, cwin, threshold, n_consec_bins, text=False, markers=False, 
-                                                     rec_section=rec_section, ticks=False, again=again, saveFig=True, saveDir=self.dpnet)
+        
+        print("""Building graph connections from significant functional correlations table
+              with cbin={}, cwin={}, p_th={}, n_consec_bins={}, fract_baseline={}, W_sd={}, test={}.""".format(cbin, cwin, p_th, n_consec_bins, fract_baseline, W_sd, test))
+        sfc, sfcm, peakChs = gen_sfc(self.dp_pro, corr_type, metric, cbin, cwin, p_th, n_consec_bins, fract_baseline, W_sd, test, again, againCCG, drop_seq)
+        criteria={'test':test, 'cbin':cbin, 'cwin':cwin, 'p_th':p_th, 'n_consec_bins':n_consec_bins, 'fract_baseline':fract_baseline, 'W_sd':W_sd}
+        g=self.map_sfc_on_g(g, sfc, criteria)
+        self.make_directed_graph()
+        if plotsfcm:
+            rtn.npix.plot.plot_sfcm(self.dp_pro, corr_type, metric,
+                                    cbin, cwin, p_th, n_consec_bins, fract_baseline, W_sd, test,
+                                    depth_ticks=True, regions={}, reg_colors={}, again=again, againCCG=againCCG, drop_seq=drop_seq)
+            
+    def map_sfc_on_g(self, g, sfc, criteria):
+        for i in sfc.index:
+            (u1,u2)=sfc.loc[i,'uSrc':'uTrg']
+            f=sfc.loc[i,'l_ms':].values
+            g.add_edge(u1, u2, uSrc=u1, uTrg=u2, 
+                       amp=f[2], t=f[3], sign=sign(f[2]), width=f[1]-f[0], label=0,
+                       n_triplets=f[4], n_bincrossing=f[5], bin_heights=f[6], entropy=f[7],
+                       criteria=criteria)
+        return g
     
     def make_directed_graph(self, src_graph=None, only_main_edges=False):
         '''
@@ -537,19 +546,20 @@ class Prophyler:
                 # multiedges are rows where key is 1 (or more)- to get the list of edges with more than 1 edge, get unit couples with at least key=1
                 keys=dfe.index.get_level_values('key')
                 multiedges=npa(dfe.index[keys==1].tolist())
-                multiedges[:,:2]=np.sort(multiedges[:,:2], axis=1) # order every pair in the same way so that unique can find duplicates
-                multiedges=np.unique(multiedges, axis=0)
-                for me in multiedges:
-                    me_subedges_mask=(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0]))) # find all subedges of each listed multiedge
-                    singleedges_mask=((singleedges_mask)&(~me_subedges_mask)) # use me_multiedges_mask to negatively define single edges
-                    main_submask=(dfe['amp'].abs()==dfe['amp'][me_subedges_mask].abs().max()) # main edge: edge with absolute max value
-                    if not np.count_nonzero(main_submask)==1:
-                        main_submask=main_submask&npa([el in dfe[me_subedges_mask].index.tolist() for el in dfe.index.tolist()]) # select subset of edges between same nodes (in the same ccg, handles cases where 2 different ccgs have the exact main peak value)
-                        if not np.count_nonzero(main_submask)==1: # >1 peaks r troughs at exact same height in same ccg...
-                            random_true_idx=np.random.choice(np.nonzero(main_submask)[0])
-                            main_submask=(amp!=amp)# reset
-                            main_submask[random_true_idx]=True # keep only one
-                    main_mask=main_mask|main_submask
+                if len(multiedges)>0:
+                    multiedges[:,:2]=np.sort(multiedges[:,:2], axis=1) # order every pair in the same way so that unique can find duplicates
+                    multiedges=np.unique(multiedges, axis=0)
+                    for me in multiedges:
+                        me_subedges_mask=(((npe[:,0]==me[0])&(npe[:,1]==me[1]))|((npe[:,0]==me[1])&(npe[:,1]==me[0]))) # find all subedges of each listed multiedge
+                        singleedges_mask=((singleedges_mask)&(~me_subedges_mask)) # use me_multiedges_mask to negatively define single edges
+                        main_submask=(dfe['amp'].abs()==dfe['amp'][me_subedges_mask].abs().max()) # main edge: edge with absolute max value
+                        if not np.count_nonzero(main_submask)==1:
+                            main_submask=main_submask&npa([el in dfe[me_subedges_mask].index.tolist() for el in dfe.index.tolist()]) # select subset of edges between same nodes (in the same ccg, handles cases where 2 different ccgs have the exact main peak value)
+                            if not np.count_nonzero(main_submask)==1: # >1 peaks r troughs at exact same height in same ccg...
+                                random_true_idx=np.random.choice(np.nonzero(main_submask)[0])
+                                main_submask=(amp!=amp)# reset
+                                main_submask[random_true_idx]=True # keep only one
+                        main_mask=main_mask|main_submask
                 # Also add back pairs of nodes which had only a single edge...
                 main_mask=main_mask|singleedges_mask
                     
@@ -839,9 +849,10 @@ class Prophyler:
         fig.tight_layout(rect=[0, 0.03, 0.9, 0.95])
         try:
             criteria=self.get_edge_attribute(list(g_plt.edges)[0], 'criteria', prophylerGraph=prophylerGraph, src_graph=src_graph)
-            ax.set_title("Dataset:{}\n Significance criteria:\n{} {}ms bins beyond {}sd (window:{}ms).".format(self.name, criteria['nConsecBins'], criteria['cbin'], criteria['threshold'], criteria['cwin']), fontsize=14, fontweight='bold')
+            ax.set_title("Dataset:{}\n Significance criteria:\n{}test: {}-{}-{}-{}-{}-{}.".format(self.name,
+                         criteria['test'], criteria['cbin'], criteria['cwin'], criteria['p_th'], criteria['n_consec_bins'], criteria['fract_baseline'], criteria['W_sd']), fontsize=14, fontweight='bold')
         except:
-            print('Graph not connected! Run self.connect_graph()')
+            print('/nWARNING Graph not connected! Run self.connect_graph() to do so!/n')
         
         
         if saveFig:
@@ -1052,7 +1063,8 @@ class Prophyler:
         # Save the updated features table
         save_featuresTable(direct, ft, goodClusters, Features)                              
 
-def map_sfc_on_graph(g, dp, cbin=0.5, cwin=100, p_th=0.01, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', name=None, metric='amp_z', again=True, againCCG=True):
+def map_sfc_on_graph(g, dp, cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+             metric='amp_z', again=False, againCCG=False):
     # If called in the context of CircuitProphyler, add the connection to the graph
     sfc, sfcm = gen_sfc(dp, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, metric, again, againCCG)
     if test=='Normal_Kopelowitz':
@@ -1060,7 +1072,7 @@ def map_sfc_on_graph(g, dp, cbin=0.5, cwin=100, p_th=0.01, n_consec_bins=3, sgn=
     elif test=='':
         criteria={'cbin':cbin, 'cwin':cwin, 'p_th':p_th, 'n_consec_bins':n_consec_bins, 'W_sd':W_sd}
     for i in sfc.index:
-        (u1,u2)=sfc.loc[i,'U_src':'U_trg']
+        (u1,u2)=sfc.loc[i,'uSrc':'uTrg']
         f=sfc.loc[i,'l_ms':].data
         g.add_edge(u1, u2, uSrc=u1, uTrg=u2, 
                    amp=f[2], t=f[3], sign=sign(f[2]), width=f[1]-f[0], label=0,

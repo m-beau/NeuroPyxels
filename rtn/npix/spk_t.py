@@ -182,14 +182,15 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
     # Either return or draw to global namespace
     return train
 
-def mfr(dp, unit, exclusion_quantile=0.005, sav=True, prnt=False, subset_selection='all', again=False):
-    i = isi(dp, unit, sav, prnt, subset_selection, 30000, again) # output in ms
+def mfr(dp, unit, exclusion_quantile=0.005, enforced_rp=0, sav=True, prnt=False, subset_selection='all', again=False):
+    i = isi(dp, unit, enforced_rp=enforced_rp, sav=sav, subset_selection=subset_selection, again=again)
+    if i is None: return
     # Remove outlyers
-    i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]
+    i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]/read_spikeglx_meta(dp)['sRateHz']
     
-    return 1000./np.mean(i)
+    return np.round(1./np.mean(i),2)
 
-def isi(dp, unit, sav=True, prnt=False, subset_selection='all', fs=30000, again=False):
+def isi(dp, unit, enforced_rp=0, sav=True, prnt=False, subset_selection='all', again=False):
     '''
     ********
     routine from routines_spikes
@@ -202,30 +203,9 @@ def isi(dp, unit, sav=True, prnt=False, subset_selection='all', fs=30000, again=
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    # Search if the variable is already saved in dp/routinesMemory
-    dprm = Path(dp,'routinesMemory')
-    if not op.isdir(dprm): os.makedirs(dprm)
-    if op.exists(dprm+'/isi{}({}).npy'.format(unit, str(subset_selection)[0:10].replace(' ', ''))) and not again:
-        if prnt: print("File /isi{}({}).npy found in routines memory.".format(unit, str(subset_selection)[0:10].replace(' ', '')))
-        isitvl = np.load(dprm+'/isi{}({}).npy'.format(unit, str(subset_selection)[0:10].replace(' ', '')))
-        isitvl=np.asarray(isitvl, dtype='float64')
-    # if not, compute it
-    else:
-        if prnt: print("File isi{}.npy not found in routines memory. Will be computed from source files".format(unit))
-        train = trn(dp, unit, sav, prnt, subset_selection, fs, again)
-        if train is None:
-            print('Train is none!!', unit)
-        train = train*1./(fs*1./1000) # Conversion from samples to ms
-        isitvl = np.diff(train) # in ms
-        isitvl=np.asarray(isitvl, dtype='float64')
+    t=trn(dp, unit, sav, prnt, subset_selection, again, enforced_rp)
+    return np.diff(t) if len(t)>1 else None
         
-        # Save it
-        if sav:
-            np.save(dprm+'/isi{}({}).npy'.format(unit, str(subset_selection)[0:10].replace(' ', '')), isitvl)
-    # Either return or draw to global namespace
-    return isitvl
-        
-
 
 def trnb(dp, unit, bin_size, sav=True, prnt=False, subset_selection='all', fs=30000, again=False):
     '''
@@ -245,10 +225,11 @@ def trnb(dp, unit, bin_size, sav=True, prnt=False, subset_selection='all', fs=30
 
     # Search if the variable is already saved in dp/routinesMemory
     dprm = Path(dp,'routinesMemory')
+    fn='trnb{}_{}({}).npy'.format(unit, bin_size, str(subset_selection)[0:10].replace(' ', ''))
     if not op.isdir(dprm): os.makedirs(dprm)
-    if op.exists(dprm+'/trnb{}_{}({}).npy'.format(unit, bin_size, str(subset_selection)[0:10].replace(' ', ''))) and not again:
+    if op.exists(dprm/fn) and not again:
         if prnt: print("File trnb{}_{}.npy found in routines memory.".format(unit, bin_size))
-        train_binarized = np.load(dprm+'/trnb{}_{}({}).npy'.format(unit, bin_size, str(subset_selection)[0:10].replace(' ', '')))
+        train_binarized = np.load(dprm/fn)
         train_binarized = np.asarray(train_binarized, dtype='int64')
     # if not, compute it
     else:
@@ -263,6 +244,6 @@ def trnb(dp, unit, bin_size, sav=True, prnt=False, subset_selection='all', fs=30
         train_binarized = np.asarray(train_binarized, dtype='int16') #0s and 1s -> int8 to save memory
         # Save it
         if sav:
-            np.save(dprm+'/trnb{}_{}({}).npy'.format(unit, bin_size, str(subset_selection)[0:10].replace(' ', '')), train_binarized)
+            np.save(dprm/fn, train_binarized)
     # Either return or draw to global namespace
     return train_binarized

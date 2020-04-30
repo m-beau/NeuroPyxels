@@ -374,6 +374,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     else:
         return
 
+
 def assert_chan_in_dataset(dp, channels):
     cm=chan_map(dp, probe_version='local')
     if not np.all(np.isin(channels, cm[:,0])):

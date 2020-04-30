@@ -21,7 +21,7 @@ from rtn.utils import _as_array, npa
 
 #%% Concise home made function
 
-def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False, again=False):
+def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False, again=False, ignore_nwvf=True):
     '''
     ********
     routine from rtn.npix.spk_wvf
@@ -53,7 +53,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
 
     # if not, compute it
     else:
-        waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size)
+        waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size, ignore_nwvf)
         # Save it
         if sav:
             np.save(Path(dprm,fn), waveforms)
@@ -61,7 +61,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
     return waveforms
 
 
-def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10):
+def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True):
     '''Function to extract a subset of waveforms from a given unit.
     Parameters:
         - dp:
@@ -93,7 +93,7 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='re
 
     # Get spike times subset
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
-    spike_ids_subset=get_ids_subset(dp, unit, n_waveforms, wvf_batch_size, subset_selection)
+    spike_ids_subset=get_ids_subset(dp, unit, n_waveforms, wvf_batch_size, subset_selection, ignore_nwvf)
     
     # Extract waveforms i.e. bits of traces at spike times subset
     waveform_loader=WaveformLoader(traces=traces,
@@ -272,10 +272,15 @@ def templates(dp, u):
 
 #%% get_wvf utilities
     
-def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, subset_selection):
+def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, subset_selection, ignore_nwvf):
     if type(subset_selection) not in [str, np.str_]:
         ids_subset = ids(dp, unit, subset_selection=subset_selection)
-        print('In subset {}, {} waveforms were found (parameter n_waveforms={} ignored).'.format(subset_selection, len(ids_subset), n_waveforms))
+        if not ignore_nwvf:
+            n_waveforms1=min(n_waveforms, len(ids_subset))
+            ids_subset = np.unique(np.random.choice(ids_subset, n_waveforms1, replace=False))
+            print('In subset {}, {} waveforms were found (n_waveforms={}).'.format(subset_selection, len(ids_subset), n_waveforms))
+        else:
+            print('In subset {}, {} waveforms were found (parameter n_waveforms={} ignored).'.format(subset_selection, len(ids_subset), n_waveforms))
     else:
         assert subset_selection in ['regular', 'random', 'all']
         if n_waveforms in (None, 0) or subset_selection=='all':

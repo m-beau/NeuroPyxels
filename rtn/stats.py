@@ -348,7 +348,10 @@ def get_synced_stamps(t1, t2, sync_halfwin=60, isolation_halfwin=0, return_isis=
     t1_sync=t_i_12[0,:-2][mask_f|mask_r] # ISIs where you have a consecutive [1,2] as index: spikes of 1 followed by 2
     assert np.all(np.isin(t1_sync, t1))
     
-    t1_unsync=np.random.choice(t1[~np.isin(t1, t1_sync)], len(t1_sync))
+    if np.any(t1[~np.isin(t1, t1_sync)]):
+        t1_unsync=np.random.choice(t1[~np.isin(t1, t1_sync)], len(t1_sync))
+    else:
+        t1_unsync=npa([])
     
     if return_isis:
         return t1_sync, t1_unsync, isi1_sync

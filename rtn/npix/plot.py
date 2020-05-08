@@ -214,7 +214,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
                title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
-               labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf'):
+               labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
     Parameters:
@@ -324,7 +324,7 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     return fig
 
 def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveDir='~/Downloads', saveData=0, saveFig=0,
-             _format='pdf', color='multi', whiten=True, pyqtgraph=1, show_allyticks=0, events=[], set0atEvent=1, figsize=(20,8), plot_ylabels=True):
+             _format='pdf', color='multi', whiten=True, pyqtgraph=1, show_allyticks=0, events=[], set0atEvent=1, figsize=(20,8), plot_ylabels=True, ax=None):
     '''
     ## PARAMETERS
     - bp: binary path (files must ends in .bin, typically ap.bin)
@@ -458,7 +458,7 @@ def plot_raw(dp, times, channels=np.arange(384), subtype='ap', offset=450, saveD
         return win,p
 
 def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Downloads', saveData=0, saveFig=0, whiten=1,
-             _format='pdf', colors='phy', Nchan_plot=5, spk_window=82, pyqtgraph=1, show_allyticks=0, events=[], set0atEvent=1, figsize=(20,8)):
+             _format='pdf', colors='phy', Nchan_plot=5, spk_window=82, pyqtgraph=1, show_allyticks=0, events=[], set0atEvent=1, figsize=(20,8), ax=None):
     '''
     ## PARAMETERS
     - bp: binary path (files must ends in .bin, typically ap.bin)
@@ -550,7 +550,7 @@ def ifr_subplots(times_list, events_list, titles_list, figsize=(8,4)):
     fig, ax = plt.subplots(len(times_list), figsize=figsize)
     
     for i, (tm, ev, tt) in enumerate(zip(times_list, events_list, titles_list)):
-        ax[i]=ifr_plot(tm, ev).get_axes()[0]
+        ax[i]=ifr_plot(tm, ev, ax=ax[i]).get_axes()[0]
         ax[i].set_title(tt)
     
     return fig
@@ -559,7 +559,7 @@ def ifr_plot(dp, unit, events, b=5, window=[-1000,1000], remove_empty_trials=Fal
              z_score=False, zscoretype='overall', convolve=True, gw=64, gsd=1,
              title='', figsize=(10,4), color=seabornColorsDic[0],
              plot_all_traces=False, zslines=False, plot_sem=True,
-             saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf'):
+             saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None):
     '''
     '''
     
@@ -571,7 +571,7 @@ def ifr_plot(dp, unit, events, b=5, window=[-1000,1000], remove_empty_trials=Fal
     return ifr_plt(times, events, b, window, remove_empty_trials,
              z_score, zscoretype, convolve, gw, gsd, title, figsize, 
              color, plot_all_traces, zslines, plot_sem, saveDir,
-             saveFig, saveData, _format)
+             saveFig, saveData, _format, ax=ax)
 
 def ifr_plt(times, events, b=5, window=[-1000,1000], remove_empty_trials=False,
              z_score=False, zscoretype='overall', convolve=True, gw=64, gsd=1,

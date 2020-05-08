@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 
 from six import integer_types
 from statsmodels.nonparametric.smoothers_lowess import lowess
+import scipy.stats as stt
+
 import logging
 from math import pi, log
 import pylab
@@ -182,7 +184,6 @@ def thresh(arr, th, sgn=1, pos=1):
         return np.array([])
     return  i[arr[np.clip(i-1, 0, len(arr)-1)]<th] if pos==1 else i[arr[np.clip(i+1, 0, len(arr)-1)]>th]
 
-
 def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False):
     '''
     Returns indices and values of threshold crosses lasting >=n_consec consecutive samples in arr.
@@ -244,7 +245,6 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
         
     return crosses
 
-
 def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
     '''
     Returns z-scored (centered, reduced) array using outer edges of array to compute mean and std.
@@ -259,19 +259,62 @@ def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
     sd = np.std(np.append(arr[:int(len(arr)*frac/2)], arr[int(len(arr)*(1-frac/2)):])) if sd_ext is None else sd_ext
     return (arr-mn)*1./sd
 
-def smooth(arr, frac=0.06, it=0, frac2=0.005, spec='acg', cbin=0.1, cwin=100, lms=3):
-    '''cbin and cwin in milliseconds.
-    frac is the fraction looked ahead for smoothing on the sides on the array, frac2 between -lms and + lms in milliseconds.'''
-    arr=np.asarray(arr)
-    if spec=='acg' or spec=='ccg': # smooth the central bins with a low frac, sides with high frac
-        halfcenter= (lms/cbin)# Left smoothing difference limit, in milliseconds
-        l = int((cwin/cbin)*1./2 - halfcenter); r = int(l+halfcenter*2);
-        sarr1=lowess(arr, np.arange(len(arr)), is_sorted=True, frac=frac, it=it)[:,1].flatten()[:l]
-        sarr2=lowess(arr, np.arange(len(arr)), is_sorted=True, frac=frac2, it=it)[:,1].flatten()[l:r]
-        sarr3=lowess(arr, np.arange(len(arr)), is_sorted=True, frac=frac, it=it)[:,1].flatten()[r:]
-        sarr = np.append(np.append(sarr1, sarr2), sarr3)
-    else:
-        sarr=lowess(arr, np.arange(len(arr)), is_sorted=True, frac=frac, it=it)[:,1].flatten()
+def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
+    '''
+    Parameters:
+        - arr: ndarray/list, array to smooth
+        - method: string, see methods implemented below | Default 'gaussian_causal'
+        - sd: int, gaussian window sd (in unit of array samples - e.g. use 10 for a 1ms std if bin size is 0.1ms) | Default 5
+        - a: sqrt of Gamma function rate (essentially std) | Default 5
+        - frac: lowess parameter, fraction watched ahead to perform smoothing | Default 0.06
+        - it: lowess paramater | Default 0
+        
+    methods implemented:
+        - gaussian
+        - gaussian_causal
+        - gamma (is causal)
+        - lowess
+    '''
+    # Checks and formatting
+    assert method in ['gaussian', 'gaussian_causal', 'gamma', 'lowess']
+    assert type(sd) in [int, np.int]
+    arr=npa(arr).astype(float)
+    
+    # pad with reversed CCG edges at the beginning and the end to prevnt edge effects...
+    C = len(arr)//2
+    padarr=np.hstack([np.flipud(arr[:C]), arr, np.flipud(arr[-C:])])
+    
+    # Compute the kernel
+    if method in ['gaussian', 'gaussian_causal', 'gamma']:
+        if method in ['gaussian', 'gaussian_causal']:
+            X=np.arange(-4*sd, 4*sd+1)
+            kernel=stt.norm.pdf(X, 0, sd)
+            if method=='gaussian_causal': kernel[:len(kernel)//2]=0
+        elif method=='gamma':
+            X=np.arange(a**2//2, max((a**2)*3//2+1, 10))
+            kernel=stt.gamma.pdf(X, a**2) # a = shape, b = scale = 1/rate. std=sqrt(a)/b = sqrt(a) for b=1
+        # WARNING the maximum should be centered to prevent data shift in time!
+        # This is achieved by padding the left of the kernel with zeros.
+        mx=np.nonzero(kernel==max(kernel))[0][0]
+        if mx<len(kernel)/2:
+            kernel=np.append(np.zeros(len(kernel)-2*mx), kernel)
+        elif mx>len(kernel)/2:
+            kernel=np.append(kernel, np.zeros(mx-(len(kernel)-mx)))
+        assert len(kernel)<len(padarr), 'The kernel is longer than the array to convolved, you must decrease the standard deviation parameter.'
+        
+        # Convolve array with kernel
+        kernel=kernel/sum(kernel) # normalize kernel to prevent array scaling
+        sarr = np.convolve(padarr, kernel, mode='same')
+        # kernel_offset=len(kernel)//2
+        # sarr=sarr[kernel_offset:-kernel_offset]
+    elif method=='lowess':
+        sarr=lowess(padarr, np.arange(len(padarr)), is_sorted=True, frac=frac, it=it)[:,1].flatten()
+    
+    # Remove padding
+    sarr = sarr[C:-C]
+    
+    assert np.all(sarr.shape==arr.shape)
+    
     return sarr
 
 def get_bins(cwin, cbin):

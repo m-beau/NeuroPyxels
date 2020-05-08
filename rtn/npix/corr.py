@@ -7,6 +7,7 @@
 import os
 import os.path as op; opj=op.join
 from pathlib import Path
+import psutil
 
 import numpy as np
 import pandas as pd
@@ -32,7 +33,9 @@ def make_phy_like_spikeClustersTimes(dp, U, subset_selection='all', prnt=True, t
             trains_dic[iu]=trn(dp, u, sav=True, subset_selection=subset_selection, prnt=prnt) # trains in samples
     else:
         assert len(trains)>1
+        assert type(trains) in [list, np.ndarray]
         for iu, t in enumerate(trains):
+            assert len(t)>0
             trains_dic[iu]=t
     spikes=make_matrix_2xNevents(trains_dic).astype('int64')
     
@@ -401,7 +404,81 @@ def get_ustack_i(U, ustack):
         ii[i]=npa(np.nonzero(np.all(mask, axis=ustack.ndim-1))).flatten()
     return ii.astype(np.int64)
 
-#%% Pairwise correlations matrix and population coupling
+#%% Cross spike intervals distribution (is to ISI what CCG is to ACG)
+
+def get_csi(spk1, spk2, direction=0):
+    '''
+    Computes cross spike intervals i.e time differences between 
+    every spike of spk1 and the following/preceeding spike of spk2.
+    Parameters:
+        - spk1: list/array of INTEGERS, time series
+        - spk2: list/array of INTEGERS, time series
+        - direction: 1, -1 or 0, whether to return following or preceeding interval
+                    or for 0, the smallest interval of either
+                    (in this case not only consecutive 1,2 or 2,1 ISIs are considered but all spikes of 1)
+    Returns:
+        - spk_1to2: spikes of spk1 directly followed/preceeded by a spike of spk2
+        - isi_1to2: corresponding interspike intervals
+    '''
+    assert direction in [1, 0, -1]
+    assert np.all(npa(spk1).astype(np.int32)==spk1)
+    assert np.all(npa(spk2).astype(np.int32)==spk2)
+    spk1, spk2 = npa(spk1).astype(np.int32), npa(spk2).astype(np.int32)
+    
+    if direction==0:
+        isi_1to2=np.zeros(len(spk1))
+        # Chunks of 50% of available memory.
+        # Chunk size is overestimated because chunks.shape[1] is 
+        # len(spk2[start_spk2:end_spk2[1]]) not len(spk2)
+        chunk_el_size=(0.5*psutil.virtual_memory().available)//spk1.itemsize
+        nchunks=int(len(spk1)*len(spk2)//chunk_el_size+1) 
+        chunk1size=int(len(spk1)//nchunks+1)
+        start_spk2=0
+        # the trick to make things fast is to only consider
+        # the relevant slice of spk2, which is possible assuming that spk1 and spk2 are sorted
+        spk1.sort()
+        spk2.sort()
+        for i in range(nchunks):
+            chunk=spk1[i*chunk1size:min(i*chunk1size+chunk1size, len(spk1))]
+            end_spk2=np.nonzero(spk2>chunk[-1])[0][:2] if i!=nchunks-1 else [-1, -1]
+            d=np.abs(chunk.reshape(len(chunk), 1)-spk2[start_spk2:end_spk2[1]])
+            start_spk2=end_spk2[0] # for next iteration
+            isi_1to2[i*chunk1size:i*chunk1size+chunk1size]=np.min(d, axis=1)
+            print(f'Chunk {i+1}/{nchunks} processed...')
+        spk_1to2=spk1
+    
+    elif direction in [-1,1]:
+        # Merge spikes from 1 and 2 and index them
+        spk_12=np.append(spk1, spk2)
+        i_12=np.append(1*np.ones((len(spk1))),2*np.ones((len(spk2))))
+        spk_i_12=np.vstack((spk_12, i_12))
+        
+        # Sort in time
+        spk_i_12=spk_i_12[:, np.argsort(spk_i_12[0,:])]
+
+    
+        # Compute ISIs
+        isi_i_12=np.zeros((2, spk_i_12.shape[1]-1))
+        isi_i_12[0,:]=spk_i_12[0,1:]-spk_i_12[0,:-1]
+        isi_i_12[1,:]=spk_i_12[1,:-1]
+        
+        # Filter for consecutive 1->2 ISIs
+        # cases with subsequent spikes from 1 or 2 are ignored
+        # e.g. 1,1,2,2 will only yield one ISI.
+        if direction==1:
+            m=((isi_i_12[1,:-1]==1)&(isi_i_12[1,1:]==2))
+            spk_1to2=spk_i_12[0,:-2][m]
+        elif direction==-1:
+            m=((isi_i_12[1,:-1]==2)&(isi_i_12[1,1:]==1))
+            spk_1to2=spk_i_12[1,:-1][m]
+        isi_1to2=isi_i_12[0,:-1][m]
+    
+    # quality checks
+    assert np.all(np.isin(spk_1to2, spk1))
+    
+    return  spk_1to2, isi_1to2
+
+#%% Pairwise correlations, synchrony, population coupling
 
 from neo import SpikeTrain
 from elephant.conversion import BinnedSpikeTrain
@@ -666,7 +743,7 @@ def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, sgn=-1
     
     Parameters:
         - CCG: 1D numpy array (a single CCG) or 2D (CCGs in columns). Has to be non-negative integers (counts)
-        - W: int, convolution window width (in samples). Has to be smaller than the CCG length.
+        - W: int, convolution window standard deviation (in samples). Has to be smaller than the CCG length.
         - WINTYPE: string, window type -> 'gaussian' - with SD of W/2; has optimal statistical properties
                                   'rect' - of W samples; equivalent to jittering one spike train by a rectangular window of width W
                                   'triang' - of ~2W samples; equivalent to jittering both trains by a rectangular window of width W

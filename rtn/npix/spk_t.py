@@ -11,36 +11,9 @@ from ast import literal_eval as ale
 import numpy as np
 import pandas as pd
                     
+from rtn.utils import smooth, thresh_consec
 from rtn.npix.gl import get_units
 from rtn.npix.io import read_spikeglx_meta
-
-def binarize(X, bin_size, fs, rec_len=None):
-    '''Function to turn a spike train (array of time stamps)
-       into a binarized spike train (array of 0 or 1 
-                                     of length rec_len with a given bin_size.).
-       - X: spike train (array of time stamps, in samples sampled at fs Hertz)
-       - bin_size: size of binarized spike train bins, in milliseconds.
-       - rec_len: length of the recording, in SAMPLES. If not provided, time of the last spike.
-       - fs: sampling frequency, in Hertz.'''
-    
-    # Process bin_size
-    bin_size = int(np.ceil(fs*bin_size/1000))  # Conversion ms->samples
-    
-    # Process rec_len
-    if rec_len==None:
-        rec_len=X[-1]
-    
-    # Binarize spike train
-    Xb = np.histogram(X, bins=np.arange(0, rec_len, bin_size))[0]
-    
-    # Decrease array size as much as possible
-    for encode in [32,16,8]:
-        if not np.all(Xb==Xb.astype('int{}'.format(encode))):
-            break
-        Xb=Xb.astype('int{}'.format(encode))
-    
-    return Xb
-
 
 def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
     '''
@@ -124,18 +97,18 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
     
     # Search if the variable is already saved in dp/routinesMemory
     dprm = Path(dp,'routinesMemory')
-    fn='trn{}({}).npy'.format(unit, str(subset_selection)[0:10].replace(' ', ''))
+    fn='trn{}({})_{}.npy'.format(unit, str(subset_selection)[0:10].replace(' ', ''), enforced_rp)
     if not op.isdir(dprm): os.makedirs(dprm)
     if op.exists(Path(dprm,fn)) and not again:
         if prnt: print("File {} found in routines memory.".format(fn))
         train = np.load(Path(dprm,fn))
-        train=np.asarray(train, dtype='int64')
+
     # if not, compute it
     else:
         if prnt:
-            print("File {} not found in routines memory. Will be computed from source files.".format(fn))
+            print(f"File {fn} not found in routines memory. Will be computed from source files.")
         
-        assert unit in get_units(dp), 'WARNING unit {} not found in dataset {}!'.format(unit, dp)
+        assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
         if type(unit) in [str, np.str_]:
             ds_i, unt = unit.split('_'); ds_i, unt = ale(ds_i), ale(unt)
             ds_table=pd.read_csv(Path(dp, 'datasets_table.csv'), index_col='dataset_i')
@@ -147,20 +120,17 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
             else:
                 spike_clusters = np.load(Path(ds_table['dp'][0],"spike_clusters.npy"))
                 spike_samples = np.load(Path(ds_table['dp'][0],'spike_times.npy'))
-                train = spike_samples[spike_clusters==unt]
-                train=np.reshape(train, (max(train.shape), )).astype(np.int64)
+                train = spike_samples[spike_clusters==unt].ravel()
         else:
             try:unit=int(unit)
             except:pass
         if type(unit) is int:
-            spike_clusters = np.load(Path(dp,"spike_clusters.npy"))
-            spike_samples = np.load(Path(dp,'spike_times.npy'))
-            train = spike_samples[spike_clusters==unit]
-            train=np.reshape(train, (max(train.shape), )).astype(np.int64)
+            spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
+            spike_samples = np.load(Path(dp,'spike_times.npy'), mmap_mode='r')
+            train = spike_samples[spike_clusters==unit].ravel()
         
         if type(unit) not in [str, np.str_, int]:
-            print('WARNING unit {} type ({}) not handled!'.format(unit, type(unit)))
-            return
+            raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
         
         # Filter out spike duplicates (spikes following an ISI shorter than enforced_rp)
         fs=read_spikeglx_meta(dp)['sRateHz']
@@ -170,7 +140,6 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
         if type(subset_selection) not in [str,np.str_]: # else, eq to subset_selection=[(0, spike_samples[-1])] # in samples
             try: subset_selection[0][0]
             except: raise TypeError("ERROR subset_selection should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
-            fs=read_spikeglx_meta(dp)['sRateHz']
             sec_bool=np.zeros(len(train), dtype=np.bool)
             for section in subset_selection:
                 sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
@@ -181,14 +150,6 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
             np.save(Path(dprm,fn), train)
     # Either return or draw to global namespace
     return train
-
-def mfr(dp, unit, exclusion_quantile=0.005, enforced_rp=0, sav=True, prnt=False, subset_selection='all', again=False):
-    i = isi(dp, unit, enforced_rp=enforced_rp, sav=sav, subset_selection=subset_selection, again=again)
-    if i is None: return
-    # Remove outlyers
-    i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]/read_spikeglx_meta(dp)['sRateHz']
-    
-    return np.round(1./np.mean(i),2)
 
 def isi(dp, unit, enforced_rp=0, sav=True, prnt=False, subset_selection='all', again=False):
     '''
@@ -207,7 +168,54 @@ def isi(dp, unit, enforced_rp=0, sav=True, prnt=False, subset_selection='all', a
     return np.diff(t) if len(t)>1 else None
         
 
-def trnb(dp, unit, bin_size, sav=True, prnt=False, subset_selection='all', fs=30000, again=False):
+def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
+    i = np.diff(t) if len(t)>1 else None
+    if i is None: return
+    # Remove outlyers
+    i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]/fs
+    return np.round(1./np.mean(i),2)
+
+def mfr(dp, u, exclusion_quantile=0.005, enforced_rp=0, subset_selection='all', again=False, train=None):
+    
+    if train is None:
+        t=trn(dp, u, subset_selection=subset_selection, again=again, enforced_rp=enforced_rp)
+    else:
+        train=np.asarray(train)
+        assert train.ndim==1
+        t=train
+    fs=read_spikeglx_meta(dp)['sRateHz']
+    
+    return mean_firing_rate(t, exclusion_quantile, fs)
+
+def binarize(X, bin_size, fs, rec_len=None):
+    '''Function to turn a spike train (array of time stamps)
+       into a binarized spike train (array of 0 or 1 
+                                     of length rec_len with a given bin_size.).
+       - X: spike train (array of time stamps, in samples sampled at fs Hertz)
+       - bin_size: size of binarized spike train bins, in milliseconds.
+       - rec_len: length of the recording, in SAMPLES. If not provided, time of the last spike.
+       - fs: sampling frequency, in Hertz.'''
+    
+    # Process bin_size
+    bin_size = int(np.ceil(fs*bin_size/1000))  # Conversion ms->samples
+    
+    # Process rec_len
+    if rec_len is None:
+        rec_len=X[-1]
+    
+    # Binarize spike train
+    Xb = np.histogram(X, bins=np.arange(0, rec_len, bin_size))[0]
+    
+    # Decrease array size as much as possible
+    for encode in [32,16,8]:
+        Xb1=Xb.astype(f'int{encode}')
+        if not np.all(Xb==Xb1):
+            break
+        Xb=Xb1
+    
+    return Xb
+
+def trnb(dp, u, b, subset_selection='all', again=False):
     '''
     ********
     routine from routines_spikes
@@ -217,33 +225,54 @@ def trnb(dp, unit, bin_size, sav=True, prnt=False, subset_selection='all', fs=30
     - dp (string): DataPath to the Neuropixels dataset.
     - u (int): unit index
     - bin_size: size of binarized spike train bins, in milliseconds.
-    - rec_len: length of the recording, in seconds. If not provided, time of the last spike.
-    - ret (bool - default False): if True, train returned by the routine.
-      If False, by definition of the routine, drawn to global namespace.
-    - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
+    fs=read_spikeglx_meta(dp)['sRateHz']
+    assert b>=1000/fs
+    t = trn(dp, u, enforced_rp=1, subset_selection=subset_selection, again=again)
+    t_end = np.load(Path(dp,'spike_times.npy'))[-1,0]
+    return binarize(t, b, fs, t_end)
 
-    # Search if the variable is already saved in dp/routinesMemory
-    dprm = Path(dp,'routinesMemory')
-    fn='trnb{}_{}({}).npy'.format(unit, bin_size, str(subset_selection)[0:10].replace(' ', ''))
-    if not op.isdir(dprm): os.makedirs(dprm)
-    if op.exists(dprm/fn) and not again:
-        if prnt: print("File trnb{}_{}.npy found in routines memory.".format(unit, bin_size))
-        train_binarized = np.load(dprm/fn)
-        train_binarized = np.asarray(train_binarized, dtype='int64')
-    # if not, compute it
+def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs=None, t_end=None):
+    '''
+    Parameters:
+        - t: array of spike times, in samples
+        - t_end: recording end time, in samples
+        - b: float, bin size i.e. temporal resolution of presence periods, in ms | Default 1
+        - sd: float, standard deviation of gaussian smoothing window, in ms | Default 1000
+        - th: threshold to define presence, in fraction of mean firing rate
+        - fs: sampling rate of spike times, in Hz
+    '''
+    assert 1<sd<10000
+    assert 0<=th<1
+    sav=False
+    if train is None:
+        sav=True
+        dprm = Path(dp,'routinesMemory')
+        if not op.isdir(dprm): os.makedirs(dprm)
+        fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
+        if op.exists(Path(dprm,fn)) and not again:
+            return np.load(Path(dprm,fn))
+        t = trn(dp, u, enforced_rp=1, again=again)
+        fs=read_spikeglx_meta(dp)['sRateHz']
+        t_end = np.load(Path(dp,'spike_times.npy'))[-1,0]
     else:
-        if prnt: 
-            print('''File trnb{}_{}.npy not found in routines memory.
-              Will be computed from source files.'''.format(unit, bin_size))
-        train = trn(dp, unit, subset_selection=subset_selection)
-        phy_st = np.load(dp+'/spike_times.npy')
-        last_st = phy_st[-1,0] # in samples
-        del phy_st
-        train_binarized = binarize(train, bin_size, fs=fs, rec_len=last_st)
-        train_binarized = np.asarray(train_binarized, dtype='int16') #0s and 1s -> int8 to save memory
-        # Save it
-        if sav:
-            np.save(dprm/fn, train_binarized)
-    # Either return or draw to global namespace
-    return train_binarized
+        assert fs is not None, "You need to provide the sampling rate of the provided train!"
+        assert t_end is not None, "You need to provide the end time 't_end' of recorded train that you provide!"
+        train=np.asarray(train)
+        assert train.ndim==1
+        t=train
+        
+    assert b>=1000/fs
+    tb = binarize(t, b, fs, t_end)
+    sd=int(sd/b) # convert from ms to bin units
+    b_s=b/1000 # bin seconds
+    tbs=smooth(tb, 'gaussian', sd=sd)/b_s # result is inst. firing rate in Hz - speed bottleneck
+    fr_th=mfr(dp, u)*th
+    
+    periods = thresh_consec(tbs, fr_th, sgn=1, n_consec=0, exclude_edges=False, only_max=False, ret_values=False)
+    periods=np.array(periods)*(b_s*fs) # conversion from bins to samples
+    
+    if sav:
+        np.save(Path(dprm,fn), periods)
+    
+    return periods

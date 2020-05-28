@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 
+from numba import jit, njit, prange
+from numba.typed import List
+from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
+import warnings
+warnings.simplefilter("default", category=NumbaDeprecationWarning) #'ignore'
+warnings.simplefilter('default', category=NumbaPendingDeprecationWarning)#'ignore'
+
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -83,8 +90,8 @@ _ACCEPTED_ARRAY_DTYPES = (np.float, np.float32, np.float64,
                           np.bool)
 
 def npa(arr=[], **kwargs):
-    '''Returns np.array(param).
-    Optional aprams:
+    '''Returns np.array of some kind.
+    Optional params:
         - zeros: tuple. If provided, returns np.zeros(zeros)
         - ones: tuple. If provided, returns np.ones(ones)
         - empty: tuple. If provided, returns np.empty(empty)
@@ -166,6 +173,31 @@ def thresh_consec0(arr, th, n_consec, sgn=1, exclude_edges=True):
     
     return [np.vstack([cross, arr[cross]]) for cross in crosses]
 
+@njit(cache=True)
+def thresh_numba(arr, th, sgn=1, pos=1):
+    '''Returns indices of the data points closest to a directed crossing of th.
+    - data: numpy array.
+    - th: threshold value.
+    - sgn: 1 or -1, direction of the threshold crossing, either positive (1) or negative (-1).
+    - pos: 1 or -1, position of closest value, just following or just preceeding.'''
+    assert pos in [-1,1]
+    assert sgn in [-1,1]
+    arr=np.asarray(arr)
+    tp=arr.dtype
+    assert arr.ndim==1
+    arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
+    
+    i=np.nonzero(arr>=th)[0] if pos==1 else np.nonzero(arr<=th)[0]
+    # If no value is above the threshold or all of them are already above the threshold
+    if len(i)==0 or len(i)==len(arr): 
+        return np.zeros(0).astype(tp)
+    if pos==1:
+        clip=np.maximum(0, np.minimum(i-1, len(arr)-1))
+        return (i[arr[clip]<th]).astype(tp)
+    else:
+        clip=np.maximum(0, np.minimum(i+1, len(arr)-1))
+        return (i[arr[clip]>th]).astype(tp)
+
 def thresh(arr, th, sgn=1, pos=1):
     '''Returns indices of the data points closest to a directed crossing of th.
     - data: numpy array.
@@ -174,7 +206,7 @@ def thresh(arr, th, sgn=1, pos=1):
     - pos: 1 or -1, position of closest value, just following or just preceeding.'''
     assert pos in [-1,1]
     assert sgn in [-1,1]
-    arr=npa(arr)
+    arr=np.asarray(arr)
     assert arr.ndim==1
     arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
     
@@ -184,7 +216,8 @@ def thresh(arr, th, sgn=1, pos=1):
         return np.array([])
     return  i[arr[np.clip(i-1, 0, len(arr)-1)]<th] if pos==1 else i[arr[np.clip(i+1, 0, len(arr)-1)]>th]
 
-def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False):
+
+def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False, ret_values=True):
     '''
     Returns indices and values of threshold crosses lasting >=n_consec consecutive samples in arr.
     Parameters:
@@ -195,10 +228,13 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
         - exclude_edges: bool, if true edges of arr are not considered as threshold crosses
                          in cases where arr starts or ends beyond threshold
         - only_max: bool, if True returns only the most prominent threshold cross.
+        - ret_values: bool, whether to return crosses values (list of 2d np arrays [indices, array values] of len Ncrosses)
+                            rather than mere crosses indices (2d np array of shape (Ncrosses, 2))
     Returns:
-        - crosses, list of 2d np arrays [indices, array values]
+        - crosses values, list of 2d np arrays [indices, array values] if ret_values is True
+               or indices, 2d np array of shape (Ncrosses, 2) if ret_values is False
     '''
-    def thresh_cons(arr, th, sgn=1, n_consec=0, exclude_edges=True):
+    def thresh_cons(arr, th, sgn=1, n_consec=0, exclude_edges=True, ret_values=True):
         arr=npa(arr)
         if not arr.ndim==1:
             assert 1 in arr.shape
@@ -211,7 +247,7 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
         if exclude_edges:
             if len(cross_thp)+len(cross_thn)<=1: cross_thp, cross_thn = [], [] # Only one cross at the beginning or the end e.g.
             else:
-                flag0, flag1=False,False
+                flag0,flag1=False,False
                 if cross_thp[-1]>cross_thn[-1]: flag1=True # if + cross at the end
                 if cross_thn[0]<cross_thp[0]: flag0=True # if - cross at the beginning
                 if flag1: cross_thp=cross_thp[:-1] # remove last + cross
@@ -219,29 +255,33 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
         else:
             if len(cross_thp)+len(cross_thn)<=1: cross_thp, cross_thn = [], [] # Only one cross at the beginning or the end e.g.
             else:
-                flag0, flag1=False,False
+                flag0,flag1=False,False
                 if cross_thp[-1]>cross_thn[-1]: flag1=True # if + cross at the end
                 if cross_thn[0]<cross_thp[0]: flag0=True # if - cross at the beginning
-                if flag1: cross_thn=np.append(cross_thn, len(arr)) # add fake - cross at the end
-                if flag0: cross_thp=np.append(0,cross_thp) # add fake + cross at the beginning
+                if flag1: cross_thn=np.append(cross_thn, [len(arr)-1]) # add fake - cross at the end
+                if flag0: cross_thp=np.append([0],cross_thp) # add fake + cross at the beginning
     
         assert len(cross_thp)==len(cross_thn)
-            
-        crosses=[np.vstack([np.arange(cross_thp[i], cross_thn[i]+1, 1), ((arr-th)*sgn+th)[cross_thp[i]:cross_thn[i]+1]]) for i in range(len(cross_thp)) if cross_thn[i]+1-cross_thp[i]>=n_consec]
         
+        if ret_values or only_max:
+            crosses=[np.vstack([np.arange(cross_thp[i], cross_thn[i]+1, 1), ((arr-th)*sgn+th)[cross_thp[i]:cross_thn[i]+1]]) for i in range(len(cross_thp)) if cross_thn[i]+1-cross_thp[i]>=n_consec]
+        else:
+            crosses=[[cross_thp[i], cross_thn[i]] for i in range(len(cross_thp)) if cross_thn[i]+1-cross_thp[i]>=n_consec]
         return crosses
     
     sgn=[-1,1] if sgn==0 else [sgn]
     crosses=[]
     for s in sgn:
-        crosses+=thresh_cons(arr, th, s, n_consec, exclude_edges)
+        crosses+=thresh_cons(arr, th, s, n_consec, exclude_edges, ret_values)
             
     if only_max and len(crosses)>0:
         cross=crosses[0]
         for c in crosses[1:]:
             if max(abs(c[1,:]))>max(abs(cross[1,:])): cross = c
-        crosses=[cross]
-        assert len(crosses)==1
+        if ret_values:
+            crosses=[cross]
+        else:
+            crosses=[[cross[0,0], cross[0,-1]]]
         
     return crosses
 
@@ -257,6 +297,7 @@ def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
     assert 0<frac<=1, 'Z-score fraction should be between 0 and 1!'
     mn = np.mean(np.append(arr[:int(len(arr)*frac/2)], arr[int(len(arr)*(1-frac/2)):])) if mn_ext is None else mn_ext
     sd = np.std(np.append(arr[:int(len(arr)*frac/2)], arr[int(len(arr)*(1-frac/2)):])) if sd_ext is None else sd_ext
+    if sd==0: sd=1
     return (arr-mn)*1./sd
 
 def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
@@ -323,6 +364,93 @@ def get_bins(cwin, cbin):
         return np.arange(-cwin/2, cwin/2+cbin, cbin)
     else: # odd
         return np.arange(-cwin/2+cbin/2, cwin/2+cbin/2, cbin)
+
+def mask_2d(x, m):
+    '''
+    Mask a 2D array and preserve the
+    dimension on the resulting array
+    ----------
+    x: np.array
+       2D array on which to apply a mask
+    m: np.array
+        2D boolean mask  
+    Returns
+    -------
+    List of arrays. Each array contains the
+    elements from the rows in x once masked.
+    If no elements in a row are selected the 
+    corresponding array will be empty
+    '''
+    take = m.sum(axis=1)
+    return np.split(x[m], np.cumsum(take)[:-1])
+
+@njit(cache=True)
+def make_2D_array(arr_lis, accept_heterogeneous=False):
+    """Function to get 2D array from a list of lists
+    """
+    lis=[np.asarray(l) for l in arr_lis]
+    n = len(lis)
+    lengths = [len(l) for l in lis]
+    if accept_heterogeneous:
+        max_len = max(lengths)
+        arr = np.zeros((n, max_len))*np.nan
+        for i,l in enumerate(lis):
+            arr[i, :lengths[i]] = l
+    else:
+        assert max(lengths)==min(lengths)
+        arr = np.zeros((n, len(lis[0])))*np.nan
+        for i,l in enumerate(lis):
+            arr[i, :] = l
+    return arr
+
+@njit(cache=True)
+def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, prnt=True):
+    '''
+    Parameters:
+        - arr: array to split into EITHER n_samples OR samples of size sample_size.
+               samples_size has priority over n_samples.
+        - s_samples: int, size of of samples to split the array into.
+        - n_samples: int, number of samples to split the array into.
+        - overlap: 0<=float<1, fraction of overlapping between consecutive samples | Default 0
+        - return_last: bool, whether to return the last sample (whose size usually does not match the ones before).
+    Returns:
+        samples: array or list of samples
+    '''
+    arr=np.asarray(arr)
+    assert n_samples!=0 or sample_size!=0, 'You need to specify either a sample number or size!'
+    assert 0<=overlap<1, 'overlap needs to be between 0 and 1, 1 excluded (samples would all be the same)!'
+    
+    if n_samples!=0 and sample_size!=0:
+        print('''WARNING you provided n_samples AND sample_size!
+              By convention, sample_size has priority over n_samples. n_samples ignored.''')
+        n_samples=0
+        
+    if n_samples==0: n_samples=len(arr)//sample_size+1
+    if sample_size==0: sample_size=len(arr)//(n_samples)
+    
+    assert n_samples<=len(arr)
+        
+    # step=1 for maximum overlap (every sample would be the first sample for step = 0);
+    # step=s for 0 overlap; overlap is
+    s=sample_size
+    step = s-round(s*overlap)
+    real_o=round((s-step)/s, 2)
+    if overlap!=real_o and prnt: print('Real overlap: ', round(real_o, 2))
+    samples = List([arr[i : i + s] for i in range(0, len(arr), step)])
+    
+    # always return last sample if len matches
+    if len(samples[-1])==s:
+        return make_2D_array(samples)
+    
+    if return_last:
+        return make_2D_array(samples, accept_heterogeneous=True)
+    
+    lasti=-1
+    sp=samples[lasti]
+    while len(sp)!=s:
+        lasti-=1
+        sp=samples[lasti]
+    return make_2D_array(samples[:lasti+1])
 
 def align_timeseries(timeseries, sync_signals):
     '''

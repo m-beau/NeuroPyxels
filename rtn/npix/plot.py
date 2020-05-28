@@ -16,6 +16,11 @@ from scipy import signal as sgnl
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoLocator
+
+import holoviews as hv
+from holoviews import opts
+import bokeh as bk
+
 import seaborn as sns
 
 from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
@@ -38,6 +43,41 @@ import pyqtgraph as pg
 import networkx as nx
 
 #%% regular histogram, utilities
+
+def mplshow(fig):
+
+    # create a dummy figure and use its
+    # manager to display "fig"
+
+    dummy = plt.figure()
+    new_manager = dummy.canvas.manager
+    new_manager.canvas.figure = fig
+    fig.set_canvas(new_manager.canvas)
+
+def bkshow(bkfig, title=None):
+    if title is None: title=bkfig.__repr__()
+    bk.plotting.output_file(f'{title}.html')
+    bk.plotting.show(bkfig)
+
+def hvshow(hvobject, backend='matplotlib', return_mpl=True):
+    '''
+    Holoview utility which
+    - for dynamic display, interaction and data exploration:
+        in browser, pops up a holoview object as a bokeh figure
+    - for static instanciation, refinement and data exploitation:
+        in matplotlib current backend, pops up a holoview object as a matplotlib figure
+        and eventually returns it for further tweaking.
+    Parameters:
+        - hvobject: a Holoviews object e.g. Element, Overlay or Layout.
+        - backend: 'bokeh' or 'matplotlib', which backend to use to show figure
+        - return_mpl: bool, returns a matplotlib figure
+        
+    '''
+    assert backend in ['bokeh', 'matplotlib']
+    if backend=='bokeh': bkshow(hv.render(hvobject, backend='bokeh'))
+    elif backend=='matplotlib': mplshow(hv.render(hvobject, backend='matplotlib'))
+    if return_mpl: return hv.render(hvobject, backend='matplotlib')
+    
 def get_labels_from_ticks(ticks):
     nflt=0
     for i, t in enumerate(ticks):

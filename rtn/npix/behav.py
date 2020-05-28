@@ -240,11 +240,11 @@ def get_events(dp, f_behav, event_type, trial_on_i=2, reward_i=5, cue_i=4,includ
     mask_incorrect=(trials_df['correct']==0)
     mask_rr=(trials_df['trial_type']=='random_reward')
     mask_cr=(trials_df['trial_type']=='cued_reward')
-    if event_type is 'l_of':
+    if event_type=='l_of':
         return trials_df.loc[mask_left, 'npix_movOns'].as_matrix()
-    elif event_type is 'r_on':
+    elif event_type=='r_on':
         return trials_df.loc[mask_right, 'npix_movOns'].as_matrix()
-    elif event_type is 'c_on':
+    elif event_type=='c_on':
         return trials_df.loc[mask_correct, 'npix_movOns'].as_matrix()
     elif event_type is 'i_on':
         return trials_df.loc[mask_incorrect, 'npix_movOns'].as_matrix()

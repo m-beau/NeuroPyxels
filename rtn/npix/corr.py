@@ -9,16 +9,26 @@ import os.path as op; opj=op.join
 from pathlib import Path
 import psutil
 
+import warnings
+warnings.simplefilter('ignore', category=RuntimeWarning)
+
+from numba import jit, njit, prange
+from numba.typed import List
+from joblib import Parallel, delayed
+import multiprocessing
+num_cores = multiprocessing.cpu_count()
+
 import numpy as np
 import pandas as pd
 
 import progressbar as pgb
 
-from rtn.utils import npa, sign, thresh_consec, smooth, zscore, get_bins, \
+from rtn.utils import npa, sign, thresh_consec, smooth, zscore, split, get_bins, make_2D_array, \
                     _as_array, _unique, _index_of, any_n_consec
                     
+from rtn.npix.io import read_spikeglx_meta
 from rtn.npix.gl import get_units, get_prophyler_source
-from rtn.npix.spk_t import trn, trnb, binarize
+from rtn.npix.spk_t import trn, trnb, binarize, get_firing_periods
 from rtn.npix.spk_wvf import get_depthSort_peakChans
 
 import scipy.signal as sgnl
@@ -199,8 +209,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
       returns numpy array (Nunits, Nunits, win_size/bin_size)
 
     '''
-    if type(normalize) != str or (normalize not in ['Counts', 'Hertz', 'Pearson', 'zscore']):
-        raise ValueError("WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore'].")
+    assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore'], \
+        "WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore']."
 
     # Preformat
     assert len(U)>=2
@@ -213,7 +223,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     dp=dp1;del dp1
     sortedU=U_.copy()
     if trains is not None:
-        trains=[trains[isort] for isort in np.argsort(sortedU)]
+        if len(sortedU)>1:
+            trains=[trains[isort] for isort in np.argsort(sortedU)]
     sortedU.sort()
     
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
@@ -406,7 +417,183 @@ def get_ustack_i(U, ustack):
 
 #%% Cross spike intervals distribution (is to ISI what CCG is to ACG)
 
-def get_csi(spk1, spk2, direction=0):
+@njit(cache=True, parallel=False)
+def cisi_numba_para(spk1, spk2, available_memory):
+    spk1=np.sort(spk1).astype(np.float64)
+    spk2=np.sort(spk1).astype(np.float64)
+    memory_el=(0.01*available_memory)//spk1.itemsize
+    if memory_el<((len(spk1)*len(spk2))*0.1):
+        s=int(len(spk1)//((len(spk1)*len(spk2))//memory_el))
+        chunks=split(List(spk1), sample_size=s, return_last=True, overlap=0)
+    else:
+        s=len(spk1)
+        chunks=np.expand_dims(spk1, 0)
+    # the trick to make things fast is to only consider
+    # the relevant slice of spk2, which is possible assuming that spk1 and spk2 are sorted
+    isi_1to2=np.zeros(len(spk1))
+    n=chunks.shape[0]
+    for i in range(n):
+        chunk=chunks[i]
+        if i==n-1:chunk=chunk[~np.isnan(chunk)]
+
+        m1=np.array(list(spk2>=chunk[0])[1:]+[True]) # shift left to add spike right before
+        m2=np.array([True]+list(spk2<=chunk[-1])[:-1]) # shift right to add spike right after
+        chunk2=spk2[m1&m2]
+    
+        a1=(chunk*np.ones((chunk2.shape[0], chunk.shape[0]))).T
+        a2=chunk2*np.ones((chunk.shape[0], chunk2.shape[0]))
+        d=np.abs(a1-a2)
+        for di in range(d.shape[0]):
+            isi_1to2[i*s+di]=np.min(d[di])
+        
+    return isi_1to2
+
+
+@njit
+def cisi_numba(spk1, spk2, available_memory):
+    spk1=np.sort(spk1).astype(np.float64)
+    spk2=np.sort(spk1).astype(np.float64)
+    memory_el=(0.01*available_memory)//spk1.itemsize
+    if memory_el<((len(spk1)*len(spk2))*0.1):
+        s=int(len(spk1)//((len(spk1)*len(spk2))//memory_el))
+        chunks=split(List(spk1), sample_size=s, return_last=True, overlap=0)
+    else:
+        s=len(spk1)
+        chunks=np.expand_dims(spk1, 0)
+    # the trick to make things fast is to only consider
+    # the relevant slice of spk2, which is possible assuming that spk1 and spk2 are sorted
+    isi_1to2=np.zeros(len(spk1))
+    n=chunks.shape[0]
+    for i in prange(n):
+        chunk=chunks[i]
+        if i==n-1:chunk=chunk[~np.isnan(chunk)]
+
+        m1=np.array(list(spk2>=chunk[0])[1:]+[True]) # shift left to add spike right before
+        m2=np.array([True]+list(spk2<=chunk[-1])[:-1]) # shift right to add spike right after
+        chunk2=spk2[m1&m2]
+    
+        d=np.abs(np.expand_dims(chunk,1)-chunk2)
+        for di in prange(d.shape[0]):
+            isi_1to2[i*s+di]=np.min(d[di])
+        
+    return isi_1to2
+
+# @njit
+# def next_cisi(spk1, spk2, direction=1):
+#     t_12=np.array(list(spk1)+list(spk2))
+#     i_12=np.array([False]*len(spk1)+[True]*len(spk2)) # numba compatible .astype(bool)
+#     i_12=i_12[np.argsort(t_12)]
+#     t_12.sort()
+#     i_init=np.arange(len(t_12))
+#     nxt_12=np.zeros(len(i_12))
+#     m=np.array([True])
+#     while np.any(m):
+#         m=list((~i_12[:-1])&i_12[1:])+[False] # 0s followed by 1s
+#         mshift=np.array([False]+m[:-1]) # m is the mask for spk1, mshift for spk2
+#         m=np.array(m)
+#         nxt_12[i_init[m]]=t_12[mshift]-t_12[m] # t of index 1 - t of index 0 = cross interspike interval
+#         i_12=i_12[~m]
+#         t_12=t_12[~m]
+#         i_init=i_init[~m]
+#     return t_12, nxt_12
+
+# @njit
+# def prev_cisi(spk1, spk2, direction=1):
+#     t_12=np.array(list(spk1)+list(spk2))
+#     i_12=np.array([False]*len(spk1)+[True]*len(spk2)) # numba compatible .astype(bool)
+#     i_12=i_12[np.argsort(t_12)]
+#     t_12.sort()
+#     i_init=np.arange(len(t_12))
+#     nxt_12=np.zeros(len(i_12))
+#     m=np.array([True])
+#     count=0
+#     while np.any(m):
+#         count+=1
+#         m=list(i_12[:-1]&(~i_12[1:]))+[False] # 1s followed by 0s
+#         mshift=np.array([False]+m[:-1]) # m is the mask for spk2, mshift for spk1
+#         m=np.array(m)
+#         nxt_12[i_init[mshift]]=t_12[mshift]-t_12[m]
+#         i_12=i_12[~mshift]
+#         t_12=t_12[~mshift]
+#         i_init=i_init[~mshift]
+#     return t_12, nxt_12, count
+
+def get_cisi1(spk1, spk2, direction=0, prnt=True):
+    '''
+    Computes cross spike intervals i.e time differences between 
+    every spike of spk1 and the following/preceeding spike of spk2.
+    Parameters:
+        - spk1: list/array of INTEGERS, time series
+        - spk2: list/array of INTEGERS, time series
+        - direction: 1, -1 or 0, whether to return following or preceeding interval
+                    or for 0, the smallest interval of either
+                    (in this case not only consecutive 1,2 or 2,1 ISIs are considered but all spikes of 1)
+    Returns:
+        - cisi: cross interspike intervals corresponding to spk1 spikes
+    '''
+    assert direction in [1, 0, -1]
+    
+    # Concatenate and sort spike times of spk1 and 2
+    # (Ensure that there is at least one spk2 spike smaller than/bigger than any spk1 spike)
+    t_12=np.append(spk1, spk2)
+    i_12=np.array([False]*len(spk1)+[True]*len(spk2), dtype=np.bool)
+    i_12=i_12[np.argsort(t_12)]
+    t_12.sort()
+    
+    # Get spikes 1 and 2 relative indices in the concatenated sorted train
+    i1_12,=np.nonzero(~i_12)
+    i2_12,=np.nonzero(i_12)
+    
+    # get previous and next spk2 for every spk1
+    # trick: argmax returns the first max value if several (i.e. 1 in binary array)
+    # need to ensure th at the mask resulting from the comparison has at least one 1
+    # i.e. the very first and very last spikes should be from spk2 - cf.startpad and endpad
+    memory_el=(0.01*psutil.virtual_memory().available)//spk1.itemsize
+    if memory_el<((len(spk1)*len(spk2))*0.1):
+        s=int(len(spk1)//((len(spk1)*len(spk2))//memory_el))
+        chunks=split(List(i1_12), sample_size=s, return_last=True, overlap=0)
+    else:
+        s=len(spk1)
+        chunks=i1_12[np.newaxis,:]
+    
+    nxt2_i=np.zeros(len(i1_12), dtype=int)
+    nanmasknxt=np.zeros(len(i1_12), dtype=bool)
+    prv2_i=np.zeros(len(i1_12), dtype=int)
+    nanmaskprv=np.zeros(len(i1_12), dtype=bool)
+    n=chunks.shape[0]
+    for i in range(n):
+        chunk=chunks[i]
+        if i==n-1:chunk=chunk[~np.isnan(chunk)]
+        m1=np.append((i2_12>=chunk[0])[1:], [True]) # shift left to add spike right before
+        m2=np.append([True], (i2_12<=chunk[-1])[:-1]) # shift right to add spike right after
+        chunk2=i2_12[m1&m2]
+        if direction in [0,1]:
+            m=chunk2>=chunk[:,np.newaxis]
+            nxt2_i[i*s:i*s+chunk.shape[0]]=chunk2[np.argmax(m, axis=1)]
+            nanmasknxt[i*s:i*s+chunk.shape[0]]=np.all(~m, axis=1)
+        if direction in [0,-1]:
+            m=chunk2[::-1]<=chunk[:,np.newaxis]
+            prv2_i[i*s:i*s+chunk.shape[0]]=chunk2[::-1][np.argmax(m, axis=1)]
+            nanmaskprv[i*s:i*s+chunk.shape[0]]=np.all(~m, axis=1)
+        if prnt: print(f'Chunk {i+1}/{n} processed...')
+    del m
+    nxt2_t=t_12[nxt2_i].astype(float)
+    nxt2_t[nanmasknxt]=np.nan
+    prv2_t=t_12[prv2_i].astype(float)
+    prv2_t[nanmaskprv]=np.nan
+        
+    # among the next and/or previous spk2 spikes, keep the closest one in time
+    # (just keep the time diff, not the spk2 spike time)
+    if direction==0:
+        cisi=np.nanmin(np.vstack([(nxt2_t-spk1), (spk1-prv2_t)]), axis=0)
+    elif direction==1:
+        cisi=nxt2_t-spk1
+    elif direction==-1:
+        cisi=spk1-prv2_t
+        
+    return cisi
+
+def get_cisi(spk1, spk2, direction=0, prnt=True):
     '''
     Computes cross spike intervals i.e time differences between 
     every spike of spk1 and the following/preceeding spike of spk2.
@@ -421,62 +608,101 @@ def get_csi(spk1, spk2, direction=0):
         - isi_1to2: corresponding interspike intervals
     '''
     assert direction in [1, 0, -1]
-    assert np.all(npa(spk1).astype(np.int32)==spk1)
-    assert np.all(npa(spk2).astype(np.int32)==spk2)
-    spk1, spk2 = npa(spk1).astype(np.int32), npa(spk2).astype(np.int32)
-    
-    if direction==0:
-        isi_1to2=np.zeros(len(spk1))
-        # Chunks of 50% of available memory.
-        # Chunk size is overestimated because chunks.shape[1] is 
-        # len(spk2[start_spk2:end_spk2[1]]) not len(spk2)
-        chunk_el_size=(0.5*psutil.virtual_memory().available)//spk1.itemsize
-        nchunks=int(len(spk1)*len(spk2)//chunk_el_size+1) 
-        chunk1size=int(len(spk1)//nchunks+1)
-        start_spk2=0
-        # the trick to make things fast is to only consider
-        # the relevant slice of spk2, which is possible assuming that spk1 and spk2 are sorted
-        spk1.sort()
-        spk2.sort()
-        for i in range(nchunks):
-            chunk=spk1[i*chunk1size:min(i*chunk1size+chunk1size, len(spk1))]
-            end_spk2=np.nonzero(spk2>chunk[-1])[0][:2] if i!=nchunks-1 else [-1, -1]
-            d=np.abs(chunk.reshape(len(chunk), 1)-spk2[start_spk2:end_spk2[1]])
-            start_spk2=end_spk2[0] # for next iteration
-            isi_1to2[i*chunk1size:i*chunk1size+chunk1size]=np.min(d, axis=1)
-            print(f'Chunk {i+1}/{nchunks} processed...')
-        spk_1to2=spk1
-    
-    elif direction in [-1,1]:
-        # Merge spikes from 1 and 2 and index them
-        spk_12=np.append(spk1, spk2)
-        i_12=np.append(1*np.ones((len(spk1))),2*np.ones((len(spk2))))
-        spk_i_12=np.vstack((spk_12, i_12))
-        
-        # Sort in time
-        spk_i_12=spk_i_12[:, np.argsort(spk_i_12[0,:])]
-
-    
-        # Compute ISIs
-        isi_i_12=np.zeros((2, spk_i_12.shape[1]-1))
-        isi_i_12[0,:]=spk_i_12[0,1:]-spk_i_12[0,:-1]
-        isi_i_12[1,:]=spk_i_12[1,:-1]
-        
-        # Filter for consecutive 1->2 ISIs
-        # cases with subsequent spikes from 1 or 2 are ignored
-        # e.g. 1,1,2,2 will only yield one ISI.
+    spk1=np.sort(spk1).astype(np.float64)
+    spk2=np.sort(spk2).astype(np.float64)
+    isi_1to2=np.zeros(len(spk1))
+    # Chunks of 50% of available memory.
+    # Chunk size is overestimated because chunks.shape[1] is 
+    # len(spk2[start_spk2:end_spk2[1]]) not len(spk2)
+    memory_el=(0.01*psutil.virtual_memory().available)//spk1.itemsize
+    if memory_el<((len(spk1)*len(spk2))*0.1):
+        s=int(len(spk1)//((len(spk1)*len(spk2))//memory_el))
+        chunks=split(List(spk1), sample_size=s, return_last=True, overlap=0)
+    else:
+        s=len(spk1)
+        chunks=spk1[np.newaxis,:]
+    # the trick to make things fast is to only consider
+    # the relevant slice of spk2, which is possible assuming that spk1 and spk2 are sorted
+    n=chunks.shape[0]
+    for i in range(n):
+        chunk=chunks[i]
+        if i==n-1:chunk=chunk[~np.isnan(chunk)]
+        # start_spk2=np.nonzero(spk2<chunk[0])[0][-1:]
+        # if not np.any(start_spk2): start_spk2=np.array([0]) #  case when first spk2 is later than all chunk spikes
+        # end_spk2=np.nonzero(spk2>chunk[-1])[0][:1]+1
+        # if not np.any(end_spk2): chunk2=spk2[start_spk2[0]:] #  case when last spk2 is earlier than all chunk spikes
+        # else: chunk2=spk2[start_spk2[0]:end_spk2[0]]
+        m1=np.append((spk2>=chunk[0])[1:], [True]) # shift left to add spike right before
+        m2=np.append([True], (spk2<=chunk[-1])[:-1]) # shift right to add spike right after
+        chunk2=spk2[m1&m2]
+        d=(chunk[:, np.newaxis]-chunk2)
         if direction==1:
-            m=((isi_i_12[1,:-1]==1)&(isi_i_12[1,1:]==2))
-            spk_1to2=spk_i_12[0,:-2][m]
+            d*=-1
+            d[d<0]=np.nan
         elif direction==-1:
-            m=((isi_i_12[1,:-1]==2)&(isi_i_12[1,1:]==1))
-            spk_1to2=spk_i_12[1,:-1][m]
-        isi_1to2=isi_i_12[0,:-1][m]
+            d[d<0]=np.nan
+        elif direction==0:
+            d=np.abs(d)
+        isi_1to2[i*s:i*s+d.shape[0]]=np.nanmin(d, axis=1)
+        if prnt: print(f'Chunk {i+1}/{n} processed...')
+        
+    return isi_1to2
+
+def par_process(i, chunk, spk2, n, direction):
+    # the trick to make things fast is to only consider
+    # the relevant slice of spk2, which is possible assuming that spk1 and spk2 are sorted
+    if i==n-1:chunk=chunk[~np.isnan(chunk)]
+    # start_spk2=np.nonzero(spk2<chunk[0])[0][-1:]
+    # if not np.any(start_spk2): start_spk2=np.array([0]) #  case when first spk2 is later than all chunk spikes
+    # end_spk2=np.nonzero(spk2>chunk[-1])[0][:1]+1
+    # if not np.any(end_spk2): chunk2=spk2[start_spk2[0]:] #  case when last spk2 is earlier than all chunk spikes
+    # else: chunk2=spk2[start_spk2[0]:end_spk2[0]]
+    m1=np.append((spk2>=chunk[0])[1:], [True]) # shift left to add spike right before
+    m2=np.append([True], (spk2<=chunk[-1])[:-1]) # shift right to add spike right after
+    chunk2=spk2[m1&m2]
+    d=(chunk[:, np.newaxis]-chunk2)
+    if direction==1:
+        d*=-1
+        d[d<0]=np.nan
+    elif direction==-1:
+        d[d<0]=np.nan
+    elif direction==0:
+        d=np.abs(d)
+    return np.nanmin(d, axis=1)
+
+def get_cisi_parprocess(spk1, spk2, direction=0, prnt=True):
+    '''
+    Computes cross spike intervals i.e time differences between 
+    every spike of spk1 and the following/preceeding spike of spk2.
+    Parameters:
+        - spk1: list/array of INTEGERS, time series
+        - spk2: list/array of INTEGERS, time series
+        - direction: 1, -1 or 0, whether to return following or preceeding interval
+                    or for 0, the smallest interval of either
+                    (in this case not only consecutive 1,2 or 2,1 ISIs are considered but all spikes of 1)
+    Returns:
+        - spk_1to2: spikes of spk1 directly followed/preceeded by a spike of spk2
+        - isi_1to2: corresponding interspike intervals
+    '''
+    assert direction in [1, 0, -1]
+    spk1=np.sort(spk1).astype(np.float64)
+    spk2=np.sort(spk2).astype(np.float64)
+    # Chunks of 50% of available memory.
+    # Chunk size is overestimated because chunks.shape[1] is 
+    # len(spk2[start_spk2:end_spk2[1]]) not len(spk2)
+    memory_el=(0.01*psutil.virtual_memory().available)//spk1.itemsize
+    if memory_el<((len(spk1)*len(spk2))*0.1):
+        s=int(len(spk1)//((len(spk1)*len(spk2))//memory_el))
+        chunks=split(List(spk1), sample_size=s, return_last=True, overlap=0)
+    else:
+        s=len(spk1)
+        chunks=spk1[np.newaxis,:]
     
-    # quality checks
-    assert np.all(np.isin(spk_1to2, spk1))
-    
-    return  spk_1to2, isi_1to2
+    n=chunks.shape[0]
+    inputs=[(i, chunk) for i, chunk in enumerate(chunks)]
+    results=Parallel(n_jobs=num_cores, backend="threading")(delayed(par_process)(inp[0], inp[1], spk2, n, direction) for inp in inputs)
+
+    return np.concatenate(results).ravel()
 
 #%% Pairwise correlations, synchrony, population coupling
 
@@ -605,6 +831,7 @@ def synchrony(CCG, cbin, sync_win=1, fract_baseline=4./5):
     - sync_win: synchrony full window in milliseconds
     - baseline_fract: CCG fraction to use to compute baseline
     '''
+    assert CCG.ndim==1
     CCG=zscore(CCG, fract_baseline)
     nbins=int(sync_win/cbin)+1
     sync_CCG=CCG[len(CCG)//2-nbins//2:len(CCG)//2+nbins//2+1]
@@ -612,6 +839,72 @@ def synchrony(CCG, cbin, sync_win=1, fract_baseline=4./5):
     sync=np.mean(sync_CCG)
 
     return sync
+
+def get_cofiring_tags(dp, U, b=1, sd=1000, th=0.02, again=False, trains=None, fs=None, t_end=None):
+    '''
+    Returns a boolean array of len of train of U[0] (or trains[0] if provided).
+    Each spike is tagged True if neuron U[1] is known to be 'firing' in the same period,
+    False if it is not because the cell was lost due to drift.
+    
+    By 'firing' we mean firing above th*100% of its mean firing rate (see get_firing_periods()).
+    
+    Serves to compute the denominator of %cells firing around a given spike.
+    '''
+    if trains is None:
+        t1=trn(dp, U[0], enforced_rp=0)
+        periods=get_firing_periods(dp, U[1], b, sd, th, again)
+    else:
+        t1=np.asarray(trains[0])
+        assert t1.ndim==1
+        periods=get_firing_periods(dp, U[1], b, sd, th,
+                                   train=trains[1], fs=fs, t_end=t_end)
+    tags=(t1*0).astype(bool)
+    for p in periods:
+        tags=tags|((t1>=p[0])&(t1<=p[1]))
+        
+    return tags
+
+def fraction_pop_sync(dp, u1, U, sync_win=2, b=1, sd=1000, th=0.02, again=False,
+                      t1=None, trains=None, fs=None, t_end=None):
+    
+    if t1 is None:
+        fs=read_spikeglx_meta(dp)['sRateHz']
+        sync_win=sync_win*fs/1000 # conversion to samples
+        t1=trn(dp, u1, enforced_rp=0)
+        trains=[trn(dp, u2, enforced_rp=0) for u2 in U]
+        
+        # Denominator - running total N of cells firing, handles drift
+        # Numerator - N of cells firing withing the predefined synchorny window
+        # Trick: simply threshold the crossinterspike interval!
+        # Each spike gets a 1 or 0 tag for whether the cell#2 fired within this window or not.
+        N_pop_firing=(t1*0).astype(float)
+        pop_sync=t1*0
+        for i, u2 in enumerate(U):
+            t2=trains[i]
+            N_cell_firing=get_cofiring_tags(dp, [u1, u2], b, sd, th, again, trains=None, fs=None, t_end=None)
+            N_pop_firing=N_pop_firing+N_cell_firing.astype(int)
+            cell_sync=(get_cisi(t1, t2, direction=0, prnt=False)<=sync_win/2)
+            pop_sync=pop_sync+(cell_sync&N_cell_firing).astype(int) # cell_sync only counts when cell is considered to fire (single spikes ignored)
+        
+    else:
+        assert trains is not None
+        assert fs is not None
+        assert t_end is not None
+        
+        N_pop_firing=(t1*0).astype(float)
+        pop_sync=t1*0
+        for t2 in trains:
+            N_cell_firing=get_cofiring_tags(dp, [0,0], b, sd, th, trains=[t1,t2], fs=fs, t_end=t_end)
+            N_pop_firing=N_pop_firing+N_cell_firing.astype(int)
+            cell_sync=(get_cisi(t1, t2, direction=0, prnt=False)<=sync_win/2)
+            pop_sync=pop_sync+(cell_sync&N_cell_firing).astype(int) # cell_sync only counts when cell is considered to fire (single spikes ignored)
+        
+    # no division by 0 allowed (reflects that cases where no one fired do not count)
+    N_pop_firing[N_pop_firing==0]=np.nan
+    return pop_sync/N_pop_firing
+
+
+
 
 def make_cm(dp, units, b=5, cbin=0.2, cwin=100, corrEvaluator='CCG', subset_selection='all'):
     '''Make correlation matrix.

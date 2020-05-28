@@ -18,10 +18,14 @@ from ast import literal_eval as ale
 import numpy as np
 import pandas as pd
 
-def get_rec_len(dp, unit='s'):
+def get_rec_len(dp, unit='seconds'):
+    assert unit in ['samples', 'seconds', 'milliseconds']
     fs=read_spikeglx_meta(dp)['sRateHz']
-    t_end=np.load(Path(dp,'spike_times.npy'))[-1]
-    return t_end*fs if unit=='s' else t_end
+    t_end=np.load(Path(dp,'spike_times.npy'))[-1,0]
+    if unit in ['seconds', 'milliseconds']:
+        t_end/=fs
+        if unit=='milliseconds':t_end*=1e3
+    return t_end
 
 def assert_multidatasets(dp):
     'Returns unpacked merged_clusters_spikes.npz if it exists in dp, None otherwise.'

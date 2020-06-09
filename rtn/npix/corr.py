@@ -360,7 +360,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
     #print('Computing ccg stack...\n'.format())
     bins=get_bins(cwin, cbin)
     if all_to_all:
-        pgbar=pgb.ProgressBar(max_value=len(U_src)*len(U_trg)).start()
+        pgbar=pgb.ProgressBar(maxval=len(U_src)*len(U_trg)).start()
         ustack=npa(zeros=(len(U_src), len(U_trg), 2)).astype(npa(U_src).dtype)
         stack=npa(zeros=(len(U_src), len(U_trg), len(bins))).astype(float)
         # Case where every CCG would be computed twice - gotta save time if you can
@@ -383,7 +383,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
     else:
         assert len(U_src)==len(U_trg)
         assert not np.any(U_src==U_trg), 'Looks like you requested to compute a CCG between a unit and itself - check U_src and U_trg.'
-        pgbar=pgb.ProgressBar(max_value=len(U_src)).start()
+        pgbar=pgb.ProgressBar(maxval=len(U_src)).start()
         ustack=npa(zeros=(len(U_src), 2))
         stack=npa(zeros=(len(U_src), len(bins)))
         for i, (u1, u2) in enumerate(zip(U_src, U_trg)):
@@ -1328,7 +1328,8 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
             CCG=stack[i, j, :]
             pks=get_ccg_sig(CCG, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
             if np.any(pks):
-                print('Significant {}: {}->{}'.format(ptdic[sign(pks[0][2])], *ustack[i, j, :]))
+                sg=sign(pks[0][2]) if ret_features else sign(pks[0][1][0])
+                print('Significant {}: {}->{}'.format(ptdic[sg], *ustack[i, j, :]))
                 sigustack.append(ustack[i, j, :])
                 if ret_features:
                     for p in pks:
@@ -1343,7 +1344,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
     return sigstack, sigustack
 
 def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude']):
+             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None):
     '''
     Function generating a functional correlation dataframe sfc (Nsig x 2+8 features) and matrix sfcm (Nunits x Nunits)
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -1362,6 +1363,8 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
                           Mods a->b will be plotted in the upper right corner, b->a in the other, if chan(a)>chan(b)
             - connections: among all modulations, take the one between 1 and 2.5ms
                           Inhibitions will be plotted in the upper right corner, excitations in the other.
+            - cs_pause: complex spike driven pauses in simple spike
+                        = inhibitions between 0.5 and 15 ms, lasting at least 10ms, centered after 4ms
         - metric: string, feature used to fill the sfc matrix | Default: amp_z
         - again: bool, whether to reassess significance of ccg stack rather than loading from memory if already computed in the past.
         - cbin: float, correlogram bin size | Default 0.5
@@ -1379,7 +1382,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
                (see __doc__ of get_ccg_sig() for features description)
         - sfcm: np array, Nunits x Nunit with 0 if no significant correlation and metric if significant correlation.
     '''
-    assert corr_type in ['all', 'main', 'synchrony', 'excitations', 'inhibitions', 'connections']
+    assert corr_type in ['all', 'main', 'synchrony', 'excitations', 'inhibitions', 'connections', 'cs_pause']
     # filter for main modulation irrespectively of sign
     sgn=0
     only_max=False
@@ -1402,11 +1405,22 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
     elif corr_type=='connections':
         tfilt=[[-2.5,-1],[1,2.5]]
         sfilt=[]
-    
+    elif corr_type=='cs_pause':
+        tfilt=[[-15,-4],[4,15]] # not time of extremum but time of pause center
+        sfilt=-1
+        n_consec_bins=int(5//cbin)
     # Get depth-sorted units and sig ccg stack
-    peakChs = get_depthSort_peakChans(dp, quality='good')
-    gu = peakChs[:,0]
-    sigstack, sigustack, sfc = ccg_sig_stack(dp, gu, gu, cbin, cwin, 'good-all_to_all',
+    if units is not None:
+        assert np.all(np.isin(units, get_units(dp))), 'Some of the provided units are not found in this dataset.'
+        assert name is not None, 'You MUST provide a custom name for the provided list of units to ensure that your results can be saved.'
+        gu=npa(units)
+        peakChs = get_depthSort_peakChans(dp, units=units)
+    else:
+        name='good-all_to_all'
+        peakChs = get_depthSort_peakChans(dp, quality='good')
+        gu = peakChs[:,0]
+        
+    sigstack, sigustack, sfc = ccg_sig_stack(dp, gu, gu, cbin, cwin, name,
                   p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True, only_max=only_max)
     
     # If filtering of connections wishes to be done at a later stage, simply return
@@ -1415,7 +1429,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
     # Else, proceed to filtering
     if corr_type!='main': # then only_max is always False
         # Filter out based on sign
-        def drop_sign(sfc,sfilt):
+        def drop_sign(sfc,sfilt, corr_type):
             s=sfc['amp_z'].values
             s_mask=np.zeros((sfc.shape[0])).astype('bool')
             if np.any(sfilt):
@@ -1425,8 +1439,9 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
             return sfc
         
         # Filter out based on time
-        def drop_time(sfc,tfilt):
-            t=sfc['t_ms'].values
+        def drop_time(sfc,tfilt, corr_type):
+            # for complex spike pauses: use time of trough center, not minimum
+            t=(sfc.l_ms+(sfc.r_ms-sfc.l_ms)/2).values if corr_type=='cs_pause' else sfc['t_ms'].values
             t_mask=np.zeros((sfc.shape[0])).astype('bool')
             if np.any(tfilt):
                 for tm in tfilt:
@@ -1437,7 +1452,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
             return sfc
         
         # Filter out based on max amplitude
-        def drop_amp(sfc, afilt):
+        def drop_amp(sfc, afilt, corr_type):
             z_mask=np.zeros((sfc.shape[0])).astype('bool')
             dgp=sfc.groupby(['uSrc','uTrg'])
             duplicates=npa(list(dgp.indices.values()))[dgp.size()>1]
@@ -1453,7 +1468,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
         drop_dic={'sign':drop_sign,'time':drop_time,'max_amplitude':drop_amp,
                   'signfilt':sfilt, 'timefilt':tfilt, 'max_amplitudefilt':None}
         for drop in drop_seq:
-            sfc=drop_dic[drop](sfc, drop_dic[drop+'filt'])
+            sfc=drop_dic[drop](sfc, drop_dic[drop+'filt'], corr_type)
 
     sfcm = np.zeros((len(gu),len(gu)))
     for i in sfc.index:

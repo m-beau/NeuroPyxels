@@ -252,7 +252,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 #%% Waveforms or raw data
 
-def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
+def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8, ignore_nwvf=True, bpfilter=False, whiten=False, med_sub=False, again=False,
                title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
                labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None):
     '''
@@ -286,9 +286,11 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         
     fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     cm=chan_map(dp, y_orig='surface', probe_version='local')
-    peak_chan=get_peak_chan(dp, u); peak_chan_i = int(np.nonzero(np.abs(cm[:,0]-peak_chan)==min(np.abs(cm[:,0]-peak_chan)))[0][0]);
+    peak_chan=get_peak_chan(dp, u)
+    peak_chan_i = int(np.nonzero(np.abs(cm[:,0]-peak_chan)==min(np.abs(cm[:,0]-peak_chan)))[0][0]);
     t_waveforms_s=int(t_waveforms*(fs/1000))
-    waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, wvf_subset_selection='regular', wvf_batch_size=10)
+    waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, subset_selection='regular', wvf_batch_size=10, again=again,
+                  ignore_nwvf=ignore_nwvf, bpfilter=bpfilter, whiten=whiten, med_sub=med_sub)
     tplts=templates(dp, u)
     assert waveforms.shape==(n_waveforms, t_waveforms_s, cm.shape[0])
     

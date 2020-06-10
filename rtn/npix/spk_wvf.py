@@ -16,12 +16,12 @@ from scipy import signal
 
 from rtn.npix.spk_t import ids
 from rtn.npix.gl import get_units, get_prophyler_source
-from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta, chan_map
+from rtn.npix.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 from rtn.utils import _as_array, npa
 
 #%% Concise home made function
 
-def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False, again=False, ignore_nwvf=True):
+def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False, again=False, ignore_nwvf=True, bpfilter=False, whiten=False, med_sub=False):
     '''
     ********
     routine from rtn.npix.spk_wvf
@@ -44,7 +44,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
     dp, u = get_prophyler_source(dp, u)
 
     dprm = Path(dp,'routinesMemory')
-    fn="wvf{}_{}-{}_{}.npy".format(u, n_waveforms, t_waveforms, str(subset_selection)[0:10].replace(' ', ''))
+    fn="wvf{}_{}-{}_{}_{}-{}-{}.npy".format(u, n_waveforms, t_waveforms, str(subset_selection)[0:10].replace(' ', ''), bpfilter, whiten, med_sub)
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
     if os.path.exists(Path(dprm,fn)) and not again:
@@ -53,7 +53,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
 
     # if not, compute it
     else:
-        waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size, ignore_nwvf)
+        waveforms = get_waveform(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size, ignore_nwvf, bpfilter, whiten, med_sub)
         # Save it
         if sav:
             np.save(Path(dprm,fn), waveforms)
@@ -61,7 +61,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
     return waveforms
 
 
-def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True):
+def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True, bpfilter=False, whiten=False, med_sub=False):
     '''Function to extract a subset of waveforms from a given unit.
     Parameters:
         - dp:
@@ -78,10 +78,10 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='re
     # Extract metadata
     channel_ids_abs = np.load(Path(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
     channel_ids_rel = np.arange(channel_ids_abs.shape[0])
-    params={}; par=imp.load_source('params', opj(dp,'params.py'))
+    params={}; par=imp.load_source('params', str(Path(dp,'params.py')))
     for p in dir(par):
         exec("if '__'not in '{}': params['{}']=par.{}".format(p, p, p))
-    params['filter_order'] = None if params['hp_filtered'] is False else 3
+    params['filter_order'] = 3 if bpfilter else None #if params['hp_filtered'] is False else 3
     dat_path=Path(dp, params['dat_path'])
     
     # Compute traces from binary file
@@ -102,7 +102,7 @@ def get_waveform(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='re
                                       filter_order=params['filter_order'],
                                       sample_rate=params['sample_rate'])
     
-    waveforms = waveform_loader.get(spike_ids_subset, channel_ids_rel) # Here, the relative indices must be used since only n_channel traces were extracted.
+    waveforms = waveform_loader.get(spike_ids_subset, channel_ids_rel, whiten, med_sub) # Here, the relative indices must be used since only n_channel traces were extracted.
     
     
     # Correct voltage scaling
@@ -270,7 +270,7 @@ def templates(dp, u):
                 
     return templates
 
-#%% get_wvf utilities
+#%% wvf utilities
     
 def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, subset_selection, ignore_nwvf):
     if type(subset_selection) not in [str, np.str_]:
@@ -370,7 +370,7 @@ class WaveformLoader(object):
         self.n_spikes = len(spike_samples)
 
         # Define filter.
-        if filter_order:
+        if filter_order is not None:
             filter_margin = filter_order * 3
             b_filter = bandpass_filter(rate=sample_rate,
                                        low=500.,
@@ -412,7 +412,7 @@ class WaveformLoader(object):
     def spike_samples(self):
         return self._spike_samples
 
-    def _load_at(self, time, channels=None):
+    def _load_at(self, time, channels=None, whiten=False, med_sub=False):
         """Load a waveform at a given time."""
         if channels is None:
             channels = slice(None, None, None)
@@ -421,11 +421,31 @@ class WaveformLoader(object):
         ns = self.n_samples_trace
         if not (0 <= time_o < ns):
             raise ValueError("Invalid time {0:d}/{1:d}.".format(time_o, ns))
+            
+        pad=1000 if whiten else 100
+        nsba1=(self.n_samples_before_after[0]+pad, self.n_samples_before_after[1]+pad)
         slice_extract = _slice(time_o,
-                               self.n_samples_before_after,
+                               nsba1,
                                self._filter_margin)
-        extract = self._traces[slice_extract][:, channels].astype(np.float32)
-
+        extract = self._traces[slice_extract].astype(np.float32)
+        
+        # Center channels individually
+        # offsets = np.median(extract, axis=0)
+        # extract-=offsets
+        
+        # whiten the waveform
+        if whiten:
+            extract=whitening(extract.T).T
+        
+        extract=extract[pad:-pad, :]
+        
+        # median-substract
+        if med_sub:
+            extract=med_substract(extract.T).T
+        
+        # remove masked channels after all processings
+        extract=extract[:, channels]
+        
         # Pad the extracted chunk if needed.
         if slice_extract.start <= 0:
             extract = _pad(extract, self._n_samples_extract, 'left')
@@ -435,7 +455,7 @@ class WaveformLoader(object):
         assert extract.shape[0] == self._n_samples_extract
         return extract
 
-    def get(self, spike_ids, channels=None):
+    def get(self, spike_ids, channels=None, whiten=False, med_sub=False):
         """Load the waveforms of the specified spikes."""
         
         if isinstance(spike_ids, slice):
@@ -473,7 +493,7 @@ class WaveformLoader(object):
 
             # Extract the waveforms on the unmasked channels.
             try:
-                w = self._load_at(time, channels)
+                w = self._load_at(time, channels, whiten, med_sub)
             except ValueError as e:  # pragma: no cover
                 print("Error while loading waveform: %s", str(e))
                 continue
@@ -538,19 +558,3 @@ def _slice(index, n_samples, margin=None):
     before = int(before)
     after = int(after)
     return slice(max(0, index - before), index + after, None)
-
-def bandpass_filter(rate=None, low=None, high=None, order=None):
-    """Butterworth bandpass filter."""
-    assert low < high
-    assert order >= 1
-    return signal.butter(order,
-                         (low / (rate / 2.), high / (rate / 2.)),
-                         'pass')
-
-def apply_filter(x, filter=None, axis=0):
-    """Apply a filter to an array."""
-    x = _as_array(x)
-    if x.shape[axis] == 0:
-        return x
-    b, a = filter
-    return signal.filtfilt(b, a, x, axis=axis)

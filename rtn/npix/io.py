@@ -15,8 +15,9 @@ from pathlib import Path
 
 import numpy as np
 from math import floor
+from scipy import signal
 
-from rtn.utils import npa
+from rtn.utils import npa, _as_array
 
 #%% Extract metadata and sync channel
 
@@ -348,12 +349,13 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
         # rcW_scales=(np.max(rcW, 1)-np.min(rcW, 1))
         # rc=rcW*np.repeat((rc_scales/rcW_scales).reshape(rc.shape[0], 1), rc.shape[1], axis=1)
         
-        w = whitening_matrix(rc.T)
-        rc_scales=(np.max(rc, 1)-np.min(rc, 1))
-        rc=np.dot(rc.T,w)
-        rc=rc.T
-        rcW_scales=(np.max(rc, 1)-np.min(rc, 1))
-        rc=rc*np.repeat((rc_scales/rcW_scales).reshape(rc.shape[0], 1), rc.shape[1], axis=1)
+        # w = whitening_matrix(rc.T)
+        # rc_scales=(np.max(rc, 1)-np.min(rc, 1))
+        # rc=np.dot(rc.T,w)
+        # rc=rc.T
+        # rcW_scales=(np.max(rc, 1)-np.min(rc, 1))
+        # rc=rc*np.repeat((rc_scales/rcW_scales).reshape(rc.shape[0], 1), rc.shape[1], axis=1)
+        rc=whitening(rc)
     
     # get the right channels range, AFTER WHITENING
     rc = rc[channels, :] 
@@ -393,15 +395,92 @@ def whitening_matrix(x, fudge=1e-18):
         - dat is a matrix nsamples x nchannels
     Apply using np.dot(dat,wmat)
     Adapted from phy
+    
+    WARNING: 
     """
     assert x.ndim == 2
     ns, nc = x.shape
     x_cov = np.cov(x, rowvar=0)
     assert x_cov.shape == (nc, nc)
     d, v = np.linalg.eigh(x_cov)
+    d[d<0]=0 # handles calculation innacurracies leading to very tiny negative values instead of tiny positive values
     d = np.diag(1. / np.sqrt(d + fudge))
     w = np.dot(np.dot(v, d), v.T)
     return w
+
+def whitening(x):
+    '''
+    Whitens along axis 1.
+    For instance, time should be axis 1 and channels axis 0 to whiten in time.
+    Axis 1 must hold more elements than axis 0.
+    '''
+    assert x.shape[1]>=x.shape[0]
+    # Compute whitening matrix
+    w=whitening_matrix(x.T)
+
+    # Whiten
+    scales=(np.max(x, 1)-np.min(x, 1))
+    x=np.dot(x.T,w)
+    x=x.T
+    W_scales=(np.max(x, 1)-np.min(x, 1))
+    x=x*np.repeat((scales/W_scales).reshape(x.shape[0], 1), x.shape[1], axis=1)
+    
+    return x
+
+def bandpass_filter(rate=None, low=None, high=None, order=None):
+    """Butterworth bandpass filter."""
+    assert low < high
+    assert order >= 1
+    return signal.butter(order,
+                         (low / (rate / 2.), high / (rate / 2.)),
+                         'pass')
+
+def apply_filter(x, filter=None, axis=0):
+    """Apply a filter to an array."""
+    x = _as_array(x)
+    if x.shape[axis] == 0:
+        return x
+    b, a = filter
+    return signal.filtfilt(b, a, x, axis=axis)
+
+def med_substract(x):
+    '''Median substract along axis 0
+    (for instance, channels should be axis 0 and time axis 1 to median substract across channels)'''
+    return x-np.median(x, axis=0)
+
+def whiten(X, method='zca'):
+    """
+    Whitens the input matrix X using specified whitening method.
+    Inputs:
+        X:      Input data matrix with data examples along the first dimension
+        method: Whitening method. Must be one of 'zca', 'zca_cor', 'pca',
+                'pca_cor', or 'cholesky'.
+    """
+    X = X.reshape((-1, np.prod(X.shape[1:])))
+    X_centered = X - np.mean(X, axis=0)
+    Sigma = np.dot(X_centered.T, X_centered) / X_centered.shape[0]
+    W = None
+    
+    if method in ['zca', 'pca', 'cholesky']:
+        U, Lambda, _ = np.linalg.svd(Sigma)
+        if method == 'zca':
+            W = np.dot(U, np.dot(np.diag(1.0 / np.sqrt(Lambda + 1e-5)), U.T))
+        elif method =='pca':
+            W = np.dot(np.diag(1.0 / np.sqrt(Lambda + 1e-5)), U.T)
+        elif method == 'cholesky':
+            W = np.linalg.cholesky(np.dot(U, np.dot(np.diag(1.0 / (Lambda + 1e-5)), U.T))).T
+    elif method in ['zca_cor', 'pca_cor']:
+        V_sqrt = np.diag(np.std(X, axis=0))
+        P = np.dot(np.dot(np.linalg.inv(V_sqrt), Sigma), np.linalg.inv(V_sqrt))
+        G, Theta, _ = np.linalg.svd(P)
+        if method == 'zca_cor':
+            W = np.dot(np.dot(G, np.dot(np.diag(1.0 / np.sqrt(Theta + 1e-5)), G.T)), np.linalg.inv(V_sqrt))
+        elif method == 'pca_cor':
+            W = np.dot(np.dot(np.diag(1.0/np.sqrt(Theta + 1e-5)), G.T), np.linalg.inv(V_sqrt))
+    else:
+        raise Exception('Whitening method not found.')
+
+    return np.dot(X_centered, W.T)
 
 #%% for convenience, copied from https://github.com/llerussell/paq2py
 

@@ -25,7 +25,7 @@ import scipy.stats as stats
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.decomposition import PCA
 
-from rtn.utils import seabornColorsDic, npa, thresh
+from rtn.utils import seabornColorsDic, npa, thresh, smooth
 
 from rtn.npix.io import get_npix_sync, paq_read
 from rtn.npix.spk_t import trn, trnb, isi
@@ -417,7 +417,7 @@ def get_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
     return atb/(b*1e-3)
 
 def get_processed_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False,
-                      zscore=False, zscoretype='overall', convolve=False, gw=64, gsd=1):
+                      zscore=False, zscoretype='overall', convolve=False, gsd=1):
     '''
     Parameters:
         - times: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
@@ -426,8 +426,7 @@ def get_processed_ifr(times, events, b=2, window=[-1000,1000], remove_empty_tria
         - window: [w1, w2], where w1 and w2 are in milliseconds.
         - remove_empty_trials: boolean, remove from the output trials where there were no timestamps around event. | Default: True
         - convolve: boolean, set to True to convolve the aligned binned train with a half-gaussian window to smooth the ifr
-        - gw: integer, gaussian window width, only used if convolve is True
-        - gsd: float, gaussian window standard deviation, only used if convolve is True
+        - gsd: float, gaussian window standard deviation in ms
     Returns:
         - x: 1D array tiling bins, in milliseconds
         - y: 2D array NtrialsxNbins, the unprocessed ifr
@@ -443,7 +442,7 @@ def get_processed_ifr(times, events, b=2, window=[-1000,1000], remove_empty_tria
     maxWin=4000; minWin=-4000;
     window = [max(window[0], minWin), min(window[1], maxWin)] # cannot be further than -4 - 4 seconds
     x = np.arange(window[0], window[1], b)
-    y = ifr[:, int(ifr.shape[1]/2)+int(window[0]/b):int(ifr.shape[1]/2)+int(window[1]/b)+1]
+    y = ifr
     if x.shape[0]>y.shape[1]:
         x=x[:-1]
     assert x.shape[0]==y.shape[1]
@@ -468,12 +467,23 @@ def get_processed_ifr(times, events, b=2, window=[-1000,1000], remove_empty_tria
     
     # Convolve or not
     if convolve:
-        gaussWin=sgnl.gaussian(gw, gsd)
-        gaussWin/=sum(gaussWin) # normalize !!!! For convolution, if we want to keep the amplitude unchanged!!
-        y_p = np.convolve(y_p, gaussWin, mode='full')[int(gw/2):-int(gw/2-1)]
+        y_p = smooth(y_p, method='gaussian', sd=gsd)
 
     return x, y, y_mn, y_p, y_p_sem
 
+
+def plot_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False,
+                      zscore=False, zscoretype='overall', convolve=False, gsd=1):
+    
+    x, y, y_mn, y_p, y_p_sem=get_processed_ifr(times, events, b, window, remove_empty_trials,
+                      zscore, zscoretype, convolve, gsd)
+    
+    fig, ax = plt.subplots()
+    
+    if not zscore:
+        ax.fill_between(x, )
+    ax.plot(x, y_p)
+    
 #%% Plot behavior quality characteristics
 
 # def extract_licks(dp, source='PAQ'):

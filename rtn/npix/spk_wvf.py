@@ -12,7 +12,6 @@ import imp
 from ast import literal_eval as ale
 import numpy as np
 from math import ceil
-from scipy import signal
 
 from rtn.npix.spk_t import ids
 from rtn.npix.gl import get_units, get_prophyler_source

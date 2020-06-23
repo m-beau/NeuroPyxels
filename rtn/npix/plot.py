@@ -32,7 +32,7 @@ from rtn.npix.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dat
 from rtn.npix.gl import get_units
 from rtn.npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
 from rtn.npix.spk_t import trn
-from rtn.npix.corr import acg, ccg, gen_sfc, get_ccg_sig, make_cm, make_matrix_2xNevents, crosscorr_cyrille
+from rtn.npix.corr import acg, ccg, gen_sfc, get_ccg_sig, get_cm, make_matrix_2xNevents, crosscorr_cyrille
 from rtn.npix.behav import align_times, get_processed_ifr
 from mpl_toolkits.mplot3d import axes3d
 from mpl_toolkits.mplot3d import Axes3D
@@ -59,7 +59,7 @@ def bkshow(bkfig, title=None):
     bk.plotting.output_file(f'{title}.html')
     bk.plotting.show(bkfig)
 
-def hvshow(hvobject, backend='matplotlib', return_mpl=True):
+def hvshow(hvobject, backend='bokeh', return_mpl=True):
     '''
     Holoview utility which
     - for dynamic display, interaction and data exploration:
@@ -252,7 +252,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 #%% Waveforms or raw data
 
-def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8, ignore_nwvf=True, bpfilter=False, whiten=False, med_sub=False, again=False,
+def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8, ignore_nwvf=True, bpfilter=False, whiten=False, med_sub=False, again=False, subset_selection='regular',
                title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
                labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None):
     '''
@@ -278,21 +278,25 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     Returns:
         - matplotlib figure with Nchannels subplots, plotting the mean
     '''
-    if type(sample_lines) is str:
-        assert sample_lines=='all'
-        sample_lines=n_waveforms
-    elif type(sample_lines) is float or type(sample_lines) is int:
-        sample_lines=min(sample_lines, n_waveforms)
+
         
     fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     cm=chan_map(dp, y_orig='surface', probe_version='local')
     peak_chan=get_peak_chan(dp, u)
     peak_chan_i = int(np.nonzero(np.abs(cm[:,0]-peak_chan)==min(np.abs(cm[:,0]-peak_chan)))[0][0]);
     t_waveforms_s=int(t_waveforms*(fs/1000))
-    waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, subset_selection='regular', wvf_batch_size=10, again=again,
+    waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, subset_selection=subset_selection, wvf_batch_size=10, again=again,
                   ignore_nwvf=ignore_nwvf, bpfilter=bpfilter, whiten=whiten, med_sub=med_sub)
     tplts=templates(dp, u)
-    assert waveforms.shape==(n_waveforms, t_waveforms_s, cm.shape[0])
+    if waveforms.shape[0]==0:
+        raise ValueError('No waveforms were found in the provided subset_selection!')
+    assert waveforms.shape[1:]==(t_waveforms_s, cm.shape[0])
+    
+    if type(sample_lines) is str:
+        assert sample_lines=='all'
+        sample_lines=min(waveforms.shape[0],n_waveforms)
+    elif type(sample_lines) is float or type(sample_lines) is int:
+        sample_lines=min(waveforms.shape[0],sample_lines, n_waveforms)
     
     saveDir=op.expanduser(saveDir)
     if Nchannels>=2:
@@ -839,7 +843,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         
     if normalize in ['Hertz', 'Pearson', 'Counts']:
         y=CCG.copy()
-    elif normalize=='zscore':
+    elif normalize in ['zscore']:
         y=CCG.copy()+abs(ylim1)
     ax.bar(x=x, height=y, width=cbin, color=color, edgecolor=color, bottom=ylim1) # Potentially: set bottom=0 for zscore
     
@@ -1052,10 +1056,12 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
     
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
              _format='pdf', subset_selection='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=[0,0], ccg_mn=None, ccg_std=None, again=False, trains=None):
-    assert type(units)==list
+    assert type(units) in [list, np.ndarray]
+    units=list(units)
     _, _idx=np.unique(units, return_index=True)
     units=npa(units)[np.sort(_idx)].tolist()
-    assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'],"WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte']."
+    assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'],"WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte']."#
+    if normalize=='mixte' and len(units)==2: normalize='zscore'
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=units)[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
@@ -1080,7 +1086,8 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
 
 # Plot correlation matrix of variables x ovservations 2D arrray
     
-def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=0, cmap='viridis', subset_selection='all', ret_cm=False, saveDir='~/Downloads', saveFig=False, pdf=1, png=0):
+def plot_cm(dp, units, cwin=100, cbin=0.2, b=5, corrEvaluator='CCG', vmax=5, vmin=0, cmap='viridis', subset_selection='all',
+            saveDir='~/Downloads', saveFig=False, _format='pdf', title=None, ret_cm=False):
     '''Plot correlation matrix.
     dp: datapath
     units: units list of the same dataset
@@ -1099,43 +1106,62 @@ def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=5, vmin=
     units, channels = mainChans[:,0], mainChans[:,1]
     
     # make correlation matrix of units sorted by depth
-    cm = make_cm(dp, units, b, cwin, cbin, corrEvaluator, vmax, vmin, subset_selection)
+    cm = get_cm(dp, units, cbin, cwin, b, corrEvaluator, subset_selection)
     
     # Plot correlation matrix
-    cm[np.eye(cm.shape[0], dtype=bool)]=0 # set diag values to 0
-    plt.figure()
-    hm = sns.heatmap(cm, vmin=vmin, vmax=vmax, cmap=cmap)
+    fig = plt.figure()
+    ax = fig.add_axes([0.15, 0.15, 0.7, 0.7])
+    axpos=ax.get_position()
+    cbar_ax = fig.add_axes([axpos.x0+axpos.width-0.1, axpos.y0, .02, .3])
+    hm = sns.heatmap(cm, vmin=vmin, vmax=vmax, cmap=cmap,
+                     cbar_kws={'label': 'Crosscorr. [-0.5-0.5]ms (s.d.)'}, ax=ax, cbar_ax=cbar_ax)
+    
+    # Main plot params
     hm.axes.plot(hm.axes.get_xlim(), hm.axes.get_ylim()[::-1], ls="--", c=[0.5,0.5,0.5], lw=1)
     hm.axes.set_yticklabels(['{}@{}'.format(units[i], channels[i]) for i in range(len(units))], rotation=0)
-    hm.axes.set_xticklabels(['{}@{}'.format(units[i], channels[i]) for i in range(len(units))], rotation=45, horizontalalignment='right')
-    hm.axes.set_title('Dataset: {}'.format(dp.split('/')[-1]))
-    hm.axes.set_aspect('equal','box-forced')
-    fig = plt.gcf()
+    hm.axes.set_xticklabels(['{}'.format(units[i]) for i in range(len(units))], rotation=45, ha='right')
+    if title is None:
+        hm.axes.set_title('Dataset: {}'.format(dp.split('/')[-1]))
+    else:
+        hm.axes.set_title(title)
+    hm.axes.set_aspect('equal','box')
+    
+    # Colorbar params
+    cbar_ax.yaxis.label.set_font_properties(matplotlib.font_manager.FontProperties(family='arial',weight='bold', size=10))
+    cbar_ax.yaxis.label.set_rotation(-90)
+    cbar_ax.yaxis.label.set_va('bottom')
+    cbar_ax.yaxis.labelpad=5
+    cbar_ax.yaxis.set_ticklabels(cbar_ax.yaxis.get_ticklabels(), ha='center')
+    cbar_ax.yaxis.set_tick_params(pad=11)
+    
+    fig = hm.get_figure()
     plt.tight_layout()
-    print(units)
     
     if saveFig:
-        saveDir=op.expanduser(saveDir)
-        if not os.path.isdir(saveDir): os.mkdir(saveDir)
-        if pdf: fig.savefig(saveDir+'/ccg%s-%d_%.2f.pdf'%(str(units).replace(' ', ''), cwin, cbin))
-        if png: fig.savefig(saveDir+'/ccg%s_%d_%.2f.png'%(str(units).replace(' ', ''), cwin, cbin))
+        if saveDir is None: saveDir=dp
+        assert title is not None, 'You need to provide a title parameter to save the figure!'
+        fig.savefig(Path(saveDir,title,f'.{_format}'))
     
     if ret_cm:
-        return cm
-    else:
-        return fig
+        return cm, units, channels # depth-sorted
+    return fig
 
 ## Connectivity inferred from correlograms
-def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-             text=False, markers=False, ticks=True, depth_ticks=False, regions={}, reg_colors={}, vminmax=[-7,7], figsize=(7,7),
-             saveFig=False, saveDir=None, again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude']):
+def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, 
+              p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+              drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None,
+              text=False, markers=False, ticks=True, depth_ticks=False,
+              regions={}, reg_colors={}, vminmax=[-7,7], figsize=(7,7),
+              saveFig=False, saveDir=None, again=False, againCCG=False):
     '''
     Visually represents the connectivity datafrane outputted by 'gen_sfc'.
     Each line/row is a good unit.
     Each intersection is a square split in a varying amount of columns,
     each column representing a positive or negatively significant peak collored accordingly to its size s.
     '''
-    sfc, sfcm, peakChs = gen_sfc(dp, corr_type, metric, cbin, cwin, p_th, n_consec_bins, fract_baseline, W_sd, test, again, againCCG, drop_seq)
+    sfc, sfcm, peakChs = gen_sfc(dp, corr_type, metric, cbin, cwin,
+                                 p_th, n_consec_bins, fract_baseline, W_sd, test, 
+                                 again, againCCG, drop_seq, units, name)
     gu = peakChs[:,0]
     ch = peakChs[:,1].astype(int)
     

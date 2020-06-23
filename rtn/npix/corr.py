@@ -27,7 +27,7 @@ from rtn.utils import npa, sign, thresh_consec, smooth, zscore, split, get_bins,
                     _as_array, _unique, _index_of, any_n_consec
                     
 from rtn.npix.io import read_spikeglx_meta
-from rtn.npix.gl import get_units, get_prophyler_source
+from rtn.npix.gl import get_units, get_prophyler_source, get_rec_len
 from rtn.npix.spk_t import trn, trnb, binarize, get_firing_periods
 from rtn.npix.spk_wvf import get_depthSort_peakChans
 
@@ -903,10 +903,7 @@ def fraction_pop_sync(dp, u1, U, sync_win=2, b=1, sd=1000, th=0.02, again=False,
     N_pop_firing[N_pop_firing==0]=np.nan
     return pop_sync/N_pop_firing
 
-
-
-
-def make_cm(dp, units, b=5, cbin=0.2, cwin=100, corrEvaluator='CCG', subset_selection='all'):
+def get_cm(dp, units, cbin=0.2, cwin=100, b=5, corrEvaluator='CCG', subset_selection='all'):
     '''Make correlation matrix.
     dp: datapath
     units: units list of the same dataset
@@ -924,11 +921,12 @@ def make_cm(dp, units, b=5, cbin=0.2, cwin=100, corrEvaluator='CCG', subset_sele
         return
     
     # Initialize empty arrays
-    rec_len = np.load(dp+'/spike_times.npy')[-1]*1./30 # in ms
-    Nbins_bms = len(trnb(dp, units[0], b, constrainBin=False)) # b in ms
+    
     if corrEvaluator =='corrcoeff_MB':
+        Nbins_bms = len(trnb(dp, units[0], b)) # b in ms
         trnbM = npa(zeros=(len(units), Nbins_bms))
     elif corrEvaluator in ['covar', 'corrcoeff_eleph']:
+        rec_len = get_rec_len(dp, unit='milliseconds') # in ms
         trnLs = []
     elif corrEvaluator == 'CCG':
         cmCCG=npa(empty=(len(units), len(units)))
@@ -942,13 +940,12 @@ def make_cm(dp, units, b=5, cbin=0.2, cwin=100, corrEvaluator='CCG', subset_sele
             trnLs.append(t1)
         elif corrEvaluator == 'CCG':
             for i2, u2 in enumerate(units):
-                if u1!=u2:
+                if u1==u2:
+                    cmCCG[i1, i2]=0
+                if i1<i2:
                     CCG = ccg(dp, [u1, u2], cbin, cwin, normalize='Counts', subset_selection=subset_selection)[0,1,:]
-                    coeffCCG = synchrony(CCG, cbin, sync_win=1, fract_baseline=4./5)
-                else:
-                    coeffCCG=0
-                cmCCG[i1, i2]=coeffCCG
-    
+                    cmCCG[i1, i2] = cmCCG[i2, i1] = synchrony(CCG, cbin, sync_win=1, fract_baseline=2./5)
+
     # Set correlation matrix and plotting parameters
     if corrEvaluator == 'CCG':
         cm = cmCCG
@@ -1336,7 +1333,12 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
                         features=features.append(dict(zip(features.columns,np.append(ustack[i, j, :], p))), ignore_index=True)
 
     sigustack=npa(sigustack)
-    sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True)
+    if np.any(sigustack):
+        sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True)
+    else:
+        bins=get_bins(cwin, cbin)
+        sigstack, sigustack = npa(zeros=(0, len(bins))), sigustack
+        
     if ret_features:
         if name is not None:
             features.to_csv(feat_path, index=False)
@@ -1344,7 +1346,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
     return sigstack, sigustack
 
 def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None):
+             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None, cross_cont_proof=False):
     '''
     Function generating a functional correlation dataframe sfc (Nsig x 2+8 features) and matrix sfcm (Nunits x Nunits)
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -1357,9 +1359,9 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
                     Positive mods will be plotted in the bottomleft corner, negatives ones in the other.
             - synchrony: among all positive modulations, take the one between -1 and 1ms
                          Mods will be plotted symmetrically in both corners.
-            - excitation: among all positive modulations, take the one between 1 and 2.5ms
+            - excitations: among all positive modulations, take the one between 1 and 2.5ms
                           Mods a->b will be plotted in the upper right corner, b->a in the other, if chan(a)>chan(b)
-            - inhibition: among all negative modulations, take the one between 1 and 2.5ms
+            - inhibitions: among all negative modulations, take the one between 1 and 2.5ms
                           Mods a->b will be plotted in the upper right corner, b->a in the other, if chan(a)>chan(b)
             - connections: among all modulations, take the one between 1 and 2.5ms
                           Inhibitions will be plotted in the upper right corner, excitations in the other.
@@ -1375,6 +1377,12 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
         - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
         - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
         - againCCG: bool, whether to recompute ccg stack rather than loading from memory if already computed in the past.
+        - drop_seq
+        - units: list/array, units to consider to test correlations | Default: None (i.e. use all the good units)
+        - name: string, name of the all-to-all ccg_stack corresponding to the above-provided units
+                MANDATORY if you provide a list of units. | Default: None
+        - cross_cont_proof: bool, ignore CCGs which look like a best guess of cross-contamination | Default: False
+                            (i.e. a big trough centered around 0 or 2 big symmetrical troughs)
         
     Returns:
         - sfc: Pandas dataframe of NsignificantUnits x 
@@ -1426,10 +1434,13 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
     # If filtering of connections wishes to be done at a later stage, simply return
     if corr_type=='all': return sfc, np.zeros((len(gu),len(gu))), peakChs 
     
-    # Else, proceed to filtering
+    # Else, proceed to filtering of connection types
+    
+    # Get rid of false positive connections due to cross-contamination
+    
     if corr_type!='main': # then only_max is always False
         # Filter out based on sign
-        def drop_sign(sfc,sfilt, corr_type):
+        def drop_sign(sfc, sfilt, corr_type):
             s=sfc['amp_z'].values
             s_mask=np.zeros((sfc.shape[0])).astype('bool')
             if np.any(sfilt):
@@ -1439,7 +1450,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
             return sfc
         
         # Filter out based on time
-        def drop_time(sfc,tfilt, corr_type):
+        def drop_time(sfc, tfilt, corr_type):
             # for complex spike pauses: use time of trough center, not minimum
             t=(sfc.l_ms+(sfc.r_ms-sfc.l_ms)/2).values if corr_type=='cs_pause' else sfc['t_ms'].values
             t_mask=np.zeros((sfc.shape[0])).astype('bool')

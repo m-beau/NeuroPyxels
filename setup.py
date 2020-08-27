@@ -2,7 +2,7 @@
 from setuptools import setup
 
 setup(name='rtn',
-      version='1.0',
+      version='2.0',
       description='Maxime Beau personal python routines.',
       url='https://github.com/m-beau/routines',
       author='Maxime Beau',

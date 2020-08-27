@@ -13,5 +13,5 @@ setup(name='rtn',
       install_requires=['numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'six', 'elephant', 'vispy', 'statsmodels', 'progressbar2',
       'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'pyqtgraph', 'imutils', 'opencv-contrib-python',
-      'h5py'],
+      'h5py', 'holoviews[recommended]'],
       keywords='phy,data analysis,electrophysiology,neuroscience')

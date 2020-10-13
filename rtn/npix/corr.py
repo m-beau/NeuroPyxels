@@ -87,7 +87,15 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
     return crosscorr_cyrille(spike_times, spike_clusters, win_size, bin_size, fs, symmetrize)
 
 def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=True):
-
+    '''Returns the crosscorrelation function of two spike trains.
+       - times: array of concatenated times of all neurons, sorted in time, in samples.
+       - clusters: corresponding array of neuron indices
+       - win_size (float): window size, in milliseconds
+       - bin_size (float): bin size, in milliseconds
+       - U (list of integers): list of units indices.
+       - fs: sampling rate (Hertz). Default 30000.
+       - symmetrize (bool): symmetrize the semi correlograms. Default=True.
+       - trains: dictionnary of trains, to calculate the CCG of an arbitrary list of trains in SAMPLES for fs=30kHz.'''
     #### Troubleshooting
     assert fs > 0.
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
@@ -132,7 +140,7 @@ def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=
         spike_diff_b = spike_diff // binsize # binsize is in samples.
         # DELTA_Ts ARE ALWAYS POSITIVE
 
-        # Spikes with no matching spikes are masked.
+        # Spikes with no matching spikes in the window are masked.
         # spike_diff_b has the size of phy_ss[:-shift] hence mask[:-shift]
         # max: i.e. spikes which do not have neighbouring spikes are masked 
         # (further than half the correlogram window winsize_bins // 2).
@@ -234,8 +242,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         os.makedirs(dprm)
     
     fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(subset_selection)[0:50].replace(' ', ''))
-    if os.path.exists(Path(dprm,fn)) and not again:
-        if prnt: print("File {} found in routines memory. Will be computed from source files.".format(fn))
+    if os.path.exists(Path(dprm,fn)) and not again and trains is None:
+        if prnt: print("File {} found in routines memory.".format(fn))
         crosscorrelograms = np.load(Path(dprm,fn))
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
     # if not, compute it
@@ -1257,7 +1265,8 @@ def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseli
 
 
 def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
-                  p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', again=False, againCCG=False, ret_features=False, only_max=True):
+                  p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+                  again=False, againCCG=False, ret_features=False, only_max=True):
     '''
     Parameters:
         - dp: string, datapath to manually curated kilosort output
@@ -1317,8 +1326,18 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
     ptdic={1:'peak', -1:'trough'}
     sigustack=[]
     if ret_features: features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
+
     stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG)
     same_src_trg=np.all(U_src==U_trg) if len(U_src)==len(U_trg) else False
+    inco=False
+    if same_src_trg:
+        if len(np.unique(ustack))!=len(np.unique(U_src)): inco=True
+        else:
+            if not np.all(np.unique(ustack)==np.unique(U_src)): inco=True
+    if inco:
+        print(f'Incoherence detected between loaded ccg_stack ({len(np.unique(ustack))} units) and expected ccg_stack ({len(U_src)} units) - recomputing as if againCCG were True...')
+        stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=True)
+        
     for i in range(stack.shape[0]):
         for j in range(stack.shape[1]):
             if same_src_trg and i<=j: continue
@@ -1421,8 +1440,8 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
     if units is not None:
         assert np.all(np.isin(units, get_units(dp))), 'Some of the provided units are not found in this dataset.'
         assert name is not None, 'You MUST provide a custom name for the provided list of units to ensure that your results can be saved.'
-        gu=npa(units)
         peakChs = get_depthSort_peakChans(dp, units=units)
+        gu = peakChs[:,0]
     else:
         name='good-all_to_all'
         peakChs = get_depthSort_peakChans(dp, quality='good')
@@ -1466,7 +1485,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
         def drop_amp(sfc, afilt, corr_type):
             z_mask=np.zeros((sfc.shape[0])).astype('bool')
             dgp=sfc.groupby(['uSrc','uTrg'])
-            duplicates=npa(list(dgp.indices.values()))[dgp.size()>1]
+            duplicates=npa(list(dgp.indices.values()))[(dgp.size()>1).values]
             for d in duplicates:
                 zz=sfc.loc[d, 'amp_z'].abs()
                 largest=zz.max()
@@ -1484,7 +1503,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
     sfcm = np.zeros((len(gu),len(gu)))
     for i in sfc.index:
         u1,u2=sfc.loc[i,'uSrc':'uTrg']
-        ui1,ui2=np.nonzero(gu==u1)[0][0], np.nonzero(gu==u2)[0][0]
+        ui1,ui2=np.nonzero(gu==u1)[0][0], np.nonzero(gu==u2)[0][0] # ORDER OF gu MATTERS
         v=sfc.loc[i, metric]
         # If showing all main modulations or all connections,
         # plotting inhibitions top right corner and excitations bottom left corner
@@ -1703,7 +1722,7 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
     
     # if not, compute it
     else:
-        if prnt: print("File ccg_{}_{}.npy not found in routines memory. Will be computed from source files.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
+        if prnt: print("File ccg_{}_{}.npy not found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
         Pxy = np.empty((len(sortedU), len(sortedU), int(nperseg/2)+1), dtype=np.float64)
         for i, u1 in enumerate(sortedU):
             trnb1 = trnb(dp, u1, bin_size)

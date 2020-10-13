@@ -17,7 +17,17 @@ import numpy as np
 from math import floor
 from scipy import signal
 
+import matplotlib.pylab as plt
+import tkinter
+from tkinter import filedialog as tkFileDialog
+
 from rtn.utils import npa, _as_array
+
+
+#%% IO utilities
+
+def list_files(directory, extension):
+    return [f for f in os.listdir(directory) if f.endswith('.' + extension)]
 
 #%% Extract metadata and sync channel
 
@@ -25,6 +35,7 @@ def read_spikeglx_meta(dp, subtype='ap'):
     '''
     Read spikeGLX metadata file.
     '''
+    assert subtype in ['ap', 'lf']
     metafile=''
     for file in os.listdir(dp):
         if file.endswith(".{}.meta".format(subtype)):
@@ -146,7 +157,7 @@ def unpackbits(x,num_bits = 16):
     to_and = 2**np.arange(num_bits).reshape([1,num_bits])
     return (x & to_and).astype(bool).astype(int).reshape(xshape + [num_bits])
 
-def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
+def get_npix_sync(dp, output_binary = False, sourcefile='lf', unit='seconds'):
     '''Unpacks neuropixels phase external input data
     events = unpack_npix3a_sync(trigger_data_channel)
         Inputs:
@@ -167,32 +178,32 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
         plt.ylabel('Sync channel number'); plt.xlabel('time (s)')
     '''
     assert sourcefile in ['ap', 'lf']
+    assert unit in ['seconds', 'samples']
     fname=''
     onsets={}
     offsets={}
     sync_dp=Path(dp, 'sync_chan')
     
-    # Tries to directly generate and output onsets and offsets
+    # Tries to load pre-saved onsets and offsets
     if op.exists(sync_dp) and not output_binary:
-        print('sync channel extraction directory found: {}'.format(sync_dp))
+        print(f'sync channel extraction directory found: {sync_dp}')
         for file in os.listdir(sync_dp):
-            if file.endswith("on.npy"):
-                fname=file[:-13]
-                for file in os.listdir(sync_dp):
-                    if file.endswith("on.npy"):
-                        file_i = ale(file[-7])
-                        onsets[file_i]=np.load(Path(sync_dp,file))
-                    elif file.endswith("of.npy"):
-                        file_i = ale(file[-7])
-                        offsets[file_i]=np.load(Path(sync_dp,file))
-                    
-                return onsets, offsets
+            if file.endswith("on_samples.npy"):
+                sourcefile_loaded=file.split('.')[-2][:2]
+                if sourcefile_loaded==sourcefile: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
+                    print(f'sync channel onsets extracted from {sourcefile_loaded} file found and loaded.')
+                    srate=read_spikeglx_meta(dp, sourcefile_loaded)['sRateHz'] if unit=='seconds' else 1
+                    file_i = ale(file[-15])
+                    onsets[file_i]=np.load(Path(sync_dp,file))/srate
+                    offsets[file_i]=np.load(Path(sync_dp,file[:-13]+'f'+file[-12:]))/srate
+                        
+                    return onsets, offsets
 
-    # Generates binary and eventually outputs it
+    # Tries to load pre-saved compressed binary
     if op.exists(sync_dp):
-        print("No file ending in 'on.npy' found in sync_chan directory: extracting sync channel from binary.".format(sync_dp))
+        print(f"No file ending in 'on_samples.npy' with the right sampling rate ({sourcefile}) found in sync_chan directory: extracting sync channel from binary.")
         for file in os.listdir(sync_dp):
-            if file.endswith("_sync.npz"):
+            if file.endswith(f"{sourcefile}_sync.npz"):
                 fname=file[:-9]
                 sync_fname=fname+'_sync'
                 binary=np.load(Path(sync_dp, sync_fname+'.npz'))
@@ -201,6 +212,7 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
                 break
     else: os.mkdir(sync_dp)
     
+    # If still no file name, memorymaps binary directly
     if fname=='':
         for file in os.listdir(dp):
             if file.endswith(".lf.bin"):
@@ -211,7 +223,7 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
             for file in os.listdir(dp):
                 if file.endswith(".ap.bin"):
                     fname=file[:-4]
-                    print('{}.lf.bin not found in directory - .ap.bin used instead: extracting sync channel will be slow.'.format(fname))
+                    if sourcefile=='lf': print('{}.lf.bin not found in directory - .ap.bin used instead: extracting sync channel will be slow.'.format(fname))
                     break
         if fname=='':
             raise FileNotFoundError('No binary file found in {}!! Aborting.'.format(dp))
@@ -239,24 +251,27 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf'):
     
     # Generates onsets and offsets from binary
     mult = 1
-    srate = meta['sRateHz']
     sync_idx_onset = np.where(mult*np.diff(binary, axis = 0)>0)
     sync_idx_offset = np.where(mult*np.diff(binary, axis = 0)<0)
     for ichan in np.unique(sync_idx_onset[1]):
         ons = sync_idx_onset[0][
-              sync_idx_onset[1] == ichan]/srate
+              sync_idx_onset[1] == ichan]
         onsets[ichan] = ons
-        np.save(Path(sync_dp, sync_fname+'{}on.npy'.format(ichan)), ons)
+        np.save(Path(sync_dp, sync_fname+'{}on_samples.npy'.format(ichan)), ons)
     for ichan in np.unique(sync_idx_offset[1]):
         ofs = sync_idx_offset[0][
-              sync_idx_offset[1] == ichan]/srate
+              sync_idx_offset[1] == ichan]
         offsets[ichan] = ofs
-        np.save(Path(sync_dp, sync_fname+'{}of.npy'.format(ichan)), ofs)
+        np.save(Path(sync_dp, sync_fname+'{}of_samples.npy'.format(ichan)), ofs)
+    
+    srate = meta['sRateHz'] if unit=='seconds' else 1
+    onsets={ok:ov/srate for ok, ov in onsets.items()}
+    offsets={ok:ov/srate for ok, ov in offsets.items()}
     
     return onsets,offsets
 
 
-def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, ret=1, whiten=0):
+def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, ret=1, whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     ## PARAMETERS
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
@@ -272,9 +287,10 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     rawChunk: numpy array of shape ((c2-c1), (t2-t1)*fs).
     rawChunk[0,:] is channel 0; rawChunk[1,:] is channel 1, etc.
     '''
-    
     # Find binary file
     assert len(times)==2
+    assert times[0]>0
+    assert times[1]<get_rec_len(dp, unit='seconds')
     fname=''
     for file in os.listdir(dp):
         if file.endswith(".{}.bin".format(subtype)):
@@ -293,8 +309,11 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     cm=chan_map(dp, probe_version='local'); assert cm.shape[0]<=Nchans-1
     channels=assert_chan_in_dataset(dp, channels) # index out of 384, should remain the same because rc initial shape is 384!
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
+    if whiten:
+        whitenpad=200
+        t1, t2 = t1-whitenpad, t2+whitenpad
     bn = op.basename(fname) # binary name
-    rcn = '{}_t{}-{}_ch{}-{}.npy'.format(bn, times[0], times[1], channels[0], channels[-1]) # raw chunk name
+    rcn = f'{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}_{whiten}_{med_sub}.npy' # raw chunk name
     rcp = Path(dp, rcn)
     
     if os.path.isfile(rcp):
@@ -322,51 +341,31 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
         bData = f_src.read(bytesRange)
     
     # Decode binary data
+    # channels on axis 0, time on axis 1
     assert len(bData)%2==0
     rc = np.frombuffer(bData, dtype=np.int16) # 16bits decoding
     rc = rc.reshape((int(t2-t1), Nchans)).T
 
+    # Align signal on each channel
+    rc=rc-np.median(rc[:,:10],axis=1)[:,np.newaxis]
+    
+    # Median subtraction = CAR
+    if med_sub:
+        rc=med_substract(rc, 0)
+        
+    # Highpass filter with a 3rd order butterworth filter, like in kilosort2
+    if hpfilt:
+        rc=apply_filter(rc, bandpass_filter(rate=fs, low=None, high=hpfiltf, order=3), axis=1)
+        
     # Whiten data
     if whiten:
-        # with open(fname, 'rb') as f_src:
-        #     # each sample for each channel is encoded on 16 bits = 2 bytes: samples*Nchannels*2.
-        #     byte1 = int(0*Nchans*bytes_per_sample)
-        #     byte2 = int(300000*Nchans*bytes_per_sample)
-        #     bytesRange = byte2-byte1
-            
-        #     f_src.seek(byte1)
-            
-        #     bDataW = f_src.read(bytesRange)
-    
-        # assert len(bDataW)%2==0
-        # rcW = np.frombuffer(bDataW, dtype=np.int16) # 16bits decoding
-        # rcW = rcW.reshape((300000, Nchans))
-        # rcW = rcW[:, channels] # get the right channels range
-        # w = whitening_matrix(rcW)
-        # rc_scales=(np.max(rc, 1)-np.min(rc, 1))
-        # rcW=np.dot(rc.T,w)
-        # rcW=rcW.T
-        # rcW_scales=(np.max(rcW, 1)-np.min(rcW, 1))
-        # rc=rcW*np.repeat((rc_scales/rcW_scales).reshape(rc.shape[0], 1), rc.shape[1], axis=1)
-        
-        # w = whitening_matrix(rc.T)
-        # rc_scales=(np.max(rc, 1)-np.min(rc, 1))
-        # rc=np.dot(rc.T,w)
-        # rc=rc.T
-        # rcW_scales=(np.max(rc, 1)-np.min(rc, 1))
-        # rc=rc*np.repeat((rc_scales/rcW_scales).reshape(rc.shape[0], 1), rc.shape[1], axis=1)
-        rc=whitening(rc)
+        rc=whitening(rc, nRange=nRangeWhiten)
+        rc=rc[:, whitenpad:-whitenpad]
     
     # get the right channels range, AFTER WHITENING
     rc = rc[channels, :] 
     # Scale data
     rc = rc*meta['scale_factor'] # convert into uV
-
-    # Center channels individually
-    offsets = np.median(rc, axis=1)
-    print('Channels are offset by {}uV on average!'.format(np.mean(offsets)))
-    offsets = np.tile(offsets[:,np.newaxis], (1, rc.shape[1]))
-    rc-=offsets
     
     if save: # sync chan saved in extract_syncChan
         np.save(rcp, rc)
@@ -388,67 +387,116 @@ def assert_chan_in_dataset(dp, channels):
 
 #%% Compute stuff to preprocess data
         
-def whitening_matrix(x, fudge=1e-18):
+def whitening_matrix_old(x, epsilon=1e-18):
     """
     wmat = whitening_matrix(dat, fudge=1e-18)
     Compute the whitening matrix.
         - dat is a matrix nsamples x nchannels
     Apply using np.dot(dat,wmat)
     Adapted from phy
-    
-    WARNING: 
+    Parameters:
+        - x: 2D array, rows represents a variable (time), axis 1 an observation (e.g. channel).
+              Multiplying by the whitening matrix whitens across obervations.
+        - fudge: small value added to diagonal to regularize D
+        - nRange: if integer, number of channels to locally compute whitening filter (more robust to noise) | Default None
     """
     assert x.ndim == 2
-    ns, nc = x.shape
-    x_cov = np.cov(x, rowvar=0)
-    assert x_cov.shape == (nc, nc)
-    d, v = np.linalg.eigh(x_cov)
+    x=x.T
+    nrows, ncols = x.shape
+    x_cov = np.cov(x, rowvar=0) # get covariance matrix
+    assert x_cov.shape == (ncols, ncols)
+    d, v = np.linalg.eigh(x_cov) # covariance eigendecomposition (same as svd for positive-definite matrix)
     d[d<0]=0 # handles calculation innacurracies leading to very tiny negative values instead of tiny positive values
-    d = np.diag(1. / np.sqrt(d + fudge))
-    w = np.dot(np.dot(v, d), v.T)
+    d = np.diag(1. / np.sqrt(d + epsilon))
+    w = np.dot(np.dot(v, d), v.T) # V * D * V': ZCA transform
+    return w.T
+
+def whitening_matrix(x, epsilon=1e-18, nRange=None):
+    """
+    wmat = whitening_matrix(dat, fudge=1e-18)
+    Compute the whitening matrix.
+        - dat is a matrix nsamples x nchannels
+    Apply using np.dot(dat,wmat)
+    Adapted from phy
+    Parameters:
+        - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
+             Multiplying by the whitening matrix whitens across obervations.
+        - epsilon: small value added to diagonal to regularize D
+        - nRange: if integer, number of channels to locally compute whitening filter (more robust to noise) | Default None
+    """
+    assert x.ndim == 2
+    nrows, ncols = x.shape
+    x_cov = np.cov(x, rowvar=1) # get covariance matrix across rows (each row is an observation)
+    assert x_cov.shape == (nrows, nrows)
+    if nRange is None:
+        d, v = np.linalg.eigh(x_cov) # covariance eigendecomposition (same as svd for positive-definite matrix)
+        d[d<0]=0 # handles calculation innacurracies leading to very tiny negative values instead of tiny positive values
+        d = np.diag(1. / np.sqrt(d + epsilon))
+        w = np.dot(np.dot(v, d), v.T) # V * D * V': ZCA transform
+        return w
+    ##TODO make that fast with numba
+    rows=np.arange(nrows)
+    w=np.zeros((nrows,nrows))
+    for i in range(x_cov.shape[0]):
+        closest=np.sort(rows[np.argsort(np.abs(rows-i))[:nRange+1]])
+        span=slice(closest[0],closest[-1]+1)
+        x_cov_local=x_cov[span,span]
+        d, v = np.linalg.eigh(x_cov_local) # covariance eigendecomposition (same as svd for positive-definite matrix)
+        d[d<0]=0 # handles calculation innacurracies leading to very tiny negative values instead of tiny positive values
+        d = np.diag(1. / np.sqrt(d + epsilon))
+        w[i,span] = np.dot(np.dot(v, d), v.T)[:,0] # V * D * V': ZCA transform
     return w
 
-def whitening(x):
+def whitening(x, nRange=None):
     '''
-    Whitens along axis 1.
-    For instance, time should be axis 1 and channels axis 0 to whiten in time.
-    Axis 1 must hold more elements than axis 0.
+    Whitens along axis 0.
+    For instance, time should be axis 1 and channels axis 0 to whiten across channels.
+    Axis 1 must be larger than axis 0 (need enough samples to properly estimate variance, covariance).
+        - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
+    Parameters:
+        - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
+             Multiplying by the whitening matrix whitens across obervations.
+        - nRange: if integer, number of channels to locally compute whitening filter (more robust to noise) | Default None
     '''
     assert x.shape[1]>=x.shape[0]
     # Compute whitening matrix
-    w=whitening_matrix(x.T)
-
+    w=whitening_matrix(x, epsilon=1e-18, nRange=nRange)
     # Whiten
     scales=(np.max(x, 1)-np.min(x, 1))
-    x=np.dot(x.T,w)
-    x=x.T
+    x=np.dot(x.T,w).T
     W_scales=(np.max(x, 1)-np.min(x, 1))
     x=x*np.repeat((scales/W_scales).reshape(x.shape[0], 1), x.shape[1], axis=1)
     
     return x
 
-def bandpass_filter(rate=None, low=None, high=None, order=None):
+def bandpass_filter(rate=None, low=None, high=None, order=1):
     """Butterworth bandpass filter."""
-    assert low < high
+    assert low is not None or high is not None
+    if low is not None and high is not None: assert low < high
     assert order >= 1
-    return signal.butter(order,
-                         (low / (rate / 2.), high / (rate / 2.)),
-                         'pass')
+    if high is not None and low is not None:
+        return signal.butter(order, (low,high), 'bandpass', fs=rate)
+    elif low is not None:
+        return signal.butter(order, low, 'lowpass', fs=rate)
+    elif high is not None:
+        return signal.butter(order, high, 'highpass', fs=rate)
 
-def apply_filter(x, filter=None, axis=0):
+def apply_filter(x, filt, axis=0):
     """Apply a filter to an array."""
-    x = _as_array(x)
+    x = np.asarray(x)
     if x.shape[axis] == 0:
         return x
-    b, a = filter
+    b, a = filt
     return signal.filtfilt(b, a, x, axis=axis)
 
-def med_substract(x):
+def med_substract(x, axis=0):
     '''Median substract along axis 0
     (for instance, channels should be axis 0 and time axis 1 to median substract across channels)'''
-    return x-np.median(x, axis=0)
+    assert axis in [0,1]
+    x=x-np.median(x, axis=axis) if axis==0 else x-np.median(x, axis=axis)[:,np.newaxis]
+    return x
 
-def whiten(X, method='zca'):
+def whiten_data(X, method='zca'):
     """
     Whitens the input matrix X using specified whitening method.
     Inputs:
@@ -482,19 +530,18 @@ def whiten(X, method='zca'):
 
     return np.dot(X_centered, W.T)
 
-#%% for convenience, copied from https://github.com/llerussell/paq2py
+#%% paqIO file loading utilities
 
-def paq_read(file_path=None, plot=False):
+def paq_read(file_path=None):
     """
     Read PAQ file (from PackIO) into python
     Lloyd Russell 2015
+    See https://github.com/llerussell/paq2py
     Parameters
     ==========
     file_path : str, optional
         full path to file to read in. if none is supplied a load file dialog
         is opened, buggy on mac osx - Tk/matplotlib. Default: None.
-    plot : bool, optional
-        plot the data after reading? Default: False.
     Returns
     =======
     data : ndarray
@@ -512,8 +559,6 @@ def paq_read(file_path=None, plot=False):
 
     # file load gui
     if file_path is None:
-        import Tkinter
-        import tkFileDialog
         root = Tkinter.Tk()
         root.withdraw()
         file_path = tkFileDialog.askopenfilename()
@@ -562,21 +607,6 @@ def paq_read(file_path=None, plot=False):
 
     # close file
     fid.close()
-
-    # plot
-    if plot:
-        # import matplotlib
-        # matplotlib.use('QT4Agg')
-        import matplotlib.pylab as plt 
-        f, axes = plt.subplots(num_chans, 1, sharex=True, figsize=(10,num_chans), frameon=False)
-        for idx, ax in enumerate(axes):
-            ax.plot(data[idx])
-            ax.set_xlim([0, num_datapoints-1])
-            ax.set_ylim([data[idx].min()-1, data[idx].max()+1])
-            # ax.set_ylabel(units[idx])
-            ax.set_title(chan_names[idx])
-        plt.tight_layout()
-        plt.show()
 
     return {"data": data, 
             "chan_names": chan_names,
@@ -766,3 +796,6 @@ def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
     if length is not None:
         assert len(myrange) == length
     return myrange
+
+
+from rtn.npix.gl import get_rec_len

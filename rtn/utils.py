@@ -302,9 +302,10 @@ def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
 
 def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
     '''
+    Smoothes a 1D array or a 2D array along axis 1
     Parameters:
         - arr: ndarray/list, array to smooth
-        - method: string, see methods implemented below | Default 'gaussian_causal'
+        - method: string, see methods implemented below | Default 'gaussian'
         - sd: int, gaussian window sd (in unit of array samples - e.g. use 10 for a 1ms std if bin size is 0.1ms) | Default 5
         - a: sqrt of Gamma function rate (essentially std) | Default 5
         - frac: lowess parameter, fraction watched ahead to perform smoothing | Default 0.06
@@ -316,14 +317,15 @@ def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
         - gamma (is causal)
         - lowess
     '''
+    assert arr.ndim<=2
     # Checks and formatting
     assert method in ['gaussian', 'gaussian_causal', 'gamma', 'lowess']
     assert type(sd) in [int, np.int]
     arr=npa(arr).astype(float)
-    
     # pad with reversed CCG edges at the beginning and the end to prevnt edge effects...
-    C = len(arr)//2
-    padarr=np.hstack([np.flipud(arr[:C]), arr, np.flipud(arr[-C:])])
+    C = arr.shape[-1]//2
+    if arr.ndim==1: padarr=np.hstack([arr[:C][::-1], arr, arr[-C:][::-1]])
+    elif arr.ndim==2: padarr=np.hstack([arr[:,:C][:,::-1], arr, arr[:,-C:][:,::-1]])
     
     # Compute the kernel
     if method in ['gaussian', 'gaussian_causal', 'gamma']:
@@ -341,18 +343,21 @@ def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
             kernel=np.append(np.zeros(len(kernel)-2*mx), kernel)
         elif mx>len(kernel)/2:
             kernel=np.append(kernel, np.zeros(mx-(len(kernel)-mx)))
-        assert len(kernel)<len(padarr), 'The kernel is longer than the array to convolved, you must decrease the standard deviation parameter.'
+        assert len(kernel)<padarr.shape[-1], 'The kernel is longer than the array to convolved, you must decrease the standard deviation parameter.'
         
         # Convolve array with kernel
-        kernel=kernel/sum(kernel) # normalize kernel to prevent array scaling
-        sarr = np.convolve(padarr, kernel, mode='same')
+        kernel=kernel/sum(kernel) # normalize kernel to prevent vertical scaling
+        if arr.ndim==1: sarr = np.convolve(padarr, kernel, mode='same')
+        elif arr.ndim==2: sarr = np.apply_along_axis(lambda m:np.convolve(m, kernel, mode='same'), axis=1, arr=padarr)
         # kernel_offset=len(kernel)//2
         # sarr=sarr[kernel_offset:-kernel_offset]
     elif method=='lowess':
-        sarr=lowess(padarr, np.arange(len(padarr)), is_sorted=True, frac=frac, it=it)[:,1].flatten()
+        if arr.ndim==1: sarr = lowess(padarr, np.arange(padarr.shape[-1]), is_sorted=True, frac=frac, it=it)[:,1].flatten()
+        elif arr.ndim==2: sarr = np.apply_along_axis(lambda m:lowess(m, np.arange(len(m)), is_sorted=True, frac=frac, it=it), axis=1, arr=padarr)
     
     # Remove padding
-    sarr = sarr[C:-C]
+    if arr.ndim==1: sarr = sarr[C:-C]
+    elif arr.ndim==2:  sarr = sarr[:,C:-C]
     
     assert np.all(sarr.shape==arr.shape)
     
@@ -452,13 +457,21 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, prnt=Tru
         sp=samples[lasti]
     return make_2D_array(samples[:lasti+1])
 
-def align_timeseries(timeseries, sync_signals):
+def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     '''
+    Usage 1: align >=2 time series in the same temporal reference frame with the same sampling frequency fs
+        aligned_ts1, aligned_ts2, ... = align_timeseries([ts1,ts2,...], [sync1,sync2,...], fs)
+    Usage 2:  align >=1 time serie(s) to another temporal reference frame
+        aligned_ts = align_timeseries([ts], [sync_ts, sync_other], [fs_ts, fs_other])
+        
     Re-aligns in time series based on provided sync signals.
-    - timeseries: list of numpy arrays of time stamps (e.g. spikes)
+    - timeseries: list of numpy arrays of time stamps (e.g. spikes), in SAMPLES
+      If Usage 1: THEY MUST BE IN THE SAME TIME REFERENCE FRAME
     - sync_signals: list of numpy arrays of synchronization time stamps,
       ordered with respect to timeseries
-      
+      If Usage 2: THEY MUST ALSO BE IN THE SAME TIME REFERENCE FRAME
+      - fs: int (usage 1) or list of 2 ints (usage 2), sampling frequencies of timeseries and respective sync_signals.
+      - offset_policy: 'original' or 'zero', only for usage 1: whether to set timeseries[0] as 0 or as its original value after alignement.
       The FIRST sync_signal is used as a reference.
       
     Returns:
@@ -466,12 +479,36 @@ def align_timeseries(timeseries, sync_signals):
     
     '''
     assert type(timeseries) is type(sync_signals) is list, "You must provide timeseries and sync_signals as lists of arrays!"
-    assert len(timeseries)==len(sync_signals)>=2, "There must be as many time series as sync signals, at least 2 of each!"
+    for tsi, ts in enumerate(timeseries):
+        assert np.all(ts.astype(int)==ts), 'Timeseries need to be integers, in samples acquired at fs sampling rate!'
+        timeseries[tsi]=ts.astype(int)
+    for tsi, ts in enumerate(sync_signals):
+        assert np.all(ts.astype(int)==ts), 'Sync signals need to be integers, in samples acquired at fs sampling rate!'
+        sync_signals[tsi]=ts.astype(int)
+        
+    if len(timeseries)==1: # Usage 2
+        usage=2
+        offset=sync_signals[1][0]
+        assert len(sync_signals)==2 and len(npa([fs]).flatten())==2, '''When providing a single time series ts, you need to provide 2 sync signals,
+                                        [sync_ts, sync_other] to align ts to sync_other reference frame!'''
+        fs_master=fs[1]
+        fsconv=fs[1]/fs[0]
+        timeseries=[sync_signals[1], timeseries[0]*fsconv]
+        sync_signals=[sync_signals[1], sync_signals[0]*fsconv]
+    elif len(timeseries)>=2: # Usage 1
+        usage=1
+        assert offset_policy in ['zero', 'original'], "offset_policy must be in ['zero', 'original']"
+        offset = timeseries[0][0] if offset_policy=='original' else 0
+        assert len(timeseries)==len(sync_signals)>=2, "There must be as many time series as sync signals, at least 2 of each!"
+        assert len(npa([fs]).flatten())==1, 'You must provide a single sampling frequency fs when aligning >=2 time series (Usage 1)!'
+        fs_master=npa([fs]).flatten()[0]
+
     for ss in sync_signals:
         assert len(sync_signals[0])==len(ss), "WARNING all sync signals do not have the same size, the acquisition must have been faulty!"
     assert len(sync_signals[0])>=1, "Only one synchronization signal has been provided - this is dangerous practice as this does not account for cumulative time drift."
     
     Nevents, totDft, avDft, stdDft = len(sync_signals[0]), (sync_signals[1]-sync_signals[0])[-1], np.mean(np.diff(sync_signals[1]-sync_signals[0])), np.std(np.diff(sync_signals[1]-sync_signals[0]))
+    totDft, avDft, stdDft = totDft*1000/fs_master, avDft*1000/fs_master, stdDft*1000/fs_master
     print("{} sync events used for alignement - start-end drift of {}ms, \
           av. drift between consec. sync events of {}+/-{}ms.".format(Nevents, totDft, avDft, stdDft))
     
@@ -485,9 +522,9 @@ def align_timeseries(timeseries, sync_signals):
                 # re-time to where own sync stamp should be with respect to reference dataset (the 1st one)
                 first_sync_ref0=sync_signals[0][i]-sync_signals[0][0]
                 array=np.append(array[array1<0], array1[array1>=0]+first_sync_ref0)
-        timeseries[dataset_i]=array
+        timeseries[dataset_i]=array+offset
         
-    return timeseries
+    return timeseries if usage==1 else timeseries[1]
 
 #%% Stolen from phy
 def _as_array(arr, dtype=None):

@@ -11,7 +11,7 @@ from ast import literal_eval as ale
 import numpy as np
 import pandas as pd
                     
-from rtn.utils import smooth, thresh_consec
+from rtn.utils import smooth, thresh_consec, npa
 from rtn.npix.gl import get_units
 from rtn.npix.io import read_spikeglx_meta
 
@@ -175,17 +175,20 @@ def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
     i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]/fs
     return np.round(1./np.mean(i),2)
 
-def mfr(dp, u, exclusion_quantile=0.005, enforced_rp=0, subset_selection='all', again=False, train=None):
+def mfr(dp, U, exclusion_quantile=0.005, enforced_rp=0, subset_selection='all', again=False, train=None):
+    U=npa([U]).flatten()
+    MFR=[]
+    for u in U:
+        if train is None:
+            t=trn(dp, u, subset_selection=subset_selection, again=again, enforced_rp=enforced_rp)
+        else:
+            train=np.asarray(train)
+            assert train.ndim==1
+            t=train
+        fs=read_spikeglx_meta(dp)['sRateHz']
+        MFR.append(mean_firing_rate(t, exclusion_quantile, fs))
     
-    if train is None:
-        t=trn(dp, u, subset_selection=subset_selection, again=again, enforced_rp=enforced_rp)
-    else:
-        train=np.asarray(train)
-        assert train.ndim==1
-        t=train
-    fs=read_spikeglx_meta(dp)['sRateHz']
-    
-    return mean_firing_rate(t, exclusion_quantile, fs)
+    return MFR[0] if len(U)==1 else npa(MFR)
 
 def binarize(X, bin_size, fs, rec_len=None):
     '''Function to turn a spike train (array of time stamps)

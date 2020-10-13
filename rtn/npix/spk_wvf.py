@@ -149,7 +149,7 @@ def get_peak_chan(dp, unit, use_template=False):
     peak_chan = int(np.nonzero(np.max(max_min_wvf)==max_min_wvf)[0][0])
     return cm[:,0][peak_chan]
 
-def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False):
+def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False, again=False):
     '''
     Usage:
         Either feed in a list of units - the function will return their indices/channels sorted by depth in a n_units x 2 array,
@@ -163,14 +163,15 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False):
           Column 1: unit indices, column 2: respective peak channel indices.
     '''
     save=False # can only turn True if no (i.e. all) units are fed
-    
+    strdic={True:'templates', False:'raw-waveforms'}
+        
     if not any(units):
         # If no units, load them all from dataset
         # and prepare to save the FULL array of peak channels at the end
-        units=get_units(dp, quality=quality)
-        strdic={True:'templates', False:'raw-waveforms'}
+        units=get_units(dp, quality=quality, again=again)
+        assert any(units)
         pc_fname='peak_channels_{}_{}.npy'.format(strdic[use_template], quality)
-        if op.exists(Path(dp, pc_fname)):
+        if op.exists(Path(dp, pc_fname)) and not again:
             peak_chans=np.load(Path(dp, pc_fname))
             if np.all(np.isin(units, peak_chans[:,0])):
                 return peak_chans
@@ -182,13 +183,15 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False):
         # If units are fed, try to load the peak channels from the saved FULL array of peak channels
         # else, just calculate the peak channels for the relevant units
         units=npa(units).flatten()
-        if op.exists(Path(dp, 'peak_channels_all.npy')):
-            peak_chans=np.load(Path(dp, 'peak_channels_all.npy'))
+        f_all=f'peak_channels_{strdic[use_template]}_all.npy'
+        f_good=f'peak_channels_{strdic[use_template]}_good.npy'
+        if op.exists(Path(dp, f_all)):
+            peak_chans=np.load(Path(dp, f_all))
             if np.all(np.isin(units, peak_chans[:,0])):
                 units_mask=np.isin(peak_chans[:,0], units)
                 return peak_chans[units_mask]
-        elif op.exists(Path(dp, 'peak_channels_good.npy')):
-            peak_chans=np.load(Path(dp, 'peak_channels_good.npy'))
+        elif op.exists(Path(dp, f_good)):
+            peak_chans=np.load(Path(dp, f_good))
             if np.all(np.isin(units, peak_chans[:,0])):
                 units_mask=np.isin(peak_chans[:,0], units)
                 return peak_chans[units_mask]

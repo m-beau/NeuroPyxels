@@ -33,30 +33,32 @@ def assert_multidatasets(dp):
         mcs=np.load(Path(dp, 'merged_clusters_spikes.npz'))
         return mcs[list(mcs.keys())[0]]
 
-def load_units_qualities(dp):
-    f1='cluster_group.tsv'
-    f2='cluster_groups.csv'
-    if os.path.isfile(Path(dp, f1)):
-        qualities = pd.read_csv(Path(dp, f1),delimiter='	')
-    elif os.path.isfile(Path(dp, 'merged_'+f1)):
-        qualities = pd.read_csv(Path(dp, 'merged_'+f1), delimiter='	', index_col='dataset_i')
-    elif os.path.isfile(f2):
-        qualities = pd.read_csv(Path(dp, f2), delimiter=',')
-    elif os.path.isfile(f2):
-        qualities = pd.read_csv(Path(dp, 'merged_'+f2), delimiter=',', index_col='dataset_i')
+def load_units_qualities(dp, again=False):
+    f='cluster_group.tsv'
+    if os.path.isfile(Path(dp, f)):
+        qualities = pd.read_csv(Path(dp, f),delimiter='	')
+    elif os.path.isfile(Path(dp, 'merged_'+f)):
+        qualities = pd.read_csv(Path(dp, 'merged_'+f), delimiter='	', index_col='dataset_i')
     else:
-        print('cluster groups table not found in provided data path.')
-        return
+        print('cluster groups table not found in provided data path. Generated from spike_clusters.npy.')
+        units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
+        qualities=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
+        qualities.to_csv(Path(dp, 'cluster_group.tsv'), sep='	', index=False)
+        return qualities
+        
+    if again: # file was found if this line is reached
+        units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
+        new_unsorted_units=units[~np.isin(units, qualities['cluster_id'])]
+        qualities=qualities.append(pd.DataFrame({'cluster_id':new_unsorted_units, 'group':['unsorted']*len(new_unsorted_units)}), ignore_index=True)
+        qualities=qualities.sort_values('cluster_id')
+        qualities.to_csv(Path(dp, 'cluster_group.tsv'), sep='	', index=False)
+        
     return qualities
 
-def get_units(dp, quality='all', chan_range=None):
+def get_units(dp, quality='all', chan_range=None, again=False):
     assert quality in ['all', 'good', 'mua', 'noise']
     
-    cl_grp = load_units_qualities(dp)
-    if cl_grp is None:
-        units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
-        cl_grp=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
-        cl_grp.to_csv(Path(dp, 'cluster_group.tsv'), sep='	', index=False)
+    cl_grp = load_units_qualities(dp, again=again)
         
     units=[]
     if cl_grp.index.name=='dataset_i':

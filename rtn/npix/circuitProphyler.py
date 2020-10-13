@@ -151,7 +151,7 @@ class Prophyler:
                 print('WARNING: all your datasets are not stored in the same pre-directory - {} is picked anyway.'.format(predirname))
         self.dp_pro= Path(predirname) / ('prophyler'+ds_names) #Path(predirname, 'prophyler'+ds_names)
         self.name=ds_names
-        print('Prophyler data (shared across {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_pro))
+        print('>>> Prophyler data (shared across {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_pro))
         if not op.isdir(self.dp_pro):
             os.mkdir(self.dp_pro)
         else:
@@ -189,11 +189,14 @@ class Prophyler:
             # Only if merged_clusters_times does not exist already or does but re-spikesorting has been detected
             merge_fname='merged_clusters_spikes'
             if (not op.exists(Path(self.dp_pro, merge_fname+'.npy'))) or re_spksorted:
-                print("Loading independent spike trains of {} datasets...".format(len(self.ds_table.index)))
+                print(">>> Loading spike trains of {} datasets...".format(len(self.ds_table.index)))
                 spike_times, spike_clusters, sync_signals = [], [], []
+                fileCreateTimes, fileTimeSecs = [], [] # used to assess if files were recorded on the same NI card
                 for ds_i in self.ds_table.index:
                     ds=self.ds[ds_i]
-                    ons, offs = get_npix_sync(ds.dp)
+                    fileCreateTimes.append(ds.meta['fileCreateTime'])
+                    fileTimeSecs.append(ds.meta['fileTimeSecs'])
+                    ons, offs = get_npix_sync(ds.dp, output_binary = False, sourcefile='ap', unit='samples')
                     spike_times.append(np.load(Path(ds.dp, 'spike_times.npy')).flatten())
                     spike_clusters.append(np.load(Path(ds.dp, 'spike_clusters.npy')).flatten())
                     if ds.probe_version == '3A':
@@ -204,8 +207,11 @@ class Prophyler:
                 NspikesTotal=0
                 for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
                 
-                print("Aligning spike trains of {} datasets...".format(len(self.ds_table.index)))
-                spike_times = align_timeseries(spike_times, sync_signals)
+                print(">>> Aligning spike trains of {} datasets...".format(len(self.ds_table.index)))
+                if (all(e==fileCreateTimes[0] for e in fileCreateTimes) and all(e==fileTimeSecs[0] for e in fileTimeSecs)):
+                    print('>>> All fed datasets were recorded on the same NI card - no alignment necessary, keep spike times as they are!')
+                else:
+                    spike_times = align_timeseries(spike_times, sync_signals, 30000)
                 merged_clusters_spikes=npa(zeros=(NspikesTotal, 3), dtype=np.uint64) # 1:dataset index, 2:unit index
                 cum_Nspikes=0
                 for ds_i in self.ds_table.index:
@@ -216,11 +222,11 @@ class Prophyler:
                     cum_Nspikes+=Nspikes
                 merged_clusters_spikes=merged_clusters_spikes[np.argsort(merged_clusters_spikes[:,2])]
                 np.save(Path(self.dp_pro, merge_fname+'.npy'), merged_clusters_spikes)
-                print('{} saved at {}.'.format(merge_fname+'.npy', self.dp_pro))
+                print('>>> {} saved at {}.'.format(merge_fname+'.npy', self.dp_pro))
                 self.merged_clusters_spikes=np.memmap(Path(self.dp_pro, merge_fname+'.npy'))
                 del spike_times, spike_clusters, sync_signals, merged_clusters_spikes
             
-            print('{} found at {} and memory mapped at self.merged_clusters_spikes.'.format(merge_fname+'.npy', self.dp_pro))
+            print('>>> {} found at {} and memory mapped at self.merged_clusters_spikes.'.format(merge_fname+'.npy', self.dp_pro))
             self.merged_clusters_spikes=np.memmap(Path(self.dp_pro, merge_fname+'.npy'))
         
         # CREATE A KEYWORD IN CCG FUNCTION: MERGED_DATASET=TRUE OR FALSE - IF TRUE, HANDLES LOADED FILE AS 3xNspikes ARRAY RATHER THAN 2 LOADED ARRAYS
@@ -234,6 +240,7 @@ class Prophyler:
         self.units={}
         for ds_i in self.ds_table.index:
             ds=self.ds[ds_i]
+            assert any(ds.get_good_units()), f'Aborting - circuit prophyler can only work on a spike-sorted dataset, find good units in {ds.name} before calling it!'
             ds.get_peak_positions()
             for u, pos in ds.peak_positions.items():
                 self.peak_positions['{}_{}'.format(ds_i,u)]=pos+npa([100,0])*ds_i # Every dataset is offset by 100um on x

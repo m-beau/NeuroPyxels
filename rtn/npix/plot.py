@@ -11,7 +11,6 @@ import pickle as pkl
 
 import numpy as np
 import pandas as pd
-from scipy import signal as sgnl
 
 import matplotlib
 import matplotlib as mpl
@@ -19,13 +18,11 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoLocator
 
 import holoviews as hv
-from holoviews import opts
 import bokeh as bk
 
 import seaborn as sns
 
-from rtn.utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctColors15, mark_dict,\
-                    npa, zscore, mpl_colors
+from rtn.utils import phyColorsDic, DistinctColors20, npa, zscore, isnumeric
 from rtn.stats import fractile_normal, fractile_poisson
 
 from rtn.npix.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
@@ -48,7 +45,7 @@ def save_mpl_fig(fig, figname, saveDir, _format):
     if not saveDir.exists():
         assert saveDir.parent.exists(), f'WARNING can only create a path of a single directory level, {saveDir.parent} must exist already!'
         saveDir.mkdir()
-    fig.savefig(saveDir/f"{figname}.{_format}", dpi=300)
+    fig.savefig(saveDir/f"{figname}.{_format}", dpi=300, bbox_inches='tight')
             
 
 def mplshow(fig):
@@ -126,40 +123,41 @@ def get_bestticks_from_array(arr, step=None):
     return ticks
 
 def get_labels_from_ticks(ticks):
+    ticks=npa(ticks)
     nflt=0
     for i, t in enumerate(ticks):
-        if t != round(t, 0):
-            nflt=1
-            if t != round(t, 1):
-                nflt=2
-    ticks_labels=npa(ticks).astype(int) if nflt==0 else np.round(ticks, nflt)
-    if nflt!=0: ticks_labels=[str(l)+'0'*(nflt+2-len(str(l))) for l in ticks_labels]
+        t=round(t,4)
+        for roundi in range(4):
+            if t == round(t, roundi):
+                if nflt<(roundi):nflt=roundi
+                break
+    ticks_labels=ticks.astype(int) if nflt==0 else np.round(ticks.astype(float), nflt)
+    jump_n=1 if nflt==0 else 2
+    ticks_labels=[str(l)+'0'*(nflt+jump_n-len(str(l).replace('-',''))) for l in ticks_labels]
     return ticks_labels, nflt
     
 def mplp(fig=None, ax=None, figsize=None,
          xlim=None, ylim=None, xlabel=None, ylabel=None,
-         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None,
+         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=False, reset_yticks=False, xtickrot=0, ytickrot=0,
          axlab_w='bold', axlab_s=20,
          ticklab_w='regular', ticklab_s=16, ticks_direction='out', lw=1,
          title=None, title_w='bold', title_s=24,
-         hide_top_right=False, hide_axis=False):
+         hide_top_right=True, hide_axis=False):
     '''
     make plots pretty
     matplotlib plots
     '''
     if fig is None: fig=plt.gcf()
     if ax is None: ax=fig.axes[0]
-    
     hfont = {'fontname':'Arial'}
-    if figsize is None: figsize=fig.get_size_inches()
-    fig.set_figwidth(figsize[0])
-    fig.set_figheight(figsize[1])
+    if figsize is not None:
+        fig.set_figwidth(figsize[0])
+        fig.set_figheight(figsize[1])
     # Opportunity to easily hide everything
     if hide_axis:
         ax.axis('off')
         return fig, ax
-    else:
-        ax.axis('on')
+    else: ax.axis('on')
     
     # Axis labels
     if ylabel is None:ylabel=ax.get_ylabel()
@@ -167,54 +165,63 @@ def mplp(fig=None, ax=None, figsize=None,
     ax.set_ylabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
     ax.set_xlabel(xlabel, weight=axlab_w, size=axlab_s, **hfont)
     
-    # Setup limits BEFORE changing tick labels because tick labels remain unchanged despite limits change!
+    # Setup limits BEFORE altering the ticks
+    # since the limits will alter the ticks
     if xlim is None: xlim=ax.get_xlim()
     if ylim is None: ylim=ax.get_ylim()
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
     
-    # Ticks and ticks labels
+    # Tick values
     if xticks is None:
-        ax.xaxis.set_major_locator(AutoLocator())
-        xticks= ax.get_xticks()
-        #if xlim is None:xticks=xticks[1:-1]
+        if reset_xticks:
+            ax.xaxis.set_major_locator(AutoLocator())
+        xticks=ax.get_xticks()
+        ax.set_xticks(xticks)
+    else: ax.set_xticks(xticks)
     if yticks is None:
-        ax.yaxis.set_major_locator(AutoLocator())
-        yticks= ax.get_yticks()
-        #if ylim is None: yticks=yticks[1:-1]
-    ax.set_xticks(xticks)
-    ax.set_yticks(yticks)
+        if reset_yticks:
+            ax.yaxis.set_major_locator(AutoLocator())
+        yticks=ax.get_yticks()
+        ax.set_yticks(yticks)
+    else: ax.set_yticks(yticks)
     
-    x_nflt=0
+    # Tick labels
+    fig.canvas.draw() # To force setting of ticklabels
     if xtickslabels is None:
-        xtickslabels,x_nflt=get_labels_from_ticks(xticks)
-        assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/fey xtickslabels!'
+        if any(ax.get_xticklabels()):
+            if isnumeric(ax.get_xticklabels()[0].get_text()): xtickslabels,x_nflt=get_labels_from_ticks(xticks)
+            else: xtickslabels = ax.get_xticklabels()
     if ytickslabels is None:
-        ytickslabels,y_nflt=get_labels_from_ticks(yticks)
-    else:
-        assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels!'
-
+        if any(ax.get_yticklabels()):
+            if isnumeric(ax.get_yticklabels()[0].get_text()): ytickslabels,y_nflt=get_labels_from_ticks(yticks)
+            else: ytickslabels = ax.get_yticklabels()
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
-
-    rot=45 if (x_nflt==2) and (fig.get_figwidth()<=6) else 0
-    ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=rot)
-    ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont)
-
+    if xtickslabels is not None:
+        assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/few xtickslabels!'
+        ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=xtickrot)
+    if ytickslabels is not None:
+        assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels!'
+        ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=ytickrot)
+    
+    # Title
     if title is None: title=ax.get_title()
     ax.set_title(title, size=title_s, weight=title_w)
     
+    # Ticks and spines aspect
     ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=6, direction=ticks_direction)
     if hide_top_right: [ax.spines[sp].set_visible(False) for sp in ['top', 'right']]
     else: [ax.spines[sp].set_visible(True) for sp in ['top', 'right']]
-        
     for sp in ['left', 'bottom', 'top', 'right']:
         ax.spines[sp].set_lw(lw)
     
+    # Alignement and spacing elements
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    fig.align_ylabels()
-    fig.align_xlabels()
-    
+    axis_to_align = [AX for AX in fig.axes if AX.__repr__().split('.')[3].split(' ')[0]=='AxesSubplot']
+    fig.align_ylabels(axis_to_align)
+    fig.align_xlabels(axis_to_align)
+        
     return fig, ax
 
     
@@ -423,9 +430,14 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     
     return fig
 
-def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), subtype='ap', offset=450, saveDir='~/Downloads', saveData=0, saveFig=0,
-             _format='pdf', color='multi', whiten=False, nRangeWhiten=None, med_sub=False, hpfilt=0, hpfiltf=300, pyqtgraph=0, show_allyticks=0, yticks_jump=50, events=[], set0atEvent=1, figsize=(20,8),
-             plot_ylabels=True, ax=None, title=None, ext_data=None, ext_datachans=np.arange(384), lw=1, as_heatmap=False, vmin=-50,vmax=50,center=0):
+def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), subtype='ap',
+             offset=450, color='multi', lw=1,
+             title=None, _format='pdf',  saveDir='~/Downloads', saveData=0, saveFig=0, figsize=(20,8),
+             whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
+             plot_ylabels=True, show_allyticks=0, yticks_jump=50,
+             events=[], set0atEvent=1,
+             ax=None, ext_data=None, ext_datachans=np.arange(384), 
+             as_heatmap=False, vmin=-50,vmax=50,center=0):
     '''
     ## PARAMETERS
     - bp: binary path (files must ends in .bin, typically ap.bin)
@@ -455,6 +467,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
     
     '''
+    pyqtgraph=0
     meta=read_spikeglx_meta(dp, subtype)
     fs = int(meta['sRateHz'])
     assert type(events) is list
@@ -469,10 +482,12 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
             window[1]=window[1]+1*1000/fs # to make actual window[1] tick visible
             assert times is None, 'You can either provide a window of 2 times or a list of alignement_events + a single window to compute an average, but not both!'
             assert len(alignement_events)>1
-            rc = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, subtype, saveData, 1, whiten, med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten)
+            rc = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, subtype, saveData,
+                                  whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
             for e in alignement_events[1:]:
                 times=e+npa(window)/1e3
-                rc+=extract_rawChunk(dp, times, channels, subtype, saveData, 1, whiten, med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten)
+                rc+=extract_rawChunk(dp, times, channels, subtype, saveData,
+                                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
             rc/=len(alignement_events)
     else:
         channels=assert_chan_in_dataset(dp, ext_datachans)
@@ -598,9 +613,11 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     
     return win,p
 
-def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Downloads', saveData=0, saveFig=0, whiten=1, nRangeWhiten=None, hpfilt=0, hpfiltf=300,
-             _format='pdf', colors='phy', Nchan_plot=5, spk_window=82, pyqtgraph=0, show_allyticks=0, events=[], set0atEvent=1,
-             figsize=(20,8), ax=None, title=None, lw=1):
+def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
+                   Nchan_plot=5, spk_window=82, colors='phy', back_color='k', lw=1,
+                   title=None, saveDir='~/Downloads', saveData=0, saveFig=0, _format='pdf', figsize=(20,8),
+                   whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
+                   show_allyticks=0, yticks_jump=50, plot_ylabels=True, events=[], set0atEvent=1):
     '''
     ## PARAMETERS
     - bp: binary path (files must ends in .bin, typically ap.bin)
@@ -616,19 +633,26 @@ def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Do
     fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
     
     '''
+    pyqtgraph=0
     # if channels is None:
     #     peakChan=get_peak_chan(dp,units[0])
     #     channels=np.arange(peakChan-Nchan_plot//2-1, peakChan+Nchan_plot//2+2)
     channels=assert_chan_in_dataset(dp, channels)
-    rc = extract_rawChunk(dp, times, channels, 'ap', saveData, 1, whiten, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten)
+    rc = extract_rawChunk(dp, times, channels, 'ap', saveData,
+                          whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
     # Offset data
     plt_offsets = np.arange(0, len(channels)*offset, offset)
     plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rc.shape[1]))
     rc+=plt_offsets
     
-    back_color='k'
-    fig=plot_raw(dp, times, None, [-5,10], channels, 'ap', offset, saveDir, saveData, 0, color=back_color, whiten=whiten, nRangeWhiten=nRangeWhiten, hpfilt=hpfilt, hpfiltf=hpfiltf,
-                 pyqtgraph=pyqtgraph, show_allyticks=show_allyticks, events=events, set0atEvent=set0atEvent, figsize=figsize, title=title, lw=lw)
+    
+    fig=plot_raw(dp, times, None, None, channels,
+             subtype='ap', offset=450, saveDir=saveDir, saveData=saveData, saveFig=0,
+             _format=_format, color=back_color,
+             whiten=whiten, nRangeWhiten=nRangeWhiten, med_sub=med_sub, nRangeMedSub=nRangeMedSub, hpfilt=hpfilt, hpfiltf=hpfiltf, ignore_ks_chanfilt=ignore_ks_chanfilt,
+             show_allyticks=show_allyticks, yticks_jump=50, events=events, set0atEvent=set0atEvent, figsize=figsize,
+             plot_ylabels=True, ax=None, title=title, lw=lw)
+             
     if not pyqtgraph: ax=fig.get_axes()[0]
     assert type(units) is list
     assert len(units)>=1
@@ -687,7 +711,7 @@ def plot_raw_units(dp, times, units=[], channels=None, offset=450, saveDir='~/Do
 
 #%% Peri-event time plots: rasters, psths...
 
-def psth_plot(times, events, events_toplot=[0], psthb=5, psthw=[-1000, 1000], remove_empty_trials=False,
+def psth_plot(times, events, events_toplot=[0], events_color='r', psthb=5, psthw=[-1000, 1000], remove_empty_trials=False,
            title='', color='darkgreen', figsize=None,
            saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf',
            zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000],
@@ -720,7 +744,7 @@ def psth_plot(times, events, events_toplot=[0], psthb=5, psthw=[-1000, 1000], re
     yl=ax.get_ylim()
     if not (zscore or bsl_subtract): yl=[0,yl[1]]
     for etp in events_toplot:
-        ax.plot([etp,etp], yl, ls='--', lw=1, c='r')
+        ax.plot([etp,etp], yl, ls='--', lw=1, c=events_color)
         ax.set_ylim(yl)
         
     xl=psthw
@@ -747,10 +771,11 @@ def psth_plot(times, events, events_toplot=[0], psthb=5, psthw=[-1000, 1000], re
     
     return fig
 
-def raster_plot(times, events, events_toplot=[0], window=[-1000, 1000], remove_empty_trials=False,
+def raster_plot(times, events, events_toplot=[0], events_color='r', trials_toplot=[], window=[-1000, 1000], remove_empty_trials=False,
            title='', color='darkgreen', colorpalette="tab10", marker='|', malpha=0.9, size=None, lw=3, sparseylabels=True, figsize=None,
-           saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf', ax=None,
-           show_psth=False, psthb=5,
+           saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf',
+           as_heatmap=False, vmin=None, center=None, vmax=None, cmap_str=None,
+           show_psth=False, psthb=10,
            zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000],
            convolve=True, gsd=2):
     '''
@@ -789,16 +814,12 @@ def raster_plot(times, events, events_toplot=[0], window=[-1000, 1000], remove_e
     else: assert len(color)==n_cells
     subplots_ratio=[4*n_cells,n_cells]
     
-    if ax is None:
-        if show_psth:
-            grid = plt.GridSpec(sum(subplots_ratio), 1, wspace=0.2, hspace=0.2)
-            fig = plt.figure()
-            ax=fig.add_subplot(grid[:-n_cells, :])
-        else:
-            fig, ax = plt.subplots()
+    if show_psth:
+        grid = plt.GridSpec(sum(subplots_ratio), 1, wspace=0.2, hspace=0.2)
+        fig = plt.figure()
+        ax=fig.add_subplot(grid[:-n_cells, :])
     else:
-        assert not show_psth and n_cells==1
-        fig=ax.get_figure()
+        fig, ax = plt.subplots()
     
     
     # Define y ticks according to n_cells and trials order
@@ -819,47 +840,71 @@ def raster_plot(times, events, events_toplot=[0], window=[-1000, 1000], remove_e
             if yi%(n_cells)==0:y_ticks_labels_sparse.append(yt)
             else:y_ticks_labels_sparse.append('')
         y_ticks_labels=y_ticks_labels_sparse
-    
+        
     # Plot raster
     if size is None: size=max(10,5400//len(events)) # 180 for 30 events
     if show_psth:size-=30; size=max(size,10)
-    for ci in range(n_cells):
-        at, atb = align_times(times[ci], events, window=window, remove_empty_trials=remove_empty_trials)
-        col='black' if n_cells==1 else color[ci]
-        for e, ts in at.items():
-            i=events_order[np.nonzero(e==events)[0][0]]
-            y=[y_ticks[i*n_cells+ci]]*len(ts)
-            ts=npa(ts)*1000 # convert to ms
-            ax.scatter(ts, y, s=size, c=col, alpha=malpha, marker=marker, lw=lw)
-            
-    
     if title == '':
-        title='raster'
-    xlabel='Time(ms)' if not show_psth else None
+        title='raster' if not as_heatmap else 'heatmap'
+    xlabel='Time (ms)'
+    xlabel_plot=xlabel if not show_psth else None
     if figsize is None: figsize=[5,subplots_ratio[0]*2]
     if show_psth: figsize[1]=figsize[1]+figsize[1]//subplots_ratio[0]
-    fig,ax=mplp(fig=fig, ax=ax, figsize=(figsize[0], max(figsize[1], len(at)//4)),
-         xlim=window, ylim=[y_ticks[-1]+1, 0], xlabel=xlabel, ylabel="Trials",
-         xticks=None, yticks=y_ticks, xtickslabels=None, ytickslabels=y_ticks_labels,
-         axlab_w='bold', axlab_s=20,
-         ticklab_w='regular',ticklab_s=16, lw=1,
-         title=title, title_w='bold', title_s=24,
-         hide_top_right=True, hide_axis=False)
-    
+    for ci in range(n_cells):
+        if as_heatmap:
+            x, y, y_p, y_p_var = get_processed_ifr(times[ci], events, b=psthb, window=window, remove_empty_trials=remove_empty_trials,
+                                      zscore=zscore, zscoretype='within', 
+                                      convolve=convolve, gsd=gsd, method='gaussian_causal',
+                                      bsl_subtract=bsl_subtract, bsl_window=bsl_window, process_y=True)
+            if vmin is None: vmin = 0 if not (zscore|bsl_subtract) else -max(abs(0.9*y.min()),abs(0.9*y.max()))
+            if center is None: center = 0.4*y.max()if not (zscore|bsl_subtract) else 0
+            if vmax is None: vmax = 0.9*y.max() if not (zscore|bsl_subtract) else max(abs(0.9*y.min()),abs(0.9*y.max()))
+            if cmap_str is None: cmap_str = 'viridis' if not (zscore|bsl_subtract) else 'RdBu_r'
+            ntrials=y.shape[0]
+            imshow_cbar(y, origin='top', events_toplot=events_toplot, events_color=events_color,
+                        xvalues=np.arange(window[0], window[1], psthb), yvalues=np.arange(ntrials)+1,
+                        xticks=None, yticks=y_ticks,
+                        xticklabels=None, yticklabels=y_ticks_labels, xlabel=xlabel_plot, ylabel='Trials', title=title,
+                        cmapstr=cmap_str, vmin=vmin, vmax=vmax, center=center, colorseq='nonlinear',
+                        clabel='Inst. firing rate (Hz)', extend_cmap='neither', cticks=None,
+                        figsize=(figsize[0], max(figsize[1], ntrials//4)), aspect='auto', function='imshow', ax=ax)
+            
+        else:
+            at, atb = align_times(times[ci], events, window=window, remove_empty_trials=remove_empty_trials)
+            ntrials=len(at)
+            col='black' if n_cells==1 else color[ci]
+            for e, ts in at.items():
+                i=events_order[np.nonzero(e==events)[0][0]]
+                y=[y_ticks[i*n_cells+ci]]*len(ts)
+                ts=npa(ts)*1000 # convert to ms
+                ax.scatter(ts, y, s=size, c=col, alpha=malpha, marker=marker, lw=lw)
+            fig,ax=mplp(fig=fig, ax=ax, figsize=(figsize[0], max(figsize[1], ntrials//4)),
+                 xlim=window, ylim=[y_ticks[-1]+1, 0], xlabel=xlabel_plot, ylabel="Trials",
+                 xticks=None, yticks=y_ticks, xtickslabels=None, ytickslabels=y_ticks_labels,
+                 axlab_w='bold', axlab_s=20,
+                 ticklab_w='regular',ticklab_s=16, lw=1,
+                 title=title, title_w='bold', title_s=24,
+                 hide_top_right=True, hide_axis=False)
+    print(f'{ntrials} trials.')
+    xl=ax.get_xlim()
     yl=ax.get_ylim()
     for etp in events_toplot:
-        ax.plot([etp,etp], yl, ls='--', lw=1, c='k')
+        ax.plot([etp,etp], yl, ls='--', lw=1, c=events_color)
+    if any(trials_toplot):
+        for ttp in trials_toplot:
+            ax.plot(xl, [ttp,ttp], ls='--', lw=1, c='k')
     ax.set_ylim(yl)
+    ax.set_xlim(xl)
 
     if show_psth:
         xticks=ax.get_xticks()
-        xticklabels=ax.get_xticklabels()
+        xticklabels=get_labels_from_ticks(xticks)[0]
         ax.set_xticklabels([])
         for ci in range(n_cells):
             ax_psth=fig.add_subplot(grid[-n_cells+ci, :])
             xticklabels_subplot=xticklabels if ci==n_cells-1 else ['' for i in xticklabels]
             xlabel_subplot=xlabel if ci==n_cells-1 else None
-            psth_plot(times[ci], events, events_toplot=events_toplot, psthb=psthb, psthw=window,
+            psth_plot(times[ci], events, events_toplot=events_toplot, events_color=events_color, psthb=psthb, psthw=window,
                      remove_empty_trials=remove_empty_trials,
                        title=None, color=color[ci], figsize=None,
                        saveDir=saveDir,
@@ -1388,14 +1433,23 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
 
 #%% Heatmaps including correlation matrices
 
-def imshow_cbar(im, xticks=None, yticks=None, xticklabels=None, yticklabels=None, xlabel=None, ylabel=None, 
+def imshow_cbar(im, origin='top', events_toplot=[], events_color='k',
+                xvalues=None, yvalues=None, xticks=None, yticks=None,
+                xticklabels=None, yticklabels=None, xlabel=None, ylabel=None, title='',
                 cmapstr="RdBu_r", vmin=-1, vmax=1, center=0, colorseq='nonlinear',
-                clabel=None, extend='neither', cticks=None, figsize=(6,4), aspect='auto', function='imshow', **kwargs):
+                clabel=None, extend_cmap='neither', cticks=None,
+                figsize=(6,4), aspect='auto', function='imshow',
+                ax=None, **kwargs):
     '''
     Essentially plt.imshow(im, cmap=cmapstr), but with a nicer and actually customizable colorbar.
     
     Parameters:
         - im: 2D array def to matplotlib.pyplot.imshow
+        - origin: y axis origin, either top or bottom | Default: top
+        - xvalues, yvalues: lists/arrays of lengths im.shape[1] and im.shape[0], respectively.
+                            Allows to alter the value to which pixel positions are mapped (which are dumb pixel ranks by default).
+        - xticks, yticks: allows to alter the position of the ticks (in [0,npixels] space by default, in xvalues/yvalues space if they are provided)
+        - xticklabels, yticklabels: allows to alter the label of the ticks - should have the same size as xticks/yticks
         - cmapstr: string, colormap name
         - vmin: value to which the lower boundary of the colormap corresponds
         - vmax: value to which the upper boundary of the colormap corresponds
@@ -1403,7 +1457,7 @@ def imshow_cbar(im, xticks=None, yticks=None, xticklabels=None, yticklabels=None
         - colorseq: string, {'linear', 'nonlinear'}, whether to shrink or not the colormap between the center and the closest boundary
                     when 'center' is not None and isn't equidistant between vmax and vmin
         - clabel: string, colormap label
-        - extend: tring, {'neither', 'both', 'min', 'max'}. If not 'neither', make pointed end(s) for out-of- range values.
+        - extend_cmap: tring, {'neither', 'both', 'min', 'max'}. If not 'neither', make pointed end(s) for out-of- range values.
         - cticks: list of ticks to show
         - aspect: {'equal', 'auto'}, see imshow documentation
     '''
@@ -1427,37 +1481,57 @@ def imshow_cbar(im, xticks=None, yticks=None, xticklabels=None, yticklabels=None
             colors_reindex=np.append(np.linspace(0, 0.5, int(256*bottomratio/2)),np.linspace(0.5, 1, int(256*topratio/2)))
         cmap = mpl.colors.ListedColormap(cmap(colors_reindex))
         
-    # Plot image with custom colormap
-    fig,ax=plt.subplots(figsize=figsize)
-    if function=='imshow': axim=ax.imshow(im, cmap=cmap, vmin=vmin, vmax=vmax, aspect=aspect,**kwargs)
-    elif function=='pcolor': axim=ax.pcolormesh(im, cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
-    if xticks is not None: ax.set_xticks(xticks)
-    if yticks is not None: ax.set_yticks(yticks)
-    if xticklabels is not None: ax.set_xticklabels(xticklabels)
-    if yticklabels is not None: ax.set_yticklabels(yticklabels)
-    if ylabel is not None: ax.set_ylabel(ylabel)
-    if xlabel is not None: ax.set_xlabel(xlabel)
+    # Define pixel coordinates (default is 0 to n_rows-1 for y and n_columns=1 for x)
+    if xvalues is None: xvalues=np.arange(im.shape[1])
+    assert len(xvalues)==im.shape[1], f'xvalues should contain {im.shape[1]} values but contains {len(xvalues)}!'
+    dx = (xvalues[1]-xvalues[0])/2.
+    if yvalues is None: yvalues=np.arange(im.shape[0])
+    assert len(yvalues)==im.shape[0], f'yvalues should contain {im.shape[0]} values but contains {len(yvalues)}!'
+    dy = (yvalues[1]-yvalues[0])/2.
+    extent = [xvalues[0]-dx, xvalues[-1]+dx, yvalues[-1]+dy, yvalues[0]-dy]
     
+    # Plot image with custom colormap
+    fig,ax=plt.subplots(figsize=figsize) if ax is None else (ax.get_figure(), ax)
+    if function=='imshow': axim=ax.imshow(im, cmap=cmap, vmin=vmin, vmax=vmax, aspect=aspect, 
+                                          origin={'top':'upper', 'bottom':'lower'}[origin], extent=extent, **kwargs)
+    elif function=='pcolor': axim=ax.pcolormesh(im, X=xvalues, Y=yvalues,
+                                                cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
+    if any(events_toplot):
+        for e in events_toplot:
+            yl=ax.get_ylim()
+            ax.plot([e,e],yl,lw=2,ls='--',c=events_color)
+            ax.set_ylim(yl)
+            
+    mplp(fig, ax, figsize=figsize,
+          xlim=None, ylim=None, xlabel=xlabel, ylabel=ylabel,
+          xticks=xticks, yticks=yticks, xtickslabels=xticklabels, ytickslabels=yticklabels,
+          reset_xticks=False, reset_yticks=False, xtickrot=0, ytickrot=0,
+          axlab_w='bold', axlab_s=20,
+          ticklab_w='regular', ticklab_s=16, ticks_direction='out', lw=1,
+          title=title, title_w='bold', title_s=24,
+          hide_top_right=False, hide_axis=False)
+
     # Add colorbar, nicely formatted
     axpos=ax.get_position()
     cbaraxx0,cbaraxy0 = float(axpos.x0+axpos.width+0.01), float(axpos.y0)
     cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, .02, .3])
     fig.colorbar(axim, cax=cbar_ax, ax=ax,
              orientation='vertical', label=clabel,
-             extend=extend, ticks=cticks, use_gridspec=True)
+             extend=extend_cmap, ticks=cticks, use_gridspec=True)
     if clabel is not None:
-        cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family='arial',weight='bold', size=12))
+        cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family='arial',weight='bold', size=16))
         cbar_ax.yaxis.label.set_rotation(-90)
         cbar_ax.yaxis.label.set_va('bottom')
         cbar_ax.yaxis.label.set_ha('center')
         cbar_ax.yaxis.labelpad=5
-    # if cticks is not None:
-        # cbar_ax.yaxis.set_ticklabels([t.get_text() for t in cbar_ax.yaxis.get_ticklabels()], ha='center')
-        # cbar_ax.yaxis.set_tick_params(pad=11)
-        # set_ax_size(ax,*fig.get_size_inches())
+    fig.canvas.draw()
+    cbar_ax.yaxis.set_ticklabels([t.get_text() for t in cbar_ax.yaxis.get_ticklabels()], ha='center')
+    cbar_ax.yaxis.set_tick_params(pad=11, labelsize=14)
+    set_ax_size(ax,*fig.get_size_inches())
+
     return fig
 
-# Plot correlation matrix of variables x ovservations 2D arrray
+# Plot correlation matrix of variables x observations 2D arrray
     
 def plot_cm(dp, units, cwin=100, cbin=0.2, b=5, corrEvaluator='CCG', vmax=5, vmin=0, cmap='viridis', subset_selection='all',
             saveDir='~/Downloads', saveFig=False, _format='pdf', title=None, ret_cm=False):

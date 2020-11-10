@@ -112,7 +112,7 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
     elif probe_version=='1.0_aligned':
         Nchan=384
         cm_el = npa([[  11,   0],
-                           [  43,   0]])
+                     [  43,   0]])
         vert=npa([[  0,   20],
                   [  0,   20]])
         
@@ -139,7 +139,7 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
                              atypical and probe_version is hence called 'local', \
                              the datapath needs to be provided to load the channel map.")
         c_ind=np.load(op.join(dp, 'channel_map.npy'));cp=np.load(op.join(dp, 'channel_positions.npy'));
-        cm=npa(np.hstack([c_ind, cp]), dtype=np.int32)
+        cm=npa(np.hstack([c_ind.reshape(max(c_ind.shape),1), cp]), dtype=np.int32)
         
     if y_orig=='surface':
         cm[:,1:]=cm[:,1:][::-1]
@@ -157,7 +157,7 @@ def unpackbits(x,num_bits = 16):
     to_and = 2**np.arange(num_bits).reshape([1,num_bits])
     return (x & to_and).astype(bool).astype(int).reshape(xshape + [num_bits])
 
-def get_npix_sync(dp, output_binary = False, sourcefile='lf', unit='seconds'):
+def get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='seconds'):
     '''Unpacks neuropixels phase external input data
     events = unpack_npix3a_sync(trigger_data_channel)
         Inputs:
@@ -271,17 +271,23 @@ def get_npix_sync(dp, output_binary = False, sourcefile='lf', unit='seconds'):
     return onsets,offsets
 
 
-def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, ret=1, whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None):
+def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0,
+                     whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
+                     ignore_ks_chanfilt=0):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     ## PARAMETERS
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
     - times: list of boundaries of the time window, in seconds [t1, t2].
     - channels (default: np.arange(384)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
-    - fs (default 30000): sampling rate
-    - ampFactor (default 500): gain factor of recording (can be different for LFP and AP, check SpikeGLX/OpenEphys)
-    - Nchans (default 385): total number of channels on the probe, including sync channel (3A: 385)
-    - syncChan: sync channel, 0 indexed(3A: 384)
+    - subtype: 'ap' or 'lf', whether to exxtract from the high-pass or low-pass filtered binary file
     - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
+    - whiten: whether to whiten the data across channels. If nRangeWhiten is not None, whitening matrix is computed with the nRangeWhiten closest channels.
+    - med_sub: whether to median-subtract the data across channels. If nRangeMedSub is not none, median of each channel is computed using the nRangeMedSub closest channels.
+    - hpfilt: whether to high-pass filter the data, using a 3 nodes butterworth filter of cutoff frequency hpfiltf.
+    - hpfiltf: see hpfilt
+    - nRangeWhiten: int, see whiten.
+    - nRangeMedSub: int, see med_sub.
+    - ignore_ks_chanfilt: whether to ignore the filtering made by kilosort, which only uses channels with average events rate > ops.minfr to spike sort. | Default False
     
     ## RETURNS
     rawChunk: numpy array of shape ((c2-c1), (t2-t1)*fs).
@@ -307,14 +313,14 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     
     # Format inputs
     cm=chan_map(dp, probe_version='local'); assert cm.shape[0]<=Nchans-1
-    channels=assert_chan_in_dataset(dp, channels) # index out of 384, should remain the same because rc initial shape is 384!
+    if not ignore_ks_chanfilt: channels=assert_chan_in_dataset(dp, channels) # index out of 384, should remain the same because rc initial shape is 384!
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
     if whiten:
         whitenpad=200
         t1, t2 = t1-whitenpad, t2+whitenpad
     bn = op.basename(fname) # binary name
     rcn = f'{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}_{whiten}_{med_sub}.npy' # raw chunk name
-    rcp = Path(dp, rcn)
+    rcp = Path(dp, 'routinesMemory', rcn)
     
     if os.path.isfile(rcp):
         return np.load(rcp)
@@ -351,7 +357,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     
     # Median subtraction = CAR
     if med_sub:
-        rc=med_substract(rc, 0)
+        rc=med_substract(rc, 0, nRange=nRangeMedSub)
         
     # Highpass filter with a 3rd order butterworth filter, like in kilosort2
     if hpfilt:
@@ -370,10 +376,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0, r
     if save: # sync chan saved in extract_syncChan
         np.save(rcp, rc)
     
-    if ret:
-        return rc
-    else:
-        return
+    return rc
 
 
 def assert_chan_in_dataset(dp, channels):
@@ -489,12 +492,20 @@ def apply_filter(x, filt, axis=0):
     b, a = filt
     return signal.filtfilt(b, a, x, axis=axis)
 
-def med_substract(x, axis=0):
+def med_substract(x, axis=0, nRange=None):
     '''Median substract along axis 0
     (for instance, channels should be axis 0 and time axis 1 to median substract across channels)'''
     assert axis in [0,1]
-    x=x-np.median(x, axis=axis) if axis==0 else x-np.median(x, axis=axis)[:,np.newaxis]
-    return x
+    if nRange is None:
+        return x-np.median(x, axis=axis) if axis==0 else x-np.median(x, axis=axis)[:,np.newaxis]
+    n_points=x.shape[axis]
+    x_local_med=np.zeros(x.shape)
+    points=np.arange(n_points)
+    for xi in range(n_points):
+        closest=np.sort(points[np.argsort(np.abs(points-xi))[:nRange+1]])
+        if axis==0: x_local_med[xi,:]=np.median(x[closest,:], axis=axis) 
+        elif axis==1: x_local_med[:,xi]=np.median(x[:,closest], axis=axis)
+    return x-x_local_med
 
 def whiten_data(X, method='zca'):
     """

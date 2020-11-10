@@ -90,7 +90,7 @@ def get_units(dp, quality='all', chan_range=None, again=False):
                     cl_grp=cl_grp.append(unsort_df, ignore_index=True)
                     cl_grp.to_csv(Path(dp, 'cluster_group.tsv'), sep='	', index=False)
             else:
-                units = cl_grp.loc[np.nonzero(npa(cl_grp['group']==quality))[0], 'cluster_id'].values.astype(np.int64)
+                raise ValueError(f'you cannot try to load {quality} units before manually curating a dataset - run phy once and try again.')
         
     if chan_range is None:
         return units

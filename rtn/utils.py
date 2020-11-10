@@ -7,6 +7,7 @@ import warnings
 warnings.simplefilter("default", category=NumbaDeprecationWarning) #'ignore'
 warnings.simplefilter('default', category=NumbaPendingDeprecationWarning)#'ignore'
 
+from ast import literal_eval as ale
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -107,6 +108,14 @@ def npa(arr=[], **kwargs):
     if 'dtype' in kwargs.keys():
         arr = np.array(arr, dtype=kwargs['dtype'])
     return arr
+
+def isnumeric(x):
+    x=str(x).replace('−','-')
+    try:
+        ale(x)
+        return True
+    except:
+        return False
 
 def sign(x):
     "Returns the sign of the input number (1 or -1). 1 for 0 or -0."

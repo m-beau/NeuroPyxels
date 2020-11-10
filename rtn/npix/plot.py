@@ -524,9 +524,13 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
             xticklabels = get_bestticks_from_array(t, step=None)
             xticks=xticklabels*fs/1000
             y_ticks_labels=npa([x*10 if x%2==0 else x*10-10 for x in y_ticks_labels])
-            fig=imshow_cbar(im=rc, xticks=xticks-xticks[0], yticks=y_ticks, xticklabels=xticklabels, yticklabels=y_ticks_labels, xlabel=None, ylabel=None, 
-                cmapstr="RdBu_r", vmin=vmin, vmax=vmax, center=center, colorseq='nonlinear',
-                clabel='Voltage (\u03BCV)', extend='neither', cticks=None, figsize=(4,10), aspect='auto', function='imshow')
+            
+            fig=imshow_cbar(im=rc, origin='top', events_toplot=[], events_color='k',
+                            xvalues=None, yvalues=None, xticks=xticks-xticks[0], yticks=y_ticks,
+                            xticklabels=xticklabels, yticklabels=y_ticks_labels, xlabel=None, ylabel=None, 
+                            cmapstr="RdBu_r", vmin=vmin, vmax=vmax, center=center, colorseq='nonlinear',
+                            clabel='Voltage (\u03BCV)', extend_cmap='neither', cticks=None,
+                            figsize=(4,10), aspect='auto', function='imshow', ax=None)
             ax=fig.axes[0]
             ax.set_ylabel('Depth (\u03BCm)', size=14, weight='bold')
         else:
@@ -867,7 +871,7 @@ def raster_plot(times, events, events_toplot=[0], events_color='r', trials_toplo
                         xticklabels=None, yticklabels=y_ticks_labels, xlabel=xlabel_plot, ylabel='Trials', title=title,
                         cmapstr=cmap_str, vmin=vmin, vmax=vmax, center=center, colorseq='nonlinear',
                         clabel='Inst. firing rate (Hz)', extend_cmap='neither', cticks=None,
-                        figsize=(figsize[0], max(figsize[1], ntrials//4)), aspect='auto', function='imshow', ax=ax)
+                        figsize=figsize, aspect='auto', function='imshow', ax=ax)
             
         else:
             at, atb = align_times(times[ci], events, window=window, remove_empty_trials=remove_empty_trials)
@@ -878,7 +882,7 @@ def raster_plot(times, events, events_toplot=[0], events_color='r', trials_toplo
                 y=[y_ticks[i*n_cells+ci]]*len(ts)
                 ts=npa(ts)*1000 # convert to ms
                 ax.scatter(ts, y, s=size, c=col, alpha=malpha, marker=marker, lw=lw)
-            fig,ax=mplp(fig=fig, ax=ax, figsize=(figsize[0], max(figsize[1], ntrials//4)),
+            fig,ax=mplp(fig=fig, ax=ax, figsize=figsize,
                  xlim=window, ylim=[y_ticks[-1]+1, 0], xlabel=xlabel_plot, ylabel="Trials",
                  xticks=None, yticks=y_ticks, xtickslabels=None, ytickslabels=y_ticks_labels,
                  axlab_w='bold', axlab_s=20,

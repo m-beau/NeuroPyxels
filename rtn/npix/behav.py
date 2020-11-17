@@ -26,10 +26,10 @@ import scipy.stats as stats
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.decomposition import PCA
 
-from rtn.utils import seabornColorsDic, npa, thresh, smooth, sign, align_timeseries
+from rtn.utils import seabornColorsDic, npa, thresh, thresh_consec, smooth, sign, align_timeseries
 
 from rtn.npix.io import read_spikeglx_meta, get_npix_sync, paq_read, list_files
-from rtn.npix.spk_t import trn, trnb, isi
+from rtn.npix.spk_t import trn, trnb, isi, mean_firing_rate
 from rtn.npix.corr import crosscorr_cyrille
 
 import cv2
@@ -121,7 +121,7 @@ def get_events(dp, event_type, f_behav=None, include_wheel_data=False, add_spont
 
 #%% Generate trials dataframe from either paqIO file or matlab datastructure
 
-def paq_to_trialsdf(dp, f_behav=None, tasktype='wheelturn_rew', again=False, plot=True, lick_ili_th=0.75, **taskwargs):
+def paq_to_trialsdf(dp, f_behav=None, tasktype='wheelturn_rew', again=False, plot=True, lick_ili_th=0.075, **taskwargs):
     f'''
     Parameters:
         - dp: string, path to neuropixels dataset directory.
@@ -139,19 +139,25 @@ def paq_to_trialsdf(dp, f_behav=None, tasktype='wheelturn_rew', again=False, plo
     wheelturn_args=['include_wheel_data', 'add_spont_licks',
                     'wheel_gain', 'rew_zone', 'rew_frames', 'vr_rate',
                     'wheel_diam', 'difficulty', 'ballistic_thresh', 'plot']
-    running_args=[]
+    running_args=['add_wheel_data',
+                  'vr_rate', 'runwheel_diam', 'plot',
+                  'opto_prot']
     passed_args=list(taskwargs.keys())
     
     ## Try to load presaved df
     dp=Path(dp)
     if tasktype=='wheelturn_rew':
         areIn=np.isin(passed_args, wheelturn_args)
-        fn=dp/f"behavior/trials_df-{tasktype}-{taskwargs['include_wheel_data']}-{taskwargs['add_spont_licks']}-{taskwargs['difficulty']}-{taskwargs['ballistic_thresh']}.csv"
+        fn=dp/f"behavior/trials_df-{tasktype}-{lick_ili_th}-{taskwargs['include_wheel_data']}-{taskwargs['add_spont_licks']}-{taskwargs['difficulty']}-{taskwargs['ballistic_thresh']}.csv"
     elif tasktype=='running_rew':
         areIn=np.isin(passed_args, running_args)
-        fn=dp/f"behavior/trials_df-{tasktype}-{taskwargs['include_run_data']}"
+        fn=dp/f"behavior/trials_df-{tasktype}-{lick_ili_th}-{taskwargs['add_wheel_data']}-{taskwargs['vr_rate']}-{taskwargs['runwheel_diam']}.csv"
     assert np.all(areIn), 'WARNING some of the passed arguments cannot be interpreted for the task type {tasktype}:{passed_args[~areIn]}'
-    if fn.exists() and not again: return pd.read_csv(fn)
+    if fn.exists() and not again:
+        if tasktype=='running_rew':
+            return pd.read_csv(fn), pickle.load(open(str(fn).replace('.csv','.pkl'),"rb"))
+        else:
+            return pd.read_csv(fn) ##TODO implement behav_dic for wheelturn_rew
     
     ## Load paq data and npix sync channel data
     if f_behav is None:
@@ -169,21 +175,26 @@ def paq_to_trialsdf(dp, f_behav=None, tasktype='wheelturn_rew', again=False, plo
     ## Match Paq data to npix data - convert paq onsets/offsets to npix time frame (or directly use it if available)
     # First, match npix sync channels to paqIO channels through exhaustive screening
     # (only one match for 3B recordings, several for 3A recordings)
-    paq_npix_df=pd.DataFrame(columns=['npix', 'paq', 'p'])
+    paq_npix_df=pd.DataFrame(columns=['npix', 'paq', 'p', 'len_match'])
     for npixk, npixv in npix_ons.items():
         for paqk, paqv in paqdic.items():
             if '_ON' in paqk and len(paqv)>1:
                 p=stats.kstest(np.diff(npixv)/npix_fs, np.diff(paqv)/paq_fs)[1]
-                paq_npix_df=paq_npix_df.append({'npix':npixk, 'paq':paqk, 'p':p}, ignore_index=True)
+                lenmatch=int(len(paqdic[paqk])==len(npix_ons[npixk]))
+                paq_npix_df=paq_npix_df.append({'npix':npixk, 'paq':paqk, 'p':p, 'len_match':lenmatch}, ignore_index=True)
     npix_paq={}
     for npixk in npix_ons.keys():
         match_p=(paq_npix_df.loc[paq_npix_df['npix']==npixk, 'p']>0.99)
-        if match_p.any():
-            paqk=paq_npix_df.loc[paq_npix_df['npix']==npixk, 'paq'][match_p].values[0]
-            if len(paqdic[paqk])==len(npix_ons[npixk]):
-                print(f'Match found between npix channel {npixk} and paqIO channel {paqk} ({len(npix_ons[npixk])} events)!')
-                npix_paq[npixk]=paqk
-                npix_paq[paqk]=npixk
+        match_l=(paq_npix_df.loc[paq_npix_df['npix']==npixk, 'len_match']==1)
+        if match_p.any() or match_l.any():
+            paqk=paq_npix_df.loc[paq_npix_df['npix']==npixk, 'paq'][match_p|match_l].values
+            assert paqk.shape[0]==1, f'WARNING, more than one match found ({paqk}) between npix sync channel and PaqIO!!'
+            paqk=paqk[0]
+            print(f'\n\n>>> Match found between npix channel {npixk} and paqIO channel {paqk} ({len(npix_ons[npixk])} events)!\n\n')
+            npix_paq[npixk]=paqk
+            npix_paq[paqk]=npixk
+    assert len(npix_paq)>0, 'WARNING no match was found between paqIO file and npix sync channel!'
+    
     # Then, pick the longest matching sync channel to align paqIO channels not acquired with npix
     len_arr=npa([[k,len(npix_ons[k])] for k in npix_paq.keys() if k in npix_ons.keys()])
     sync_npix_k=len_arr[np.argmax(len_arr[:,1]),0]
@@ -207,12 +218,14 @@ def paq_to_trialsdf(dp, f_behav=None, tasktype='wheelturn_rew', again=False, plo
     if plot:
         hbins=np.logspace(np.log10(0.005),np.log10(10), 500)
         fig,ax=plt.subplots()
+        ax.set_title('Licks distribution before filtering')
         hist=np.histogram(np.diff(licks_on/npix_fs), bins=hbins)
         ax.hist(np.diff(licks_on/npix_fs), bins=hbins)
         ax.set_xscale('log')
         plt.xlim(0.005,10)
         plt.ylim(0,max(hist[0][hist[1][:-1]>0.05])+10)
         fig,ax=plt.subplots()
+        ax.set_title('Licks distribution after filtering')
         hist=np.histogram(np.diff(paqdic['LICKS_Piezo_ON_npix']/npix_fs), bins=hbins)
         ax.hist(np.diff(paqdic['LICKS_Piezo_ON_npix']/npix_fs), bins=hbins)
         ax.set_xscale('log')
@@ -424,7 +437,7 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
     df.to_csv(fn)
     return df
 
-def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=False, add_spont_licks=False,
+def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=False,
                               vr_rate=30, runwheel_diam=200, plot=True,
                               opto_prot=None):
     '''
@@ -472,7 +485,7 @@ def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=Fa
                   (100, 20,'train','med'), (100, 20,'train','high')]
     n_opto=0
     for batch in optoprot: n_opto+=batch[0]
-    assert n_opto==paqdic['opto_stims_ON'].shape[0], "WARNING mismatch between number of optostims provided by your stim protocol {n_opto} and by the recording files {paqdic['opto_stims_ON'].shape[0]}!"
+    # assert n_opto==paqdic['opto_stims_ON'].shape[0], f"WARNING mismatch between number of optostims provided by your stim protocol {n_opto} and by the recording files {paqdic['opto_stims_ON'].shape[0]}!"
     optoprotocol=np.array([optoprot[0][1]]*optoprot[0][0])
     for optpt in optoprot[1:]:
         optoprotocol=np.append(optoprotocol, [optpt[1]]*optpt[0])
@@ -492,18 +505,21 @@ def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=Fa
     for tri,ton in enumerate(paqdic['TRIALON_ON_npix']):
         df.loc[tri, 'trialnum']=tri
         df.loc[tri, 'trial_onset']=ton
-        reward=rewards[(rewards>ton-1*npix_fs)&(rewards<ton+1*npix_fs)] # rew is either at trial onset or 500ms later - simple to use a -1/+1s window
-        cue=cues[(cues>ton-1*npix_fs)&(cues<ton+1*npix_fs)] # cue is always at trial onset - simple to use a -1/+1s window
+        reward=rewards[(ton-0.1*npix_fs<rewards)&(rewards<ton+0.6*npix_fs)] # rew is either at trial onset or 500ms later
+        cue=cues[(cues>ton-0.1*npix_fs)&(cues<ton+0.1*npix_fs)] # cue is always at trial onset
         assert any(cue)|any(reward), "WARNING no reward or cue found on this trial - figure out what's gone wong!"
         if any(cue): assert cue.shape[0]==1; df['cue_onset']=cue[0]
         if any(reward): assert reward.shape[0]==1; df['reward_onset']=reward[0]
         if any(cue)&any(reward):
-            df['trial_type']='cued_reward'
+            df.loc[tri, 'trial_type']='cued_reward'
         elif any(cue):
-            df['trial_type']='cue_alone'
+            df.loc[tri, 'trial_type']='cue_alone'
         elif any(reward):
-            df['trial_type']='random_reward'
-        df['lick_onsets']=licks[(licks>ton*npix_fs)&(licks<ton+4*npix_fs)] # 0s to +4s, either center on cue or reward
+            df.loc[tri, 'trial_type']='random_reward'
+        df.at[tri, 'lick_onsets']=licks[(licks>ton*npix_fs)&(licks<ton+4*npix_fs)] # 0s to +4s, either center on cue or reward
+        
+        # df.loc[tri, 'running_speed']=
+        # df.loc[tri, 'light_state']=
     
     # Add running wheel data
     # if add_wheel_data:
@@ -521,15 +537,17 @@ def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=Fa
     # Add 'train trials': not behaviour per se, but convenient to store here.
     
     # Append spontaneous licks at the end
-    if add_spont_licks:
-        allocated_licks=npa([list(df.loc[i, "lick_onsets"]) for i in df.index]).flatten()
-        spontaneous_licks=paqdic['LICKS_Piezo_ON_npix'][~np.isin(paqdic['LICKS_Piezo_ON_npix'], allocated_licks)]
-        i=df.index[-1]+1
-        df.loc[i, 'trial_type']='spontaneous_licks'
-        df.loc[i, "lick_onsets"]=spontaneous_licks
-        
+    allocated_licks=npa([list(df.loc[i, "lick_onsets"]) for i in df.index]).flatten()
+    spontaneous_licks=paqdic['LICKS_Piezo_ON_npix'][~np.isin(paqdic['LICKS_Piezo_ON_npix'], allocated_licks)]
+    i=df.index[-1]+1
+    df.loc[i, 'trial_type']='spontaneous_licks'
+    df.at[i, "lick_onsets"]=spontaneous_licks
+    
+    behav_dic=dict(rewards=rewards, cues=cues, licks=licks)
+    
     df.to_csv(fn)
-    return df
+    pickle.dump(behav_dic, open(str(fn).replace('.csv','.pkl'),"wb"))
+    return df, behav_dic
 
 def import_PAQdata(paq_f, variables='all', again=False, unit='seconds'):
     '''
@@ -879,6 +897,18 @@ def get_processed_ifr(times, events, b=2, window=[-1000,1000], remove_empty_tria
     if x.shape[0]>y.shape[1]:
         x=x[:-1]
     assert x.shape[0]==y.shape[1]
+    
+    # Get mean firing rate to remove trials with too low fr (prob drift)
+    if remove_empty_trials:
+        y=y.astype(float)
+        low_fr_th=0.2 #%
+        consec_time=500 #ms
+        consec_time=consec_time//b
+        m_fr=mean_firing_rate(times, exclusion_quantile=0.005, fs=1) # in seconds
+        for triali, trial in enumerate(y):
+            fr_dropped=thresh_consec(trial, m_fr*low_fr_th, sgn=-1, n_consec=consec_time, exclude_edges=True, only_max=False, ret_values=True)
+            if len(fr_dropped)>0: y[triali,:]=np.nan
+        y=y[~np.isnan(y[:,0]),:]
         
     # zscore or not
     if zscore or bsl_subtract: # use baseline of ifr far from stimulus
@@ -894,12 +924,12 @@ def get_processed_ifr(times, events, b=2, window=[-1000,1000], remove_empty_tria
                 y_p = (np.mean(y, axis=0)-y_mn)/y_sd
                 y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
             elif zscoretype=='across':
-                y_mn = np.mean(y, axis=0)
-                y_sd = np.std(y, axis=0)
+                y_mn = np.mean(y_bsl.flatten())
+                y_sd = np.std(y_bsl.flatten())
                 if y_sd==0: y_sd=1
-                if process_y: y =  (y-y_mn)/y_sd
+                if process_y: y = (y-y_mn)/y_sd
                 y_p = (np.mean(y, axis=0)-y_mn)/y_sd
-                y_p_var = np.ones(y_p.shape) # variability across trials is already included in the zscore calculation...
+                y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
             
         elif bsl_subtract:
             if process_y: y = y-y_mn

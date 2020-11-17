@@ -140,7 +140,7 @@ def mplp(fig=None, ax=None, figsize=None,
          xlim=None, ylim=None, xlabel=None, ylabel=None,
          xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=False, reset_yticks=False, xtickrot=0, ytickrot=0,
          axlab_w='bold', axlab_s=20,
-         ticklab_w='regular', ticklab_s=16, ticks_direction='out', lw=1,
+         ticklab_w='regular', ticklab_s=16, ticks_direction='out', lw=2,
          title=None, title_w='bold', title_s=24,
          hide_top_right=True, hide_axis=False):
     '''
@@ -210,7 +210,7 @@ def mplp(fig=None, ax=None, figsize=None,
     ax.set_title(title, size=title_s, weight=title_w)
     
     # Ticks and spines aspect
-    ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=6, direction=ticks_direction)
+    ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=4, direction=ticks_direction)
     if hide_top_right: [ax.spines[sp].set_visible(False) for sp in ['top', 'right']]
     else: [ax.spines[sp].set_visible(True) for sp in ['top', 'right']]
     for sp in ['left', 'bottom', 'top', 'right']:
@@ -861,16 +861,17 @@ def raster_plot(times, events, events_toplot=[0], events_color='r', trials_toplo
                                       convolve=convolve, gsd=gsd, method='gaussian_causal',
                                       bsl_subtract=bsl_subtract, bsl_window=bsl_window, process_y=True)
             if vmin is None: vmin = 0 if not (zscore|bsl_subtract) else -max(abs(0.9*y.min()),abs(0.9*y.max()))
-            if center is None: center = 0.4*y.max()if not (zscore|bsl_subtract) else 0
-            if vmax is None: vmax = 0.9*y.max() if not (zscore|bsl_subtract) else max(abs(0.9*y.min()),abs(0.9*y.max()))
+            if center is None: center = 0.4*y.max() if not (zscore|bsl_subtract) else 0
+            if vmax is None: vmax = 0.8*y.max() if not (zscore|bsl_subtract) else max(abs(0.9*y.min()),abs(0.9*y.max()))
             if cmap_str is None: cmap_str = 'viridis' if not (zscore|bsl_subtract) else 'RdBu_r'
             ntrials=y.shape[0]
+            clab='Inst. firing rate (Hz)' if not zscore else 'Inst. firing rate (zscore)'
             imshow_cbar(y, origin='top', events_toplot=events_toplot, events_color=events_color,
                         xvalues=np.arange(window[0], window[1], psthb), yvalues=np.arange(ntrials)+1,
                         xticks=None, yticks=y_ticks,
                         xticklabels=None, yticklabels=y_ticks_labels, xlabel=xlabel_plot, ylabel='Trials', title=title,
                         cmapstr=cmap_str, vmin=vmin, vmax=vmax, center=center, colorseq='nonlinear',
-                        clabel='Inst. firing rate (Hz)', extend_cmap='neither', cticks=None,
+                        clabel=clab, extend_cmap='neither', cticks=None,
                         figsize=figsize, aspect='auto', function='imshow', ax=ax)
             
         else:
@@ -1072,10 +1073,14 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
             elif (j,i) in list(psth.data.keys()): psth_sorted[(j,i)]=psth[(j,i)]
         
     # turn holomap into a plottable layout/overlay
-    ncols=1
-    if not column and not overlay:
+    if overlay:
+        ncols=1
+        nrows = len(events) if overlay_dim == 'events' else len(trains)
+    else:
         if order[0]=='event': ncols,nrows=len(trains),len(events)
         elif order[0]=='unit': ncols,nrows=len(events),len(trains)
+    if column: ncols=1
+        
     trsps=True if ncols>1 else False
     
     if overlay:

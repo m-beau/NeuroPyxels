@@ -175,16 +175,17 @@ def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
     i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]/fs
     return np.round(1./np.mean(i),2)
 
-def mfr(dp, U, exclusion_quantile=0.005, enforced_rp=0, subset_selection='all', again=False, train=None):
+def mfr(dp=None, U=None, exclusion_quantile=0.005, enforced_rp=0, subset_selection='all', again=False, train=None, fs=None):
+    if train is not None:
+        assert fs is not None, 'you need to provide a sampling frequency!'
+        train=np.asarray(train)
+        assert train.ndim==1
+        return mean_firing_rate(train, exclusion_quantile, fs)
+        
     U=npa([U]).flatten()
     MFR=[]
     for u in U:
-        if train is None:
-            t=trn(dp, u, subset_selection=subset_selection, again=again, enforced_rp=enforced_rp)
-        else:
-            train=np.asarray(train)
-            assert train.ndim==1
-            t=train
+        t=trn(dp, u, subset_selection=subset_selection, again=again, enforced_rp=enforced_rp)
         fs=read_spikeglx_meta(dp)['sRateHz']
         MFR.append(mean_firing_rate(t, exclusion_quantile, fs))
     

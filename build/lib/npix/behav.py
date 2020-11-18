@@ -32,6 +32,12 @@ from npix.io import read_spikeglx_meta, get_npix_sync, paq_read, list_files
 from npix.spk_t import trn, trnb, isi, mean_firing_rate
 from npix.corr import crosscorr_cyrille
 
+import cv2
+
+#%% Import time stamps from PaqIO
+
+
+
 #%% Extract behavioral event times in neuropixels recording reference time from trials dataframe
 
 def get_event_types():

@@ -4,10 +4,10 @@ from setuptools import setup, find_packages
 with open("README.md", "r") as readme_file:
     readme = readme_file.read()
 
-requirements=['numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
+requirements=['ipython', 'spyder', 'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'six', 'elephant', 'vispy', 'statsmodels', 'progressbar2',
-      'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'pyqtgraph', 'imutils', 'opencv-contrib-python',
-      'h5py', 'holoviews', 'hvplot', 'twine==1.13.0']
+      'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils',
+      'h5py', 'holoviews', 'hvplot']
 
 setup(name='npix',
       version='1.0',

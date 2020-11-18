@@ -21,8 +21,7 @@ import matplotlib.pylab as plt
 import tkinter
 from tkinter import filedialog as tkFileDialog
 
-from from npix.utils import npa
-.utils import npa, _as_array
+from npix.utils import npa, _as_array
 
 
 #%% IO utilities

@@ -24,7 +24,7 @@ from npix.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_m
 def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True,
         save=True, prnt=False, again=False,
         whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=False,
-        use_old=False, loop=True, parallel=True):
+        use_old=False, loop=True, parallel=True, memorysafe=False):
     '''
     ********
     routine from rtn.npix.spk_wvf
@@ -82,14 +82,14 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
         else:
             waveforms = get_waveforms(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size, ignore_nwvf,
                                      whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt, prnt,
-                                     loop, parallel)
+                                     loop, parallel, memorysafe)
         # Save it
         if save:np.save(Path(dprm,fn), waveforms)
     return waveforms
 
 def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True,
                  whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=0,
-                 prnt=False, loop=True, parallel=True):
+                 prnt=False, loop=True, parallel=True, memorysafe=False):
     f"{wvf.__doc__}"
     
     # Extract and process metadata
@@ -144,10 +144,20 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
                 # Pad the extracted chunk if at recording limit.
                 if slc.start <= 0: extract = _pad(extract, _n_samples_extract, 'left')
                 elif slc.stop >= traces.shape[0] - 1: extract = _pad(extract, _n_samples_extract, 'right')
+                # Preprocess the waveforms.
+                extract=extract.T
+                if hpfilt|med_sub|whiten and memorysafe:
+                    if hpfilt:
+                        extract=apply_filter(extract, bandpass_filter(rate=sample_rate, low=None, high=hpfiltf, order=3), axis=1)
+                    if med_sub:
+                        extract=med_substract(extract, axis=0, nRange=nRangeMedSub)
+                    if whiten:
+                        extract=whitening(extract, nRange=nRangeWhiten)
+                        
                 # Add this waveform, all good!
-                waveforms[i,:,:] = extract.T
+                waveforms[i,:,:] = extract
         # Preprocess the waveforms.
-        if hpfilt|med_sub|whiten:
+        if hpfilt|med_sub|whiten and not memorysafe:
             waveforms=np.transpose(waveforms, (1,0,2)).reshape((nc, n_spikes*_n_samples_extract))
             if hpfilt:
                 waveforms=apply_filter(waveforms, bandpass_filter(rate=sample_rate, low=None, high=hpfiltf, order=3), axis=1)

@@ -177,10 +177,7 @@ def get_waveforms(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='r
     
     return  waveforms
 
-
-
-
-def get_peak_chan(dp, unit, use_template=False):
+def get_peak_chan(dp, unit, use_template=False, again=False):
     '''
     Parameters:
         - datapath, string
@@ -196,10 +193,10 @@ def get_peak_chan(dp, unit, use_template=False):
     if use_template:
         waveforms=templates(dp, unit)
     else:
-        waveforms=wvf(dp, unit, 200)
+        waveforms=wvf(dp, unit, 200, again=again, subset_selection='regular')
     wvf_m = np.mean(waveforms, axis=0)
     max_min_wvf=np.max(wvf_m,0)-np.min(wvf_m,0)
-    peak_chan = int(np.nonzero(np.max(max_min_wvf)==max_min_wvf)[0][0])
+    peak_chan = np.argmax(max_min_wvf)
     return cm[:,0][peak_chan]
 
 def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False, again=False):
@@ -287,7 +284,8 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False, aga
 def get_peak_pos(dp, unit, use_template=False):
     peak_chan=get_peak_chan(dp, unit, use_template)
     pos = np.load(Path(dp,'channel_positions.npy'))
-    return pos[peak_chan-1]
+    cm=chan_map(dp, probe_version='local')
+    return pos[cm[:,0]==peak_chan]
     
 def get_chDis(dp, ch1, ch2):
     '''dp: datapath to dataset

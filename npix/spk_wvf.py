@@ -195,6 +195,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     assert waveforms.shape[2]==nc==n_channels_dat-1
     if not ignore_ks_chanfilt:
         channel_ids_ks = np.load(Path(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
+        channel_ids_ks=channel_ids_ks[channel_ids_ks!=384]
         waveforms=waveforms[:,:,channel_ids_ks] # only AFTER processing, filter out channels
     
     # Correct voltage scaling

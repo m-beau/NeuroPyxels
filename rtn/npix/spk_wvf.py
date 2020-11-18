@@ -8,6 +8,8 @@ import os
 import os.path as op; opj=op.join
 from pathlib import Path
 
+from joblib import Parallel, delayed
+
 import imp
 from ast import literal_eval as ale
 import numpy as np
@@ -63,7 +65,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
 
 def get_waveforms(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True,
                  whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=0,
-                 prnt=False, loop=True):
+                 prnt=False, loop=True, parallel=True):
     '''Function to extract a subset of waveforms from a given unit.
     Parameters:
         - dp:
@@ -113,22 +115,25 @@ def get_waveforms(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='r
     
     # Iterate over waveforms
     if loop:
-        waveforms = np.zeros((n_spikes, nc, _n_samples_extract), dtype=np.float32)
         waveforms_t = spike_samples[spike_ids_subset].astype(int)
-        assert np.all(0 <= waveforms_t)&np.all(waveforms_t < traces.shape[0]),  "Invalid time!"
-        for i, spike_id in enumerate(spike_ids_subset):
-            # Get waveform time
-            t = waveforms_t[i]
-            # Get slice
-            slc = slice(t-n_samples_before_after[0]-pad[0], t+n_samples_before_after[1]+pad[1])
-            extract = traces[slc].astype(np.float32)
-            # Center channels individually
-            extract = extract-np.median(extract, axis=0)
-            # Pad the extracted chunk if at recording limit.
-            if slc.start <= 0: extract = _pad(extract, _n_samples_extract, 'left')
-            elif slc.stop >= traces.shape[0] - 1: extract = _pad(extract, _n_samples_extract, 'right')
-            # Add this waveform, all good!
-            waveforms[i, :, :] = extract.T
+        assert np.all(0 <= waveforms_t)&np.all(waveforms_t < traces.shape[0]), "Invalid time!"
+        if parallel:
+            all_waves=Parallel(n_jobs=-1, backend="threading")(delayed(get_w)(waveforms_t, traces, n_samples_before_after, pad, _n_samples_extract, i, spike_id) for i, spike_id in enumerate(spike_ids_subset))
+            waveforms = np.array(all_waves)
+        else:
+            for i, spike_id in enumerate(spike_ids_subset):
+                waveforms = np.zeros((n_spikes, nc, _n_samples_extract), dtype=np.float32)
+                t = waveforms_t[i]
+                # Get slice
+                slc = slice(t-n_samples_before_after[0]-pad[0], t+n_samples_before_after[1]+pad[1])
+                extract = traces[slc].astype(np.float32)
+                # Center channels individually
+                extract = extract-np.median(extract, axis=0)
+                # Pad the extracted chunk if at recording limit.
+                if slc.start <= 0: extract = _pad(extract, _n_samples_extract, 'left')
+                elif slc.stop >= traces.shape[0] - 1: extract = _pad(extract, _n_samples_extract, 'right')
+                # Add this waveform, all good!
+                waveforms[i,:,:] = extract.T
         # Preprocess the waveforms.
         if hpfilt|med_sub|whiten:
             waveforms=np.transpose(waveforms, (1,0,2)).reshape((nc, n_spikes*_n_samples_extract))
@@ -143,7 +148,7 @@ def get_waveforms(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='r
             waveforms=np.transpose(waveforms, (0, 2, 1))
     else:
         waveforms_t = spike_samples[spike_ids_subset].astype(int)
-        assert np.all(0 <= waveforms_t)&np.all(waveforms_t < traces.shape[0]),  "Invalid time {0:d}/{1:d}.".format(t, traces.shape[0])
+        assert np.all(0 <= waveforms_t)&np.all(waveforms_t < traces.shape[0]), "Invalid time!"
         waveforms_tspans=(waveforms_t+np.arange(-n_samples_before_after[0]-pad[0], n_samples_before_after[1]+pad[1])[:,np.newaxis]).T.ravel()
         stitched_waveforms=traces[waveforms_tspans,:].astype(np.float32).T
         # Center median subtract in time before preprocessing to center waveforms on channels
@@ -176,6 +181,19 @@ def get_waveforms(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='r
     ##TODO Re-align waveforms in time by re-thresholding?...
     
     return  waveforms
+
+def get_w(waveforms_t, traces, n_samples_before_after, pad, _n_samples_extract, i, spike_id):
+    t = waveforms_t[i]
+    # Get slice
+    slc = slice(t-n_samples_before_after[0]-pad[0], t+n_samples_before_after[1]+pad[1])
+    extract = traces[slc].astype(np.float32)
+    # Center channels individually
+    extract = extract-np.median(extract, axis=0)
+    # Pad the extracted chunk if at recording limit.
+    if slc.start <= 0: extract = _pad(extract, _n_samples_extract, 'left')
+    elif slc.stop >= traces.shape[0] - 1: extract = _pad(extract, _n_samples_extract, 'right')
+    # Add this waveform, all good!
+    return extract.T
 
 def get_peak_chan(dp, unit, use_template=False, again=False):
     '''

@@ -40,7 +40,7 @@ $ python
 
 ```
 
-### Pull remote updates (after Maxime's upgrade!):
+### Pull remote updates (after Maxime's updates :)):
 ```
 $ conda activate env_name
 $ cd path/to/save_dir/NeuroPyxels

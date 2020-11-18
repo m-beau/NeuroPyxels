@@ -22,8 +22,10 @@ from rtn.utils import _as_array, npa
 
 #%% Concise home made function
 
-def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False, again=False, ignore_nwvf=True,
-        whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=0, use_old=False):
+def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True,
+        save=True, prnt=False, again=False,
+        whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=False,
+        use_old=False, loop=True, parallel=True):
     '''
     ********
     routine from rtn.npix.spk_wvf
@@ -31,16 +33,38 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
     ********
     
     Parameters:
-        - dp:
-        - unit:
-        - n_waveforms:
-        - t_waveforms:
-        - wvf_subset_selection: either 'regular' (homogeneous selection or in batches), 'random',
+        - dp:                 str or PosixPath, path to kilosorted dataset.
+        - u:                  int, unit index.
+        - n_waveforms:        int, number of waveform to return, selected according to the subset_selection parameter | Default 100
+        - t_waveforms:        int, temporal span of waveforms | Default 82 (about 3ms)
+        - subset_selection:   str/list of tuples, either 'regular' (homogeneous selection or in batches), 'random',
                                                   or a list of time chunks [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
-        - wvf_batch_size: if >1 and 'regular' selection, selects ids as batches of spikes.
+        - wvf_batch_size:     int, if >1 and 'regular' selection, selects ids as batches of spikes. | Default 10
+        - save: bool,         whether to save to routine memory. | Default True
+        - prnt: bool,         whether to print informaiton. | Default False
+        - again: bool,        whether to recompute waveforms even if ofund in routines memory. | Default False
+        - ignore_nwvf:        bool, whether to ignore n_waveforms parameter when a list of times is provided as subset_selection,
+                                    to return all the spikes in the window instead. | Default True
+        - whiten:             bool, whether to whiten across channels.
+                                    Globally by default, using the nRangeWhiten closest channels if nRangeWhiten is provided. | Default False
+        - med_sub:            bool, whether to median-subtract across channels.
+                                    Globally by default, using the nRangeMedSub closest channels if nRangeWhiten is provided. | Default False
+        - hpfilt:             bool, whether to high-pass filter with a butterworth filter (order 3) of cutoff frequency hpfiltf. | Default False
+        - hpfiltf:            int, high-pass filter cutoff frequency | Default 300
+        - nRangeWhiten        int, number of channels to use to compute the local median. | Default None
+        - nRangeMedSub:       int, number of channels to use to compute the local median. | Default None
+        - ignore_ks_chanfilt: bool, whether to ignore kilosort channel filtering
+                                    (if False, output shape will always be n_waveforms x t_waveforms x 384) | Default False
+        - use_old:            bool, whether to use phy 1 implementation of waveform loading. | Default False
+        - loop:               bool, whether to use a loop to iterate over waveforms
+                                    instead of masking of the whole memory-mapped binary file to eaxtract waveforms. | Default True
+                                    Looping is faster, especially if parallel is True.
+        - parallel:           bool, if loop is True, whether to use parallel processing to go faster
+                                    (depends on number of CPU cores). | Default True
     
     Returns:
-        waveforms: numpy array of shape (n_waveforms, t_waveforms, n_channels) where n_channels is defined by the channel map.
+        waveforms:            numpy array of shape (n_waveforms x t_waveforms x n_channels)
+                                    where n_channels is defined by the channel map if ignore_ks_chanfilt is False.
     
     '''
     dp, u = get_prophyler_source(dp, u)
@@ -58,27 +82,16 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
             waveforms = get_waveform_old(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size, ignore_nwvf)
         else:
             waveforms = get_waveforms(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size, ignore_nwvf,
-                                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt, prnt)
+                                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt, prnt,
+                                     loop, parallel)
         # Save it
-        if sav:np.save(Path(dprm,fn), waveforms)
+        if save:np.save(Path(dprm,fn), waveforms)
     return waveforms
 
-def get_waveforms(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True,
+def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True,
                  whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=0,
                  prnt=False, loop=True, parallel=True):
-    '''Function to extract a subset of waveforms from a given unit.
-    Parameters:
-        - dp:
-        - unit:
-        - n_waveforms:
-        - t_waveforms:
-        - wvf_subset_selection: either 'regular' (homogeneous selection or in batches) or 'random'
-        - wvf_batch_size: if >1 and 'regular' selection, selects ids as batches of spikes.
-    
-    Returns:
-        waveforms: numpy array of shape (n_waveforms, t_waveforms, n_channels) where n_channels is defined by the channel map.
-    
-    '''
+    f"{wvf.__doc__}"
     
     # Extract and process metadata
     params={}; par=imp.load_source('params', str(Path(dp,'params.py')))
@@ -105,7 +118,7 @@ def get_waveforms(dp, unit, n_waveforms=100, t_waveforms=82, subset_selection='r
     
     # Select subset of waveforms
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
-    spike_ids_subset=get_ids_subset(dp, unit, n_waveforms, wvf_batch_size, subset_selection, ignore_nwvf, prnt)
+    spike_ids_subset=get_ids_subset(dp, u, n_waveforms, wvf_batch_size, subset_selection, ignore_nwvf, prnt)
     n_spikes = len(spike_ids_subset)
     
     # Define waveform temporal indexing

@@ -7,7 +7,7 @@ with open("README.md", "r") as readme_file:
 requirements=['ipython', 'spyder', 'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'six', 'elephant', 'vispy', 'statsmodels', 'progressbar2',
       'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils',
-      'h5py', 'holoviews', 'hvplot']
+      'h5py', 'holoviews', 'hvplot', 'numba']
 
 setup(name='npyx',
       version='1.0',

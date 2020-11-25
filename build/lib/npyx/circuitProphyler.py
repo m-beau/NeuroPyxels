@@ -62,7 +62,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import numpy as np
 import pandas as pd
 
-import npyx
+import npix
 from npyx.utils import npa, sign, align_timeseries
 
 from npyx.io import read_spikeglx_meta, get_npix_sync, chan_map

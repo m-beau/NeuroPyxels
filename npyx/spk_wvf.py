@@ -27,7 +27,7 @@ from npyx.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_m
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, subset_selection='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
         save=True, prnt=False, again=False,
         whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=False,
-        use_old=False, loop=True, parallel=True, memorysafe=False):
+        use_old=False, loop=True, parallel=False, memorysafe=False):
     '''
     ********
     routine from rtn.npyx.spk_wvf
@@ -64,7 +64,7 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, subset_selection='regular',
                                     instead of masking of the whole memory-mapped binary file to eaxtract waveforms. | Default True
                                     Looping is faster, especially if parallel is True.
         - parallel:           bool, if loop is True, whether to use parallel processing to go faster
-                                    (depends on number of CPU cores). | Default True
+                                    (depends on number of CPU cores). | Default False
     
     Returns:
         waveforms:            numpy array of shape (n_waveforms x t_waveforms x n_channels)

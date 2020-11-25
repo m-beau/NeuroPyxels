@@ -8,7 +8,8 @@ import os
 import os.path as op; opj=op.join
 from pathlib import Path
 
-from joblib import Parallel, delayed
+import tempfile
+from joblib import Parallel, delayed, load, dump
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
 
@@ -122,8 +123,8 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     nc = len(channel_ids_all)
     item_size = np.dtype(dtype).itemsize
     n_samples = (op.getsize(dat_path) - offset) // (item_size * n_channels_dat)
-    traces = np.memmap(dat_path, dtype=dtype, shape=(n_samples, n_channels_dat),
-                         offset=offset)[:,:-1]
+    traces = np.memmap(dat_path, dtype=dtype, mode='r',
+                       offset=offset, shape=(n_samples, n_channels_dat))[:,:-1] # ignore the sync channel at the end
     assert traces.shape[1] == nc, 'Decoded binary file does not have the expected number of channel!'
     
     # Select subset of waveforms
@@ -142,15 +143,16 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     if memorysafe: loop=True
     if loop:
         waveforms_t = spike_samples[spike_ids_subset].astype(int)
+        slices=[slice(t-n_samples_before_after[0]-pad[0], t+n_samples_before_after[1]+pad[1]) for t in waveforms_t]
         assert np.all(0 <= waveforms_t)&np.all(waveforms_t < traces.shape[0]), "Invalid time!"
         if parallel:
-            all_waves=Parallel(n_jobs=num_cores-2, backend="threading")(delayed(get_w)(t, traces, n_samples_before_after, pad, _n_samples_extract) for t in waveforms_t)
+            print("Parallelism doesn't work because of communication overhead  - do not try to use it! n_jobs set to 1.")
+            all_waves=Parallel(n_jobs=1, prefer='threads')(delayed(get_w)(traces, slc, _n_samples_extract) for slc in slices)
             waveforms = np.array(all_waves)
         else:
             waveforms = np.zeros((n_spikes, nc, _n_samples_extract), dtype=np.float32)
-            for i, t in enumerate(waveforms_t):
-                # Get slice
-                slc = slice(t-n_samples_before_after[0]-pad[0], t+n_samples_before_after[1]+pad[1])
+            for i, slc in enumerate(slices):
+                # Extract from memorymapped traces
                 extract = traces[slc].astype(np.float32)
                 # Center channels individually
                 extract = extract-np.median(extract, axis=0)
@@ -166,7 +168,6 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
                         extract=med_substract(extract, axis=0, nRange=nRangeMedSub)
                     if whiten:
                         extract=whitening(extract, nRange=nRangeWhiten)
-                        
                 # Add this waveform, all good!
                 waveforms[i,:,:] = extract
         # Preprocess the waveforms.
@@ -218,9 +219,8 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     
     return  waveforms
 
-def get_w(t, traces, n_samples_before_after, pad, _n_samples_extract):
+def get_w(traces, slc, _n_samples_extract):
     # Get slice
-    slc = slice(t-n_samples_before_after[0]-pad[0], t+n_samples_before_after[1]+pad[1])
     extract = traces[slc].astype(np.float32)
     # Center channels individually
     extract = extract-np.median(extract, axis=0)

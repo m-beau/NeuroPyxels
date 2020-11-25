@@ -94,7 +94,8 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, subset_selection='regular',
                                  whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt, prnt,
                                  loop, parallel, memorysafe)
     # Save it
-    if save and spike_ids is not None:np.save(Path(dprm,fn), waveforms)
+    if (save and (spike_ids is None)):
+        np.save(Path(dprm,fn), waveforms)
     return waveforms
 
 def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,

@@ -53,8 +53,7 @@ def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
         except:pass
     if type(unit) is int:
         spike_clusters = np.load(Path(dp,"spike_clusters.npy"))
-        indices = np.nonzero(spike_clusters==unit)[0]
-        indices=np.reshape(indices, (max(indices.shape), ))
+        indices = np.nonzero(spike_clusters==unit)[0].squeeze()
     if type(unit) not in [str, np.str_, int]:
         print('WARNING unit {} type ({}) not handled!'.format(unit, type(unit)))
         return
@@ -115,12 +114,11 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
             if ds_table.shape[0]>1: # If several datasets in prophyler
                 spike_clusters_samples = np.load(Path(dp, 'merged_clusters_spikes.npy'))
                 dataset_mask=(spike_clusters_samples[:, 0]==ds_i); unit_mask=(spike_clusters_samples[:, 1]==unt)
-                train = spike_clusters_samples[dataset_mask&unit_mask, 2]
-                train=np.reshape(train, (max(train.shape), )).astype(np.int64)
+                train = spike_clusters_samples[dataset_mask&unit_mask, 2].squeeze().astype(np.int64)
             else:
                 spike_clusters = np.load(Path(ds_table['dp'][0],"spike_clusters.npy"))
                 spike_samples = np.load(Path(ds_table['dp'][0],'spike_times.npy'))
-                train = spike_samples[spike_clusters==unt].ravel()
+                train = spike_samples[spike_clusters==unt].squeeze()
         else:
             try:unit=int(unit)
             except:pass

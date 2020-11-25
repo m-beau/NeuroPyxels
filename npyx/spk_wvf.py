@@ -15,10 +15,10 @@ from ast import literal_eval as ale
 import numpy as np
 from math import ceil
 
-from npix.utils import _as_array, npa
-from npix.spk_t import ids
-from npix.gl import get_units, get_prophyler_source
-from npix.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta, chan_map, whitening, bandpass_filter, apply_filter, med_substract
+from npyx.utils import _as_array, npa
+from npyx.spk_t import ids
+from npyx.gl import get_units, get_prophyler_source
+from npyx.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 
 
 def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True,
@@ -27,7 +27,7 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
         use_old=False, loop=True, parallel=True, memorysafe=False):
     '''
     ********
-    routine from rtn.npix.spk_wvf
+    routine from rtn.npyx.spk_wvf
     Extracts a sample of waveforms from the raw data file.
     ********
     
@@ -343,7 +343,7 @@ def get_chDis(dp, ch1, ch2):
 def templates(dp, u):
     '''
     ********
-    routine from rtn.npix.spk_wvf
+    routine from rtn.npyx.spk_wvf
     Extracts the template used by kilosort to cluster this unit.
     ********
     
@@ -444,7 +444,7 @@ def _excerpt_step(n_samples, n_excerpts=None, excerpt_size=None):
 def wvf_old(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, sav=True, prnt=False, again=False, ignore_nwvf=True, bpfilter=False, whiten=False, med_sub=False):
     '''
     ********
-    routine from rtn.npix.spk_wvf
+    routine from rtn.npyx.spk_wvf
     Extracts a sample of waveforms from the raw data file.
     ********
     

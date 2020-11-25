@@ -22,19 +22,19 @@ import bokeh as bk
 
 import seaborn as sns
 
-from npix.utils import phyColorsDic, DistinctColors20, npa, zscore, isnumeric
-from npix.stats import fractile_normal, fractile_poisson
+from npyx.utils import phyColorsDic, DistinctColors20, npa, zscore, isnumeric
+from npyx.stats import fractile_normal, fractile_poisson
 
-from npix.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
-from npix.gl import get_units
-from npix.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
-from npix.spk_t import trn
-from npix.corr import acg, ccg, gen_sfc, get_ccg_sig, get_cm
-from npix.behav import align_times, get_processed_ifr, get_events
+from npyx.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
+from npyx.gl import get_units
+from npyx.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
+from npyx.spk_t import trn
+from npyx.corr import acg, ccg, gen_sfc, get_ccg_sig, get_cm
+from npyx.behav import align_times, get_processed_ifr, get_events
 from mpl_toolkits.mplot3d import Axes3D
 
-from pyqtgraph.Qt import QtGui, QtCore
-import pyqtgraph as pg
+# from pyqtgraph.Qt import QtGui, QtCore
+# import pyqtgraph as pg
 
 import networkx as nx
 
@@ -573,49 +573,49 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
         
         return fig
     
-    # PyQt plotting if no matplotlib fig was returned
-    win = pg.GraphicsWindow(title="Raw data - {}-{}ms, channels {}-{}".format(times[0], times[1], channels[0], channels[-1]))
-    win.setBackground('w')
-    win.resize(1500,600)
-    p = win.addPlot()
-    p.setTitle("Raw data - {}-{}ms, channels {}-{}".format(times[0], times[1], channels[0], channels[-1]), color='k')
-    p.disableAutoRange()
-    # Enable antialiasing for prettier plots
-    pg.setConfigOptions(antialias=True)
+    # # PyQt plotting if no matplotlib fig was returned
+    # win = pg.GraphicsWindow(title="Raw data - {}-{}ms, channels {}-{}".format(times[0], times[1], channels[0], channels[-1]))
+    # win.setBackground('w')
+    # win.resize(1500,600)
+    # p = win.addPlot()
+    # p.setTitle("Raw data - {}-{}ms, channels {}-{}".format(times[0], times[1], channels[0], channels[-1]), color='k')
+    # p.disableAutoRange()
+    # # Enable antialiasing for prettier plots
+    # pg.setConfigOptions(antialias=True)
 
-    for i in np.arange(rc.shape[0]):
-        y=i*offset
-        pen=pg.mkPen(color=(125,125,125), style=QtCore.Qt.DashLine, width=1.5)
-        p.plot([0, t[0,-1]], [y, y], pen=pen)
-    for e in events:
-        p.plot([e,e], [p.rect().getCoords()[1], p.rect().getCoords()[3]], color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
-    if color=='multi':
-        color=[DistinctColors20[ci%(len(DistinctColors20)-1)] for ci in range(rc.shape[0])]
-    else:
-        if color in ['k', 'black']:
-            color=[(0,0,0)]*rc.shape[0]
-        else:
-            assert npa(color).shape[0]==3
-            color=[npa(color)]*rc.shape[0]
+    # for i in np.arange(rc.shape[0]):
+    #     y=i*offset
+    #     pen=pg.mkPen(color=(125,125,125), style=QtCore.Qt.DashLine, width=1.5)
+    #     p.plot([0, t[0,-1]], [y, y], pen=pen)
+    # for e in events:
+    #     p.plot([e,e], [p.rect().getCoords()[1], p.rect().getCoords()[3]], color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
+    # if color=='multi':
+    #     color=[DistinctColors20[ci%(len(DistinctColors20)-1)] for ci in range(rc.shape[0])]
+    # else:
+    #     if color in ['k', 'black']:
+    #         color=[(0,0,0)]*rc.shape[0]
+    #     else:
+    #         assert npa(color).shape[0]==3
+    #         color=[npa(color)]*rc.shape[0]
             
-    for line in range(rc.shape[0]):
-        pen=pg.mkPen(color=tuple(npa(color[line])*255), width=1)
-        p.plot(t[line,:].T, rc[line,:].T, pen=pen)
-    pen=pg.mkPen(color=(0,0,0), width=2)
-    p.getAxis('left').setTicks([[(y_ticks[i], y_ticks_labels[i]) for i in range(len(y_ticks))],[]])
-    p.getAxis('bottom').setLabel('Time (ms)')
-    p.getAxis('left').setLabel('Extracellular potential (\u03bcV)')
-    p.getAxis('left').setPen(pen)
-    p.getAxis('bottom').setPen(pen)
-    font=QtGui.QFont()
-    font.setPixelSize(14)
-    p.getAxis("bottom").setTickFont(font)
-    p.getAxis("left").setTickFont(font)
-    p.getAxis("bottom").setStyle(tickTextOffset = 5)
-    p.getAxis("left").setStyle(tickTextOffset = 5)
-    p.autoRange() # adding it only after having plotted everything makes it way faster
+    # for line in range(rc.shape[0]):
+    #     pen=pg.mkPen(color=tuple(npa(color[line])*255), width=1)
+    #     p.plot(t[line,:].T, rc[line,:].T, pen=pen)
+    # pen=pg.mkPen(color=(0,0,0), width=2)
+    # p.getAxis('left').setTicks([[(y_ticks[i], y_ticks_labels[i]) for i in range(len(y_ticks))],[]])
+    # p.getAxis('bottom').setLabel('Time (ms)')
+    # p.getAxis('left').setLabel('Extracellular potential (\u03bcV)')
+    # p.getAxis('left').setPen(pen)
+    # p.getAxis('bottom').setPen(pen)
+    # font=QtGui.QFont()
+    # font.setPixelSize(14)
+    # p.getAxis("bottom").setTickFont(font)
+    # p.getAxis("left").setTickFont(font)
+    # p.getAxis("bottom").setStyle(tickTextOffset = 5)
+    # p.getAxis("left").setStyle(tickTextOffset = 5)
+    # p.autoRange() # adding it only after having plotted everything makes it way faster
     
-    return win,p
+    # return win,p
 
 def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                    Nchan_plot=5, spk_window=82, colors='phy', back_color='k', lw=1,

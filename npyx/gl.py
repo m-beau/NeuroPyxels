@@ -10,8 +10,8 @@ import os
 import os.path as op
 from pathlib import Path
 
-from npix.utils import npa
-from npix.io import read_spikeglx_meta
+from npyx.utils import npa
+from npyx.io import read_spikeglx_meta
 
 from ast import literal_eval as ale
 
@@ -119,4 +119,4 @@ def get_prophyler_source(dp_pro, u):
         dp_pro=ds_dp
     return dp_pro, u
 
-from npix.spk_wvf import get_depthSort_peakChans
+from npyx.spk_wvf import get_depthSort_peakChans

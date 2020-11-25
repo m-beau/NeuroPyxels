@@ -9,7 +9,7 @@ requirements=['ipython', 'spyder', 'numpy', 'scipy', 'pandas', 'matplotlib', 'se
       'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils',
       'h5py', 'holoviews', 'hvplot']
 
-setup(name='npix',
+setup(name='npyx',
       version='1.0',
       author='Maxime Beau',
       author_email='maximebeaujeanroch047@gmail.com',
@@ -17,7 +17,7 @@ setup(name='npix',
       long_description=readme,
       long_description_content_type="text/markdown",
       url='https://github.com/Npix-routines/NeuroPyxels',
-      packages=['npix'],
+      packages=['npyx'],
       #package_dir={'rtn': 'rtn'},
       install_requires=requirements,
       keywords='neuropixels,kilosort,phy,data analysis,electrophysiology,neuroscience',

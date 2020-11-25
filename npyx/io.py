@@ -21,7 +21,7 @@ import matplotlib.pylab as plt
 import tkinter
 from tkinter import filedialog as tkFileDialog
 
-from npix.utils import npa, _as_array
+from npyx.utils import npa, _as_array
 
 
 #%% IO utilities
@@ -809,4 +809,4 @@ def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
     return myrange
 
 
-from npix.gl import get_rec_len
+from npyx.gl import get_rec_len

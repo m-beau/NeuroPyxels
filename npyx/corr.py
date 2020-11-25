@@ -23,16 +23,16 @@ import pandas as pd
 
 import progressbar as pgb
 
-from npix.utils import npa, sign, thresh_consec, smooth, zscore, split, get_bins, make_2D_array, \
+from npyx.utils import npa, sign, thresh_consec, smooth, zscore, split, get_bins, make_2D_array, \
                     _as_array, _unique, _index_of, any_n_consec
                     
-from npix.io import read_spikeglx_meta
-from npix.gl import get_units, get_prophyler_source, get_rec_len
-from npix.spk_t import trn, trnb, binarize, get_firing_periods
-from npix.spk_wvf import get_depthSort_peakChans
+from npyx.io import read_spikeglx_meta
+from npyx.gl import get_units, get_prophyler_source, get_rec_len
+from npyx.spk_t import trn, trnb, binarize, get_firing_periods
+from npyx.spk_wvf import get_depthSort_peakChans
 
 import scipy.signal as sgnl
-from npix.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
+from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
 
 def make_phy_like_spikeClustersTimes(dp, U, subset_selection='all', prnt=True, trains=None):
     '''If provided, dic must be of the form {unit1:train1InSamples, unit2:...}'''
@@ -1758,7 +1758,7 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
         
 
 #%% Circular imports
-from npix.plot import plot_pval_borders
+from npyx.plot import plot_pval_borders
 
 #%% Archived
 

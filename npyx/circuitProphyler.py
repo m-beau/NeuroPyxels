@@ -63,12 +63,12 @@ import numpy as np
 import pandas as pd
 
 import npix
-from npix.utils import npa, sign, align_timeseries
+from npyx.utils import npa, sign, align_timeseries
 
-from npix.io import read_spikeglx_meta, get_npix_sync, chan_map
-from npix.gl import load_units_qualities
-from npix.spk_wvf import get_depthSort_peakChans, get_peak_chan
-from npix.corr import gen_sfc
+from npyx.io import read_spikeglx_meta, get_npix_sync, chan_map
+from npyx.gl import load_units_qualities
+from npyx.spk_wvf import get_depthSort_peakChans, get_peak_chan
+from npyx.corr import gen_sfc
                     
 import networkx as nx
 
@@ -84,7 +84,7 @@ class Prophyler:
     
     If you want to access unit u:
     >>> pro.units[u]
-    >>> pro.units[u].trn(): equivalent to rtn.npix.spk_t.trn(dp,u)
+    >>> pro.units[u].trn(): equivalent to rtn.npyx.spk_t.trn(dp,u)
     
     The units can also be accessed through the 'unit' attributes of the graph nodes:
     >>> pro.graph.nodes[u]]['unit'].trn() returns the same thing as ds.units[u].trn()
@@ -302,7 +302,7 @@ class Prophyler:
         g=self.map_sfc_on_g(g, sfc, criteria)
         self.make_directed_graph()
         if plotsfcm:
-            rtn.npix.plot.plot_sfcm(self.dp_pro, corr_type, metric,
+            rtn.npyx.plot.plot_sfcm(self.dp_pro, corr_type, metric,
                                     cbin, cwin, p_th, n_consec_bins, fract_baseline, W_sd, test,
                                     depth_ticks=True, regions={}, reg_colors={}, again=again, againCCG=againCCG, drop_seq=drop_seq)
             
@@ -651,7 +651,7 @@ class Prophyler:
             ea=self.get_edge_attributes(edge, prophylerGraph=prophylerGraph, src_graph=src_graph) # u1, u2, i unpacked
             
             ##TODO - plt ccg from shared directory
-            rtn.npix.plot.plot_ccg(self.dp, [ea['uSrc'],ea['uTrg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
+            rtn.npyx.plot.plot_ccg(self.dp, [ea['uSrc'],ea['uTrg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
             
             label=''
             while label=='': # if enter is hit
@@ -1123,10 +1123,10 @@ class Dataset:
                 raise "Local channel map comprises channels not found in expected channels given matafile probe type."
         
     def get_units(self):
-        return rtn.npix.gl.get_units(self.dp)
+        return rtn.npyx.gl.get_units(self.dp)
     
     def get_good_units(self):
-        return rtn.npix.gl.get_units(self.dp, quality='good')
+        return rtn.npyx.gl.get_units(self.dp, quality='good')
     
     def get_peak_channels(self):
         self.peak_channels = get_depthSort_peakChans(self.dp, quality='good')# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
@@ -1188,36 +1188,36 @@ class Unit:
         self.peak_position_real=self.ds.peak_positions_real[self.idx==self.ds.peak_positions_real[:,0], 1:].flatten()
                     
     def trn(self, rec_section='all'):
-        return rtn.npix.spk_t.trn(self.dp, self.idx, rec_section=rec_section)
+        return rtn.npyx.spk_t.trn(self.dp, self.idx, rec_section=rec_section)
     
     def trnb(self, bin_size, rec_section='all'):
-        return rtn.npix.spk_t.trnb(self.dp, self.idx, bin_size, rec_section=rec_section)
+        return rtn.npyx.spk_t.trnb(self.dp, self.idx, bin_size, rec_section=rec_section)
     
     def ids(self):
-        return rtn.npix.spk_t.ids(self.dp, self.idx)
+        return rtn.npyx.spk_t.ids(self.dp, self.idx)
     
     def isi(self, rec_section='all'):
-        return rtn.npix.spk_t.isi(self.dp, self.idx, rec_section=rec_section)
+        return rtn.npyx.spk_t.isi(self.dp, self.idx, rec_section=rec_section)
     
     def acg(self, cbin, cwin, normalize='Hertz', rec_section='all'):
-        return rtn.npix.corr.acg(self.dp, self.idx, bin_size=cbin, win_size=cwin, normalize=normalize, rec_section=rec_section)
+        return rtn.npyx.corr.acg(self.dp, self.idx, bin_size=cbin, win_size=cwin, normalize=normalize, rec_section=rec_section)
     
     def ccg(self, U, cbin, cwin, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all', again=False):
-        return rtn.npix.corr.ccg(self.dp, [self.idx]+list(U), cbin, cwin, fs, normalize, ret, sav, prnt, rec_section, again)
+        return rtn.npyx.corr.ccg(self.dp, [self.idx]+list(U), cbin, cwin, fs, normalize, ret, sav, prnt, rec_section, again)
     
     def wvf(self, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10):
-        return rtn.npix.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, True, True)
+        return rtn.npyx.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, True, True)
     
     def plot_acg(self, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
              pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0):
         
-        rtn.npix.plot.plot_acg(self.dp, self.idx, cbin, cwin, normalize, color, saveDir, saveFig, prnt, show, 
+        rtn.npyx.plot.plot_acg(self.dp, self.idx, cbin, cwin, normalize, color, saveDir, saveFig, prnt, show, 
              pdf, png, rec_section, labels, title, ref_per, saveData, ylim)
     
     def plot_ccg(self, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True,
              pdf=False, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=0):
         
-        rtn.npix.plot.plot_ccg(self.dp, [self.idx]+list(units), cbin, cwin, normalize, saveDir, saveFig, prnt, show,
+        rtn.npyx.plot.plot_ccg(self.dp, [self.idx]+list(units), cbin, cwin, normalize, saveDir, saveFig, prnt, show,
                  pdf, png, rec_section, labels, std_lines, title, color, CCG, saveData, ylim)
     
     def connections(self):

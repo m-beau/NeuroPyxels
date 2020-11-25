@@ -26,11 +26,11 @@ import scipy.stats as stats
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.decomposition import PCA
 
-from npix.utils import seabornColorsDic, npa, thresh, thresh_consec, smooth, sign, align_timeseries
+from npyx.utils import seabornColorsDic, npa, thresh, thresh_consec, smooth, sign, align_timeseries
 
-from npix.io import read_spikeglx_meta, get_npix_sync, paq_read, list_files
-from npix.spk_t import trn, trnb, isi, mean_firing_rate
-from npix.corr import crosscorr_cyrille
+from npyx.io import read_spikeglx_meta, get_npix_sync, paq_read, list_files
+from npyx.spk_t import trn, trnb, isi, mean_firing_rate
+from npyx.corr import crosscorr_cyrille
 
 #%% Extract behavioral event times in neuropixels recording reference time from trials dataframe
 

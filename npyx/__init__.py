@@ -17,24 +17,24 @@ from .utils import phyColorsDic, seabornColorsDic, DistinctColors20, DistinctCol
 
 __doc__="""
 
-npix submodules:
-    npix.utils
+npyx submodules:
+    npyx.utils
 
-    npix.io
+    npyx.io
     
-    npix.gl
+    npyx.gl
     
-    npix.spk_t
+    npyx.spk_t
     
-    npix.spk_wvf
+    npyx.spk_wvf
     
-    npix.corr
+    npyx.corr
     
-    npix.plot
+    npyx.plot
     
-    npix.ml
+    npyx.ml
     
-    npix.behav
+    npyx.behav
 
-    npix.stats
+    npyx.stats
 """

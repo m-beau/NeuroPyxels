@@ -11,9 +11,9 @@ from ast import literal_eval as ale
 import numpy as np
 import pandas as pd
                     
-from npix.utils import smooth, thresh_consec, npa
-from npix.gl import get_units
-from npix.io import read_spikeglx_meta
+from npyx.utils import smooth, thresh_consec, npa
+from npyx.gl import get_units
+from npyx.io import read_spikeglx_meta
 
 def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
     '''

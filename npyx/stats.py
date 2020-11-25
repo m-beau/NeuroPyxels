@@ -16,7 +16,7 @@ from numpy.random import seed, randn
 import scipy.stats as stt
 import statsmodels as sttmdl
 
-from npix.utils import npa
+from npyx.utils import npa
 
 '''Reminder: Observations < Samples < Population'''
 

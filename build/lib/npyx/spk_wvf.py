@@ -8,7 +8,10 @@ import os
 import os.path as op; opj=op.join
 from pathlib import Path
 
-from joblib import Parallel, delayed
+import tempfile
+from joblib import Parallel, delayed, load, dump
+import multiprocessing
+num_cores = multiprocessing.cpu_count()
 
 import imp
 from ast import literal_eval as ale
@@ -21,10 +24,10 @@ from npyx.gl import get_units, get_prophyler_source
 from npyx.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 
 
-def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True,
+def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, subset_selection='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
         save=True, prnt=False, again=False,
         whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=False,
-        use_old=False, loop=True, parallel=True, memorysafe=False):
+        use_old=False, loop=True, parallel=False, memorysafe=False):
     '''
     ********
     routine from rtn.npyx.spk_wvf
@@ -38,6 +41,8 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
         - t_waveforms:        int, temporal span of waveforms | Default 82 (about 3ms)
         - subset_selection:   str/list of tuples, either 'regular' (homogeneous selection or in batches), 'random',
                                                   or a list of time chunks [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
+        - spike_ids:          list/array, relative indices of spikes in the whole recording.
+                                          If provided, u, n_waveforms and subset_selection will be ignored.
         - wvf_batch_size:     int, if >1 and 'regular' selection, selects ids as batches of spikes. | Default 10
         - save: bool,         whether to save to routine memory. | Default True
         - prnt: bool,         whether to print informaiton. | Default False
@@ -59,37 +64,44 @@ def wvf(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_
                                     instead of masking of the whole memory-mapped binary file to eaxtract waveforms. | Default True
                                     Looping is faster, especially if parallel is True.
         - parallel:           bool, if loop is True, whether to use parallel processing to go faster
-                                    (depends on number of CPU cores). | Default True
+                                    (depends on number of CPU cores). | Default False
     
     Returns:
         waveforms:            numpy array of shape (n_waveforms x t_waveforms x n_channels)
                                     where n_channels is defined by the channel map if ignore_ks_chanfilt is False.
     
     '''
+    
+    if spike_ids is not None:
+        if u is not None: print('WARNING you provided both u and spike_ids! u is ignored.')
+        if n_waveforms !=100: print('WARNING you provided both n_waveforms and spike_ids! n_waveforms is ignored.')
+        if not isinstance(subset_selection,str): print('WARNING you provided both subset_selection and spike_ids! subset_selection is ignored.')
+        u=np.unique(np.load(Path(dp)/'spike_clusters.npy')[spike_ids])
+        assert len(u)==1, 'WARNING the spike ids that you provided seem to belong to different units!! Double check!'
+        u=u[0]
     dp, u = get_prophyler_source(dp, u)
-
+    
     dprm = Path(dp,'routinesMemory')
     fn=f"wvf{u}_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
     if not os.path.isdir(dprm): os.makedirs(dprm)
-    if os.path.exists(Path(dprm,fn)) and not again:
+    if os.path.exists(Path(dprm,fn)) and (not again) and (spike_ids is None):
         if prnt: print("File {} found in routines memory.".format(fn))
-        waveforms = np.load(Path(dprm,fn))
-
-    # if not, compute it
+        return np.load(Path(dprm,fn))
+    
+    if use_old:
+        waveforms = get_waveform_old(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size, ignore_nwvf)
     else:
-        if use_old:
-            waveforms = get_waveform_old(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size, ignore_nwvf)
-        else:
-            waveforms = get_waveforms(dp, u, n_waveforms, t_waveforms, subset_selection, wvf_batch_size, ignore_nwvf,
-                                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt, prnt,
-                                     loop, parallel, memorysafe)
-        # Save it
-        if save:np.save(Path(dprm,fn), waveforms)
+        waveforms = get_waveforms(dp, u, n_waveforms, t_waveforms, subset_selection, spike_ids, wvf_batch_size, ignore_nwvf,
+                                 whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt, prnt,
+                                 loop, parallel, memorysafe)
+    # Save it
+    if (save and (spike_ids is None)):
+        np.save(Path(dprm,fn), waveforms)
     return waveforms
 
-def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', wvf_batch_size=10, ignore_nwvf=True,
+def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
                  whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=0,
-                 prnt=False, loop=True, parallel=True, memorysafe=False):
+                 prnt=False, loop=True, parallel=False, memorysafe=False):
     f"{wvf.__doc__}"
     
     # Extract and process metadata
@@ -111,13 +123,15 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     nc = len(channel_ids_all)
     item_size = np.dtype(dtype).itemsize
     n_samples = (op.getsize(dat_path) - offset) // (item_size * n_channels_dat)
-    traces = np.memmap(dat_path, dtype=dtype, shape=(n_samples, n_channels_dat),
-                         offset=offset)[:,:-1]
+    traces = np.memmap(dat_path, dtype=dtype, mode='r',
+                       offset=offset, shape=(n_samples, n_channels_dat))[:,:-1] # ignore the sync channel at the end
     assert traces.shape[1] == nc, 'Decoded binary file does not have the expected number of channel!'
     
     # Select subset of waveforms
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
-    spike_ids_subset=get_ids_subset(dp, u, n_waveforms, wvf_batch_size, subset_selection, ignore_nwvf, prnt)
+    if spike_ids is None:
+        spike_ids_subset=get_ids_subset(dp, u, n_waveforms, wvf_batch_size, subset_selection, ignore_nwvf, prnt)
+    else: spike_ids_subset=spike_ids
     n_spikes = len(spike_ids_subset)
     
     # Define waveform temporal indexing
@@ -126,18 +140,19 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     _n_samples_extract=t_waveforms + sum(pad)
     
     # Iterate over waveforms
+    if memorysafe: loop=True
     if loop:
         waveforms_t = spike_samples[spike_ids_subset].astype(int)
-        assert np.all(0 <= waveforms_t)&np.all(waveforms_t < traces.shape[0]), "Invalid time!"
+        assert np.all(0 < waveforms_t)&np.all(waveforms_t < traces.shape[0]), "Invalid time!"
+        slices=[slice(max(t-n_samples_before_after[0]-pad[0],0), t+n_samples_before_after[1]+pad[1]) for t in waveforms_t]
         if parallel:
-            all_waves=Parallel(n_jobs=-1, backend="threading")(delayed(get_w)(waveforms_t, traces, n_samples_before_after, pad, _n_samples_extract, i, spike_id) for i, spike_id in enumerate(spike_ids_subset))
+            print("Parallelism doesn't work because of communication overhead  - do not try to use it! n_jobs set to 1.")
+            all_waves=Parallel(n_jobs=1, prefer='threads')(delayed(get_w)(traces, slc, _n_samples_extract) for slc in slices)
             waveforms = np.array(all_waves)
         else:
-            for i, spike_id in enumerate(spike_ids_subset):
-                waveforms = np.zeros((n_spikes, nc, _n_samples_extract), dtype=np.float32)
-                t = waveforms_t[i]
-                # Get slice
-                slc = slice(t-n_samples_before_after[0]-pad[0], t+n_samples_before_after[1]+pad[1])
+            waveforms = np.zeros((n_spikes, nc, _n_samples_extract), dtype=np.float32)
+            for i, slc in enumerate(slices):
+                # Extract from memorymapped traces
                 extract = traces[slc].astype(np.float32)
                 # Center channels individually
                 extract = extract-np.median(extract, axis=0)
@@ -153,7 +168,6 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
                         extract=med_substract(extract, axis=0, nRange=nRangeMedSub)
                     if whiten:
                         extract=whitening(extract, nRange=nRangeWhiten)
-                        
                 # Add this waveform, all good!
                 waveforms[i,:,:] = extract
         # Preprocess the waveforms.
@@ -205,10 +219,8 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     
     return  waveforms
 
-def get_w(waveforms_t, traces, n_samples_before_after, pad, _n_samples_extract, i, spike_id):
-    t = waveforms_t[i]
+def get_w(traces, slc, _n_samples_extract):
     # Get slice
-    slc = slice(t-n_samples_before_after[0]-pad[0], t+n_samples_before_after[1]+pad[1])
     extract = traces[slc].astype(np.float32)
     # Center channels individually
     extract = extract-np.median(extract, axis=0)
@@ -218,12 +230,18 @@ def get_w(waveforms_t, traces, n_samples_before_after, pad, _n_samples_extract, 
     # Add this waveform, all good!
     return extract.T
 
-def get_peak_chan(dp, unit, use_template=False, again=False):
+def get_peak_chan(dp, unit, use_template=False, again=False, absolute=True):
     '''
     Parameters:
         - datapath, string
         - unit, integer or string
         - use_template: bool, whether to use templates instead of raw waveform to find peak channel.
+        - again: whether to recompute the waveforms/templates
+        - ret_name: whether to return the absolute channel name
+                    rather than the relative channel index.
+                    They will be the same if all channels are used for spike sorting.
+                    E.g. if kilosort only used 380 channels (out of 384), 
+                    the last channel absolutely named 383 has the relative index 379.
     Returns:
         - best_channel, integer indexing the channel
           where the unit averaged raw waveform (n=100 spanning the whole recording)
@@ -234,11 +252,13 @@ def get_peak_chan(dp, unit, use_template=False, again=False):
     if use_template:
         waveforms=templates(dp, unit)
     else:
-        waveforms=wvf(dp, unit, 200, again=again, subset_selection='regular')
+        waveforms=wvf(dp, u=unit, n_waveforms=200, t_waveforms=82, subset_selection='regular', spike_ids=None, again=again,
+                      use_old=False, loop=True, parallel=False, memorysafe=False)
+            
     wvf_m = np.mean(waveforms, axis=0)
     max_min_wvf=np.max(wvf_m,0)-np.min(wvf_m,0)
     peak_chan = np.argmax(max_min_wvf)
-    return cm[:,0][peak_chan]
+    return cm[:,0][peak_chan] if absolute else peak_chan
 
 def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False, again=False):
     '''

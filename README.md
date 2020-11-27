@@ -11,7 +11,7 @@ Formal Definition of a "routine" -> a python function with the following propert
 Python version has to be >=3.7 ot there will be imports issues!
 
 Useful link to [create a python package from a git repository](https://towardsdatascience.com/build-your-first-open-source-python-project-53471c9942a7)
-In particular, to upload
+
 ## Installation:
 Using a conda environment is very much advised. Instructions here: [manage conda environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
 - from a local repository (recommended if plans to work on it/regularly pull upgrades)
@@ -67,22 +67,21 @@ First change the version in ./setup.py in a text editor
 setup(name='npyx',
       version='1.0',... # change to 1.1 or whatev
 ```
-Then re-generate the distribution files for the new version using twine:
+Then delete the old distribution files before re-generating them for the new version using twine:
 ```
+rm -r ./dist
+rm -r ./build
+rm -r ./npyx.egg-info
 python setup.py sdist bdist_wheel # this will generate version 1.1 wheel without overwriting version 1.0 wheel in ./dist
 ```
-Before pushing them to PyPI (it will keep track of older versions!)
+Before pushing them to PyPI (older versions are saved online!)
 ```
 $ twine upload dist/*
 Uploading distributions to https://upload.pypi.org/legacy/
 Enter your username: your-username
 Enter your password: 
-Uploading npyx-1.0-py3-none-any.whl
-100%|█████████████████████████████████████████████████████████| 156k/156k [00:01<00:00, 154kB/s]
 Uploading npyx-1.1-py3-none-any.whl
 100%|████████████████████████████████████████████████████████| 156k/156k [00:01<00:00, 96.8kB/s]
-Uploading npyx-1.0.tar.gz
-100%|█████████████████████████████████████████████████████████| 149k/149k [00:00<00:00, 169kB/s]
 Uploading npyx-1.1.tar.gz
 100%|█████████████████████████████████████████████████████████| 150k/150k [00:01<00:00, 142kB/s]
 

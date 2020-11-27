@@ -10,7 +10,7 @@ requirements=['ipython', 'spyder', 'numpy', 'scipy', 'pandas', 'matplotlib', 'se
       'h5py', 'holoviews', 'hvplot', 'numba']
 
 setup(name='npyx',
-      version='1.1',
+      version='1.2',
       author='Maxime Beau',
       author_email='maximebeaujeanroch047@gmail.com',
       description='Python routines dealing with Neuropixels data.',

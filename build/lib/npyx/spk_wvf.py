@@ -143,7 +143,8 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     if memorysafe: loop=True
     if loop:
         waveforms_t = spike_samples[spike_ids_subset].astype(int)
-        assert np.all(0 < waveforms_t)&np.all(waveforms_t < traces.shape[0]), "Invalid time!"
+        wcheck_m=(0<=waveforms_t)&(waveforms_t<traces.shape[0])
+        assert np.all(wcheck_m), f"Invalid times: {waveforms_t[~wcheck_m]}"
         slices=[slice(max(t-n_samples_before_after[0]-pad[0],0), t+n_samples_before_after[1]+pad[1]) for t in waveforms_t]
         if parallel:
             print("Parallelism doesn't work because of communication overhead  - do not try to use it! n_jobs set to 1.")

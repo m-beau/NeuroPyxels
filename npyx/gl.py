@@ -74,30 +74,16 @@ def get_units(dp, quality='all', chan_range=None, again=False):
             for ds_i in cl_grp.index.unique():
                 # np.all(cl_grp.loc[ds_i, 'group'][cl_grp.loc[ds_i, 'cluster_id']==u]==quality)
                 units += ['{}_{}'.format(ds_i, u) for u in cl_grp.loc[(cl_grp['group']==quality)&(cl_grp.index==ds_i), 'cluster_id']]
-        
     else:
-        try:
-            np.all(np.isnan(cl_grp['group'])) # Units have not been given a class yet
-            units=[]
-        except:
-            if quality=='all':
-                units = cl_grp.loc[:, 'cluster_id'].values.astype(np.int64)
-                if 'unsorted' not in cl_grp['group'].unique():
-                    units1 = cl_grp.loc[:, 'cluster_id'].astype(np.int64)
-                    units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
-                    unsort_u=units[~np.isin(units, units1)]
-                    unsort_df=pd.DataFrame({'cluster_id':unsort_u, 'group':['unsorted']*len(unsort_u)}) 
-                    cl_grp=cl_grp.append(unsort_df, ignore_index=True)
-                    cl_grp.to_csv(Path(dp, 'cluster_group.tsv'), sep='	', index=False)
-            else:
-                raise ValueError(f'you cannot try to load {quality} units before manually curating a dataset - run phy once and try again.')
+        units=cl_grp.loc[cl_grp['group']==quality,'cluster_id'].values if quality!='all' else cl_grp['cluster_id'].values
         
     if chan_range is None:
         return units
     
     assert len(chan_range)==2, 'chan_range should be a list or array with 2 elements!'
     
-    peak_channels=get_depthSort_peakChans(dp, units=[], quality=quality)
+    # For regular datasets
+    peak_channels=get_depthSort_peakChans(dp, units=units, quality=quality)
     chan_mask=(peak_channels[:,1]>=chan_range[0])&(peak_channels[:,1]<=chan_range[1])
     units=peak_channels[chan_mask,0].flatten()
     

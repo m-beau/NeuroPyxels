@@ -495,6 +495,17 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
         assert np.all(ts.astype(int)==ts), 'Sync signals need to be integers, in samples acquired at fs sampling rate!'
         sync_signals[tsi]=ts.astype(int)
         
+        
+    for ss in sync_signals:
+        assert len(sync_signals[0])==len(ss), "WARNING all sync signals do not have the same size, the acquisition must have been faulty!"
+    assert len(sync_signals[0])>=1, "Only one synchronization signal has been provided - this is dangerous practice as this does not account for cumulative time drift."
+    if len(sync_signals[0])>50:
+        print('More than 50 sync signals found - for performance reasons, sub-sampling of 50 homogenoeously spaced sync signals to align data.')
+        subselect_ids=np.random.choice(np.arange(1,len(sync_signals[0])-1), 48, replace=False)
+        subselect_ids=np.append(subselect_ids,[0,-1]) # enforce first and last stim
+        for synci,sync in enumerate(sync_signals):
+            sync_signals[synci]=sync[subselect_ids]
+        
     if len(timeseries)==1: # Usage 2
         usage=2
         offset=sync_signals[1][0]
@@ -512,14 +523,11 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
         assert len(npa([fs]).flatten())==1, 'You must provide a single sampling frequency fs when aligning >=2 time series (Usage 1)!'
         fs_master=npa([fs]).flatten()[0]
 
-    for ss in sync_signals:
-        assert len(sync_signals[0])==len(ss), "WARNING all sync signals do not have the same size, the acquisition must have been faulty!"
-    assert len(sync_signals[0])>=1, "Only one synchronization signal has been provided - this is dangerous practice as this does not account for cumulative time drift."
     
     Nevents, totDft, avDft, stdDft = len(sync_signals[0]), (sync_signals[1]-sync_signals[0])[-1], np.mean(np.diff(sync_signals[1]-sync_signals[0])), np.std(np.diff(sync_signals[1]-sync_signals[0]))
     totDft, avDft, stdDft = totDft*1000/fs_master, avDft*1000/fs_master, stdDft*1000/fs_master
     print("{} sync events used for alignement - start-end drift of {}ms, \
-          av. drift between consec. sync events of {}+/-{}ms.".format(Nevents, totDft, avDft, stdDft))
+          av. drift between consec. sync events of {}+/-{}ms.".format(Nevents, round(totDft,4), round(avDft,4), round(stdDft,4)))
     
     for dataset_i in range(len(timeseries)):
         array0, syncs=timeseries[dataset_i], sync_signals[dataset_i]

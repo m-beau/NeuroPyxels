@@ -403,6 +403,7 @@ def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, subset_selection
         else:
             assert n_waveforms > 0
             spike_ids = ids(dp, unit)
+            assert any(spike_ids)
             if subset_selection == 'regular':
                 # Regular subselection.
                 if batch_size_waveforms is None or len(spike_ids) <= max(batch_size_waveforms, n_waveforms):

@@ -84,7 +84,7 @@ class Prophyler:
     
     If you want to access unit u:
     >>> pro.units[u]
-    >>> pro.units[u].trn(): equivalent to rtn.npyx.spk_t.trn(dp,u)
+    >>> pro.units[u].trn(): equivalent to npyx.spk_t.trn(dp,u)
     
     The units can also be accessed through the 'unit' attributes of the graph nodes:
     >>> pro.graph.nodes[u]]['unit'].trn() returns the same thing as ds.units[u].trn()
@@ -107,8 +107,7 @@ class Prophyler:
     
     
     def __init__(self, datapaths, sync_idx3A=2):
-
-        # Handle datapaths format 
+        # Handle datapaths format
         typ_e=TypeError('''
         Datapath should be either a string to a kilosort path:
         'path/to/kilosort/output1'
@@ -176,12 +175,13 @@ class Prophyler:
             cl_grp.insert(0, 'dataset_i', ds_i)
             qualities=qualities.append(cl_grp, ignore_index=True)
         qualities.set_index('dataset_i', inplace=True)
-        qualities_dp=Path(self.dp_pro, 'merged_cluster_group.tsv')#Path(self.dp_pro, 'merged_cluster_group.tsv')
+        qualities_dp=Path(self.dp_pro, 'merged_cluster_group.tsv')
         if op.exists(qualities_dp):
             qualities_old=pd.read_csv(qualities_dp, sep='	', index_col='dataset_i')
             # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
             if not np.all(np.isin(qualities_old.loc[:, 'cluster_id'], qualities.loc[:, 'cluster_id'])):
                 re_spksorted=True
+                print('New spike-sorting detected.')
         qualities.to_csv(qualities_dp, sep='	')
 
         # If several datasets are fed to the prophyler, align their spike times.
@@ -191,11 +191,8 @@ class Prophyler:
             if (not op.exists(Path(self.dp_pro, merge_fname+'.npy'))) or re_spksorted:
                 print(">>> Loading spike trains of {} datasets...".format(len(self.ds_table.index)))
                 spike_times, spike_clusters, sync_signals = [], [], []
-                fileCreateTimes, fileTimeSecs = [], [] # used to assess if files were recorded on the same NI card
                 for ds_i in self.ds_table.index:
                     ds=self.ds[ds_i]
-                    fileCreateTimes.append(ds.meta['fileCreateTime'])
-                    fileTimeSecs.append(ds.meta['fileTimeSecs'])
                     ons, offs = get_npix_sync(ds.dp, output_binary = False, sourcefile='ap', unit='samples')
                     spike_times.append(np.load(Path(ds.dp, 'spike_times.npy')).flatten())
                     spike_clusters.append(np.load(Path(ds.dp, 'spike_clusters.npy')).flatten())
@@ -208,10 +205,7 @@ class Prophyler:
                 for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
                 
                 print(">>> Aligning spike trains of {} datasets...".format(len(self.ds_table.index)))
-                if (all(e==fileCreateTimes[0] for e in fileCreateTimes) and all(e==fileTimeSecs[0] for e in fileTimeSecs)):
-                    print('>>> All fed datasets were recorded on the same NI card - no alignment necessary, keep spike times as they are!')
-                else:
-                    spike_times = align_timeseries(spike_times, sync_signals, 30000)
+                spike_times = align_timeseries(spike_times, sync_signals, 30000)
                 merged_clusters_spikes=npa(zeros=(NspikesTotal, 3), dtype=np.uint64) # 1:dataset index, 2:unit index
                 cum_Nspikes=0
                 for ds_i in self.ds_table.index:
@@ -240,7 +234,6 @@ class Prophyler:
         self.units={}
         for ds_i in self.ds_table.index:
             ds=self.ds[ds_i]
-            assert any(ds.get_good_units()), f'Aborting - circuit prophyler can only work on a spike-sorted dataset, find good units in {ds.name} before calling it!'
             ds.get_peak_positions()
             for u, pos in ds.peak_positions.items():
                 self.peak_positions['{}_{}'.format(ds_i,u)]=pos+npa([100,0])*ds_i # Every dataset is offset by 100um on x
@@ -302,7 +295,7 @@ class Prophyler:
         g=self.map_sfc_on_g(g, sfc, criteria)
         self.make_directed_graph()
         if plotsfcm:
-            rtn.npyx.plot.plot_sfcm(self.dp_pro, corr_type, metric,
+            npyx.plot.plot_sfcm(self.dp_pro, corr_type, metric,
                                     cbin, cwin, p_th, n_consec_bins, fract_baseline, W_sd, test,
                                     depth_ticks=True, regions={}, reg_colors={}, again=again, againCCG=againCCG, drop_seq=drop_seq)
             
@@ -651,7 +644,7 @@ class Prophyler:
             ea=self.get_edge_attributes(edge, prophylerGraph=prophylerGraph, src_graph=src_graph) # u1, u2, i unpacked
             
             ##TODO - plt ccg from shared directory
-            rtn.npyx.plot.plot_ccg(self.dp, [ea['uSrc'],ea['uTrg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
+            npyx.plot.plot_ccg(self.dp, [ea['uSrc'],ea['uTrg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
             
             label=''
             while label=='': # if enter is hit
@@ -1123,13 +1116,13 @@ class Dataset:
                 raise "Local channel map comprises channels not found in expected channels given matafile probe type."
         
     def get_units(self):
-        return rtn.npyx.gl.get_units(self.dp)
+        return npyx.gl.get_units(self.dp)
     
     def get_good_units(self):
-        return rtn.npyx.gl.get_units(self.dp, quality='good')
+        return npyx.gl.get_units(self.dp, quality='good')
     
     def get_peak_channels(self):
-        self.peak_channels = get_depthSort_peakChans(self.dp, quality='good')# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
+        self.peak_channels = get_depthSort_peakChans(self.dp, use_template=True)# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
         return self.peak_channels
         
     def get_peak_positions(self):
@@ -1188,36 +1181,36 @@ class Unit:
         self.peak_position_real=self.ds.peak_positions_real[self.idx==self.ds.peak_positions_real[:,0], 1:].flatten()
                     
     def trn(self, rec_section='all'):
-        return rtn.npyx.spk_t.trn(self.dp, self.idx, rec_section=rec_section)
+        return npyx.spk_t.trn(self.dp, self.idx, rec_section=rec_section)
     
     def trnb(self, bin_size, rec_section='all'):
-        return rtn.npyx.spk_t.trnb(self.dp, self.idx, bin_size, rec_section=rec_section)
+        return npyx.spk_t.trnb(self.dp, self.idx, bin_size, rec_section=rec_section)
     
     def ids(self):
-        return rtn.npyx.spk_t.ids(self.dp, self.idx)
+        return npyx.spk_t.ids(self.dp, self.idx)
     
     def isi(self, rec_section='all'):
-        return rtn.npyx.spk_t.isi(self.dp, self.idx, rec_section=rec_section)
+        return npyx.spk_t.isi(self.dp, self.idx, rec_section=rec_section)
     
     def acg(self, cbin, cwin, normalize='Hertz', rec_section='all'):
-        return rtn.npyx.corr.acg(self.dp, self.idx, bin_size=cbin, win_size=cwin, normalize=normalize, rec_section=rec_section)
+        return npyx.corr.acg(self.dp, self.idx, bin_size=cbin, win_size=cwin, normalize=normalize, rec_section=rec_section)
     
     def ccg(self, U, cbin, cwin, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all', again=False):
-        return rtn.npyx.corr.ccg(self.dp, [self.idx]+list(U), cbin, cwin, fs, normalize, ret, sav, prnt, rec_section, again)
+        return npyx.corr.ccg(self.dp, [self.idx]+list(U), cbin, cwin, fs, normalize, ret, sav, prnt, rec_section, again)
     
     def wvf(self, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10):
-        return rtn.npyx.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, True, True)
+        return npyx.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, True, True)
     
     def plot_acg(self, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
              pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0):
         
-        rtn.npyx.plot.plot_acg(self.dp, self.idx, cbin, cwin, normalize, color, saveDir, saveFig, prnt, show, 
+        npyx.plot.plot_acg(self.dp, self.idx, cbin, cwin, normalize, color, saveDir, saveFig, prnt, show, 
              pdf, png, rec_section, labels, title, ref_per, saveData, ylim)
     
     def plot_ccg(self, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True,
              pdf=False, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=0):
         
-        rtn.npyx.plot.plot_ccg(self.dp, [self.idx]+list(units), cbin, cwin, normalize, saveDir, saveFig, prnt, show,
+        npyx.plot.plot_ccg(self.dp, [self.idx]+list(units), cbin, cwin, normalize, saveDir, saveFig, prnt, show,
                  pdf, png, rec_section, labels, std_lines, title, color, CCG, saveData, ylim)
     
     def connections(self):

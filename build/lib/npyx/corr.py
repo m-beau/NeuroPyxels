@@ -1365,7 +1365,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
     return sigstack, sigustack
 
 def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None, cross_cont_proof=False):
+             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None, cross_cont_proof=False, use_template_for_peakchan=False):
     '''
     Function generating a functional correlation dataframe sfc (Nsig x 2+8 features) and matrix sfcm (Nunits x Nunits)
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -1440,7 +1440,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
     if units is not None:
         assert np.all(np.isin(units, get_units(dp))), 'Some of the provided units are not found in this dataset.'
         assert name is not None, 'You MUST provide a custom name for the provided list of units to ensure that your results can be saved.'
-        peakChs = get_depthSort_peakChans(dp, units=units)
+        peakChs = get_depthSort_peakChans(dp, units=units, use_template=use_template_for_peakchan)
         gu = peakChs[:,0]
     else:
         name='good-all_to_all'

@@ -1410,7 +1410,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
     
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True, 
              _format='pdf', subset_selection='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False,
-             ylim=[0,0], ccg_mn=None, ccg_std=None, again=False, trains=None, ccg_grid=False):
+             ylim=[0,0], ccg_mn=None, ccg_std=None, again=False, trains=None, ccg_grid=False, use_template=True):
     assert type(units) in [list, np.ndarray]
     units=list(units)
     _, _idx=np.unique(units, return_index=True)
@@ -1418,7 +1418,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
     assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'],"WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte']."#
     if normalize=='mixte' and len(units)==2 and not ccg_grid: normalize='zscore'
     saveDir=op.expanduser(saveDir)
-    bChs=get_depthSort_peakChans(dp, units=units)[:,1].flatten()
+    bChs=get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
 
     if CCG is None:
@@ -1608,7 +1608,7 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
               drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None,
               text=False, markers=False, ticks=True, depth_ticks=False,
               regions={}, reg_colors={}, vminmax=[-7,7], figsize=(7,7),
-              saveFig=False, saveDir=None, again=False, againCCG=False):
+              saveFig=False, saveDir=None, again=False, againCCG=False, use_template_for_peakchan=False):
     '''
     Visually represents the connectivity datafrane outputted by 'gen_sfc'.
     Each line/row is a good unit.
@@ -1617,7 +1617,7 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     '''
     sfc, sfcm, peakChs = gen_sfc(dp, corr_type, metric, cbin, cwin,
                                  p_th, n_consec_bins, fract_baseline, W_sd, test, 
-                                 again, againCCG, drop_seq, units, name)
+                                 again, againCCG, drop_seq, units, name, False, use_template_for_peakchan)
     gu = peakChs[:,0]
     ch = peakChs[:,1].astype(int)
     

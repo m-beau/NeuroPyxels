@@ -17,11 +17,9 @@ import numpy as np
 from math import floor
 from scipy import signal
 
-import matplotlib.pylab as plt
-import tkinter
 from tkinter import filedialog as tkFileDialog
 
-from npyx.utils import npa, _as_array
+from npyx.utils import npa
 
 
 #%% IO utilities
@@ -35,6 +33,9 @@ def read_spikeglx_meta(dp, subtype='ap'):
     '''
     Read spikeGLX metadata file.
     '''
+    if assert_multi(dp):
+        dp=get_ds_table(dp)['dp'].values[0]
+        print(f'Multidataset detected - spikeGLX metadata taken from 1st dataset ({dp}).')
     assert subtype in ['ap', 'lf']
     metafile=''
     for file in os.listdir(dp):
@@ -809,4 +810,4 @@ def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
     return myrange
 
 
-from npyx.gl import get_rec_len
+from npyx.gl import get_rec_len, assert_multi, get_ds_table

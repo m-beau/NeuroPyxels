@@ -500,7 +500,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
         assert len(sync_signals[0])==len(ss), "WARNING all sync signals do not have the same size, the acquisition must have been faulty!"
     assert len(sync_signals[0])>=1, "Only one synchronization signal has been provided - this is dangerous practice as this does not account for cumulative time drift."
     if len(sync_signals[0])>50:
-        print('More than 50 sync signals found - for performance reasons, sub-sampling of 50 homogenoeously spaced sync signals to align data.')
+        print('More than 50 sync signals found - for performance reasons, sub-sampling to 50 homogenoeously spaced sync signals to align data.')
         subselect_ids=np.random.choice(np.arange(1,len(sync_signals[0])-1), 48, replace=False)
         subselect_ids=np.append(subselect_ids,[0,-1]) # enforce first and last stim
         for synci,sync in enumerate(sync_signals):

@@ -11,7 +11,7 @@ from ast import literal_eval as ale
 import numpy as np
 import pandas as pd
                     
-from npyx.utils import smooth, thresh_consec, npa
+from npyx.utils import smooth, thresh_consec, npa, assert_int, assert_float
 from npyx.gl import get_units, assert_multi, get_dataset_id, get_ds_table
 from npyx.io import read_spikeglx_meta
 
@@ -42,7 +42,7 @@ def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
     # if not, compute it
     else:
         if prnt: print(f"File {fn} not found in routines memory. Will be computed from source files.")
-        if type(unit) not in [float, int]: raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
+        if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
         assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
         if assert_multi(dp):
             ds_table = get_ds_table(dp)
@@ -105,7 +105,7 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
     # if not, compute it
     else:
         if prnt: print(f"File {fn} not found in routines memory. Will be computed from source files.")
-        if type(unit) not in [float, int]: raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
+        if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
         assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
         if assert_multi(dp):
             ds_table = get_ds_table(dp)

@@ -10,6 +10,7 @@ import os
 import os.path as op
 from pathlib import Path
 
+from npyx.utils import assert_float
 from npyx.io import read_spikeglx_meta
 
 import numpy as np
@@ -71,16 +72,12 @@ def get_good_units(dp):
 ### Below, utilities for circuit prophyler
 ### (in particular used to merge simultaneously recorded datasets)
 
-def assert_multi(dp):
-    cl_grp = load_units_qualities(dp)
-    U=cl_grp['cluster_id'].values
-    return not np.all(U==U.astype(int))
-
 def get_ds_table(dp_pro):
     ds_table = pd.read_csv(Path(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
     for dp in ds_table['dp']:
         assert op.exists(dp), f"WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{dp}!"
     return ds_table
+
 
 def get_dataset_id(u):
     '''
@@ -90,7 +87,21 @@ def get_dataset_id(u):
         - u: int, unit index
         - ds_i: int, dataset index
     '''
+    assert assert_float(u), "Seems like the argument passed isn't a float - calling this function is meaningless."
     return int(round(u%1*10)), int(u)
+
+def assert_same_dataset(U):
+    '''Asserts if all provided units belong to the same dataset.
+    '''
+    return all(get_dataset_id(U[0])[0] == get_dataset_id(u)[0] for u in U[1:])
+
+def assert_multi(dp):
+    cl_grp = load_units_qualities(dp)
+    U=cl_grp['cluster_id'].values
+    return not np.all(U==U.astype(int))
+
+def get_ds_ids(U):
+    return (U%1*10).round(0).astype(int)
 
 def get_dataset_ids(dp_pro):
     '''
@@ -100,15 +111,15 @@ def get_dataset_ids(dp_pro):
         - dataset_ids: np array of shape (N_spikes,), indices of dataset of origin for all spikes
     '''
     assert assert_multi(dp_pro)
-    return (get_units(dp_pro)%1*10).round(0).astype(int)
+    return get_ds_ids(get_units(dp_pro))
 
-def get_prophyler_source(dp_pro, u):
+def get_source_dp_u(dp, u):
     '''If dp is a prophyler datapath, returns datapath from source dataset and unit as integer.
        Else, returns dp and u as they are.
     '''
-    if op.basename(dp_pro)[:9]=='prophyler':
+    if op.basename(dp)[:9]=='prophyler':
         ds_i, u = get_dataset_id(u)
-        ds_table=get_ds_table(dp_pro)
+        ds_table=get_ds_table(dp)
         dp=ds_table['dp'][ds_i]
     return dp, u
 

@@ -17,6 +17,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoLocator
 
+mpl.rcParams['figure.dpi']=100
+
 import holoviews as hv
 import bokeh as bk
 
@@ -26,7 +28,7 @@ from npyx.utils import phyColorsDic, DistinctColors20, npa, zscore, isnumeric
 from npyx.stats import fractile_normal, fractile_poisson
 
 from npyx.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
-from npyx.gl import get_units
+from npyx.gl import get_units, assert_multi, get_ds_ids
 from npyx.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
 from npyx.spk_t import trn
 from npyx.corr import acg, ccg, gen_sfc, get_ccg_sig, get_cm
@@ -199,10 +201,10 @@ def mplp(fig=None, ax=None, figsize=None,
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
     if xtickslabels is not None:
-        assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/few xtickslabels!'
+        assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/few xtickslabels! Make sure that the default/provided xticks match them.'
         ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=xtickrot)
     if ytickslabels is not None:
-        assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels!'
+        assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels! Make sure that the default/provided yticks match them.'
         ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=ytickrot)
     
     # Title
@@ -525,7 +527,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
             xticks=xticklabels*fs/1000
             y_ticks_labels=npa([x*10 if x%2==0 else x*10-10 for x in y_ticks_labels])
             
-            fig=imshow_cbar(im=rc, origin='top', events_toplot=[], events_color='k',
+            fig=imshow_cbar(im=rc, origin='top', xevents_toplot=[], events_color='k',
                             xvalues=None, yvalues=None, xticks=xticks-xticks[0], yticks=y_ticks,
                             xticklabels=xticklabels, yticklabels=y_ticks_labels, xlabel=None, ylabel=None, 
                             cmapstr="RdBu_r", vmin=vmin, vmax=vmax, center=center, colorseq='nonlinear',
@@ -866,7 +868,7 @@ def raster_plot(times, events, events_toplot=[0], events_color='r', trials_toplo
             if cmap_str is None: cmap_str = 'viridis' if not (zscore|bsl_subtract) else 'RdBu_r'
             ntrials=y.shape[0]
             clab='Inst. firing rate (Hz)' if not zscore else 'Inst. firing rate (zscore)'
-            imshow_cbar(y, origin='top', events_toplot=events_toplot, events_color=events_color,
+            imshow_cbar(y, origin='top', xevents_toplot=events_toplot, events_color=events_color,
                         xvalues=np.arange(window[0], window[1], psthb), yvalues=np.arange(ntrials)+1,
                         xticks=None, yticks=y_ticks,
                         xticklabels=None, yticklabels=y_ticks_labels, xlabel=xlabel_plot, ylabel='Trials', title=title,
@@ -1392,7 +1394,6 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True, 
              _format='pdf', subset_selection='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0], acg_mn=None, acg_std=None, again=False):
-    assert type(unit)==int or type(unit)==str
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=[unit])[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
@@ -1442,7 +1443,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloa
 
 #%% Heatmaps including correlation matrices
 
-def imshow_cbar(im, origin='top', events_toplot=[], events_color='k',
+def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_color='k', events_lw=2,
                 xvalues=None, yvalues=None, xticks=None, yticks=None,
                 xticklabels=None, yticklabels=None, xlabel=None, ylabel=None, title='',
                 cmapstr="RdBu_r", vmin=-1, vmax=1, center=0, colorseq='nonlinear',
@@ -1502,28 +1503,34 @@ def imshow_cbar(im, origin='top', events_toplot=[], events_color='k',
     # Plot image with custom colormap
     fig,ax=plt.subplots(figsize=figsize) if ax is None else (ax.get_figure(), ax)
     if function=='imshow': axim=ax.imshow(im, cmap=cmap, vmin=vmin, vmax=vmax, aspect=aspect, 
-                                          origin={'top':'upper', 'bottom':'lower'}[origin], extent=extent, **kwargs)
+                                          origin={'top':'upper', 'bottom':'lower'}[origin], extent=extent, interpolation='none',
+                                          **kwargs)
     elif function=='pcolor': axim=ax.pcolormesh(im, X=xvalues, Y=yvalues,
                                                 cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
-    if any(events_toplot):
-        for e in events_toplot:
+    if any(xevents_toplot):
+        for e in xevents_toplot:
             yl=ax.get_ylim()
-            ax.plot([e,e],yl,lw=2,ls='--',c=events_color)
+            ax.plot([e,e],yl,lw=events_lw,ls='--',c=events_color)
             ax.set_ylim(yl)
+    if any(yevents_toplot):
+        for e in yevents_toplot:
+            xl=ax.get_xlim()
+            ax.plot(xl,[e,e],lw=events_lw,ls='--',c=events_color)
+            ax.set_xlim(xl)
             
     mplp(fig, ax, figsize=figsize,
           xlim=None, ylim=None, xlabel=xlabel, ylabel=ylabel,
           xticks=xticks, yticks=yticks, xtickslabels=xticklabels, ytickslabels=yticklabels,
-          reset_xticks=False, reset_yticks=False, xtickrot=0, ytickrot=0,
-          axlab_w='bold', axlab_s=20,
-          ticklab_w='regular', ticklab_s=16, ticks_direction='out', lw=1,
-          title=title, title_w='bold', title_s=24,
+          reset_xticks=False, reset_yticks=False, xtickrot=45, ytickrot=0,
+          axlab_w='bold', axlab_s=12,
+          ticklab_w='regular', ticklab_s=10, ticks_direction='out', lw=1,
+          title=title, title_w='bold', title_s=14,
           hide_top_right=False, hide_axis=False)
 
     # Add colorbar, nicely formatted
     axpos=ax.get_position()
     cbaraxx0,cbaraxy0 = float(axpos.x0+axpos.width+0.01), float(axpos.y0)
-    cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, .02, .3])
+    cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, .01, .3])
     fig.colorbar(axim, cax=cbar_ax, ax=ax,
              orientation='vertical', label=clabel,
              extend=extend_cmap, ticks=cticks, use_gridspec=True)
@@ -1607,6 +1614,99 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
               p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
               drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None,
               text=False, markers=False, ticks=True, depth_ticks=False,
+              regions={}, reg_colors={}, vminmax=[-7,7], figsize=(6,6),
+              saveFig=False, saveDir=None, again=False, againCCG=False, use_template_for_peakchan=False):
+    '''
+    Visually represents the connectivity datafrane outputted by 'gen_sfc'.
+    Each line/row is a good unit.
+    Each intersection is a square split in a varying amount of columns,
+    each column representing a positive or negatively significant peak collored accordingly to its size s.
+    '''
+    
+    sfc, sfcm, peakChs = gen_sfc(dp, corr_type, metric, cbin, cwin,
+                                 p_th, n_consec_bins, fract_baseline, W_sd, test,
+                                 again, againCCG, drop_seq, units, name, 
+                                 cross_cont_proof=False, use_template_for_peakchan=use_template_for_peakchan)
+    gu = peakChs[:,0]
+    ch = peakChs[:,1].astype(int)
+    
+    if corr_type=='synchrony':
+        vminmax=[0,vminmax[1]]
+    elif corr_type=='excitations':
+        vminmax=[0,vminmax[1]]
+    elif corr_type=='inhibitions':
+        vminmax=[vminmax[0],0]
+    
+    if depth_ticks:
+        labs=['{}'.format(3840-ch[i]*10) for i in range(len(gu)) if i%10==0]
+        tks=[i for i in range(len(gu)) if i%10==0]
+        lab = 'Depth on probe (\u03BCm)'
+    else:
+        labs=['{}@{}'.format(gu[i], ch[i]) for i in range(len(gu))]
+        tks=np.arange(len(labs))
+        lab = 'unit.dataset@channel'
+    
+    mpl.rcParams['figure.dpi']=100
+    ttl='Significant functional correlation matrix\n{}\n{}-{}-{}-{}-{}\n({})'.format(op.basename(dp),test, p_th, n_consec_bins, fract_baseline, W_sd, corr_type)
+    dataset_borders = list(np.nonzero(np.diff(get_ds_ids(peakChs[:,0])))[0]) if assert_multi(dp) else []
+    fig=imshow_cbar(sfcm, origin='top', xevents_toplot=dataset_borders, yevents_toplot=dataset_borders, events_color=[0.5,0.5,0.5],events_lw=1,
+                xvalues=None, yvalues=None, xticks=tks, yticks=tks,
+                xticklabels=labs, yticklabels=labs, xlabel=lab, ylabel=lab, title=ttl,
+                cmapstr="RdBu_r", vmin=vminmax[0], vmax=vminmax[1], center=0, colorseq='nonlinear',
+                clabel='Crosscorr. modulation (s.d.)', extend_cmap='neither', cticks=None,
+                figsize=figsize, aspect='auto', function='imshow',
+                ax=None)
+    
+    ax=fig.axes[0]
+    ax.plot(ax.get_xlim(), ax.get_ylim()[::-1], ls="--", c=[0.5,0.5,0.5], lw=1)
+    [ax.spines[sp].set_visible(True) for sp in ['left', 'bottom', 'top', 'right']]
+    
+    if not ticks:
+        [tick.set_visible(False) for tick in ax.xaxis.get_major_ticks()]
+        [tick.set_visible(False) for tick in ax.yaxis.get_major_ticks()]
+    
+    if any(regions):
+        for region, rng in regions.items():
+            rngi=[np.nonzero(abs(r-ch)==min(abs(r-ch)))[0][0] for r in rng[::-1]]
+            for r in rngi:
+                ax.plot([r,r], [0,len(ch)], ls="-", c=[0.5,0.5,0.5], lw=1)
+                ax.plot([0,len(ch)], [r,r], ls="-", c=[0.5,0.5,0.5], lw=1)
+            ax.plot(rngi,[len(ch),len(ch)], ls="-", c=reg_colors[region], lw=10, solid_capstyle='butt')
+            ax.plot([0,0], rngi, ls="-", c=reg_colors[region], lw=10, solid_capstyle='butt')
+            ax.text(x=2, y=rngi[0]+np.diff(rngi)/2, s=region, c=reg_colors[region], fontsize=18, fontweight='bold', rotation=90, va='center')
+    
+    if markers:
+        for i in range(sfcm.shape[0]):
+            for j in range(sfcm.shape[0]):
+                if i!=j:
+                    ccgi=(gu[i]==sfc['uSrc'])&(gu[j]==sfc['uTrg'])
+                    if np.any(ccgi):
+                        pkT = sfc.loc[ccgi, 't_ms']
+                        if pkT>0.5:
+                            ax.scatter(j, i, marker='>', s=20, c="black")
+                        elif pkT<-0.5:
+                            ax.scatter(j, i, marker='<', s=20, c="black")
+                        elif -0.5<=pkT and pkT<=0.5:
+                            ax.scatter(j, i, marker='o', s=20, c="black")
+    if text:
+        for i in range(sfcm.shape[0]):
+            for j in range(sfcm.shape[0]):
+                ccgi=(gu[i]==sfc['uSrc'])&(gu[j]==sfc['uTrg'])
+                if np.any(ccgi):
+                    pkT = sfc.loc[ccgi, 't_ms']
+                    if i!=j and (min(pkT)<=0 or max(pkT)>0):
+                        ax.text(x=j, y=i, s=str(pkT), size=12)
+    
+    if saveFig:
+        if saveDir is None: saveDir=dp
+        fig.savefig(Path(saveDir,ttl.replace('\n', '_')+'.pdf'))
+    
+    return fig
+
+def plot_sfcm_old(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, 
+              p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+              drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None,
+              text=False, markers=False, ticks=True, depth_ticks=False,
               regions={}, reg_colors={}, vminmax=[-7,7], figsize=(7,7),
               saveFig=False, saveDir=None, again=False, againCCG=False, use_template_for_peakchan=False):
     '''
@@ -1615,9 +1715,12 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     Each intersection is a square split in a varying amount of columns,
     each column representing a positive or negatively significant peak collored accordingly to its size s.
     '''
+    
     sfc, sfcm, peakChs = gen_sfc(dp, corr_type, metric, cbin, cwin,
-                                 p_th, n_consec_bins, fract_baseline, W_sd, test, 
-                                 again, againCCG, drop_seq, units, name, False, use_template_for_peakchan)
+                                 p_th, n_consec_bins, fract_baseline, W_sd, test,
+                                 again, againCCG, drop_seq, units, name, 
+                                 cross_cont_proof=False, use_template_for_peakchan=use_template_for_peakchan)
+             
     gu = peakChs[:,0]
     ch = peakChs[:,1].astype(int)
     

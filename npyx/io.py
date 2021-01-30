@@ -35,7 +35,7 @@ def read_spikeglx_meta(dp, subtype='ap'):
     '''
     if assert_multi(dp):
         dp=get_ds_table(dp)['dp'].values[0]
-        print(f'Multidataset detected - spikeGLX metadata taken from 1st dataset ({dp}).')
+        #print(f'Multidataset detected - spikeGLX metadata taken from 1st dataset ({dp}).')
     assert subtype in ['ap', 'lf']
     metafile=''
     for file in os.listdir(dp):

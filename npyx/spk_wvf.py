@@ -20,7 +20,7 @@ from math import ceil
 
 from npyx.utils import _as_array, npa
 from npyx.spk_t import ids
-from npyx.gl import get_units, get_prophyler_source
+from npyx.gl import get_units, assert_multi, get_ds_ids, get_source_dp_u
 from npyx.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 
 
@@ -79,7 +79,7 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, subset_selection='regular',
         u=np.unique(np.load(Path(dp)/'spike_clusters.npy')[spike_ids])
         assert len(u)==1, 'WARNING the spike ids that you provided seem to belong to different units!! Double check!'
         u=u[0]
-    dp, u = get_prophyler_source(dp, u)
+    dp, u = get_source_dp_u(dp, u)
     
     dprm = Path(dp,'routinesMemory')
     fn=f"wvf{u}_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
@@ -231,7 +231,7 @@ def get_w(traces, slc, _n_samples_extract):
     # Add this waveform, all good!
     return extract.T
 
-def get_peak_chan(dp, unit, use_template=False, again=False, absolute=True):
+def get_peak_chan(dp, unit, use_template=True, again=False, absolute=True):
     '''
     Parameters:
         - datapath, string
@@ -248,7 +248,17 @@ def get_peak_chan(dp, unit, use_template=False, again=False, absolute=True):
           where the unit averaged raw waveform (n=100 spanning the whole recording)
           has the largest peak to trough amplitude.
     '''
-    dp, unit = get_prophyler_source(dp, unit)
+    dp, unit = get_source_dp_u(dp, unit)
+    
+    strdic={True:'templates', False:'raw-waveforms'}
+    f_all=f'peak_channels_{strdic[use_template]}_all.npy'
+    f_good=f'peak_channels_{strdic[use_template]}_good.npy'
+    for f in [f_all, f_good]:
+        if op.exists(Path(dp, f)):
+            peak_chans=np.load(Path(dp, f))
+            if unit in peak_chans[:,0]:
+                return peak_chans[peak_chans[:,0]==unit, 1]
+    
     cm=chan_map(dp, probe_version='local')
     if use_template:
         waveforms=templates(dp, unit)
@@ -261,7 +271,7 @@ def get_peak_chan(dp, unit, use_template=False, again=False, absolute=True):
     peak_chan = np.argmax(max_min_wvf)
     return cm[:,0][peak_chan] if absolute else peak_chan
 
-def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False, again=False):
+def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, again=False):
     '''
     Usage:
         Either feed in a list of units - the function will return their indices/channels sorted by depth in a n_units x 2 array,
@@ -282,7 +292,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False, aga
         # and prepare to save the FULL array of peak channels at the end
         units=get_units(dp, quality=quality, again=again)
         assert any(units)
-        pc_fname='peak_channels_{}_{}.npy'.format(strdic[use_template], quality)
+        pc_fname=f'peak_channels_{strdic[use_template]}_{quality}.npy'
         if op.exists(Path(dp, pc_fname)) and not again:
             peak_chans=np.load(Path(dp, pc_fname))
             if np.all(np.isin(units, peak_chans[:,0])):
@@ -292,51 +302,29 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=False, aga
         else:
             save=True
     else:
-        # If units are fed, try to load the peak channels from the saved FULL array of peak channels
-        # else, just calculate the peak channels for the relevant units
+        # If units are fed, try to load the peak channels
+        # from the saved FULL array of peak channels
         units=npa(units).flatten()
         f_all=f'peak_channels_{strdic[use_template]}_all.npy'
         f_good=f'peak_channels_{strdic[use_template]}_good.npy'
-        if op.exists(Path(dp, f_all)):
-            peak_chans=np.load(Path(dp, f_all))
-            if np.all(np.isin(units, peak_chans[:,0])):
-                units_mask=np.isin(peak_chans[:,0], units)
-                return peak_chans[units_mask]
-        elif op.exists(Path(dp, f_good)):
-            peak_chans=np.load(Path(dp, f_good))
-            if np.all(np.isin(units, peak_chans[:,0])):
-                units_mask=np.isin(peak_chans[:,0], units)
-                return peak_chans[units_mask]
-    
-    if type(units[0]) in [str, np.str_]:
-        datasets={}
-        for iu, u in enumerate(units):
-            ds_i, u = u.split('_'); ds_i, u = ale(ds_i), ale(u)
-            if ds_i not in datasets.keys(): datasets[ds_i]=1
-            else: datasets[ds_i]+=1
-        peak_chans_dic={}
-        for ds_i, Nu in datasets.items():
-            peak_chans_dic[ds_i]=npa(zeros=(Nu,2),dtype='<U6')
-        for iu, u in enumerate(units):
-            print("Getting peak channel of unit {}...".format(u))
-            ds_i = ale(u.split('_')[0])
-            if ds_i>=1: iu=iu%datasets[ds_i-1]
-            peak_chans_dic[ds_i][iu,0] = u
-            peak_chans_dic[ds_i][iu,1] = int(get_peak_chan(dp, u, use_template))
-        peak_chans=npa(zeros=(0,2),dtype='<U6')
-        for ds_i in sorted(datasets.keys()):
-            depthIdx = np.argsort(peak_chans_dic[ds_i].astype('int64')[:,1])[::-1]
-            peak_chans_dic[ds_i]=peak_chans_dic[ds_i][depthIdx]
-            peak_chans=np.vstack([peak_chans, peak_chans_dic[ds_i]])
-
+        for f in [f_all, f_good]:
+            if op.exists(Path(dp, f)):
+                peak_chans=np.load(Path(dp, f))
+                if np.all(np.isin(units, peak_chans[:,0])):
+                    units_mask=np.isin(peak_chans[:,0], units)
+                    return peak_chans[units_mask]
+            
+    dt=np.float64 if assert_multi(dp) else np.int64
+    peak_chans=npa(zeros=(len(units),2),dtype=dt)
+    for iu, u in enumerate(units):
+        print("Getting peak channel of unit {}...".format(u))
+        peak_chans[iu,0] = u
+        peak_chans[iu,1] = get_peak_chan(dp, u, use_template).astype(dt)
+    if assert_multi(dp):
+        depth_ids = np.lexsort((-peak_chans[:,1], get_ds_ids(peak_chans[:,0])))
     else:
-        peak_chans=npa(zeros=(len(units),2),dtype='int64')
-        for iu, u in enumerate(units):
-            print("Getting peak channel of unit {}...".format(u))
-            peak_chans[iu,0] = u
-            peak_chans[iu,1] = int(get_peak_chan(dp, u, use_template))
-        depthIdx = np.argsort(peak_chans[:,1])[::-1] # From surface (high ch) to DCN (low ch)
-        peak_chans=peak_chans[depthIdx]
+        depth_ids = np.argsort(peak_chans[:,1])[::-1] # From surface (high ch) to DCN (low ch)
+    peak_chans=peak_chans[depth_ids,:]
     
     if save:
         np.save(Path(dp, pc_fname), peak_chans)
@@ -376,7 +364,7 @@ def templates(dp, u):
         temaplate: numpy array of shape (n_templates, 82, n_channels) where n_channels is defined by the channel map and n_templates by how many merges were done.
     
     '''
-    dp, u = get_prophyler_source(dp, u)
+    dp, u = get_source_dp_u(dp, u)
 
     IDs=ids(dp,u)
     #mean_amp=np.mean(np.load(Path(dp,'amplitudes.npy'))[IDs])
@@ -483,7 +471,7 @@ def wvf_old(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regular', 
         waveforms: numpy array of shape (n_waveforms, t_waveforms, n_channels) where n_channels is defined by the channel map.
     
     '''
-    dp, u = get_prophyler_source(dp, u)
+    dp, u = get_source_dp_u(dp, u)
 
     dprm = Path(dp,'routinesMemory')
     fn="wvf{}_{}-{}_{}_{}-{}-{}.npy".format(u, n_waveforms, t_waveforms, str(subset_selection)[0:10].replace(' ', ''), bpfilter, whiten, med_sub)

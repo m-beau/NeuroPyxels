@@ -140,7 +140,8 @@ def get_labels_from_ticks(ticks):
     
 def mplp(fig=None, ax=None, figsize=None,
          xlim=None, ylim=None, xlabel=None, ylabel=None,
-         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=False, reset_yticks=False, xtickrot=0, ytickrot=0,
+         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=False, reset_yticks=False,
+         xtickrot=0, ytickrot=0, xtickha='center', xtickva='top', ytickha='right', ytickva='center',
          axlab_w='bold', axlab_s=20,
          ticklab_w='regular', ticklab_s=16, ticks_direction='out', lw=2,
          title=None, title_w='bold', title_s=24,
@@ -202,10 +203,10 @@ def mplp(fig=None, ax=None, figsize=None,
     ax.set_ylim(ylim)
     if xtickslabels is not None:
         assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/few xtickslabels! Make sure that the default/provided xticks match them.'
-        ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=xtickrot)
+        ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=xtickrot, ha=xtickha, va=xtickva)
     if ytickslabels is not None:
         assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels! Make sure that the default/provided yticks match them.'
-        ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=ytickrot)
+        ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=ytickrot, ha=ytickha, va=ytickva)
     
     # Title
     if title is None: title=ax.get_title()
@@ -1503,7 +1504,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     # Plot image with custom colormap
     fig,ax=plt.subplots(figsize=figsize) if ax is None else (ax.get_figure(), ax)
     if function=='imshow': axim=ax.imshow(im, cmap=cmap, vmin=vmin, vmax=vmax, aspect=aspect, 
-                                          origin={'top':'upper', 'bottom':'lower'}[origin], extent=extent, interpolation='none',
+                                          origin={'top':'upper', 'bottom':'lower'}[origin], extent=extent, interpolation=None,
                                           **kwargs)
     elif function=='pcolor': axim=ax.pcolormesh(im, X=xvalues, Y=yvalues,
                                                 cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
@@ -1522,6 +1523,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
           xlim=None, ylim=None, xlabel=xlabel, ylabel=ylabel,
           xticks=xticks, yticks=yticks, xtickslabels=xticklabels, ytickslabels=yticklabels,
           reset_xticks=False, reset_yticks=False, xtickrot=45, ytickrot=0,
+          xtickha='right', xtickva='top', ytickha='right', ytickva='center',
           axlab_w='bold', axlab_s=12,
           ticklab_w='regular', ticklab_s=10, ticks_direction='out', lw=1,
           title=title, title_w='bold', title_s=14,

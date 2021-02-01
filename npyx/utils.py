@@ -92,7 +92,7 @@ _ACCEPTED_ARRAY_DTYPES = (np.float, np.float32, np.float64,
 
 def assert_float(x):
     return type(x) in [float, np.float, np.float16,
-                       np.float32, np.float64, np.float128]
+                       np.float32, np.float64]
 
 def assert_int(x):
     return type(x) in [int, np.int, np.int8, np.int16, np.uint8,

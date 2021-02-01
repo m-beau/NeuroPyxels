@@ -115,7 +115,7 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
                 train = spike_samples[spike_clusters==unit].ravel()
             else:
                 ds_i, unt = get_dataset_id(unit)
-                spike_clusters = np.load(Path(ds_table.loc['dp'][ds_i],"spike_clusters.npy"), mmap_mode='r')
+                spike_clusters = np.load(Path(ds_table['dp'][ds_i],"spike_clusters.npy"), mmap_mode='r')
                 spike_samples = np.load(Path(ds_table['dp'][ds_i],'spike_times.npy'), mmap_mode='r')
                 train = spike_samples[spike_clusters==unt].ravel()
         else:

@@ -96,9 +96,7 @@ def assert_same_dataset(U):
     return all(get_dataset_id(U[0])[0] == get_dataset_id(u)[0] for u in U[1:])
 
 def assert_multi(dp):
-    cl_grp = load_units_qualities(dp)
-    U=cl_grp['cluster_id'].values
-    return not np.all(U==U.astype(int))
+    return op.basename(dp)[:9]=='prophyler'
 
 def get_ds_ids(U):
     return (U%1*10).round(0).astype(int)
@@ -117,7 +115,7 @@ def get_source_dp_u(dp, u):
     '''If dp is a prophyler datapath, returns datapath from source dataset and unit as integer.
        Else, returns dp and u as they are.
     '''
-    if op.basename(dp)[:9]=='prophyler':
+    if assert_multi(dp):
         ds_i, u = get_dataset_id(u)
         ds_table=get_ds_table(dp)
         dp=ds_table['dp'][ds_i]

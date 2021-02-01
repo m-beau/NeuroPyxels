@@ -49,7 +49,7 @@ def read_spikeglx_meta(dp, subtype='ap'):
         meta = {}
         for ln in f.readlines():
             tmp = ln.split('=')
-            k, val = tmp
+            k, val = tmp[0], ''.join(tmp[1:])
             k = k.strip()
             val = val.strip('\r\n')
             if '~' in k:

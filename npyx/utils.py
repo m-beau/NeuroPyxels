@@ -474,6 +474,15 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, prnt=Tru
         sp=samples[lasti]
     return make_2D_array(samples[:lasti+1])
 
+def n_largest_samples(to_sort: np.array, largest_n: int) -> np.array:
+    
+    """
+    Returns the n largest sorted samples from an array
+    """
+    
+    sorted_n = np.argpartition(to_sort, -largest_n, axis=0 )[-largest_n:].flatten()
+    return sorted_n
+
 def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     '''
     Usage 1: align >=2 time series in the same temporal reference frame with the same sampling frequency fs

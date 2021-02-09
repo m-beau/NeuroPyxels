@@ -108,24 +108,23 @@ class Prophyler:
     
     def __init__(self, datapaths, sync_idx3A=2):
         # Handle datapaths format
-        typ_e=TypeError('''
-        Datapath should be either a string to a kilosort path:
+        val_e=ValueError('''
+        Datapath should be either an existing kilosort path:
         'path/to/kilosort/output1'
-        or a dict of such datapath strings:
+        or a dict of such paths:
         {'name_probe_1':'path/to/kilosort/output1', ...}''')
         if type(datapaths) is dict:
             for i, v in datapaths.items():
-                if type(i) is not str or type(v) is not str:
-                    raise typ_e
-                if not op.isdir(op.expanduser(v)):
-                    raise FileNotFoundError('Directory {} not found!'.format(v))
-        elif type(datapaths) is str:
-            if not op.isdir(op.expanduser(datapaths)):
-                    raise FileNotFoundError('{} not found!'.format(datapaths))
-            else:
-                datapaths={'prb1':datapaths}
+                datapaths[i]=Path(v)
+                if not datapaths[i].exists():
+                    raise val_e
         else:
-            raise typ_e
+            try:
+                datapaths=Path(datapaths)
+                assert datapaths.exists()
+            except:
+                raise val_e
+            datapaths={'prb1':datapaths}
         
         # Make an alphabetically indexed table of all fed datasets (if several)
         self.ds_table=pd.DataFrame(columns=['dataset_name', 'dp', 'probe'])
@@ -1096,18 +1095,18 @@ class Dataset:
     def __init__(self, datapath, probe_name='prb1', dataset_index=0, dataset_name=None):
 
         # Handle datapaths format 
-        if type(datapath) is str:
-            if not op.isdir(op.expanduser(datapath)):
-                    raise FileNotFoundError('{} not found!'.format(datapath))
-        else:
-            raise TypeError('''datapath should be either a string to a kilosort path:
-                        'path/to/kilosort/output1'.''')
-        
-        self.dp = op.expanduser(datapath)
+        try:
+            datapath=Path(datapath)
+            assert datapath.exists()
+        except:
+            raise ValueError('''datapath should be an existing kilosort path:
+                    'path/to/kilosort/output1'.''')
+    
+        self.dp = Path(datapath)
         self.meta=read_spikeglx_meta(self.dp)
         self.probe_version=self.meta['probe_version']
         self.ds_i=dataset_index
-        self.name=self.dp.split('/')[-1] if dataset_name is None else dataset_name
+        self.name=self.dp.name if dataset_name is None else dataset_name
         self.prb_name=probe_name
         self.params={}; params=imp.load_source('params', Path(self.dp,'params.py').absolute().as_posix())
         for p in dir(params):

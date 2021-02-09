@@ -221,7 +221,7 @@ def mplp(fig=None, ax=None, figsize=None,
     
     # Alignement and spacing elements
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    axis_to_align = [AX for AX in fig.axes if AX.__repr__().split('.')[3].split(' ')[0]=='AxesSubplot']
+    axis_to_align = [AX for AX in fig.axes if 'AxesSubplot' in AX.__repr__()]
     fig.align_ylabels(axis_to_align)
     fig.align_xlabels(axis_to_align)
         

@@ -238,7 +238,6 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                   save=True, prnt=False, again=False,
                   whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
                   nRangeWhiten=None, nRangeMedSub=None,
-                  ignore_ks_chanfilt=False,
                   use_old=False, loop=True, parallel=False,
                   memorysafe=False, fast = False ):
     
@@ -348,7 +347,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                                 wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                                 save=save , prnt = prnt,  again=True, whiten = whiten, 
                                 hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                                nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=ignore_ks_chanfilt,
+                                nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
                                 use_old=use_old, loop=loop, parallel=parallel, 
                                 memorysafe=memorysafe)
         raw_waves = raw_waves.reshape(peak_chan_split.shape[0], 10, 82, -1) 
@@ -366,7 +365,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                                 wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                                 save=save , prnt = prnt,  again=True, whiten = whiten, 
                                 hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                                nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=ignore_ks_chanfilt,
+                                nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
                                 use_old=use_old, loop=loop, parallel=parallel, 
                                 memorysafe=memorysafe)    
             
@@ -423,7 +422,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                         wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                         save=save, prnt = prnt,  again=True, whiten = whiten, 
                         hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                        nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=ignore_ks_chanfilt,
+                        nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
                         use_old=use_old, loop=loop, parallel=parallel, 
                         memorysafe=memorysafe)
         raw_waves = raw_waves.reshape(median_max_spike_ids.shape[0],10, 82, no_chans )
@@ -436,7 +435,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                         wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                         save=save, prnt = prnt,  again=True, whiten = whiten, 
                         hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                        nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=ignore_ks_chanfilt,
+                        nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
                         use_old=use_old, loop=loop, parallel=parallel, 
                         memorysafe=memorysafe)
 

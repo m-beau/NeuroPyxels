@@ -10,10 +10,8 @@ import os
 import os.path as op
 from pathlib import Path
 
-from npyx.utils import npa
+from npyx.utils import assert_float
 from npyx.io import read_spikeglx_meta
-
-from ast import literal_eval as ale
 
 import numpy as np
 import pandas as pd
@@ -27,18 +25,10 @@ def get_rec_len(dp, unit='seconds'):
         if unit=='milliseconds':t_end*=1e3
     return t_end
 
-def assert_multidatasets(dp):
-    'Returns unpacked merged_clusters_spikes.npz if it exists in dp, None otherwise.'
-    if op.exists(Path(dp, 'merged_clusters_spikes.npz')):
-        mcs=np.load(Path(dp, 'merged_clusters_spikes.npz'))
-        return mcs[list(mcs.keys())[0]]
-
 def load_units_qualities(dp, again=False):
     f='cluster_group.tsv'
     if os.path.isfile(Path(dp, f)):
         qualities = pd.read_csv(Path(dp, f),delimiter='	')
-    elif os.path.isfile(Path(dp, 'merged_'+f)):
-        qualities = pd.read_csv(Path(dp, 'merged_'+f), delimiter='	', index_col='dataset_i')
     else:
         print('cluster groups table not found in provided data path. Generated from spike_clusters.npy.')
         units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
@@ -61,21 +51,8 @@ def get_units(dp, quality='all', chan_range=None, again=False):
     cl_grp = load_units_qualities(dp, again=again)
         
     units=[]
-    if cl_grp.index.name=='dataset_i':
-        if quality=='all':
-            for ds_i in cl_grp.index.unique():
-                ds_table=pd.read_csv(Path(dp, 'datasets_table.csv'), index_col='dataset_i')
-                ds_dp=ds_table['dp'][ds_i]
-                assert op.exists(ds_dp), """WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\
-                Please add the new path of dataset {} in the csv file {}.""".format(ds_dp, ds_table['dataset_name'][ds_i], Path(dp, 'datasets_table.csv'))
-                ds_units=np.unique(np.load(Path(ds_dp, 'spike_clusters.npy')))
-                units += ['{}_{}'.format(ds_i, u) for u in ds_units]
-        else:
-            for ds_i in cl_grp.index.unique():
-                # np.all(cl_grp.loc[ds_i, 'group'][cl_grp.loc[ds_i, 'cluster_id']==u]==quality)
-                units += ['{}_{}'.format(ds_i, u) for u in cl_grp.loc[(cl_grp['group']==quality)&(cl_grp.index==ds_i), 'cluster_id']]
-    else:
-        units=cl_grp.loc[cl_grp['group']==quality,'cluster_id'].values if quality!='all' else cl_grp['cluster_id'].values
+    if assert_multi(dp): get_ds_table(dp)
+    units=cl_grp.loc[cl_grp['group']==quality,'cluster_id'].values if quality!='all' else cl_grp['cluster_id'].values
         
     if chan_range is None:
         return units
@@ -92,17 +69,56 @@ def get_units(dp, quality='all', chan_range=None, again=False):
 def get_good_units(dp):
     return get_units(dp, quality='good')
 
-def get_prophyler_source(dp_pro, u):
+### Below, utilities for circuit prophyler
+### (in particular used to merge simultaneously recorded datasets)
+
+def get_ds_table(dp_pro):
+    ds_table = pd.read_csv(Path(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
+    for dp in ds_table['dp']:
+        assert op.exists(dp), f"WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{dp}!"
+    return ds_table
+
+
+def get_dataset_id(u):
+    '''
+    Parameters:
+        - u: float, of format u.ds_i
+    Returns:
+        - u: int, unit index
+        - ds_i: int, dataset index
+    '''
+    assert assert_float(u), "Seems like the argument passed isn't a float - calling this function is meaningless."
+    return int(round(u%1*10)), int(u)
+
+def assert_same_dataset(U):
+    '''Asserts if all provided units belong to the same dataset.
+    '''
+    return all(get_dataset_id(U[0])[0] == get_dataset_id(u)[0] for u in U[1:])
+
+def assert_multi(dp):
+    return op.basename(dp)[:9]=='prophyler'
+
+def get_ds_ids(U):
+    return (U%1*10).round(0).astype(int)
+
+def get_dataset_ids(dp_pro):
+    '''
+    Parameters:
+        - dp_pro: str, path to prophyler dataset
+    Returns:
+        - dataset_ids: np array of shape (N_spikes,), indices of dataset of origin for all spikes
+    '''
+    assert assert_multi(dp_pro)
+    return get_ds_ids(get_units(dp_pro))
+
+def get_source_dp_u(dp, u):
     '''If dp is a prophyler datapath, returns datapath from source dataset and unit as integer.
        Else, returns dp and u as they are.
     '''
-    if op.basename(dp_pro)[:9]=='prophyler':
-        ds_i, u = u.split('_'); ds_i, u = ale(ds_i), ale(u)
-        ds_table=pd.read_csv(Path(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
-        ds_dp=ds_table['dp'][ds_i]
-        assert op.exists(ds_dp), """WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{}!n\
-        Please add the new path of dataset {} in the csv file {}.""".format(ds_dp, ds_table['dataset_name'][ds_i], Path(dp_pro, 'datasets_table.csv'))
-        dp_pro=ds_dp
-    return dp_pro, u
+    if assert_multi(dp):
+        ds_i, u = get_dataset_id(u)
+        ds_table=get_ds_table(dp)
+        dp=ds_table['dp'][ds_i]
+    return dp, u
 
 from npyx.spk_wvf import get_depthSort_peakChans

@@ -12,7 +12,7 @@ import psutil
 import warnings
 warnings.simplefilter('ignore', category=RuntimeWarning)
 
-from numba import jit, njit, prange
+from numba import njit, prange
 from numba.typed import List
 from joblib import Parallel, delayed
 import multiprocessing
@@ -23,11 +23,11 @@ import pandas as pd
 
 import progressbar as pgb
 
-from npyx.utils import npa, sign, thresh_consec, smooth, zscore, split, get_bins, make_2D_array, \
+from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec
                     
 from npyx.io import read_spikeglx_meta
-from npyx.gl import get_units, get_prophyler_source, get_rec_len
+from npyx.gl import get_units, get_source_dp_u, get_rec_len, assert_same_dataset, assert_multi
 from npyx.spk_t import trn, trnb, binarize, get_firing_periods
 from npyx.spk_wvf import get_depthSort_peakChans
 
@@ -221,13 +221,13 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         "WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore']."
 
     # Preformat
-    assert len(U)>=2
     U=list(U)
-    if U[0]==U[1]: U=[U[0]]
-    same_ds=all(u[0] == U[0][0] for u in U) if (type(U[0]) in [str, np.str_]) else False
+    assert len(U)>=2
+    if U[0]==U[1]: U=[U[0]] # Handling autocorrelograms
+    same_ds=assert_same_dataset(U) if assert_multi(dp) else False
     U_=U.copy()
     for iu,u in enumerate(U_):
-        (dp1, U_[iu]) = get_prophyler_source(dp, u) if same_ds else (dp, u)
+        (dp1, U_[iu]) = get_source_dp_u(dp, u) if same_ds else (dp, u)
     dp=dp1;del dp1
     sortedU=U_.copy()
     if trains is not None:
@@ -378,16 +378,16 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                     #pgbar.update(i1*len(U_trg)+i2+1)
                     ustack[i1, i2, :]=[u1,u2]
                     if i1==i2:
-                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False)
+                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)
                     elif i2>i1:
-                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False)[0,1,:]
+                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)[0,1,:]
                         stack[i2, i1, :]=stack[i1, i2, ::-1]
         else:
             for i1, u1 in enumerate(U_src):
                 for i2, u2 in enumerate(U_trg):
                     pgbar.update(i1*len(U_trg)+i2+1)
                     ustack[i1, i2, :]=[u1,u2]
-                    stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False)[0,1,:]
+                    stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)[0,1,:]
     else:
         assert len(U_src)==len(U_trg)
         assert not np.any(U_src==U_trg), 'Looks like you requested to compute a CCG between a unit and itself - check U_src and U_trg.'
@@ -397,7 +397,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
         for i, (u1, u2) in enumerate(zip(U_src, U_trg)):
             pgbar.update(i+1)
             ustack[i, :]=[u1,u2]
-            stack[i, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False)[0,1,:]
+            stack[i, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)[0,1,:]
     
     if sav and name is not None:
         np.save(dprm/fn, stack)
@@ -1350,7 +1350,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
                 if ret_features:
                     for p in pks:
                         features=features.append(dict(zip(features.columns,np.append(ustack[i, j, :], p))), ignore_index=True)
-
+    
     sigustack=npa(sigustack)
     if np.any(sigustack):
         sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True)

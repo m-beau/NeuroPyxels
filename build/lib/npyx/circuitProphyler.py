@@ -108,24 +108,23 @@ class Prophyler:
     
     def __init__(self, datapaths, sync_idx3A=2):
         # Handle datapaths format
-        typ_e=TypeError('''
-        Datapath should be either a string to a kilosort path:
+        val_e=ValueError('''
+        Datapath should be either an existing kilosort path:
         'path/to/kilosort/output1'
-        or a dict of such datapath strings:
+        or a dict of such paths:
         {'name_probe_1':'path/to/kilosort/output1', ...}''')
         if type(datapaths) is dict:
             for i, v in datapaths.items():
-                if type(i) is not str or type(v) is not str:
-                    raise typ_e
-                if not op.isdir(op.expanduser(v)):
-                    raise FileNotFoundError('Directory {} not found!'.format(v))
-        elif type(datapaths) is str:
-            if not op.isdir(op.expanduser(datapaths)):
-                    raise FileNotFoundError('{} not found!'.format(datapaths))
-            else:
-                datapaths={'prb1':datapaths}
+                datapaths[i]=Path(v)
+                if not datapaths[i].exists():
+                    raise val_e
         else:
-            raise typ_e
+            try:
+                datapaths=Path(datapaths)
+                assert datapaths.exists()
+            except:
+                raise val_e
+            datapaths={'prb1':datapaths}
         
         # Make an alphabetically indexed table of all fed datasets (if several)
         self.ds_table=pd.DataFrame(columns=['dataset_name', 'dp', 'probe'])
@@ -169,61 +168,69 @@ class Prophyler:
         # Load and save units qualities
         # + check whether datasets have been re-spike sorted if not first instanciation
         re_spksorted=False
-        qualities=pd.DataFrame(columns=['dataset_i', 'cluster_id', 'group'])
+        qualities=pd.DataFrame(columns=['cluster_id', 'group'])
         for ds_i in self.ds_table.index:
             cl_grp = load_units_qualities(self.ds[ds_i].dp)
-            cl_grp.insert(0, 'dataset_i', ds_i)
+            cl_grp['cluster_id']=cl_grp['cluster_id']+1e-1*ds_i
             qualities=qualities.append(cl_grp, ignore_index=True)
-        qualities.set_index('dataset_i', inplace=True)
-        qualities_dp=Path(self.dp_pro, 'merged_cluster_group.tsv')
+        qualities_dp=Path(self.dp_pro, 'cluster_group.tsv')
         if op.exists(qualities_dp):
-            qualities_old=pd.read_csv(qualities_dp, sep='	', index_col='dataset_i')
+            qualities_old=pd.read_csv(qualities_dp, sep='	')
             # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
             if not np.all(np.isin(qualities_old.loc[:, 'cluster_id'], qualities.loc[:, 'cluster_id'])):
                 re_spksorted=True
                 print('New spike-sorting detected.')
-        qualities.to_csv(qualities_dp, sep='	')
+        qualities.to_csv(qualities_dp, sep='	', index=False)
 
-        # If several datasets are fed to the prophyler, align their spike times.
-        if len(self.ds_table.index)>1:
-            # Only if merged_clusters_times does not exist already or does but re-spikesorting has been detected
-            merge_fname='merged_clusters_spikes'
-            if (not op.exists(Path(self.dp_pro, merge_fname+'.npy'))) or re_spksorted:
-                print(">>> Loading spike trains of {} datasets...".format(len(self.ds_table.index)))
-                spike_times, spike_clusters, sync_signals = [], [], []
-                for ds_i in self.ds_table.index:
-                    ds=self.ds[ds_i]
+        # Merge spike times (or copy them if only 1 dataset)
+        # Only if merged_clusters_times does not exist already or does but re-spikesorting has been detected
+        merge_fname_times='spike_times'
+        merge_fname_clusters='spike_clusters'
+        if (not op.exists(Path(self.dp_pro, merge_fname_times+'.npy'))) or re_spksorted:
+            print(">>> Loading spike trains of {} datasets...".format(len(self.ds_table.index)))
+            spike_times, spike_clusters, sync_signals = [], [], []
+            for ds_i in self.ds_table.index:
+                ds=self.ds[ds_i]
+                spike_times.append(np.load(Path(ds.dp, 'spike_times.npy')).flatten())
+                spike_clusters.append(np.load(Path(ds.dp, 'spike_clusters.npy')).flatten())
+                if len(self.ds_table.index)>1: # sync signals only needed if alignment necessary
                     ons, offs = get_npix_sync(ds.dp, output_binary = False, sourcefile='ap', unit='samples')
-                    spike_times.append(np.load(Path(ds.dp, 'spike_times.npy')).flatten())
-                    spike_clusters.append(np.load(Path(ds.dp, 'spike_clusters.npy')).flatten())
                     if ds.probe_version == '3A':
                         ds.sync_chan_ons=ons[sync_idx3A]
                     elif ds.probe_version in ['1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']:
                         ds.sync_chan_ons=ons[6]
                     sync_signals.append(ds.sync_chan_ons)
-                NspikesTotal=0
-                for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
+            NspikesTotal=0
+            for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
                 
+            # If several datasets are fed to the prophyler, align their spike times.
+            # Merged dataset is saved as two arrays:
+            # spike_times and spike_clusters, as in a regular dataset,
+            # but where spike_clusters is a larger int (1 is unit 1 from dataset 0, 1,000,000,001 is unit 1 from dataset 1)
+            if len(self.ds_table.index)>1:
                 print(">>> Aligning spike trains of {} datasets...".format(len(self.ds_table.index)))
                 spike_times = align_timeseries(spike_times, sync_signals, 30000)
-                merged_clusters_spikes=npa(zeros=(NspikesTotal, 3), dtype=np.uint64) # 1:dataset index, 2:unit index
-                cum_Nspikes=0
-                for ds_i in self.ds_table.index:
-                    Nspikes=len(spike_times[ds_i])
-                    merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 0]=npa(ones=(Nspikes))*ds_i
-                    merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 1]=spike_clusters[ds_i]
-                    merged_clusters_spikes[cum_Nspikes:cum_Nspikes+Nspikes, 2]=spike_times[ds_i]
-                    cum_Nspikes+=Nspikes
-                merged_clusters_spikes=merged_clusters_spikes[np.argsort(merged_clusters_spikes[:,2])]
-                np.save(Path(self.dp_pro, merge_fname+'.npy'), merged_clusters_spikes)
-                print('>>> {} saved at {}.'.format(merge_fname+'.npy', self.dp_pro))
-                self.merged_clusters_spikes=np.memmap(Path(self.dp_pro, merge_fname+'.npy'))
-                del spike_times, spike_clusters, sync_signals, merged_clusters_spikes
+            # Now save the new array
+            merged_spike_clusters=npa(zeros=(NspikesTotal), dtype=np.float64)
+            merged_spike_times=npa(zeros=(NspikesTotal), dtype=np.uint64)
+            cum_Nspikes=0
+            for ds_i in self.ds_table.index:
+                Nspikes=len(spike_times[ds_i])
+                merged_spike_clusters[cum_Nspikes:cum_Nspikes+Nspikes]=spike_clusters[ds_i]+1e-1*ds_i
+                merged_spike_times[cum_Nspikes:cum_Nspikes+Nspikes]=spike_times[ds_i]
+                cum_Nspikes+=Nspikes
+            merged_spike_clusters=merged_spike_clusters[np.argsort(merged_spike_times)]
+            merged_spike_times=np.sort(merged_spike_times)
+            np.save(Path(self.dp_pro, merge_fname_clusters+'.npy'), merged_spike_clusters)
+            np.save(Path(self.dp_pro, merge_fname_times+'.npy'), merged_spike_times)
+            print(f'>>> {merge_fname_times} and {merge_fname_clusters} saved at {self.dp_pro}.')
+            del spike_times, spike_clusters, sync_signals, merged_spike_clusters, merged_spike_times
             
-            print('>>> {} found at {} and memory mapped at self.merged_clusters_spikes.'.format(merge_fname+'.npy', self.dp_pro))
-            self.merged_clusters_spikes=np.memmap(Path(self.dp_pro, merge_fname+'.npy'))
+            print(f'>>> {merge_fname_times} and {merge_fname_clusters} found at {self.dp_pro} and memory mapped at self.merged_spike_clusters and self.merged_spike_clusters.')
+            self.merged_spike_clusters=np.memmap(Path(self.dp_pro, merge_fname_clusters+'.npy'))
+            self.merged_spike_times=np.memmap(Path(self.dp_pro, merge_fname_times+'.npy'))
         
-        # CREATE A KEYWORD IN CCG FUNCTION: MERGED_DATASET=TRUE OR FALSE - IF TRUE, HANDLES LOADED FILE AS 3xNspikes ARRAY RATHER THAN 2 LOADED ARRAYS
+        # CREATE A KEYWORD IN CCG FUNCTION: MERGED_DATASET=TRUE OR FALSE - IF TRUE, HANDLES LOADED FILE DIFFERENTLY
         
         # Create a networkX graph whose nodes are Units()
         self.undigraph=nx.MultiGraph() # Undirected multigraph - directionality is given by uSrc and uTrg. Several peaks -> several edges -> multigraph.
@@ -1088,24 +1095,24 @@ class Dataset:
     def __init__(self, datapath, probe_name='prb1', dataset_index=0, dataset_name=None):
 
         # Handle datapaths format 
-        if type(datapath) is str:
-            if not op.isdir(op.expanduser(datapath)):
-                    raise FileNotFoundError('{} not found!'.format(datapath))
-        else:
-            raise TypeError('''datapath should be either a string to a kilosort path:
-                        'path/to/kilosort/output1'.''')
-        
-        self.dp = op.expanduser(datapath)
+        try:
+            datapath=Path(datapath)
+            assert datapath.exists()
+        except:
+            raise ValueError('''datapath should be an existing kilosort path:
+                    'path/to/kilosort/output1'.''')
+    
+        self.dp = Path(datapath)
         self.meta=read_spikeglx_meta(self.dp)
         self.probe_version=self.meta['probe_version']
         self.ds_i=dataset_index
-        self.name=self.dp.split('/')[-1] if dataset_name is None else dataset_name
+        self.name=self.dp.name if dataset_name is None else dataset_name
         self.prb_name=probe_name
         self.params={}; params=imp.load_source('params', Path(self.dp,'params.py').absolute().as_posix())
         for p in dir(params):
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
         self.fs=self.meta['sRateHz']
-        self.endTime=int(np.load(Path(self.dp, 'spike_times.npy'))[-1]*1./self.fs +1)
+        self.endTime=self.meta['fileTimeSecs']
         self.chan_map=chan_map(self.dp, y_orig='surface')
         sk_output_cm=chan_map(self.dp, y_orig='surface', probe_version='local')
         if not np.all(np.isin(sk_output_cm[:,0], self.chan_map[:,0])):
@@ -1121,12 +1128,12 @@ class Dataset:
     def get_good_units(self):
         return npyx.gl.get_units(self.dp, quality='good')
     
-    def get_peak_channels(self):
-        self.peak_channels = get_depthSort_peakChans(self.dp, use_template=True)# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
+    def get_peak_channels(self, use_template=True):
+        self.peak_channels = get_depthSort_peakChans(self.dp, use_template=use_template)# {mainChans[i,0]:mainChans[i,1] for i in range(mainChans.shape[0])}
         return self.peak_channels
         
-    def get_peak_positions(self):
-        self.get_peak_channels()
+    def get_peak_positions(self, use_template=True):
+        self.get_peak_channels(use_template)
         peak_pos=npa(zeros=(self.peak_channels.shape[0], 3), dtype=np.int64)
         peak_pos[:,0]=self.peak_channels[:,0] # units
         pos_idx=[] # how to get rid of for loop??
@@ -1151,7 +1158,7 @@ class Dataset:
         
 class Unit:
     '''The object Unit does not store anything itself except from its dataset and index.
-    It makes it possible to call its various features.
+       It is simply a convenient OOP wrapper to compute/load its attributes (crosscorrelogram. waveform....
     '''
     
     def __repr__(self):

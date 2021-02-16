@@ -8,7 +8,7 @@ requirements=['ipython', 'spyder', 'numpy', 'scipy', 'pandas', 'matplotlib', 'se
       'six', 'elephant', 'vispy', 'statsmodels', 'progressbar2',
       'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils',
       'h5py', 'holoviews', 'hvplot', 'numba',
-      'tḱ', 'urllib3', 'certifi', 'idna', 'tensorflow']
+      'tk', 'urllib3', 'certifi', 'idna', 'tensorflow']
 
 setup(name='npyx',
       version='1.3',

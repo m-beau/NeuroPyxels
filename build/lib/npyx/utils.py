@@ -90,6 +90,14 @@ _ACCEPTED_ARRAY_DTYPES = (np.float, np.float32, np.float64,
                           np.int32, np.int64, np.uint32, np.uint64,
                           np.bool)
 
+def assert_float(x):
+    return type(x) in [float, np.float, np.float16,
+                       np.float32, np.float64]
+
+def assert_int(x):
+    return type(x) in [int, np.int, np.int8, np.int16, np.uint8,
+                       np.uint16, np.int32, np.int64, np.uint32, np.uint64]
+
 def npa(arr=[], **kwargs):
     '''Returns np.array of some kind.
     Optional params:
@@ -466,6 +474,15 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, prnt=Tru
         sp=samples[lasti]
     return make_2D_array(samples[:lasti+1])
 
+def n_largest_samples(to_sort: np.array, largest_n: int) -> np.array:
+    
+    """
+    Returns the n largest sorted samples from an array
+    """
+    
+    sorted_n = np.argpartition(to_sort, -largest_n, axis=0 )[-largest_n:].flatten()
+    return sorted_n
+
 def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     '''
     Usage 1: align >=2 time series in the same temporal reference frame with the same sampling frequency fs
@@ -500,9 +517,9 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
         assert len(sync_signals[0])==len(ss), "WARNING all sync signals do not have the same size, the acquisition must have been faulty!"
     assert len(sync_signals[0])>=1, "Only one synchronization signal has been provided - this is dangerous practice as this does not account for cumulative time drift."
     if len(sync_signals[0])>50:
-        print('More than 50 sync signals found - for performance reasons, sub-sampling of 50 homogenoeously spaced sync signals to align data.')
+        print('More than 50 sync signals found - for performance reasons, sub-sampling to 50 homogenoeously spaced sync signals to align data.')
         subselect_ids=np.random.choice(np.arange(1,len(sync_signals[0])-1), 48, replace=False)
-        subselect_ids=np.append(subselect_ids,[0,-1]) # enforce first and last stim
+        subselect_ids=np.unique(np.append(subselect_ids,[0,len(sync_signals[0])-1])) # enforce first and last stim
         for synci,sync in enumerate(sync_signals):
             sync_signals[synci]=sync[subselect_ids]
         
@@ -518,7 +535,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     elif len(timeseries)>=2: # Usage 1
         usage=1
         assert offset_policy in ['zero', 'original'], "offset_policy must be in ['zero', 'original']"
-        offset = timeseries[0][0] if offset_policy=='original' else 0
+        offset = 0 if offset_policy=='original' else -timeseries[0][0]
         assert len(timeseries)==len(sync_signals)>=2, "There must be as many time series as sync signals, at least 2 of each!"
         assert len(npa([fs]).flatten())==1, 'You must provide a single sampling frequency fs when aligning >=2 time series (Usage 1)!'
         fs_master=npa([fs]).flatten()[0]
@@ -530,15 +547,16 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
           av. drift between consec. sync events of {}+/-{}ms.".format(Nevents, round(totDft,4), round(avDft,4), round(stdDft,4)))
     
     for dataset_i in range(len(timeseries)):
-        array0, syncs=timeseries[dataset_i], sync_signals[dataset_i]
-        array=array0-syncs[0]
+        if dataset_i==0: continue #first dataset is reference so left untouched
+        array0, syncs = timeseries[dataset_i], sync_signals[dataset_i]
+        array=array0-syncs[0] # initially center on first sync
         for i, sync in enumerate(syncs):
-            if i==0: pass
-            else:
+            if i>0: # first sync already subtracted
                 array1=array0-sync # refer to own sync stamp, sync
                 # re-time to where own sync stamp should be with respect to reference dataset (the 1st one)
                 first_sync_ref0=sync_signals[0][i]-sync_signals[0][0]
                 array=np.append(array[array1<0], array1[array1>=0]+first_sync_ref0)
+        array+=syncs[0] # restore original offset
         timeseries[dataset_i]=array+offset
         
     return timeseries if usage==1 else timeseries[1]

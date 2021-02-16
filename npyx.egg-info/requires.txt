@@ -19,3 +19,8 @@ h5py
 holoviews
 hvplot
 numba
+tk
+urllib3
+certifi
+idna
+tensorflow

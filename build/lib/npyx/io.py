@@ -94,7 +94,7 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
     assert y_orig in ['surface', 'tip']
     if probe_version is None: probe_version=read_spikeglx_meta(dp)['probe_version']
     
-    if probe_version in probe_version in ['3A', '1.0_staggered']:
+    if probe_version in ['3A', '1.0_staggered']:
         Nchan=384
         cm_el = npa([[  27,   0],
                            [  59,   0],

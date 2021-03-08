@@ -26,11 +26,11 @@ import scipy.stats as stats
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.decomposition import PCA
 
-from npyx.utils import seabornColorsDic, npa, thresh, thresh_consec, smooth, sign, align_timeseries
+from npyx.utils import seabornColorsDic, npa, thresh, thresh_consec, smooth, sign, align_timeseries, assert_int
 
 from npyx.io import read_spikeglx_meta, get_npix_sync, paq_read, list_files
 from npyx.spk_t import trn, trnb, isi, mean_firing_rate
-from npyx.corr import crosscorr_cyrille
+from npyx.corr import crosscorr_cyrille, frac_pop_sync
 
 #%% Extract behavioral event times in neuropixels recording reference time from trials dataframe
 
@@ -65,26 +65,26 @@ def get_events(dp, event_type, f_behav=None, include_wheel_data=False, add_spont
         - event_type: string, type of behavioral event to return amongst
           > 'olc_on'/'oli_on': visual object onsets for correct trials
           > 'orc_on'/orr_on: visual object onsets for incorrect trials
-          
+
           > 'lc_on'/'lc_of: movement on/offsets for left correct trials
           > 'rc_on'/'rc_of: movement on/offsets for right correct trials
-          
+
           > 'c_r: reward onset for correct trials
           > 'i_of: trial offsets for correct trials (timeout)
-          
+
           > 'rr': reward onsets for random rewards
           > 'cr_c': cue onsets for cued rewards
           > 'cr_r': reward onsets for cued rewards
-          
+
         - further parameters: see paq_to_trialsdf.__doc__
     '''
-        
+
     taskwargs=dict(include_wheel_data=include_wheel_data, add_spont_licks=add_spont_licks,
                     wheel_gain=wheel_gain, rew_zone=rew_zone, rew_frames=rew_frames,
                     vr_rate=vr_rate, wheel_diam=wheel_diam, difficulty=difficulty, ballistic_thresh=ballistic_thresh,
                     plot=plot)
     trials_df=paq_to_trialsdf(dp, f_behav, 'wheelturn_rew', again, **taskwargs)
-    
+
     mask_left=(trials_df['trialside']==1)
     mask_right=(trials_df['trialside']==-1)
     mask_correct=(trials_df['correct']==1)&(trials_df['ballistic']==1)
@@ -96,21 +96,21 @@ def get_events(dp, event_type, f_behav=None, include_wheel_data=False, add_spont
      'oli_on':  trials_df.loc[mask_left&mask_incorrect, 'object_onset'].values.astype(float),
      'orc_on':  trials_df.loc[mask_right&mask_correct, 'object_onset'].values.astype(float),
      'ori_on':  trials_df.loc[mask_right&mask_incorrect, 'object_onset'].values.astype(float),
-     
+
      'lc_on':  trials_df.loc[mask_left&mask_correct, 'movement_onset'].values.astype(float),
      'rc_on':  trials_df.loc[mask_right&mask_correct, 'movement_onset'].values.astype(float),
      'lc_of':  trials_df.loc[mask_left&mask_correct, 'movement_offset'].values.astype(float),
      'rc_of':  trials_df.loc[mask_right&mask_correct, 'movement_offset'].values.astype(float),
-     
+
      'c_r':  trials_df.loc[mask_correct, 'reward_onset'].values.astype(float),
      'i_of':  trials_df.loc[mask_incorrect, 'trial_offset'].values.astype(float),
 
      'rr':    trials_df.loc[mask_rr, 'reward_onset'].values.astype(float),
      'cr_c':    trials_df.loc[mask_cr, 'cue_onset'].values.astype(float),
      'cr_r':    trials_df.loc[mask_cr, 'reward_onset'].values.astype(float)}
-    
+
     assert event_type in events_dic.keys(), 'WARNING your need to pick an event_type out of: {}'.format(list(events_dic.keys()))
-    
+
     return events_dic[event_type][~np.isnan(events_dic[event_type])] # HACK, TO FIX IN THE FUTURE: WHERE DO NANS COME FROM??
 
 #%% Generate trials dataframe from either paqIO file or matlab datastructure
@@ -137,7 +137,7 @@ def paq_to_trialsdf(dp, f_behav=None, tasktype='wheelturn_rew', again=False, plo
                   'vr_rate', 'runwheel_diam', 'plot',
                   'opto_prot']
     passed_args=list(taskwargs.keys())
-    
+
     ## Try to load presaved df
     dp=Path(dp)
     if tasktype=='wheelturn_rew':
@@ -152,59 +152,10 @@ def paq_to_trialsdf(dp, f_behav=None, tasktype='wheelturn_rew', again=False, plo
             return pd.read_csv(fn), pickle.load(open(str(fn).replace('.csv','.pkl'),"rb"))
         else:
             return pd.read_csv(fn) ##TODO implement behav_dic for wheelturn_rew
-    
-    ## Load paq data and npix sync channel data
-    if f_behav is None:
-        if not (dp/'behavior').exists(): (dp/'behavior').mkdir()
-        files=list_files(dp/'behavior', 'paq')
-        assert len(files)>0, f"WARNING no files with extension 'paq' were found at {dp/'behavior'} - either add one there or explicitely declare a file path with f_behav parameter."
-        assert len(files)==1, f"WARNING more than 1 file with extension 'paq' were found at '{dp/'behavior'}' - clean up your directory structure and try again."
-        f_behav=dp/'behavior'/files[0]
-        print(f'Behavioural data loaded from: {f_behav}')
-    paqdic=import_PAQdata(f_behav, variables='all', unit='samples')
-    paq_fs=paqdic['sampling_rate']
-    npix_ons, npix_ofs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
-    npix_fs = read_spikeglx_meta(dp, subtype='ap')['sRateHz']
-    
-    ## Match Paq data to npix data - convert paq onsets/offsets to npix time frame (or directly use it if available)
-    # First, match npix sync channels to paqIO channels through exhaustive screening
-    # (only one match for 3B recordings, several for 3A recordings)
-    paq_npix_df=pd.DataFrame(columns=['npix', 'paq', 'p', 'len_match'])
-    for npixk, npixv in npix_ons.items():
-        for paqk, paqv in paqdic.items():
-            if '_ON' in paqk and len(paqv)>1:
-                p=stats.kstest(np.diff(npixv)/npix_fs, np.diff(paqv)/paq_fs)[1]
-                lenmatch=int(len(paqdic[paqk])==len(npix_ons[npixk]))
-                paq_npix_df=paq_npix_df.append({'npix':npixk, 'paq':paqk, 'p':p, 'len_match':lenmatch}, ignore_index=True)
-    npix_paq={}
-    for npixk in npix_ons.keys():
-        match_p=(paq_npix_df.loc[paq_npix_df['npix']==npixk, 'p']>0.99)
-        match_l=(paq_npix_df.loc[paq_npix_df['npix']==npixk, 'len_match']==1)
-        if match_p.any() or match_l.any():
-            paqk=paq_npix_df.loc[paq_npix_df['npix']==npixk, 'paq'][match_p|match_l].values
-            assert paqk.shape[0]==1, f'WARNING, more than one match found ({paqk}) between npix sync channel and PaqIO!!'
-            paqk=paqk[0]
-            print(f'\n\n>>> Match found between npix channel {npixk} and paqIO channel {paqk} ({len(npix_ons[npixk])} events)!\n\n')
-            npix_paq[npixk]=paqk
-            npix_paq[paqk]=npixk
-    assert len(npix_paq)>0, 'WARNING no match was found between paqIO file and npix sync channel!'
-    
-    # Then, pick the longest matching sync channel to align paqIO channels not acquired with npix
-    len_arr=npa([[k,len(npix_ons[k])] for k in npix_paq.keys() if k in npix_ons.keys()])
-    sync_npix_k=len_arr[np.argmax(len_arr[:,1]),0]
-    sync_npix=npix_ons[sync_npix_k]
-    sync_paq=paqdic[npix_paq[sync_npix_k]]
-    for paqk in list(paqdic.keys()):
-        paqv=paqdic[paqk]
-        if '_ON' in paqk and len(paqv)>1:
-            off_key=f"{paqk.split('_ON')[0]+'_OFF'}"
-            if paqk in npix_paq.keys():
-                paqdic[f'{paqk}_npix']=npix_ons[npix_paq[paqk]]
-                paqdic[f"{off_key}_npix"]=npix_ofs[npix_paq[paqk]] # same key for onsets and offsets
-            else:
-                paqdic[f'{paqk}_npix']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
-                paqdic[f"{off_key}_npix"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
-    
+
+    paqdic=npix_aligned_paq(dp,f_behav=None)
+    npix_fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+
     # Preprocessing of extracted behavioural data (only lick onsets so far)
     licks_on=paqdic['LICKS_Piezo_ON_npix'].copy()
     paqdic['LICKS_Piezo_ON_npix']=licks_on[np.diff(np.append([0],licks_on))>lick_ili_th*npix_fs] # 0.075 is the right threshold, across mice!
@@ -225,7 +176,7 @@ def paq_to_trialsdf(dp, f_behav=None, tasktype='wheelturn_rew', again=False, plo
         ax.set_xscale('log')
         plt.xlim(0.005,10)
         plt.ylim(0,max(hist[0][hist[1][:-1]>0.05])+10)
-    
+
     # From the extracted and matched mpix and paq data,
     # compute the task-type specific trials dataframe
     taskwargs['plot']=plot
@@ -241,12 +192,12 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
     '''
     Parameters:
         - dp, fn, paqdic, paq_fs, npix_fs: will be passed on by wrapper function paq_to_trialsdf, check it for more details.
-        
+
         - include_wheel_data: bool, whether to add memory-heavy object position (in degrees) and wheel position (in mm) to the dataframe,
                               sampled at paqIO sampling rate, and related metrics (movement onset in relative paqIO units etc)
         - add_spont_licks: bool, whether to add memory-heavy spontaneous lick onsets
                            at the end of the dataframe as trial_type 'spontaneous_licks'
-        
+
         - wheel_gain: float, gain between the wheel and the object (vr.rotgain virmen setting) | Default 3
         - rew_zone: float, target zone at the center (vr.rewarddeg virmen setting) | Default 12.5
         - rew_frames: int, number of frames where speed needs to be 0 (vr.rewardframes virmen setting) | Default 3 (about 100ms)
@@ -255,9 +206,9 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
         - difficulty: int, difficulty level of the task (vr.version virmen setting).
                       2: 2 sided, overshoot allowed. 3: overshoot not allowed, probably 1 sided. | Default 2
         - ballistic_thresh: how short a movement must to be called 'ballistic', in milliseconds | Default 100
-        
+
         - plot: bool, whether to plot wheel position, speed and detected movement onset/offset as the dataframe is populated | Default True
-    
+
     Returns:
         df: session summary pandas dataframe, with columns
             'trial_type'        - wheel_turn, random_reward, cued_reward or cue_alone
@@ -287,13 +238,13 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
                 'trial_offset_relpaq'    - trial offset, in object_position and wheel_position relative paqIO samples
                 'lick_trace'             - piezo_licks trace, in paqIO samples (5000Hz), clipped similarly
     '''
-    
+
     ## Organize them in dataset, all in NEUROPIXELS time frame
     # i.e. (use above-aligned paqdic[f'{paqk}_npix'] as onsets)
     df=pd.DataFrame(columns=['trial_type', 'trialnum', 'trialside', 'trial_onset', 'object_onset',
                              'movement_onset', 'movement_offset', 'movement_duration', 'ballistic', 'correct', 'trial_offset',
                              'reward_onset', 'cue_onset', 'ghost_onset', 'lick_onsets'])
-    
+
     # Process wheel trials
     nwheeltrials=len(paqdic['TRIALON_ON'])
     df['trial_type']=['wheel_turn']*nwheeltrials
@@ -328,7 +279,7 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
         wvel=np.diff(wpos)
         wvel_mvt=wvel[int(pad*paq_fs+ob_on_paq):-int(pad*paq_fs)]
         wvel_mvt_norm=wvel_mvt/min(abs({-1:max, 1:min}[start_side](wvel_mvt)), 2)
-        
+
         # assess trial outcome from wheel kinetics
         wpos_outeval=paqdic['ROT'][int(paqon+ob_on_paq):int(paqoff)]
         stay_for_rew=int(rew_frames/vr_rate*paq_fs)
@@ -347,7 +298,7 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
         if difficulty>=3: # rule: ending in reward zone
             if stayed_rew_zone: correct=1
         #if non_responsive: correct=np.nan
-        
+
         # Fill dataframe
         df.loc[tr, 'trialnum']=tr
         df.loc[tr, 'trial_onset']=npixon
@@ -393,7 +344,7 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
             df.loc[tr, 'reward_onset']=paqdic['REW_ON_npix'][rew_mask][0]
         else:
             if df.loc[tr, 'correct']==1: print(f'WARNING no reward was found after trial {tr} offset, although correct!!! Figure out the problem ++!!')
-    
+
     # Now find random rewards and respective cues if any
     random_rewards=paqdic['REW_ON_npix'][~np.isin(paqdic['REW_ON_npix'], df['reward_onset'])]
     for r in random_rewards:
@@ -410,7 +361,7 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
             df.loc[i, 'reward_onset']=r
             lickmask=(paqdic['LICKS_Piezo_ON_npix']>r)&(paqdic['LICKS_Piezo_ON_npix']<r+5*npix_fs) # from reward to 5s after reward
         df.loc[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
-    
+
     # Finally, fill in the cues alone (omitted rewards)
     cues_alone=paqdic['CUE_ON_npix'][~np.isin(paqdic['CUE_ON_npix'], df['cue_onset'])]
     for c in cues_alone:
@@ -419,7 +370,7 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
         df.loc[i, 'cue_onset']=c
         lickmask=(paqdic['LICKS_Piezo_ON_npix']>c)&(paqdic['LICKS_Piezo_ON_npix']<c+5*npix_fs) # from cue to 5s after cue
         df.loc[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
-    
+
     # Also add spontaneous licks
     if add_spont_licks:
         allocated_licks=npa([list(df.loc[i, "lick_onsets"]) for i in df.index]).flatten()
@@ -427,7 +378,7 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
         i=df.index[-1]+1
         df.loc[i, 'trial_type']='spontaneous_licks'
         df.loc[i, "lick_onsets"]=spontaneous_licks
-    
+
     df.to_csv(fn)
     return df
 
@@ -437,7 +388,7 @@ def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=Fa
     '''
     Parameters:
         - dp, fn, paqdic, paq_fs, npix_fs: will be passed on by wrapper function paq_to_trialsdf, check it for more details.
-        
+
         - add_wheel_data: bool, whether to add memory-heavy running wheel speed (in mm/s) to the dataframe,
                               sampled at paqIO sampling rate
         - add_spont_licks: bool, whether to add memory-heavy spontaneous lick onsets
@@ -449,7 +400,7 @@ def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=Fa
                      with n_trains the number of consecutive trains of a given type, n_stim the number of stims per train (1 for steps),
                      type their type (step, train, sync and p their power ('low', 'med' or 'high').
                      By default: protocol given to MB059
-    
+
     Returns:
         df: session summary pandas dataframe, with columns
             'trial_type'   - random_reward, cue_alone, cued_reward, or light_train (not behaviour)
@@ -466,9 +417,9 @@ def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=Fa
                              > for light train trials:
                                 the frequency and the power of the train f_p (e.g. 40_high)
             'train_onsets': only used in light_train trials: the onset of light stimuli, in npix reference frame
-            
+
     '''
-    
+
     # Process optostims protocol
     if opto_prot is None:
         print('Protocol of MB059 is used by default - 3 sync pulses, 4*50 steps and 7 100*20 trains')
@@ -483,7 +434,7 @@ def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=Fa
     optoprotocol=np.array([optoprot[0][1]]*optoprot[0][0])
     for optpt in optoprot[1:]:
         optoprotocol=np.append(optoprotocol, [optpt[1]]*optpt[0])
-        
+
     ## Organize them in dataset, all in NEUROPIXELS time frame
     # i.e. (use above-aligned paqdic[f'{paqk}_npix'] as onsets)
     df=pd.DataFrame(columns=['trial_type', 'trialnum', 'trial_onset',
@@ -491,7 +442,7 @@ def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=Fa
                              'light_state', 'train_onsets'])
     df["lick_onsets"]=df["lick_onsets"].astype(object) # to be able to store array
     df["train_onsets"]=df["train_onsets"].astype(object) # to be able to store array
-    
+
     # Characterize trials: random rewards, cued rewards, cues alone
     rewards=paqdic['REW_ON_npix']
     cues=paqdic['CUE_ON_npix']
@@ -511,10 +462,10 @@ def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=Fa
         elif any(reward):
             df.loc[tri, 'trial_type']='random_reward'
         df.at[tri, 'lick_onsets']=licks[(licks>ton*npix_fs)&(licks<ton+4*npix_fs)] # 0s to +4s, either center on cue or reward
-        
+
         # df.loc[tri, 'running_speed']=
         # df.loc[tri, 'light_state']=
-    
+
     # Add running wheel data
     # if add_wheel_data:
     #     A=paqdic['ROT_A']
@@ -527,28 +478,89 @@ def paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, add_wheel_data=Fa
     #         b=B[ton-4*paq_fs, ton+4*paq_fs]
     #         p=convert_rot_to_pos(a, b, fs=5000, d=200, rot_res=628, sgn=1)
     #         df['running_speed']=np.diff(p)/paq_fs # output in mm, conversion to mm/s
-    
+
     # Add 'train trials': not behaviour per se, but convenient to store here.
-    
+
     # Append spontaneous licks at the end
     allocated_licks=npa([list(df.loc[i, "lick_onsets"]) for i in df.index]).flatten()
     spontaneous_licks=paqdic['LICKS_Piezo_ON_npix'][~np.isin(paqdic['LICKS_Piezo_ON_npix'], allocated_licks)]
     i=df.index[-1]+1
     df.loc[i, 'trial_type']='spontaneous_licks'
     df.at[i, "lick_onsets"]=spontaneous_licks
-    
+
     behav_dic=dict(rewards=rewards, cues=cues, licks=licks)
-    
+
     df.to_csv(fn)
     pickle.dump(behav_dic, open(str(fn).replace('.csv','.pkl'),"wb"))
     return df, behav_dic
+
+def npix_aligned_paq(dp,f_behav=None, again=False):
+
+    dp=Path(dp)
+    fn=dp/'behavior'/'paq_dic.pkl'
+    ## Load paq data and npix sync channel data
+    if f_behav is None:
+        if not (dp/'behavior').exists(): (dp/'behavior').mkdir()
+        if fn.exists() and not again: return pickle.load(open(str(fn),"rb"))
+
+        files=list_files(dp/'behavior', 'paq')
+        assert len(files)>0, f"WARNING no files with extension 'paq' were found at {dp/'behavior'} - either add one there or explicitely declare a file path with f_behav parameter."
+        assert len(files)==1, f"WARNING more than 1 file with extension 'paq' were found at '{dp/'behavior'}' - clean up your directory structure and try again."
+        f_behav=dp/'behavior'/files[0]
+        print(f'Behavioural data loaded from: {f_behav}')
+    paqdic=import_PAQdata(f_behav, variables='all', unit='samples')
+    paq_fs=paqdic['sampling_rate']
+    npix_ons, npix_ofs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
+    npix_fs = read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+
+    ## Match Paq data to npix data - convert paq onsets/offsets to npix time frame (or directly use it if available)
+    # First, match npix sync channels to paqIO channels through exhaustive screening
+    # (only one match for 3B recordings, several for 3A recordings)
+    paq_npix_df=pd.DataFrame(columns=['npix', 'paq', 'p', 'len_match'])
+    for npixk, npixv in npix_ons.items():
+        for paqk, paqv in paqdic.items():
+            if '_ON' in paqk and len(paqv)>1:
+                p=stats.kstest(np.diff(npixv)/npix_fs, np.diff(paqv)/paq_fs)[1]
+                lenmatch=int(len(paqdic[paqk])==len(npix_ons[npixk]))
+                paq_npix_df=paq_npix_df.append({'npix':npixk, 'paq':paqk, 'p':p, 'len_match':lenmatch}, ignore_index=True)
+    npix_paq={}
+    for npixk in npix_ons.keys():
+        match_p=(paq_npix_df.loc[paq_npix_df['npix']==npixk, 'p']>0.99)
+        match_l=(paq_npix_df.loc[paq_npix_df['npix']==npixk, 'len_match']==1)
+        if match_p.any() or match_l.any():
+            paqk=paq_npix_df.loc[paq_npix_df['npix']==npixk, 'paq'][match_p|match_l].values
+            assert paqk.shape[0]==1, f'WARNING, more than one match found ({paqk}) between npix sync channel and PaqIO!!'
+            paqk=paqk[0]
+            print(f'\n\n>>> Match found between npix channel {npixk} and paqIO channel {paqk} ({len(npix_ons[npixk])} events)!\n\n')
+            npix_paq[npixk]=paqk
+            npix_paq[paqk]=npixk
+    assert len(npix_paq)>0, 'WARNING no match was found between paqIO file and npix sync channel!'
+
+    # Then, pick the longest matching sync channel to align paqIO channels not acquired with npix
+    len_arr=npa([[k,len(npix_ons[k])] for k in npix_paq.keys() if k in npix_ons.keys()])
+    sync_npix_k=len_arr[np.argmax(len_arr[:,1]),0]
+    sync_npix=npix_ons[sync_npix_k]
+    sync_paq=paqdic[npix_paq[sync_npix_k]]
+    for paqk in list(paqdic.keys()):
+        paqv=paqdic[paqk]
+        if '_ON' in paqk and len(paqv)>1:
+            off_key=f"{paqk.split('_ON')[0]+'_OFF'}"
+            if paqk in npix_paq.keys():
+                paqdic[f'{paqk}_npix']=npix_ons[npix_paq[paqk]]
+                paqdic[f"{off_key}_npix"]=npix_ofs[npix_paq[paqk]] # same key for onsets and offsets
+            else:
+                paqdic[f'{paqk}_npix']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
+                paqdic[f"{off_key}_npix"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
+
+    pickle.dump(paqdic, open(str(fn),"wb"))
+    return paqdic
 
 def import_PAQdata(paq_f, variables='all', again=False, unit='seconds'):
     '''
     Used to load analog (wheel position...)
     and threshold digital (piezo lick...) variables from paqIO file.
     If variables is not a list, all PackIO variables will be exported.
-    
+
     Parameters:
         - paq_f: string or PosixPath, path to .paq file.
         - variables: 'all' or list of strings, paqIO variables to output.
@@ -557,10 +569,10 @@ def import_PAQdata(paq_f, variables='all', again=False, unit='seconds'):
         - paqdic, dictionnary of all variables (under key var)
           as well as onset/offsets of digital variables (under keys var_ON and var_OFF)
     '''
-    
+
     # Load paq data
     paq = paq_read(paq_f)
-    
+
     # Attempt to load pre-saved paqdata
     paq_f=Path(paq_f)
     fn=paq_f.parent/(paq_f.name.split('.')[0]+'_all_samples.pkl')
@@ -575,9 +587,9 @@ def import_PAQdata(paq_f, variables='all', again=False, unit='seconds'):
     else:
         # Load raw packIO data and process variables
         allVariables = np.array(paq['chan_names'])
-        vtypes = {'RECON':'digital', 'GAMEON':'digital', 'TRIALON':'digital', 
-          'REW':'digital', 'GHOST_REW':'digital', 'CUE':'digital', 'LICKS':'digital', 
-          'VRframes':'digital', 'REW_GHOST':'digital', 'ROT':'analog', 
+        vtypes = {'RECON':'digital', 'GAMEON':'digital', 'TRIALON':'digital',
+          'REW':'digital', 'GHOST_REW':'digital', 'CUE':'digital', 'LICKS':'digital',
+          'VRframes':'digital', 'REW_GHOST':'digital', 'ROT':'analog',
           'ROTreal':'analog', 'CameraFrames':'digital', 'LICKS_Piezo':'digital', 'LICKS_elec':'digital',
           'opto_stims':'digital', 'ROT_A':'digital', 'ROT_B':'digital'}
         if type(variables)==list:
@@ -589,12 +601,12 @@ def import_PAQdata(paq_f, variables='all', again=False, unit='seconds'):
         else:
             assert variables=='all'
             areIn=np.isin(allVariables, list(vtypes.keys()))
-            
+
             assert np.all(areIn), f'''WARNING variables found in PaqIO are not characterized as digital or analog in function!
             Variables not characterized in function: {npa(allVariables)[~areIn]}'''
             variables = allVariables
         variables = {variables[i]:vtypes[variables[i]] for i in range(len(variables))}
-        
+
         # Process packIO data and store it in a dict
         rawPAQVariables = {}
         rawPAQVariables['sampling_rate']=paq['rate']
@@ -606,18 +618,18 @@ def import_PAQdata(paq_f, variables='all', again=False, unit='seconds'):
             rawPAQVariables[v] = data
             if variables[v]=='digital':
                 print('    Thresholding...')
-                th = (max(data)-min(data))*1./2
+                th = min(data)+(max(data)-min(data))*1./2
                 rawPAQVariables[v+'_ON'] = thresh(data, th, 1).astype(int)
                 rawPAQVariables[v+'_OFF'] = thresh(data, th, -1).astype(int)
         # Pickle it
         if np.all(list(variables.keys())==allVariables):
             pickle.dump(rawPAQVariables, open(fn,"wb"))
         if not fn.exists(): print('WARNING There was a pickle dumping issue, do it manually!!')
-        
+
     assert unit in ['seconds', 'samples']
     conv=paq['rate'] # PAQIO: 5kHz acquisition
     if unit=='seconds': rawPAQVariables={k:v/conv if (('_ON' in k)|('_OFF' in k)) else v for k, v in rawPAQVariables.items()}
-    
+
     return rawPAQVariables
 
 def mat_to_trialsdf(dp, f_behav=None, trial_on_i=2, reward_i=5, cue_i=4,
@@ -641,10 +653,10 @@ def mat_to_trialsdf(dp, f_behav=None, trial_on_i=2, reward_i=5, cue_i=4,
         assert len(files)==1, f"WARNING more than 1 file with extension 'mat' were found at '{dp/'behavior'}' - clean up your directory structure and try again."
         f_behav=dp/'behavior'/files[0]
         print(f'Behavioural data loaded from: {f_behav}')
-        
+
     with h5py.File(f_behav, 'r') as f:
         trials_dic={}
-        for col in ['trialnum', 'trialside', 'correct', 'reward', 'ghost']: 
+        for col in ['trialnum', 'trialside', 'correct', 'reward', 'ghost']:
             index=f['datastruct']['paqdata']['behav']['trials'][col]
             trials_dic[col]=[]
             for i in range(len(index)):
@@ -655,24 +667,24 @@ def mat_to_trialsdf(dp, f_behav=None, trial_on_i=2, reward_i=5, cue_i=4,
                     assert val==0, 'WARNING this thing {} was expected to be either a np array or 0 but is not - figure out what the h5py decoding generated.'.format(val)
                     val=np.nan# looks like '[]' in matlab
                 trials_dic[col].append(val)#[0,0] for i in range(len(index))]
-        
+
     # Load Neuropixels sync channel, in seconds
     ons, ofs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples') # sync channels onsets and offsets
     npix_trialOns=ons[trial_on_i]
     npix_trialOfs=ofs[trial_on_i]
     npix_rewards=ons[reward_i]
     npix_tone_cues=ons[cue_i]
-    
+
     # Make trials dataframe
     df=pd.DataFrame(data=trials_dic)
-    
+
     # Add trial types
     df.insert(0, 'trial_type', ['wheel_turn' for i in range(len(df.index))])
-    
+
     # 1 is left, -1 is right
     for tr in df.index:
         df.loc[tr, 'trialside'] = 'left' if (df.loc[tr, 'trialside']==1) else 'right'
-    
+
     # Add trial onsets and offsets in neuropixels time frame
     assert len(npix_trialOns)==len(df.index)
     df['npix_trialOns']=npix_trialOns
@@ -708,7 +720,7 @@ def mat_to_trialsdf(dp, f_behav=None, trial_on_i=2, reward_i=5, cue_i=4,
         else:
             rews.append(np.nan)
     df['npix_rewards']=rews
-    
+
     # Now find random rewards
     if npix_tone_cues is not None:
         random_rewards=npix_rewards[~np.isin(npix_rewards, df['npix_rewards'])]
@@ -753,9 +765,9 @@ def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=Fal
         else:
             aligned_tb[i,:] = np.nan
     aligned_tb=aligned_tb[~np.isnan(aligned_tb).any(axis=1)]
-    
+
     if not np.any(aligned_tb): aligned_tb = np.zeros((len(events), len(tbins)))
-    
+
     return aligned_t, aligned_tb
 
 def align_times_manyevents(times, events, b=2, window=[-1000,1000], fs=30000):
@@ -776,22 +788,22 @@ def align_times_manyevents(times, events, b=2, window=[-1000,1000], fs=30000):
     assert np.all(tfs==tfs.astype(int)), 'WARNING sampling rate must be wrong or provided times are not in seconds!'
     indices=np.append(0*events, 0*times+1).astype(int)
     times=np.append(efs, tfs).astype(int)
-    
+
     sorti=np.argsort(times)
     indices, times = indices[sorti], times[sorti]
-    
+
     win_size=np.diff(window)[0]
     bin_size=b
-    
+
     aligned_tb=crosscorr_cyrille(times, indices, win_size, bin_size, fs=fs, symmetrize=True)[0,1,:]
-    
+
     return aligned_tb
 
 def jPSTH(spikes1, spikes2, events, b=2, window=[-1000,1000], convolve=False, method='gaussian', gsd=2):
     '''
     From A. M. H. J. AERTSEN, G. L. GERSTEIN, M. K. HABIB, AND G. PALM, 1989, Journal of Neurophysiology
     Dynamics of neuronal firing correlation: modulation of 'effective connectivity'
-    
+
     Parameters:
         - spikes1, spikes2: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
         - events: list/array in seconds, events to align timestamps to
@@ -801,45 +813,45 @@ def jPSTH(spikes1, spikes2, events, b=2, window=[-1000,1000], convolve=False, me
     Returns:
         - aligned_tb: a 1 x window/b matrix where the spikes have been aligned, in counts.
     '''
-    
+
     # psth1 is reversed in time for plotting purposes (see [::-1] all over the place)
     psth1=align_times(spikes1, events, b, window, remove_empty_trials=False)[1]
     psth2=align_times(spikes2, events, b, window, remove_empty_trials=False)[1]
     if convolve:
         psth1 = smooth(psth1, method=method, sd=gsd)
         psth2 = smooth(psth2, method=method, sd=gsd)
-    
+
     ntrials=psth1.shape[0]
     nbins=psth1.shape[1]
-    
+
     # Compute raw jPSTH
     # jpsth[u,v] = sum(psth1[:,u]*psth2[:,v])/K where rows are trials=events, so K=len(events)
     # see Aertsen et al. equation 3
     jpsth_raw=np.dot(psth1[:,::-1].T, psth2)/ntrials # Eq 3
-    
+
     # Compute shift predictor, dot product of the mean psths across trials
-    # (mathematically equivalent to averaging the raw jPSTHs 
+    # (mathematically equivalent to averaging the raw jPSTHs
     # for every permutation of trials of 1 psth while keeping the other the same)
     # it shows vertical and hosrizontal features, but no diagonal features
     shift_predictor=np.dot(psth1.mean(0)[np.newaxis,::-1].T, psth2.mean(0)[np.newaxis,:]) # Eq 4
     D_ij=jpsth_raw-shift_predictor # Eq 5
-    
+
     # Normalize jPSTH: units of correlation coefficient between -1 and 1
     s_ij=np.dot(psth1.std(0)[np.newaxis,::-1].T, psth2.std(0)[np.newaxis,:]) # sd across trials, see Eq 7a
     jpsth=D_ij/s_ij # Eq 9
-    
+
     # Compute jPSTH interesting projections.
     # Only use subsquare at 45 degress from jPSTH to compute CCG projection.
     rot_jpsth135=sp.ndimage.rotate(jpsth, angle=-135)
     a=rot_jpsth135.shape[0]
     c=a/2 # b**2=2*(a/2)**2 <=> b=a*np.sqrt(2)/2. Similarly, c=b*np.sqrt(2)/2. So c=a/2.
     jpsth_ccg=rot_jpsth135[int(a-c)//2:-int(a-c)//2, int(a-c)//2:-int(a-c)//2]
-    
+
     rot_jpsth45=sp.ndimage.rotate(jpsth, angle=-45)
     a=rot_jpsth45.shape[0]
     c=a/2 # b**2=2*(a/2)**2 <=> b=a*np.sqrt(2)/2. Similarly, c=b*np.sqrt(2)/2. So c=a/2.
     coincidence_psth=rot_jpsth45[int(a-c)//2:-int(a-c)//2, int(a-c)//2:-int(a-c)//2]
-        
+
     return jpsth, jpsth_ccg, coincidence_psth
 
 def get_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
@@ -856,8 +868,55 @@ def get_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
     at, atb = align_times(times, events, b, window, remove_empty_trials)
     return atb/(b*1e-3)
 
-def get_processed_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False,
-                      zscore=False, zscoretype='within', 
+def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
+                      convolve=False, gsd=1, method='gaussian',
+                      bsl_subtract=False, bsl_window=[-4000, 0],
+                      process_y=False):
+    # zscore or not
+    assert zscoretype in ['within', 'across']
+    if zscore or bsl_subtract: # use baseline of ifr far from stimulus
+        y_mn = np.mean(np.mean(y_bsl, axis=0))
+        if zscore:
+            assert not bsl_subtract, 'WARNING, cannot zscore AND baseline subtract - pick either!'
+            if zscoretype=='within':
+                y_mn = np.mean(np.mean(y_bsl, axis=0))
+                y_sd = np.std(np.mean(y_bsl, axis=0))
+                if y_sd==0: y_sd=1
+                if process_y: y =  (y-y_mn)/y_sd
+                y_p = (np.mean(y, axis=0)-y_mn)/y_sd
+                y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
+            elif zscoretype=='across':
+                y_mn = np.mean(y_bsl.flatten())
+                y_sd = np.std(y_bsl.flatten())
+                if y_sd==0: y_sd=1
+                if process_y: y = (y-y_mn)/y_sd
+                y_p = (np.mean(y, axis=0)-y_mn)/y_sd
+                y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
+
+        elif bsl_subtract:
+            if process_y: y = y-y_mn
+            y_p = np.mean(y, axis=0)-y_mn
+            y_p_var= stats.sem(y, axis=0)
+
+    else:
+        y_p = np.mean(y, axis=0)
+        y_p_var = stats.sem(y, axis=0) # sd across trials
+
+    # Convolve or not
+    if convolve:
+        if process_y: y=smooth(y, method=method, sd=gsd)
+        y_p = smooth(y_p, method=method, sd=gsd)
+        y_p_var = smooth(y_p_var, method=method, sd=gsd)
+
+    assert not np.any(np.isnan(y_p)), 'WARNING nans found in trials array!'
+    if np.any(np.isnan(y_p_var)):
+        y_p_var=np.ones(y_p.shape)
+        print('WARNING f*cked up ifr alignement, y_p_var was filled with nan. Patched by filling with ones.')
+
+    return y, y_p, y_p_var
+
+def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_trials=False,
+                      zscore=False, zscoretype='within',
                       convolve=False, gsd=1, method='gaussian',
                       bsl_subtract=False, bsl_window=[-4000, 0], process_y=False):
     '''
@@ -880,19 +939,17 @@ def get_processed_ifr(times, events, b=2, window=[-1000,1000], remove_empty_tria
         - y_p
         - y_p_sem
     '''
-    
+
     # Window and bins translation
-    assert zscoretype in ['within', 'across']
-    maxWin=4000; minWin=-4000;
-    window = [max(window[0], minWin), min(window[1], maxWin)] # cannot be further than -4 - 4 seconds
     x = np.arange(window[0], window[1], b)
     y = get_ifr(times, events, b, window, remove_empty_trials)
     assert not np.any(np.isnan(y.ravel())), 'WARNING nans found in aligned ifr!!'
     if x.shape[0]>y.shape[1]:
         x=x[:-1]
     assert x.shape[0]==y.shape[1]
-    
+
     # Get mean firing rate to remove trials with too low fr (prob drift)
+    # but fully empty trials were already removed in align_times
     if remove_empty_trials:
         y=y.astype(float)
         low_fr_th=0.2 #%
@@ -903,85 +960,127 @@ def get_processed_ifr(times, events, b=2, window=[-1000,1000], remove_empty_tria
             fr_dropped=thresh_consec(trial, m_fr*low_fr_th, sgn=-1, n_consec=consec_time, exclude_edges=True, only_max=False, ret_values=True)
             if len(fr_dropped)>0: y[triali,:]=np.nan
         y=y[~np.isnan(y[:,0]),:]
-        
-    # zscore or not
-    if zscore or bsl_subtract: # use baseline of ifr far from stimulus
-        y_bsl = get_ifr(times, events, b, bsl_window, remove_empty_trials=True)
-        y_mn = np.mean(np.mean(y_bsl, axis=0))
-        if zscore:
-            assert not bsl_subtract, 'WARNING, cannot zscore AND baseline subtract - pick either!'
-            if zscoretype=='within':
-                y_mn = np.mean(np.mean(y_bsl, axis=0))
-                y_sd = np.std(np.mean(y_bsl, axis=0))
-                if y_sd==0: y_sd=1
-                if process_y: y =  (y-y_mn)/y_sd
-                y_p = (np.mean(y, axis=0)-y_mn)/y_sd
-                y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
-            elif zscoretype=='across':
-                y_mn = np.mean(y_bsl.flatten())
-                y_sd = np.std(y_bsl.flatten())
-                if y_sd==0: y_sd=1
-                if process_y: y = (y-y_mn)/y_sd
-                y_p = (np.mean(y, axis=0)-y_mn)/y_sd
-                y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
-            
-        elif bsl_subtract:
-            if process_y: y = y-y_mn
-            y_p = np.mean(y, axis=0)-y_mn
-            y_p_var= stats.sem(y, axis=0)
-        
-    else:
-        y_p = np.mean(y, axis=0)
-        y_p_var = stats.sem(y, axis=0) # sd across trials
-    
-    # Convolve or not
-    if convolve:
-        if process_y: y=smooth(y, method=method, sd=gsd)
-        y_p = smooth(y_p, method=method, sd=gsd)
-        y_p_var = smooth(y_p_var, method=method, sd=gsd)
-        
-    assert not np.any(np.isnan(y_p)), 'WARNING nans found in aligned ifr!!'
-    if np.any(np.isnan(y_p_var)):
-        y_p_var=np.ones(y_p.shape)
-        print('WARNING f*cked up ifr alignement, y_p_var was filled with nan. Patched by filling with ones.')
-    assert not np.any(np.isnan(y_p_var)), 'WARNING nans found in aligned ifr var!!'
+
+    y_bsl = get_ifr(times, events, b, bsl_window, remove_empty_trials=True)
+
+    y, y_p, y_p_var = process_2d_trials_array(y, y_bsl, zscore, zscoretype,
+                      convolve, gsd, method,
+                      bsl_subtract, bsl_window,
+                      process_y)
+
     return x, y, y_p, y_p_var
 
+def get_processed_popsync(trains, events, psthb=10, window=[-1000,1000],
+                          events_tiling_frac=0.1, sync_win=2, fs=30000, t_end=None,
+                          b=1, sd=1000, th=0.02,
+                          again=False, dp=None, U=None,
+                          zscore=False, zscoretype='within',
+                          convolve=False, gsd=1, method='gaussian',
+                          bsl_subtract=False, bsl_window=[-4000, 0], process_y=False):
+    '''
+    Parameters:
+        - trains: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
+        - events: list/array in seconds, events to align timestamps to
+        - psthb: float, binarized train bin in millisecond
+        - window: [w1, w2], where w1 and w2 are in milliseconds.
+        - remove_empty_trials: boolean, remove from the output trials where there were no timestamps around event. | Default: True
+        - convolve: boolean, set to True to convolve the aligned binned train with a half-gaussian window to smooth the ifr
+        - gsd: float, gaussian window standard deviation in ms
+        - method: convolution window shape: gaussian, gaussian_causal, gamma | Default: gaussian
+        - bsl_substract: whether to baseline substract the trace. Baseline is taken as the average of the baseline window bsl_window
+        - bsl_window: [t1,t2], window on which the baseline is computed, in ms -> used for zscore and for baseline subtraction (i.e. zscoring without dividing by standard deviation)
+        - process_y: whether to also process the raw trials x bins matrix y (returned raw by default)
+    Returns:
+        - x: 1D array tiling bins, in milliseconds
+        - y: 2D array NtrialsxNbins, the unprocessed ifr (by default - can be processed if process_y is set to True)
+        - y_mn
+        - y_p
+        - y_p_sem
+    '''
 
-def plot_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False,
-                      zscore=False, zscoretype='overall', convolve=False, gsd=1):
-    
-    x, y, y_mn, y_p, y_p_sem=get_processed_ifr(times, events, b, window, remove_empty_trials,
-                      zscore, zscoretype, convolve, gsd)
-    
-    fig, ax = plt.subplots()
-    
-    if not zscore:
-        ax.fill_between(x, )
-    ax.plot(x, y_p)
-    
-    
+    # Window and bins translation
+    x = np.arange(window[0], window[1], psthb)
+    y = psth_fraction_pop_sync(trains, events, psthb, window,
+                                events_tiling_frac, sync_win, fs, t_end,
+                                b, sd, th, again, dp, U)
+    assert not np.any(np.isnan(y.ravel())), 'WARNING nans found in aligned ifr!!'
+    if x.shape[0]>y.shape[1]:
+        x=x[:-1]
+    assert x.shape[0]==y.shape[1]
+
+    y_bsl = psth_fraction_pop_sync(trains, events, psthb, bsl_window,
+                                events_tiling_frac, sync_win, fs, t_end,
+                                b, sd, th, again, dp, U)
+
+    y, y_p, y_p_var = process_2d_trials_array(y, y_bsl, zscore, zscoretype,
+                      convolve, gsd, method,
+                      bsl_subtract, bsl_window,
+                      process_y)
+
+    return x, y, y_p, y_p_var
+
+def psth_fraction_pop_sync(trains, events, psthb, psthw, events_tiling_frac=0.1, sync_win=2, fs=30000, t_end=None, b=1, sd=1000, th=0.02, again=False, dp=None, U=None):
+    '''
+      Computes the population synchrony for a set of events.
+        For instance, with pstw=[-100,100], psthb=10 and events_tiling_frac=0.1,
+        the fraction of population synchrony will be computed for all time stamps between [-100,100] every 1ms.
+    - trains: list of np arrays in samples, timeseries of which fraction_pop_sync will be computed
+    - events: np array in samples, events around which fraction_pop_sync will be averaged
+      BOTH MUST BE INTEGERS IN SAMPLES
+    - psthb: float in ms, binning of psth
+    - psthw: list of floats [t1,t2] in ms, window of psth
+    - events_tiling_frac: fraction [0-1] of psth bins used to tile the windows around events with time stamps.
+    - fs: float in Hz, t1 and trains sampling frequency
+    - t_end: int in samples, end of recording of t1 and trains, in samples
+    - sync_win: float in ms, synchrony window to define synchrony
+    - b: int in ms, binsize defining the binning of timestamps to define 'broad firing periods' (see npyx.spk_t.firing_periods)
+    - sd: int in ms, gaussian window sd to convolve the binned timestamps defining 'broad firing periods' (see npyx.spk_t.firing_periods)
+    - th: float [0-1], threshold defining the fraction of mean firing rate reached in the 'broad firing periods' (see npyx.spk_t.firing_periods)
+    - again: bool, whether to recompute the firing periods of units in U (trains)
+    - dp: string, datapath to dataset with units corresponding to trains - optional, to ensure fast loading of firing_periods
+    - U: list, units matching trains
+    '''
+    assert assert_int(events[0]), 'events must be provided in samples!'
+    for t in trains:
+        assert assert_int(t[0]), 'trains must be provided in samples!'
+    assert sync_win>=psthb*events_tiling_frac, 'you are not tiling time in a meaningful way - \
+        use a bigger sync window, a smaller psthb or a smaller events_tiling_frac'
+    events_tiling_frac=1./int(1/events_tiling_frac) # ensures that downsampling is possible later
+    eventiles=(np.arange(psthw[0], psthw[1]+psthb*events_tiling_frac, psthb*events_tiling_frac)*fs/1000).astype(int)
+    peri_event_stamps=np.concatenate([events+dt for dt in eventiles])
+    fps = frac_pop_sync(peri_event_stamps, trains, fs, t_end, sync_win, b, sd, th, again, dp, U)
+
+    # Now reshape the pop synchrony trial-wise and
+    # downsample it (rolling average + downsampling) from psthb*events_tiling_frac to psthb resolution
+    n=int(1./events_tiling_frac) # n is the space between downsampled points.
+    y_popsync = fps.reshape((len(events), len(eventiles)))
+    window = (1.0 / n) * np.ones(n,)
+    #y_popsync = np.convolve2d(y_popsync, window, mode='valid')[:,::n]
+    y_popsync = np.apply_along_axis(lambda m:np.convolve(m, window, mode='valid'), axis=1, arr=y_popsync)[:,::n]
+
+    return y_popsync
+
 #%% Process video data
 
 def monitor_rotary(a, b, aPrev, bPrev, sgn=1):
     '''
     Estimates live if a rotary encoder has been rotated,
     based on current and past states of channels A and B.
-    
+
     Can be used in a for loop or live as a video streams.
-    
+
     Parameters:
         - a: current state of channel A
         - b: current state of channel B
         - aPrev: previsous state of channel A
         - bPrev: previous state of channel B
         - sgn: 1 or -1, defines whether 'clockwise' is positive or negative movement
-        
+
     Returns:
         - step: increment of the rotary encoder
     '''
     assert sgn==1 or sgn==-1, 'WARNING sgn should be either -1 or 1!!'
-    
+
     step=0
     # If a state changed:
     if a!=aPrev:
@@ -999,7 +1098,7 @@ def monitor_rotary(a, b, aPrev, bPrev, sgn=1):
         # else, clockwise
         else:
             step=1
-    
+
     return step*sgn
 
 
@@ -1007,7 +1106,7 @@ def convert_rot_to_pos(A, B, fs=100, d=200, rot_res=628, sgn=1):
     '''
     Converts array of rotary encoder channels data acquired at given rate
     to array of wheel position from 0 to max, in mm.
-    
+
     Parameters:
         - A: np array of size Nsamples, A channel values of rotary encoder
         - B: same for B channel
@@ -1015,22 +1114,22 @@ def convert_rot_to_pos(A, B, fs=100, d=200, rot_res=628, sgn=1):
         - d: diameter of wheel, in mm
         - rot_res: rotary resolution, number of increments on the rotary perimeter
         - sgn: 1 or -1, defines whether 'clockwise' is positive or negative movement
-        
+
     Returns:
         - P: np array of size Nframes, positions on the wheel with 0 being position at t=0
     '''
-    
+
     A=(A-A.min())/A.max() # normalize between 0 and 1
     A=np.round(A, 0).astype(np.int8) # binarize A
     B=(B-B.min())/B.max() # normalize between 0 and 1
     B=np.round(B, 0).astype(np.int8) # binarize A
-    
+
     # Assert A and B arrays have same length and are binary
     assert len(A)==len(B)
     assert np.array_equal(A, A.astype(bool)) and np.array_equal(B, B.astype(bool))
     A=A.astype(bool)
     B=B.astype(bool)
-    
+
     # Generate positions array - unit is half increments
     ## TODOget rid of this for loop!! Or numba it.
     P=npa(zeros=(len(A)))
@@ -1039,18 +1138,18 @@ def convert_rot_to_pos(A, B, fs=100, d=200, rot_res=628, sgn=1):
         P[i+1]=P[i]+monitor_rotary(a, b, aPrev, bPrev, sgn)
         aPrev=a
         bPrev=b
-            
+
     # Convert half-increments to mm
     inc_mm=np.round(d*math.pi/rot_res, 2) # perimeter/N increments
     P=P*inc_mm/2 # half-increments
-    
+
     return P
 
 #%%
 
 def dat_to_dic(dp, variables='all'):
     '''DEPRECATED loads matlab-exported np arrays...'''
-    
+
     # Import variables from matlab-exported np arrays
     npy_dp = dp+'/exported_syncdat_npy'
     if not os.path.isdir(npy_dp):
@@ -1065,7 +1164,7 @@ def dat_to_dic(dp, variables='all'):
                 return
     else:
         variables = allVariables
-        
+
     rawGLXVariables = {}
     for v in variables:
         fn=npy_dp+'/'+str(v)
@@ -1074,7 +1173,7 @@ def dat_to_dic(dp, variables='all'):
             #return
         rawGLXVariables[v+'_on']=np.load(fn+'_on.npy').flatten()
         rawGLXVariables[v+'_off']=np.load(fn+'_off.npy').flatten()
-    
+
     return rawGLXVariables
 
 #%% Plot behavior quality characteristics
@@ -1168,14 +1267,14 @@ def dat_to_dic(dp, variables='all'):
 #         aligned_t.append(tsc.tolist())
 #         tscb = np.histogram(tsc, bins=np.arange(window[0],window[1]+b,b))[0] # tscb: tsc binned
 #         aligned_tb[i,:] = tscb
-    
+
 #     return aligned_t, aligned_tb
 
 # #%% Plot signle units (and licks) raster plots or PSTH
 
 
 # def raster(dp, u, triggersnames, title='', window=[-1000,1000], show=True, licks_source = 'GLX'):
-    
+
 #     # Sanity check triggers
 #     if type(u)!=list:
 #         if u =='licks' and licks_source=='PAQ':
@@ -1191,8 +1290,8 @@ def dat_to_dic(dp, variables='all'):
 #                 print("WARNING u must be an int, float, 'licks' or list of ints. Exitting now.")
 #                 return
 #         triggersDic = mk_GLXtriggersDic(dp)
-    
-#     trgnDic = {'RR':'random real reward onset', 'CR':'cued real reward onset', 
+
+#     trgnDic = {'RR':'random real reward onset', 'CR':'cued real reward onset',
 #                'RF':'random fictive reward onset', 'CO':'cued omitted reward onset'}
 #     if type(triggersnames)!=list: triggersnames = list(triggersnames)
 #     try:
@@ -1205,7 +1304,7 @@ def dat_to_dic(dp, variables='all'):
 #     fig, axes = plt.subplots(len(triggersnames), figsize=(8,2.5*len(triggersnames)))
 #     for ti, trg in enumerate(triggersnames):
 #         ax=axes[ti] if len(triggersnames)>1 else axes
-        
+
 #         triggers = triggersDic[trg]
 #         at, atb = align_unit(dp, u, triggers, window=window) if (type(u)==int or type(u)==list) else align_licks(dp, triggers, window=window, source=licks_source)
 #         print('Number of licks/spikes:', len([item for sublist in at for item in sublist]))
@@ -1245,17 +1344,17 @@ def dat_to_dic(dp, variables='all'):
 #         ifr[i,:] = atb[i,:]/(b*1e-3)
 #     ifr_mn = np.array([np.mean(ifr, axis=1), ]*ifr.shape[1]).transpose()
 #     ifr_sd = np.array([np.std(ifr, axis=1), ]*ifr.shape[1]).transpose()
-    
+
 #     # Set 0 sd to 1 so that dividing does not change anything
 #     for i in range(ifr_sd.shape[0]):
 #         if np.all(ifr_sd[i,:]==0): ifr_sd[i,:]=1
-    
+
 #     return ifr, ifr_mn, ifr_sd
 
 # def get_processed_ifr(dp, u, triggers, b=5, window=[-1000,1000], zscore=False, zscoretype='overall', convolve=False, gw=64, gsd=1, licks_source='GLX'):
 #     '''u can be a list of units -> population rate!'''
 #     ifr, ifr_mn, ifr_sd = get_ifr(dp, u, triggers, b, window, licks_source)
-    
+
 #     # Window and bins translation
 #     maxWin=4000; minWin=-4000;
 #     window = [max(window[0], minWin), min(window[1], maxWin)] # cannot be further than -4 - 4 seconds
@@ -1264,7 +1363,7 @@ def dat_to_dic(dp, variables='all'):
 #     if x.shape[0]>y.shape[1]:
 #         x=x[:-1]
 #     assert x.shape[0]==y.shape[1]
-        
+
 #     if zscore:
 #         assert zscoretype in ['overall', 'trialwise']
 #         if zscoretype=='overall':
@@ -1281,7 +1380,7 @@ def dat_to_dic(dp, variables='all'):
 #     else:
 #         y_p = y_mn = np.mean(y, axis=0)
 #         y_p_sem = stats.sem(y, axis=0)
-        
+
 #     if convolve:
 #         gaussWin=sgnl.gaussian(gw, gsd)
 #         gaussWin/=sum(gaussWin) # normalize !!!! For convolution, if we want to keep the amplitude unchanged!!
@@ -1289,13 +1388,13 @@ def dat_to_dic(dp, variables='all'):
 
 #     return x, y, y_mn, y_p, y_p_sem
 
-# def ifr_plot(dp, u, triggersnames, title='', b=5, window=[-1000,1000], color=seabornColorsDic[0], 
-#              zscore=False, plot_all_traces=False, zslines=False, zscoretype='overall', 
+# def ifr_plot(dp, u, triggersnames, title='', b=5, window=[-1000,1000], color=seabornColorsDic[0],
+#              zscore=False, plot_all_traces=False, zslines=False, zscoretype='overall',
 #              convolve=True, error=True, show=True, ylim=None, licks_source = 'GLX', gw=64, gsd=1, saveDir='/home/ms047/Desktop', saveFig=False, saveData=False):
 #     '''Window has to be in milliseconds. b as well.
-    
+
 #     if u is a list of units, the population rate of this list will be computed.'''
-    
+
 #     # Sanity check triggers
 #     if type(u)!=list:
 #         if u =='licks' and licks_source=='PAQ':
@@ -1311,8 +1410,8 @@ def dat_to_dic(dp, variables='all'):
 #                 print("WARNING u must be an int, float, 'licks' or list of ints. Exitting now.")
 #                 return
 #         triggersDic = mk_GLXtriggersDic(dp)
-    
-#     trgnDic = {'RR':'random real reward onset', 'CR':'cued real reward onset', 
+
+#     trgnDic = {'RR':'random real reward onset', 'CR':'cued real reward onset',
 #                'RF':'random fictive reward onset', 'CO':'cued omitted reward onset'}
 #     if type(triggersnames)!=list: triggersnames = list(triggersnames)
 #     try:
@@ -1321,9 +1420,9 @@ def dat_to_dic(dp, variables='all'):
 #     except:
 #         print('WARNING the triggersname should be one of: {}. Exit now.'.format(trgnDic.keys()))
 #         return
-    
+
 #     # plot
-    
+
 #     if saveFig or saveData:
 #         unit_n = str(u)+'_'+dp.split('/')[-1]
 #         fig_n = 'IFRsingleUnit{}_'.format(unit_n)
@@ -1333,7 +1432,7 @@ def dat_to_dic(dp, variables='all'):
 #     ylims=[]
 #     for ti, trg in enumerate(triggersnames):
 #         ax=axes[ti] if len(triggersnames)>1 else axes
-        
+
 #         triggers = triggersDic[trg]
 #         x, y, y_mn, y_p, y_p_sem = get_processed_ifr(dp, u, triggers, b, window, zscore, zscoretype, convolve, gw, gsd, licks_source)
 #         if saveData:
@@ -1363,7 +1462,7 @@ def dat_to_dic(dp, variables='all'):
 #                     ax.fill_between(x, y_p-y_p_sem, y_p+y_p_sem, facecolor=color, interpolate=True, alpha=0.2)
 #                     ax.plot(x, y_p-y_p_sem, lw=0.5, color=color)
 #                     ax.plot(x, y_p+y_p_sem, lw=0.5, color=color)
-                    
+
 #             ax.plot([x[0], x[-1]], [0,0], ls="--", c=(0,0,0), lw=0.5)
 #             if zslines:
 #                 ax.plot([x[0], x[-1]], [1,1], ls="--", c=[1,0,0], lw=1)
@@ -1374,7 +1473,7 @@ def dat_to_dic(dp, variables='all'):
 #                 ax.plot([x[0], x[-1]], [-3,-3], ls="--", c=[0,0,1], lw=1)
 #             ax.set_ylim([-1, 2])
 #             ax.set_ylabel('Inst.F.R. (s.d.)')
-        
+
 #         elif not zscore:
 #             if plot_all_traces:
 #                 for i in range(y.shape[0]):
@@ -1396,9 +1495,9 @@ def dat_to_dic(dp, variables='all'):
 #                     ax.plot(x, y_p+y_p_sem, lw=0.5, color=color)
 #             yl=max(y_p+y_p_sem); ylims.append(int(yl)+5-(yl%5));
 #             ax.set_ylabel('Inst.F.R. (Hz)')
-            
+
 #         ax.set_xlabel('Time from {} (ms).'.format(trgnDic[trg]))
-        
+
 
 #     AXES=axes if len(triggersnames)>1 else [axes]
 #     for ax, trg in zip(AXES, triggersnames):
@@ -1417,7 +1516,7 @@ def dat_to_dic(dp, variables='all'):
 
 #     if not show:
 #         plt.close(fig)
-    
+
 #     return fig
 
 
@@ -1455,7 +1554,7 @@ def dat_to_dic(dp, variables='all'):
 #                 plt.close()
 
 # #%% IFR population plots
-                
+
 # def make_ifr_matrix(dp, units, triggersname, b=5, window=[-1000,1000],
 #                        zscore=True, zscoretype='overall', convolve=True, gw=64, gsd=1):
 #     '''triggersname: one of the keys of GLXtriggersDic.'''
@@ -1467,22 +1566,22 @@ def dat_to_dic(dp, variables='all'):
 #     window = [max(window[0], minWin), min(window[1], maxWin)] # cannot be further than -4 - 4 seconds
 #     triggersDic = mk_GLXtriggersDic(dp)
 #     triggers = triggersDic[triggersname]
-    
+
 #     # Populate matrix
 #     x, y, y_mn, y_p, y_p_sem = get_processed_ifr(dp, units[0], triggers, b, window, zscore, zscoretype, convolve, gw, gsd)
 #     ifr_matrix=np.zeros((len(units), len(x)))
 #     for i, u in enumerate(units):
 #         x, y, y_mn, y_p, y_p_sem = get_processed_ifr(dp, u, triggers, b, window, zscore, zscoretype, convolve, gw, gsd)
 #         ifr_matrix[i, :] = y_p
-        
+
 #     return ifr_matrix, x
 
 
 
 # def av_ifr_plot_acrossDP(DPs, unitsPerDataset, triggersname, title='', b=5, window=[-1000,1000], color=seabornColorsDic[0],
-#              zscore=True, zscoretype='overall', plot_all_units=False, zslines=False, 
+#              zscore=True, zscoretype='overall', plot_all_units=False, zslines=False,
 #              convolve=True, error=True, show=True, ylim=None, gw=64, gsd=1, saveDir='/home/ms047/Desktop', saveFig=False, saveData=False):
-    
+
 #     for initDataset in DPs.keys():
 #         dp, units = DPs[initDataset], unitsPerDataset[initDataset]
 #         if len(units)>0: break
@@ -1501,14 +1600,14 @@ def dat_to_dic(dp, variables='all'):
 #             ifr_matrix, x1 = make_ifr_matrix(dp, units, triggersname, b, window,
 #                                zscore, zscoretype=zscoretype, convolve=False)
 #             ifrs_matrix=np.append(ifrs_matrix, ifr_matrix, axis=0) # vstack
-    
+
 #     y = ifrs_matrix
 #     y_p, y_p_sem = np.mean(y, axis=0), stats.sem(y, axis=0) # Zscored or not, convolved or not from within make_ifr_matrix -> get_processed_ifr
-    
+
 #     # plot
 #     fig, ax = plt.subplots(1, figsize=(8,2.5))
 #     ylims=[]
-        
+
 #     if zscore:
 #         if not convolve:
 #             if not error:
@@ -1520,7 +1619,7 @@ def dat_to_dic(dp, variables='all'):
 #                 ax.fill_between(x, y_p-y_p_sem, step='post', facecolor='white', zorder=8)
 #                 ax.step(x, y_p-y_p_sem, color=color, where='post', linewidth=1, zorder=10)
 #         else:
-#             # CONVOLUTION HAS TO BE DONE OUTSIDE OF get_processed_ifr 
+#             # CONVOLUTION HAS TO BE DONE OUTSIDE OF get_processed_ifr
 #             # BECAUSE IT HAS TO BE DONE AFTER AVERAGING ACROSS DATASETS
 #             gaussWin=sgnl.gaussian(gw, gsd)
 #             print(gsd)
@@ -1536,7 +1635,7 @@ def dat_to_dic(dp, variables='all'):
 #                 ax.fill_between(x, y_p-y_p_sem, y_p+y_p_sem, facecolor=color, interpolate=True, alpha=0.2)
 #                 ax.plot(x, y_p-y_p_sem, lw=0.5, color=color)
 #                 ax.plot(x, y_p+y_p_sem, lw=0.5, color=color)
-                
+
 #         ax.plot([x[0], x[-1]], [0,0], ls="--", c=(0,0,0), lw=0.5)
 #         if zslines:
 #             ax.plot([x[0], x[-1]], [1,1], ls="--", c=[1,0,0], lw=1)
@@ -1547,7 +1646,7 @@ def dat_to_dic(dp, variables='all'):
 #             ax.plot([x[0], x[-1]], [-3,-3], ls="--", c=[0,0,1], lw=1)
 #         ax.set_ylim([-1, 2])
 #         ax.set_ylabel('Inst.F.R. (s.d.)')
-    
+
 #     elif not zscore:
 #         if plot_all_units:
 #             for i in range(y.shape[0]):
@@ -1573,7 +1672,7 @@ def dat_to_dic(dp, variables='all'):
 #                 ax.plot(x, y_p+y_p_sem, lw=0.5, color=color)
 #         yl=max(y_p+y_p_sem); ylims.append(int(yl)+5-(yl%5));
 #         ax.set_ylabel('Inst.F.R. (Hz)')
-    
+
 #     ax.set_xlabel('Time from {} (ms).'.format(triggersname))
 #     ax.set_title('{} (n={})'.format(title, totalUnits))
 #     if not zscore:
@@ -1584,7 +1683,7 @@ def dat_to_dic(dp, variables='all'):
 #     if triggersname[0]=='C':
 #         ax.plot([-500, -500], ax.get_ylim(), ls='--', lw=1, color='black')
 #     fig.tight_layout()
-    
+
 #     if saveFig or saveData:
 #         fig_n = 'IFRpop_'
 #         Dir = saveDir+'/'+fig_n+str(triggersname)+'aligned'
@@ -1598,7 +1697,7 @@ def dat_to_dic(dp, variables='all'):
 #             fig.savefig(Dir+'/'+fig_n+'{}aligned.pdf'.format(triggersname))
 #     if not show:
 #         plt.close(fig)
-        
+
 #     return fig
 
 
@@ -1624,7 +1723,7 @@ def dat_to_dic(dp, variables='all'):
 #         ifr_matrix, x = make_ifr_matrix(dp, units, triggersname, b, window,
 #                                zscore, zscoretype='overall', convolve=False, gw=64, gsd=1)
 #         ifrs_matrix=np.zeros((0, len(x)))
-    
+
 #         for dataset in unitsPerDataset.keys():
 #             dp = DPs[dataset]
 #             units = unitsPerDataset[dataset]
@@ -1642,7 +1741,7 @@ def dat_to_dic(dp, variables='all'):
 #             DF.iloc[0+i2:i1+i2, DF.columns.get_loc(str(wind))]=av_wind
 #     # Reshape the pandas dataframe, convenient to then make the barplot with seaborn
 #     DF = pd.melt(DF, id_vars=["Triggers", "Unit"], var_name="Window", value_name="Average IFR")
-    
+
 #     # Make paired t-test
 #     pt_table = pd.DataFrame(columns=["Trigger 1", "Window 1", "Trigger 2", "Window 2", "Statistic", "Pval"])
 #     i=0
@@ -1660,7 +1759,7 @@ def dat_to_dic(dp, variables='all'):
 #                         statistic, Pval = stats.wilcoxon(dist1, dist2) # non parametric paired test
 #                         pt_table.loc[i, :]=[trg1, str(win1), trg2, str(win2), statistic, Pval]
 #                         i+=1
-                        
+
 #     # Plot barplot with seaborn
 #     fig, ax = plt.subplots()
 #     sns.barplot(x="Triggers", y="Average IFR", hue="Window", data=DF, order = triggersnames, hue_order=[str(i) for i in winds])#yerrs)
@@ -1681,7 +1780,7 @@ def dat_to_dic(dp, variables='all'):
 #             fig.savefig(Dir+'/'+fig_n+'.pdf')
 #     if not show:
 #         plt.close(fig)
-    
+
 #     return fig, pt_table
 
 # ### Modify here - parameters
@@ -1690,53 +1789,53 @@ def dat_to_dic(dp, variables='all'):
 #  'MB022':'/media/ms047/DK_probes_backup/Conditioning/MB022',
 #  'MB023':'/media/ms047/DK_probes_backup/Conditioning/MB023'}
 # selected_units = {# Random Fictive error can be 1) similar 2) same time, higher amplitude 3) same amplitude, delayed, 4) sharper + delayed, but rarely two bumps...
-#             'RRxRF2bumps_plus':{'MB021':[232,  286, 233, 229, 222, 221, 220, 219, 285], 
+#             'RRxRF2bumps_plus':{'MB021':[232,  286, 233, 229, 222, 221, 220, 219, 285],
 #                           'MB022':[280, 277,  205, 216,  149], # Can tell the difference (RR response never like RF response)
 #                           'MB023':[525, 243, 268, 206,  231, 195, 192, 91]},
-#             'RRxRF2bumps_minus':{'MB021':[], 
-#                         'MB022':[169, 351, 209], 
+#             'RRxRF2bumps_minus':{'MB021':[],
+#                         'MB022':[169, 351, 209],
 #                         'MB023':[225, 232,181]},
-#             'RRxRFbiggerbump_plus':{'MB021':[230, 232, 233,  229, 221, 223], 
+#             'RRxRFbiggerbump_plus':{'MB021':[230, 232, 233,  229, 221, 223],
 #                           'MB022':[280, 277, 205, 153, 149], # Can tell the difference (RR response never like RF response)
 #                           'MB023':[243, 358, 204]},
-#             'RRxRFdelayedbump_plus':{'MB021':[232, 225, 230,  232, 233, 234, 226, 229, 222, 221, 223, 219], 
+#             'RRxRFdelayedbump_plus':{'MB021':[232, 225, 230,  232, 233, 234, 226, 229, 222, 221, 223, 219],
 #                           'MB022':[216, 153, 149, 190], # Can tell the difference (RR response never like RF response)
 #                           'MB023':[ 207]},
-#             'RRxRFall_plus':{'MB021':[232, 225, 230, 286, 232, 233, 234, 226, 229, 222, 221, 223, 220, 219, 285], 
+#             'RRxRFall_plus':{'MB021':[232, 225, 230, 286, 232, 233, 234, 226, 229, 222, 221, 223, 220, 219, 285],
 #                           'MB022':[280, 277, 216, 153, 149, 190], # Can tell the difference (RR response never like RF response)
 #                           'MB023':[243, 268, 358, 206, 204, 231, 207, 195, 192, 91, 525]},
-#             'RRxRFall_minus':{'MB021':[], 
-#                         'MB022':[169, 351, 209], 
+#             'RRxRFall_minus':{'MB021':[],
+#                         'MB022':[169, 351, 209],
 #                         'MB023':[225, 232,181]},
 #             # Cued Real shift
-#             'RRxCR_plus':{'MB021':[290, 295, 287, 289, 232, 234, 284, 231, 286, 233, 226, 229, 222, 221, 223, 220, 225, 230, 219, 321], 
-#                           'MB022':[872, 1078, 1063, 319, 874, 763, 783, 349, 280, 277, 266,  186, 205, 156, 216], 
+#             'RRxCR_plus':{'MB021':[290, 295, 287, 289, 232, 234, 284, 231, 286, 233, 226, 229, 222, 221, 223, 220, 225, 230, 219, 321],
+#                           'MB022':[872, 1078, 1063, 319, 874, 763, 783, 349, 280, 277, 266,  186, 205, 156, 216],
 #                           'MB023':[249, 211, 206, 83, 293, 379,  268, 249, 206, 204, 199, 207, 209, 195, 168, 525, 550]},
-#             'RRxCR_plusNew':{'MB021':[219, 220, 221, 222, 223, 225, 226, 229, 230, 231, 232, 233, 234, 
-#                                       284, 286, 287, 289, 290, 295, 321], 
-#                           'MB022':[ 156,  186,  205,  216,  266,  277,  280,  319,  349,  763,  783, 864, 872,  874, 1063, 1078], 
+#             'RRxCR_plusNew':{'MB021':[219, 220, 221, 222, 223, 225, 226, 229, 230, 231, 232, 233, 234,
+#                                       284, 286, 287, 289, 290, 295, 321],
+#                           'MB022':[ 156,  186,  205,  216,  266,  277,  280,  319,  349,  763,  783, 864, 872,  874, 1063, 1078],
 #                           'MB023':[ 83, 91, 160, 166, 168, 179, 195, 199, 204, 206, 206, 207, 209, 211, 249, 284, 379, 525, 550, 552]},
-#             'RRxRR_minusNew':{'MB021':[285], 
+#             'RRxRR_minusNew':{'MB021':[285],
 #                            'MB022':[144],
 #                            'MB023':[93, 551, 286]},#246, 286]},
 #             # Cued Omission error
-#             'CRxCOearly_plusNew':{'MB021':[225], 
-#                           'MB022':[186], 
+#             'CRxCOearly_plusNew':{'MB021':[225],
+#                           'MB022':[186],
 #                           'MB023':[337, 83, 550, 179, 91]}, #293or411, 179, 91]},
-#             'CRxCOearly_minus':{'MB021':[], 
-#                            'MB022':[209, 169], 
+#             'CRxCOearly_minus':{'MB021':[],
+#                            'MB022':[209, 169],
 #                            'MB023':[95]},
-#             'CRxCOlate_plus':{'MB021':[], 
-#                           'MB022':[190, 205], 
+#             'CRxCOlate_plus':{'MB021':[],
+#                           'MB022':[190, 205],
 #                           'MB023':[195]},
-#             'CRxCOall_plus':{'MB021':[225], 
-#                           'MB022':[ 190, 186, 205], 
+#             'CRxCOall_plus':{'MB021':[225],
+#                           'MB022':[ 190, 186, 205],
 #                           'MB023':[337, 83, 293, 195, 179, 91]},
-#             'CRxCOall_minus':{'MB021':[], 
-#                            'MB022':[209, 169], 
+#             'CRxCOall_minus':{'MB021':[],
+#                            'MB022':[209, 169],
 #                            'MB023':[95]},
-#             'RRxRFlicking':{'MB021':['licks'], 
-#                            'MB022':['licks'], 
+#             'RRxRFlicking':{'MB021':['licks'],
+#                            'MB022':['licks'],
 #                            'MB023':['licks']}}
 # patterns_compWindows = {# Random Fictive error can be 1) similar 2) same time, higher amplitude 3) same amplitude, delayed, 4) sharper + delayed, but rarely two bumps...
 #             'RRxRF2bumps_plus':[[-750, -500], [0,100], [100,200], [50, 100], [100, 150]],
@@ -1755,13 +1854,13 @@ def dat_to_dic(dp, variables='all'):
 #             'CRxCOall_plus':[[-750, -500], [-500,-450], [0, 200], [200, 250]],
 #             'CRxCOall_minus':[[-750, -500], [-500,-450], [100, 200]],
 #             'RRxRFlicking':[[-750, -500], [100,600]]}
-    
+
 
 # def plot_all_avIFRpatterns(DP, DPs, selected_units):
 #     '''
 #     selectedUnits has to be of the form:
 #         {'ABxCD...':{'datasetName1':[u1,u2,...uN], 'dataset2Name':[u1,u2,...uN]...},{}...}
-        
+
 #         and the dictionnary DPs = {'dataset1Name':'dataset1Path', ...}'''
 #     # Loop through patterns
 #     for pattern, unitsPerDataset in selected_units.items():
@@ -1771,23 +1870,23 @@ def dat_to_dic(dp, variables='all'):
 #         if not os.path.isdir(avPlotPath): os.mkdir(avPlotPath)
 #         ttl='Av. IFR across units displaying pattern {}'.format(pattern)
 #         for trg in trgs:
-#             fig1 = av_ifr_plot_acrossDP(DPs, unitsPerDataset, trg, title=ttl, b=10, 
+#             fig1 = av_ifr_plot_acrossDP(DPs, unitsPerDataset, trg, title=ttl, b=10,
 #                                         window=[-750,750], color=seabornColorsDic[0],
-#                                         zscore=False, zscoretype='overall', plot_all_units=False, 
+#                                         zscore=False, zscoretype='overall', plot_all_units=False,
 #                                         zslines=False, convolve=True, error=True, show=False, ylim=None)
 #             fig1.savefig(avPlotPath+'/{}_aligned:{}(avgAcrossUnits).pdf'.format(str(trg), pattern))
 #         winds = patterns_compWindows[pattern]
-#         fig2, statsTable = ifr_barplot_compWind_acrossDP(DPs, unitsPerDataset, trgs, winds, title=ttl, 
+#         fig2, statsTable = ifr_barplot_compWind_acrossDP(DPs, unitsPerDataset, trgs, winds, title=ttl,
 #                                              b=10, window=[-750,750], color=seabornColorsDic[0],
 #                                              zscore=False, zscoretype='overall', convolve=False, show=False)
 #         fig2.savefig(avPlotPath+'/{}vs{}@{}:{}.pdf'.format(trgs[0], trgs[1], winds, pattern))
 #         statsTable.to_csv(avPlotPath+'/{}vs{}@{}:{}.csv'.format(trgs[0], trgs[1], winds, pattern))
 
-    
+
 # def ifr_heatmap(dp, units, selected_units, title='', b=5, window=[-1000,1000],
 #                 zscoretype='overall', convolve=True, error=True, show=True, ylim=None, PCAsort=1, PCAwindow=[-1000,1000]):
 #     sns.set_style('white')
-    
+
 #     fig, axes = plt.subplots(len(triggersnames))
 #     for pattern, datasets in selected_units.items():
 #         zscore=True
@@ -1806,11 +1905,11 @@ def dat_to_dic(dp, variables='all'):
 #         #exp_var = pca.explained_variance_ratio_
 #         ifr_matrix = ifr_matrix[PC1sorted,:]
 #         units = np.array(units)[PC1sorted]
-        
+
 #         #cmap = sns.palplot(sns.diverging_palette(12, 255, l=40, n=100, center="dark"))
-        
+
 #         hm = sns.heatmap(ifr_matrix, vmin=-2, vmax=2, cmap="RdBu_r", center=0, cbar_kws={'label': 'Instantaneous Firing Rate (s.d.)'})
-        
+
 #         if window[0]<0:
 #             zero=int(len(x)*(-window[0])/(window[1]-window[0]))
 #             hm.axes.plot([zero,zero], hm.axes.get_ylim()[::-1], ls="--", c=[0,0,0], lw=1)
@@ -1823,12 +1922,12 @@ def dat_to_dic(dp, variables='all'):
 #     #    for i in range(hmm.shape[1]):
 #     #        if (i-8064/(window[1]-window[0]))%12!=0: hm.axes.xaxis.get_major_ticks()[i].set_visible(False)
 #     #        else: hm.axes.xaxis.get_major_ticks()[i].set_visible(True)
-        
+
 #     fig = plt.gcf()
 #     spt = 'Putative Purkinje cells' if region == 'cortex' else 'Cerebellar Nuclear Cells'
 #     fig.suptitle(spt)
 #     ax = plt.gca()
-    
+
 #     return fig, ax
 # #%% Plot correlation matrix of units list
 # from elephant.spike_train_generation import SpikeTrain
@@ -1846,13 +1945,13 @@ def dat_to_dic(dp, variables='all'):
 
 # # 62 units total: 13 sure, 49 unsure.
 # paperUnits = {'MB021':npa([219, 220, 221, 222, 223, 225, 226, 229, 230, 231, 232, 233, 234,
-#                            284, 285, 286, 287, 289, 290, 295, 321]), 
+#                            284, 285, 286, 287, 289, 290, 295, 321]),
 #               'MB022':npa([ 144,  156,  186,  205,  216,  266,  277,  280,  319,  349,  763,
-#                            783,  864, 872,  874, 1063, 1078]), 
+#                            783,  864, 872,  874, 1063, 1078]),
 #               'MB023':npa([ 83,  91,  93, 160, 166, 168, 179, 195, 199, 204, 206, 207, 209, 211, 249,
 #                            284, 286, 337, 379, 525, 550, 551, 552])}
-# sureUnits= {'MB021':npa([321, 290, 220, 221]), 
-#              'MB022':npa([142, 812, 763, 783, 764, 480]), 
+# sureUnits= {'MB021':npa([321, 290, 220, 221]),
+#              'MB022':npa([142, 812, 763, 783, 764, 480]),
 #              'MB023':npa([268, 258, 337])}
 
 # def plot_cm(dp, units, b=5, cwin=100, cbin=1, corrEvaluator='CCG', vmax=0):
@@ -1893,14 +1992,14 @@ def dat_to_dic(dp, variables='all'):
 #             else:
 #                 coeffCCG=0
 #             cmCCG[i1, i2]=coeffCCG
-    
+
 #     if corrEvaluator == 'CCG':
 #         cm = cmCCG
 #         vmax = 10 if vmax == 0 else vmax
 #     elif corrEvaluator == 'corrcoeff':
 #         cm = covariance(BinnedSpikeTrain(trnLs, binsize=b*ms))
 #         vmax = 0.05 if vmax == 0 else vmax
-    
+
 #     # Plot correlation matrix
 #     plt.figure()
 #     hm = sns.heatmap(cm, vmin=0, vmax=vmax, cmap='viridis')
@@ -1961,7 +2060,7 @@ def dat_to_dic(dp, variables='all'):
 #         ifr = np.zeros((arr.shape[0], 8064))
 #         for i in range(arr.shape[0]):
 #             ifr[i,:] = np.convolve(arr[i,:]/bin_, gaussWin)
-            
+
 #     elif start_format=='ifr':
 #         ifr=arr.copy()
 #     ifr_mn = np.array([np.mean(ifr, axis=1), ]*ifr.shape[1]).transpose()
@@ -1969,12 +2068,12 @@ def dat_to_dic(dp, variables='all'):
 #     # Set 0 sd to 1 so that dividing does not change anything
 #     for i in range(ifr_sd.shape[0]):
 #         if np.all(ifr_sd[i,:]==0): ifr_sd[i,:]=1
-        
+
 #     assert ifr.shape == ifr_mn.shape == ifr_sd.shape
 #     return ifr, ifr_mn, ifr_sd
 
 # def make_av_ifr_matrix_old(units, alignement_event, start_format='ifr', dp='/home/ms047/Dropbox/Science/PhD/Data_Presentation/SfN 2018/Behavior/mat-npy-exports', window=[-4000, 4000], zscoretype='overall'):
-    
+
 #     assert zscoretype in ['overall', 'trialwise']
 #     # Window and bins translation
 #     maxWin=4000; minWin=-4000;
@@ -1982,24 +2081,24 @@ def dat_to_dic(dp, variables='all'):
 #     bin_=1 # 1 ms bins
 #     convSamples=8064
 #     bin_ifr = bin_*(maxWin-minWin+bin_)*1./convSamples # to compensate for the convolution resampling
-    
+
 #     ifr, ifr_mn, ifr_sd = get_ifr_trace_old(units[0], alignement_event, start_format, dp)
-    
+
 #     y = ifr[:, int(convSamples/2)+int(window[0]/bin_ifr)-1:int(convSamples/2)+int(window[1]/bin_ifr)+1]
-    
+
 #     x = np.arange(window[0], window[1]+bin_ifr, bin_ifr)
 #     if x.shape[0]>y.shape[1]:
 #         x=x[:-1]
 #     assert x.shape[0]==y.shape[1]
-        
-    
+
+
 #     ifr_matrix=np.zeros((len(units), len(x)))
-    
+
 #     for i, u in enumerate(units):
 #         print('for unit {}'.format(u))
 #         ifr, ifr_mn, ifr_sd = get_ifr_trace(u, alignement_event, start_format, dp)
 #         y = ifr[:, int(convSamples/2)+int(window[0]/bin_ifr)-1:int(convSamples/2)+int(window[1]/bin_ifr)+1]
-        
+
 #         if zscoretype=='overall':
 #             ifr_fl = ifr.flatten()
 #             y_mn = np.mean(ifr_fl)
@@ -2009,15 +2108,15 @@ def dat_to_dic(dp, variables='all'):
 #             y_mn = ifr_mn[:, int(convSamples/2)+int(window[0]/bin_ifr)-1:int(convSamples/2)+int(window[1]/bin_ifr)+1]
 #             y_sd = ifr_sd[:, int(convSamples/2)+int(window[0]/bin_ifr)-1:int(convSamples/2)+int(window[1]/bin_ifr)+1]
 #             print('trialwise mean:{}, sd:{}'.format(y_mn[:,0], y_sd[:,0]))
-       
+
 #         y = (y-y_mn)/y_sd
 #         y_zs=np.mean(y, axis=0)
-        
+
 #         ifr_matrix[i, :] = y_zs
-        
+
 #     return ifr_matrix, x
 
-# def ifr_trace_old(units, alignement_event, window=[-4000, 4000], start_format='ifr', dp='/home/ms047/Dropbox/Science/PhD/Data_Presentation/SfN 2018/Behavior/mat-npy-exports', 
+# def ifr_trace_old(units, alignement_event, window=[-4000, 4000], start_format='ifr', dp='/home/ms047/Dropbox/Science/PhD/Data_Presentation/SfN 2018/Behavior/mat-npy-exports',
 #               colors=[(0,0,0), (1,0,0), (0,1,0), (0,0,1)], zscore=False, plot_all_traces=False, zslines=False, offset=True, title=None, zscoretype='overall'):
 #     '''Window has to be in milliseconds.'''
 #     if type(units)!=list: units=[units]
@@ -2025,7 +2124,7 @@ def dat_to_dic(dp, variables='all'):
 #         fig, axes = plt.subplots(len(units), 1, figsize=(10,3*len(units)))
 #     else:
 #         fig, axes = plt.subplots(1, 1)
-    
+
 #     for ui, unit in enumerate(units):
 #         ax=axes[ui] if offset else axes
 #         color=colors[ui]
@@ -2046,8 +2145,8 @@ def dat_to_dic(dp, variables='all'):
 #             x=x[:-1]
 #         assert x.shape[0]==y.shape[1]
 #         ax.set_title(str(unit)) if offset else ax.set_title(str(units))
-            
-        
+
+
 #         if zscore:
 #             assert zscoretype in ['overall', 'trialwise']
 #             if zscoretype=='overall':
@@ -2083,7 +2182,7 @@ def dat_to_dic(dp, variables='all'):
 #             ax.set_ylabel('Inst.F.R (s.d.)')
 #             ax.set_xlim(window[0], window[1])
 #             ax.set_xlabel('Time (ms)')
-        
+
 #         elif not zscore:
 #             y_mn = np.mean(y, axis=0)
 #             y_sem = stats.sem(y, axis=0)
@@ -2100,7 +2199,7 @@ def dat_to_dic(dp, variables='all'):
 #             ax.set_xlim(window[0], window[1])
 #             ax.set_xlabel('Time (ms)')
 #             ax.set_ylabel('Inst.F.R (Hz)')
-    
+
 #     fig.tight_layout()
 #     return fig, axes
 
@@ -2130,11 +2229,11 @@ def dat_to_dic(dp, variables='all'):
 #     #exp_var = pca.explained_variance_ratio_
 #     ifr_matrix = ifr_matrix[PC1sorted,:]
 #     units = np.array(units)[PC1sorted]
-    
+
 #     #cmap = sns.palplot(sns.diverging_palette(12, 255, l=40, n=100, center="dark"))
 #     fig = plt.figure(figsize=(15, 0.3*len(units)))
 #     hm = sns.heatmap(ifr_matrix, vmin=-2, vmax=2, cmap="RdBu_r", center=0, cbar_kws={'label': 'Instantaneous Firing Rate (s.d.)'})
-    
+
 #     if window[0]<0:
 #         zero=int(len(x)*(-window[0])/(window[1]-window[0]))
 #         hm.axes.plot([zero,zero], hm.axes.get_ylim()[::-1], ls="--", c=[0,0,0], lw=1)
@@ -2147,10 +2246,10 @@ def dat_to_dic(dp, variables='all'):
 # #    for i in range(hmm.shape[1]):
 # #        if (i-8064/(window[1]-window[0]))%12!=0: hm.axes.xaxis.get_major_ticks()[i].set_visible(False)
 # #        else: hm.axes.xaxis.get_major_ticks()[i].set_visible(True)
-    
+
 #     fig = plt.gcf()
 #     spt = 'Putative Purkinje cells' if region == 'cortex' else 'Cerebellar Nuclear Cells'
 #     fig.suptitle(spt)
 #     ax = plt.gca()
-    
+
 #     return fig, ax

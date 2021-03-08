@@ -81,7 +81,7 @@ mark_dict = {
 "|":"vline",
 "_":"hline"
 }
-                          
+
 
 #%% Utils
 
@@ -176,18 +176,18 @@ def thresh_consec0(arr, th, n_consec, sgn=1, exclude_edges=True):
     if not arr.ndim==1:
         assert 1 in arr.shape
         arr=arr.flatten()
-    
+
     arr= (arr-th)*sign(sgn)+th # Flips the array around threshold if sgn==-1
     comp = (arr>=th)
-        
+
     crosses=any_n_consec(comp, n_consec, where=True)[1]
-    
+
     if exclude_edges:
         if crosses[0][0]==0: # starts beyond threshold and lasts >=n_consec_bins
             crosses=crosses[1:]
         if crosses[-1][-1]==len(arr)-1: # starts beyond threshold and lasts >=n_consec_bins
             crosses=crosses[:-1]
-    
+
     return [np.vstack([cross, arr[cross]]) for cross in crosses]
 
 @njit(cache=True)
@@ -203,10 +203,10 @@ def thresh_numba(arr, th, sgn=1, pos=1):
     tp=arr.dtype
     assert arr.ndim==1
     arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
-    
+
     i=np.nonzero(arr>=th)[0] if pos==1 else np.nonzero(arr<=th)[0]
     # If no value is above the threshold or all of them are already above the threshold
-    if len(i)==0 or len(i)==len(arr): 
+    if len(i)==0 or len(i)==len(arr):
         return np.zeros(0).astype(tp)
     if pos==1:
         clip=np.maximum(0, np.minimum(i-1, len(arr)-1))
@@ -226,10 +226,10 @@ def thresh(arr, th, sgn=1, pos=1):
     arr=np.asarray(arr)
     assert arr.ndim==1
     arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
-    
+
     i=np.nonzero(arr>=th)[0] if pos==1 else np.nonzero(arr<=th)[0]
     # If no value is above the threshold or all of them are already above the threshold
-    if len(i)==0 or len(i)==len(arr): 
+    if len(i)==0 or len(i)==len(arr):
         return np.array([])
     return  i[arr[np.clip(i-1, 0, len(arr)-1)]<th] if pos==1 else i[arr[np.clip(i+1, 0, len(arr)-1)]>th]
 
@@ -256,10 +256,10 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
         if not arr.ndim==1:
             assert 1 in arr.shape
             arr=arr.flatten()
-            
+
         assert sgn in [-1,1]
         arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
-        
+
         cross_thp, cross_thn = thresh(arr, th, 1, 1), thresh(arr, th, -1, -1)
         if exclude_edges:
             if len(cross_thp)+len(cross_thn)<=1: cross_thp, cross_thn = [], [] # Only one cross at the beginning or the end e.g.
@@ -277,20 +277,20 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
                 if cross_thn[0]<cross_thp[0]: flag0=True # if - cross at the beginning
                 if flag1: cross_thn=np.append(cross_thn, [len(arr)-1]) # add fake - cross at the end
                 if flag0: cross_thp=np.append([0],cross_thp) # add fake + cross at the beginning
-    
+
         assert len(cross_thp)==len(cross_thn)
-        
+
         if ret_values or only_max:
             crosses=[np.vstack([np.arange(cross_thp[i], cross_thn[i]+1, 1), ((arr-th)*sgn+th)[cross_thp[i]:cross_thn[i]+1]]) for i in range(len(cross_thp)) if cross_thn[i]+1-cross_thp[i]>=n_consec]
         else:
             crosses=[[cross_thp[i], cross_thn[i]] for i in range(len(cross_thp)) if cross_thn[i]+1-cross_thp[i]>=n_consec]
         return crosses
-    
+
     sgn=[-1,1] if sgn==0 else [sgn]
     crosses=[]
     for s in sgn:
         crosses+=thresh_cons(arr, th, s, n_consec, exclude_edges, ret_values)
-            
+
     if only_max and len(crosses)>0:
         cross=crosses[0]
         for c in crosses[1:]:
@@ -299,7 +299,7 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
             crosses=[cross]
         else:
             crosses=[[cross[0,0], cross[0,-1]]]
-        
+
     return crosses
 
 def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
@@ -327,7 +327,7 @@ def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
         - a: sqrt of Gamma function rate (essentially std) | Default 5
         - frac: lowess parameter, fraction watched ahead to perform smoothing | Default 0.06
         - it: lowess paramater | Default 0
-        
+
     methods implemented:
         - gaussian
         - gaussian_causal
@@ -343,7 +343,7 @@ def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
     C = arr.shape[-1]//2
     if arr.ndim==1: padarr=np.hstack([arr[:C][::-1], arr, arr[-C:][::-1]])
     elif arr.ndim==2: padarr=np.hstack([arr[:,:C][:,::-1], arr, arr[:,-C:][:,::-1]])
-    
+
     # Compute the kernel
     if method in ['gaussian', 'gaussian_causal', 'gamma']:
         if method in ['gaussian', 'gaussian_causal']:
@@ -361,7 +361,7 @@ def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
         elif mx>len(kernel)/2:
             kernel=np.append(kernel, np.zeros(mx-(len(kernel)-mx)))
         assert len(kernel)<padarr.shape[-1], 'The kernel is longer than the array to convolved, you must decrease the standard deviation parameter.'
-        
+
         # Convolve array with kernel
         kernel=kernel/sum(kernel) # normalize kernel to prevent vertical scaling
         if arr.ndim==1: sarr = np.convolve(padarr, kernel, mode='same')
@@ -371,13 +371,13 @@ def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
     elif method=='lowess':
         if arr.ndim==1: sarr = lowess(padarr, np.arange(padarr.shape[-1]), is_sorted=True, frac=frac, it=it)[:,1].flatten()
         elif arr.ndim==2: sarr = np.apply_along_axis(lambda m:lowess(m, np.arange(len(m)), is_sorted=True, frac=frac, it=it), axis=1, arr=padarr)
-    
+
     # Remove padding
     if arr.ndim==1: sarr = sarr[C:-C]
     elif arr.ndim==2:  sarr = sarr[:,C:-C]
-    
+
     assert np.all(sarr.shape==arr.shape)
-    
+
     return sarr
 
 def get_bins(cwin, cbin):
@@ -395,12 +395,12 @@ def mask_2d(x, m):
     x: np.array
        2D array on which to apply a mask
     m: np.array
-        2D boolean mask  
+        2D boolean mask
     Returns
     -------
     List of arrays. Each array contains the
     elements from the rows in x once masked.
-    If no elements in a row are selected the 
+    If no elements in a row are selected the
     corresponding array will be empty
     '''
     take = m.sum(axis=1)
@@ -441,17 +441,17 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, prnt=Tru
     arr=np.asarray(arr)
     assert n_samples!=0 or sample_size!=0, 'You need to specify either a sample number or size!'
     assert 0<=overlap<1, 'overlap needs to be between 0 and 1, 1 excluded (samples would all be the same)!'
-    
+
     if n_samples!=0 and sample_size!=0:
         print('''WARNING you provided n_samples AND sample_size!
               By convention, sample_size has priority over n_samples. n_samples ignored.''')
         n_samples=0
-        
+
     if n_samples==0: n_samples=len(arr)//sample_size+1
     if sample_size==0: sample_size=len(arr)//(n_samples)
-    
+
     assert n_samples<=len(arr)
-        
+
     # step=1 for maximum overlap (every sample would be the first sample for step = 0);
     # step=s for 0 overlap; overlap is
     s=sample_size
@@ -459,14 +459,14 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, prnt=Tru
     real_o=round((s-step)/s, 2)
     if overlap!=real_o and prnt: print('Real overlap: ', round(real_o, 2))
     samples = List([arr[i : i + s] for i in range(0, len(arr), step)])
-    
+
     # always return last sample if len matches
     if len(samples[-1])==s:
         return make_2D_array(samples)
-    
+
     if return_last:
         return make_2D_array(samples, accept_heterogeneous=True)
-    
+
     lasti=-1
     sp=samples[lasti]
     while len(sp)!=s:
@@ -475,11 +475,11 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, prnt=Tru
     return make_2D_array(samples[:lasti+1])
 
 def n_largest_samples(to_sort: np.array, largest_n: int) -> np.array:
-    
+
     """
     Returns the n largest sorted samples from an array
     """
-    
+
     sorted_n = np.argpartition(to_sort, -largest_n, axis=0 )[-largest_n:].flatten()
     return sorted_n
 
@@ -489,7 +489,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
         aligned_ts1, aligned_ts2, ... = align_timeseries([ts1,ts2,...], [sync1,sync2,...], fs)
     Usage 2:  align >=1 time serie(s) to another temporal reference frame
         aligned_ts = align_timeseries([ts], [sync_ts, sync_other], [fs_ts, fs_other])
-        
+
     Re-aligns in time series based on provided sync signals.
     - timeseries: list of numpy arrays of time stamps (e.g. spikes), in SAMPLES
       If Usage 1: THEY MUST BE IN THE SAME TIME REFERENCE FRAME
@@ -499,10 +499,10 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
       - fs: int (usage 1) or list of 2 ints (usage 2), sampling frequencies of timeseries and respective sync_signals.
       - offset_policy: 'original' or 'zero', only for usage 1: whether to set timeseries[0] as 0 or as its original value after alignement.
       The FIRST sync_signal is used as a reference.
-      
+
     Returns:
      timeseries, aligned accordingly to sync signals.
-    
+
     '''
     assert type(timeseries) is type(sync_signals) is list, "You must provide timeseries and sync_signals as lists of arrays!"
     for tsi, ts in enumerate(timeseries):
@@ -511,8 +511,8 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     for tsi, ts in enumerate(sync_signals):
         assert np.all(ts.astype(int)==ts), 'Sync signals need to be integers, in samples acquired at fs sampling rate!'
         sync_signals[tsi]=ts.astype(int)
-        
-        
+
+
     for ss in sync_signals:
         assert len(sync_signals[0])==len(ss), "WARNING all sync signals do not have the same size, the acquisition must have been faulty!"
     assert len(sync_signals[0])>=1, "Only one synchronization signal has been provided - this is dangerous practice as this does not account for cumulative time drift."
@@ -522,7 +522,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
         subselect_ids=np.unique(np.append(subselect_ids,[0,len(sync_signals[0])-1])) # enforce first and last stim
         for synci,sync in enumerate(sync_signals):
             sync_signals[synci]=sync[subselect_ids]
-        
+
     if len(timeseries)==1: # Usage 2
         usage=2
         offset=sync_signals[1][0]
@@ -540,12 +540,12 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
         assert len(npa([fs]).flatten())==1, 'You must provide a single sampling frequency fs when aligning >=2 time series (Usage 1)!'
         fs_master=npa([fs]).flatten()[0]
 
-    
+
     Nevents, totDft, avDft, stdDft = len(sync_signals[0]), (sync_signals[1]-sync_signals[0])[-1], np.mean(np.diff(sync_signals[1]-sync_signals[0])), np.std(np.diff(sync_signals[1]-sync_signals[0]))
     totDft, avDft, stdDft = totDft*1000/fs_master, avDft*1000/fs_master, stdDft*1000/fs_master
     print("{} sync events used for alignement - start-end drift of {}ms, \
           av. drift between consec. sync events of {}+/-{}ms.".format(Nevents, round(totDft,4), round(avDft,4), round(stdDft,4)))
-    
+
     for dataset_i in range(len(timeseries)):
         if dataset_i==0: continue #first dataset is reference so left untouched
         array0, syncs = timeseries[dataset_i], sync_signals[dataset_i]
@@ -556,9 +556,9 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
                 # re-time to where own sync stamp should be with respect to reference dataset (the 1st one)
                 first_sync_ref0=sync_signals[0][i]-sync_signals[0][0]
                 array=np.append(array[array1<0], array1[array1>=0]+first_sync_ref0)
-        array+=syncs[0] # restore original offset
+        if usage==1: array+=syncs[0] # restore original offset
         timeseries[dataset_i]=array+offset
-        
+
     return timeseries if usage==1 else timeseries[1]
 
 #%% Stolen from phy
@@ -631,64 +631,64 @@ __all__ = [
 def _datacheck_peakdetect(x_axis, y_axis):
     if x_axis is None:
         x_axis = range(len(y_axis))
-    
+
     if len(y_axis) != len(x_axis):
-        raise ValueError( 
+        raise ValueError(
                 "Input vectors y_axis and x_axis must have same length")
-    
+
     #needs to be a numpy array
     y_axis = np.array(y_axis)
     x_axis = np.array(x_axis)
     return x_axis, y_axis
-    
+
 
 def _pad(fft_data, pad_len):
     """
     Pads fft data to interpolate in time domain
-    
+
     keyword arguments:
     fft_data -- the fft
     pad_len --  By how many times the time resolution should be increased by
-    
+
     return: padded list
     """
     l = len(fft_data)
     n = _n(l * pad_len)
     fft_data = list(fft_data)
-    
+
     return fft_data[:l // 2] + [0] * (2**n-l) + fft_data[l // 2:]
-    
+
 def _n(x):
     """
     Find the smallest value for n, which fulfils 2**n >= x
-    
+
     keyword arguments:
     x -- the value, which 2**n must surpass
-    
+
     return: the integer n
     """
     return int(log(x)/log(2)) + 1
-    
-    
+
+
 def _peakdetect_parabola_fitter(raw_peaks, x_axis, y_axis, points):
     """
     Performs the actual parabola fitting for the peakdetect_parabola function.
-        
+
     keyword arguments:
     raw_peaks -- A list of either the maxima or the minima peaks, as given
         by the peakdetect functions, with index used as x-axis
-    
+
     x_axis -- A numpy array of all the x values
-    
+
     y_axis -- A numpy array of all the y values
-    
+
     points -- How many points around the peak should be used during curve
         fitting, must be odd.
-    
-    
+
+
     return: A list giving all the peaks and the fitted waveform, format:
         [[x, y, [fitted_x, fitted_y]]]
-        
+
     """
     func = lambda x, a, tau, c: a * ((x - tau) ** 2) + c
     fitted_peaks = []
@@ -703,55 +703,55 @@ def _peakdetect_parabola_fitter(raw_peaks, x_axis, y_axis, points):
         c = peak[1]
         a = np.sign(c) * (-1) * (np.sqrt(abs(c))/distance)**2
         """Derived from ABC formula to result in a solution where A=(rot(c)/t)**2"""
-        
+
         # build list of approximations
-        
+
         p0 = (a, tau, c)
         popt, pcov = curve_fit(func, x_data, y_data, p0)
         # retrieve tau and c i.e x and y value of peak
         x, y = popt[1:3]
-        
+
         # create a high resolution data set for the fitted waveform
         x2 = np.linspace(x_data[0], x_data[-1], points * 10)
         y2 = func(x2, *popt)
-        
+
         fitted_peaks.append([x, y, [x2, y2]])
-        
+
     return fitted_peaks
-    
-    
+
+
 def peakdetect_parabole(*args, **kwargs):
     """
     Misspelling of peakdetect_parabola
     function is deprecated please use peakdetect_parabola
     """
     logging.warn("peakdetect_parabole is deprecated due to misspelling use: peakdetect_parabola")
-    
+
     return peakdetect_parabola(*args, **kwargs)
-    
-    
+
+
 def peakdetect(y_axis, x_axis = None, lookahead = 200, delta=0):
     """
-    Converted from/based on a MATLAB script at: 
+    Converted from/based on a MATLAB script at:
     http://billauer.co.il/peakdet.html
-    
+
     function for detecting local maxima and minima in a signal.
     Discovers peaks by searching for values which are surrounded by lower
     or larger values for maxima and minima respectively
-    
+
     keyword arguments:
     y_axis -- A list containing the signal over which to find peaks
-    
+
     x_axis -- A x-axis whose values correspond to the y_axis list and is used
         in the return to specify the position of the peaks. If omitted an
         index of the y_axis is used.
         (default: None)
-    
+
     lookahead -- distance to look ahead from a peak candidate to determine if
         it is the actual peak
-        (default: 200) 
+        (default: 200)
         '(samples / period) / f' where '4 >= f >= 1.25' might be a good value
-    
+
     delta -- this specifies a minimum difference between a peak and
         the following points, before a peak may be considered a peak. Useful
         to hinder the function from picking up false peaks towards to end of
@@ -759,37 +759,37 @@ def peakdetect(y_axis, x_axis = None, lookahead = 200, delta=0):
         (default: 0)
             When omitted delta function causes a 20% decrease in speed.
             When used Correctly it can double the speed of the function
-    
-    
+
+
     return: two lists [max_peaks, min_peaks] containing the positive and
         negative peaks respectively. Each cell of the lists contains a tuple
-        of: (position, peak_value) 
+        of: (position, peak_value)
         to get the average peak value do: np.mean(max_peaks, 0)[1] on the
-        results to unpack one of the lists into x, y coordinates do: 
+        results to unpack one of the lists into x, y coordinates do:
         x, y = zip(*max_peaks)
     """
     max_peaks = []
     min_peaks = []
     dump = []   #Used to pop the first hit which almost always is false
-       
+
     # check input data
     x_axis, y_axis = _datacheck_peakdetect(x_axis, y_axis)
     # store data length for later use
     length = len(y_axis)
-    
-    
+
+
     #perform some checks
     if lookahead < 1:
         raise ValueError("Lookahead must be '1' or above in value")
     if not (np.isscalar(delta) and delta >= 0):
         raise ValueError("delta must be a positive number")
-    
+
     #maxima and minima candidates are temporarily stored in
     #mx and mn respectively
     mn, mx = np.Inf, -np.Inf
-    
+
     #Only detect peak if there is 'lookahead' amount of points after it
-    for index, (x, y) in enumerate(zip(x_axis[:-lookahead], 
+    for index, (x, y) in enumerate(zip(x_axis[:-lookahead],
                                         y_axis[:-lookahead])):
         if y > mx:
             mx = y
@@ -797,7 +797,7 @@ def peakdetect(y_axis, x_axis = None, lookahead = 200, delta=0):
         if y < mn:
             mn = y
             mnpos = x
-        
+
         ####look for max####
         if y < mx-delta and mx != np.Inf:
             #Maxima peak candidate found
@@ -815,10 +815,10 @@ def peakdetect(y_axis, x_axis = None, lookahead = 200, delta=0):
             #else:  #slows shit down this does
             #    mx = ahead
             #    mxpos = x_axis[np.where(y_axis[index:index+lookahead]==mx)]
-        
+
         ####look for min####
         if y > mn+delta and mn != -np.Inf:
-            #Minima peak candidate found 
+            #Minima peak candidate found
             #look ahead in signal to ensure that this is a peak and not jitter
             if y_axis[index:index+lookahead].min() > mn:
                 min_peaks.append([mnpos, mn])
@@ -832,8 +832,8 @@ def peakdetect(y_axis, x_axis = None, lookahead = 200, delta=0):
             #else:  #slows shit down this does
             #    mn = ahead
             #    mnpos = x_axis[np.where(y_axis[index:index+lookahead]==mn)]
-    
-    
+
+
     #Remove the false hit on the first value of the y_axis
     try:
         if dump[0]:
@@ -844,26 +844,26 @@ def peakdetect(y_axis, x_axis = None, lookahead = 200, delta=0):
     except IndexError:
         #no peaks were found, should the function return empty lists?
         pass
-        
+
     return [max_peaks, min_peaks]
-    
-    
+
+
 def peakdetect_fft(y_axis, x_axis, pad_len = 20):
     """
     Performs a FFT calculation on the data and zero-pads the results to
     increase the time domain resolution after performing the inverse fft and
-    send the data to the 'peakdetect' function for peak 
+    send the data to the 'peakdetect' function for peak
     detection.
-    
+
     Omitting the x_axis is forbidden as it would make the resulting x_axis
     value silly if it was returned as the index 50.234 or similar.
-    
+
     Will find at least 1 less peak then the 'peakdetect_zero_crossing'
     function, but should result in a more precise value of the peak as
     resolution has been increased. Some peaks are lost in an attempt to
     minimize spectral leakage by calculating the fft between two zero
     crossings for n amount of signal periods.
-    
+
     The biggest time eater in this function is the ifft and thereafter it's
     the 'peakdetect' function which takes only half the time of the ifft.
     Speed improvements could include to check if 2**n points could be used for
@@ -871,24 +871,24 @@ def peakdetect_fft(y_axis, x_axis, pad_len = 20):
     which is maybe 10 times faster than 'peakdetct'. The pro of 'peakdetect'
     is that it results in one less lost peak. It should also be noted that the
     time used by the ifft function can change greatly depending on the input.
-    
+
     keyword arguments:
     y_axis -- A list containing the signal over which to find peaks
-    
+
     x_axis -- A x-axis whose values correspond to the y_axis list and is used
         in the return to specify the position of the peaks.
-    
+
     pad_len -- By how many times the time resolution should be
         increased by, e.g. 1 doubles the resolution. The amount is rounded up
         to the nearest 2**n amount
         (default: 20)
-    
-    
+
+
     return: two lists [max_peaks, min_peaks] containing the positive and
         negative peaks respectively. Each cell of the lists contains a tuple
-        of: (position, peak_value) 
+        of: (position, peak_value)
         to get the average peak value do: np.mean(max_peaks, 0)[1] on the
-        results to unpack one of the lists into x, y coordinates do: 
+        results to unpack one of the lists into x, y coordinates do:
         x, y = zip(*max_peaks)
     """
     # check input data
@@ -908,9 +908,9 @@ def peakdetect_fft(y_axis, x_axis, pad_len = 20):
     padd = lambda x, c: x[:len(x) // 2] + [0] * c + x[len(x) // 2:]
     n = lambda x: int(log(x)/log(2)) + 1
     # pads to 2**n amount of samples
-    fft_padded = padd(list(fft_data), 2 ** 
+    fft_padded = padd(list(fft_data), 2 **
                 n(len(fft_data) * pad_len) - len(fft_data))
-    
+
     # There is amplitude decrease directly proportional to the sample increase
     sf = len(fft_padded) / float(len(fft_data))
     # There might be a leakage giving the result an imaginary component
@@ -923,43 +923,43 @@ def peakdetect_fft(y_axis, x_axis, pad_len = 20):
     max_peaks, min_peaks = peakdetect(y_axis_ifft, x_axis_ifft, 500,
                                     delta = abs(np.diff(y_axis).max() * 2))
     #max_peaks, min_peaks = peakdetect_zero_crossing(y_axis_ifft, x_axis_ifft)
-    
+
     # store one 20th of a period as waveform data
     data_len = int(np.diff(zero_indices).mean()) / 10
     data_len += 1 - data_len & 1
-    
-    
+
+
     return [max_peaks, min_peaks]
-    
-    
+
+
 def peakdetect_parabola(y_axis, x_axis, points = 31):
     """
     Function for detecting local maxima and minima in a signal.
     Discovers peaks by fitting the model function: y = k (x - tau) ** 2 + m
     to the peaks. The amount of points used in the fitting is set by the
     points argument.
-    
+
     Omitting the x_axis is forbidden as it would make the resulting x_axis
     value silly, if it was returned as index 50.234 or similar.
-    
+
     will find the same amount of peaks as the 'peakdetect_zero_crossing'
     function, but might result in a more precise value of the peak.
-    
+
     keyword arguments:
     y_axis -- A list containing the signal over which to find peaks
-    
+
     x_axis -- A x-axis whose values correspond to the y_axis list and is used
         in the return to specify the position of the peaks.
-    
+
     points -- How many points around the peak should be used during curve
         fitting (default: 31)
-    
-    
+
+
     return: two lists [max_peaks, min_peaks] containing the positive and
         negative peaks respectively. Each cell of the lists contains a tuple
-        of: (position, peak_value) 
+        of: (position, peak_value)
         to get the average peak value do: np.mean(max_peaks, 0)[1] on the
-        results to unpack one of the lists into x, y coordinates do: 
+        results to unpack one of the lists into x, y coordinates do:
         x, y = zip(*max_peaks)
     """
     # check input data
@@ -967,24 +967,24 @@ def peakdetect_parabola(y_axis, x_axis, points = 31):
     # make the points argument odd
     points += 1 - points % 2
     #points += 1 - int(points) & 1 slower when int conversion needed
-    
+
     # get raw peaks
     max_raw, min_raw = peakdetect_zero_crossing(y_axis)
-    
+
     # define output variable
     max_peaks = []
     min_peaks = []
-    
+
     max_ = _peakdetect_parabola_fitter(max_raw, x_axis, y_axis, points)
     min_ = _peakdetect_parabola_fitter(min_raw, x_axis, y_axis, points)
-    
+
     max_peaks = map(lambda x: [x[0], x[1]], max_)
     max_fitted = map(lambda x: x[-1], max_)
     min_peaks = map(lambda x: [x[0], x[1]], min_)
     min_fitted = map(lambda x: x[-1], min_)
-    
+
     return [max_peaks, min_peaks]
-    
+
 
 def peakdetect_sine(y_axis, x_axis, points = 31, lock_frequency = False):
     """
@@ -992,38 +992,38 @@ def peakdetect_sine(y_axis, x_axis, points = 31, lock_frequency = False):
     Discovers peaks by fitting the model function:
     y = A * sin(2 * pi * f * (x - tau)) to the peaks. The amount of points used
     in the fitting is set by the points argument.
-    
+
     Omitting the x_axis is forbidden as it would make the resulting x_axis
     value silly if it was returned as index 50.234 or similar.
-    
+
     will find the same amount of peaks as the 'peakdetect_zero_crossing'
     function, but might result in a more precise value of the peak.
-    
+
     The function might have some problems if the sine wave has a
     non-negligible total angle i.e. a k*x component, as this messes with the
-    internal offset calculation of the peaks, might be fixed by fitting a 
+    internal offset calculation of the peaks, might be fixed by fitting a
     y = k * x + m function to the peaks for offset calculation.
-    
+
     keyword arguments:
     y_axis -- A list containing the signal over which to find peaks
-    
+
     x_axis -- A x-axis whose values correspond to the y_axis list and is used
         in the return to specify the position of the peaks.
-    
+
     points -- How many points around the peak should be used during curve
         fitting (default: 31)
-    
+
     lock_frequency -- Specifies if the frequency argument of the model
         function should be locked to the value calculated from the raw peaks
         or if optimization process may tinker with it.
         (default: False)
-    
-    
+
+
     return: two lists [max_peaks, min_peaks] containing the positive and
         negative peaks respectively. Each cell of the lists contains a tuple
-        of: (position, peak_value) 
+        of: (position, peak_value)
         to get the average peak value do: np.mean(max_peaks, 0)[1] on the
-        results to unpack one of the lists into x, y coordinates do: 
+        results to unpack one of the lists into x, y coordinates do:
         x, y = zip(*max_peaks)
     """
     # check input data
@@ -1031,26 +1031,26 @@ def peakdetect_sine(y_axis, x_axis, points = 31, lock_frequency = False):
     # make the points argument odd
     points += 1 - points % 2
     #points += 1 - int(points) & 1 slower when int conversion needed
-    
+
     # get raw peaks
     max_raw, min_raw = peakdetect_zero_crossing(y_axis)
-    
+
     # define output variable
     max_peaks = []
     min_peaks = []
-    
+
     # get global offset
     offset = np.mean([np.mean(max_raw, 0)[1], np.mean(min_raw, 0)[1]])
     # fitting a k * x + m function to the peaks might be better
     #offset_func = lambda x, k, m: k * x + m
-    
+
     # calculate an approximate frequency of the signal
     Hz_h_peak = np.diff(zip(*max_raw)[0]).mean()
     Hz_l_peak = np.diff(zip(*min_raw)[0]).mean()
     Hz = 1 / np.mean([Hz_h_peak, Hz_l_peak])
-    
-    
-    
+
+
+
     # model function
     # if cosine is used then tau could equal the x position of the peak
     # if sine were to be used then tau would be the first zero crossing
@@ -1061,8 +1061,8 @@ def peakdetect_sine(y_axis, x_axis, points = 31, lock_frequency = False):
         func = lambda x_ax, A, Hz, tau: A * np.sin(
             2 * pi * Hz * (x_ax - tau) + pi / 2)
     #func = lambda x_ax, A, Hz, tau: A * np.cos(2 * pi * Hz * (x_ax - tau))
-    
-    
+
+
     #get peaks
     fitted_peaks = []
     for raw_peaks in [max_raw, min_raw]:
@@ -1075,89 +1075,89 @@ def peakdetect_sine(y_axis, x_axis, points = 31, lock_frequency = False):
             tau = x_axis[index]
             # get a first approximation of peak amplitude
             A = peak[1]
-            
+
             # build list of approximations
             if lock_frequency:
                 p0 = (A, tau)
             else:
                 p0 = (A, Hz, tau)
-            
+
             # subtract offset from wave-shape
             y_data -= offset
             popt, pcov = curve_fit(func, x_data, y_data, p0)
             # retrieve tau and A i.e x and y value of peak
             x = popt[-1]
             y = popt[0]
-            
+
             # create a high resolution data set for the fitted waveform
             x2 = np.linspace(x_data[0], x_data[-1], points * 10)
             y2 = func(x2, *popt)
-            
+
             # add the offset to the results
             y += offset
             y2 += offset
             y_data += offset
-            
+
             peak_data.append([x, y, [x2, y2]])
-       
+
         fitted_peaks.append(peak_data)
-    
+
     # structure date for output
     max_peaks = map(lambda x: [x[0], x[1]], fitted_peaks[0])
     max_fitted = map(lambda x: x[-1], fitted_peaks[0])
     min_peaks = map(lambda x: [x[0], x[1]], fitted_peaks[1])
     min_fitted = map(lambda x: x[-1], fitted_peaks[1])
-    
-    
+
+
     return [max_peaks, min_peaks]
 
-    
+
 def peakdetect_sine_locked(y_axis, x_axis, points = 31):
     """
     Convenience function for calling the 'peakdetect_sine' function with
     the lock_frequency argument as True.
-    
+
     keyword arguments:
     y_axis -- A list containing the signal over which to find peaks
     x_axis -- A x-axis whose values correspond to the y_axis list and is used
         in the return to specify the position of the peaks.
     points -- How many points around the peak should be used during curve
         fitting (default: 31)
-    
+
     return: see the function 'peakdetect_sine'
     """
     return peakdetect_sine(y_axis, x_axis, points, True)
-    
-    
+
+
 def peakdetect_spline(y_axis, x_axis, pad_len=20):
     """
     Performs a b-spline interpolation on the data to increase resolution and
-    send the data to the 'peakdetect_zero_crossing' function for peak 
+    send the data to the 'peakdetect_zero_crossing' function for peak
     detection.
-    
+
     Omitting the x_axis is forbidden as it would make the resulting x_axis
     value silly if it was returned as the index 50.234 or similar.
-    
+
     will find the same amount of peaks as the 'peakdetect_zero_crossing'
     function, but might result in a more precise value of the peak.
-    
+
     keyword arguments:
     y_axis -- A list containing the signal over which to find peaks
-    
+
     x_axis -- A x-axis whose values correspond to the y_axis list and is used
-        in the return to specify the position of the peaks. 
+        in the return to specify the position of the peaks.
         x-axis must be equally spaced.
-    
+
     pad_len -- By how many times the time resolution should be increased by,
         e.g. 1 doubles the resolution.
         (default: 20)
-    
-    
+
+
     return: two lists [max_peaks, min_peaks] containing the positive and
         negative peaks respectively. Each cell of the lists contains a tuple
-        of: (position, peak_value) 
+        of: (position, peak_value)
         to get the average peak value do: np.mean(max_peaks, 0)[1] on the
-        results to unpack one of the lists into x, y coordinates do: 
+        results to unpack one of the lists into x, y coordinates do:
         x, y = zip(*max_peaks)
     """
     # check input data
@@ -1171,9 +1171,9 @@ def peakdetect_spline(y_axis, x_axis, pad_len=20):
     y_interpolated = cspline1d_eval(cj, x_interpolated, dx=dx,x0=x_axis[0])
     # get peaks
     max_peaks, min_peaks = peakdetect_zero_crossing(y_interpolated, x_interpolated)
-    
+
     return [max_peaks, min_peaks]
-    
+
 def peakdetect_zero_crossing(y_axis, x_axis = None, window = 11):
     """
     Function for detecting local maxima and minima in a signal.
@@ -1181,50 +1181,50 @@ def peakdetect_zero_crossing(y_axis, x_axis = None, window = 11):
     maximum and minimum value of each the even and odd bins respectively.
     Division into bins is performed by smoothing the curve and finding the
     zero crossings.
-    
+
     Suitable for repeatable signals, where some noise is tolerated. Executes
     faster than 'peakdetect', although this function will break if the offset
     of the signal is too large. It should also be noted that the first and
     last peak will probably not be found, as this function only can find peaks
     between the first and last zero crossing.
-    
+
     keyword arguments:
     y_axis -- A list containing the signal over which to find peaks
-    
+
     x_axis -- A x-axis whose values correspond to the y_axis list
         and is used in the return to specify the position of the peaks. If
         omitted an index of the y_axis is used.
         (default: None)
-    
+
     window -- the dimension of the smoothing window; should be an odd integer
         (default: 11)
-    
-    
+
+
     return: two lists [max_peaks, min_peaks] containing the positive and
         negative peaks respectively. Each cell of the lists contains a tuple
-        of: (position, peak_value) 
+        of: (position, peak_value)
         to get the average peak value do: np.mean(max_peaks, 0)[1] on the
-        results to unpack one of the lists into x, y coordinates do: 
+        results to unpack one of the lists into x, y coordinates do:
         x, y = zip(*max_peaks)
     """
     # check input data
     x_axis, y_axis = _datacheck_peakdetect(x_axis, y_axis)
-    
+
     zero_indices = zero_crossings(y_axis, window_len = window)
     period_lengths = np.diff(zero_indices)
-            
-    bins_y = [y_axis[index:index + diff] for index, diff in 
+
+    bins_y = [y_axis[index:index + diff] for index, diff in
         zip(zero_indices, period_lengths)]
-    bins_x = [x_axis[index:index + diff] for index, diff in 
+    bins_x = [x_axis[index:index + diff] for index, diff in
         zip(zero_indices, period_lengths)]
-        
+
     even_bins_y = bins_y[::2]
     odd_bins_y = bins_y[1::2]
     even_bins_x = bins_x[::2]
     odd_bins_x = bins_x[1::2]
     hi_peaks_x = []
     lo_peaks_x = []
-    
+
     #check if even bin contains maxima
     if abs(even_bins_y[0].max()) > abs(even_bins_y[0].min()):
         hi_peaks = [bin.max() for bin in even_bins_y]
@@ -1242,50 +1242,50 @@ def peakdetect_zero_crossing(y_axis, x_axis = None, window = 11):
             hi_peaks_x.append(bin_x[np.where(bin_y==peak)[0][0]])
         for bin_x, bin_y, peak in zip(even_bins_x, even_bins_y, lo_peaks):
             lo_peaks_x.append(bin_x[np.where(bin_y==peak)[0][0]])
-    
+
     max_peaks = [[x, y] for x,y in zip(hi_peaks_x, hi_peaks)]
     min_peaks = [[x, y] for x,y in zip(lo_peaks_x, lo_peaks)]
-    
+
     return [max_peaks, min_peaks]
-        
-    
+
+
 def _smooth(x, window_len=11, window="hanning"):
     """
     smooth the data using a window of the requested size.
-    
+
     This method is based on the convolution of a scaled window on the signal.
-    The signal is prepared by introducing reflected copies of the signal 
+    The signal is prepared by introducing reflected copies of the signal
     (with the window size) in both ends so that transient parts are minimized
     in the beginning and end part of the output signal.
-    
+
     keyword arguments:
-    x -- the input signal 
-    
+    x -- the input signal
+
     window_len -- the dimension of the smoothing window; should be an odd
         integer (default: 11)
-    
-    window -- the type of window from 'flat', 'hanning', 'hamming', 
+
+    window -- the type of window from 'flat', 'hanning', 'hamming',
         'bartlett', 'blackman', where flat is a moving average
         (default: 'hanning')
-    
+
     return: the smoothed signal
-        
+
     example:
     t = linspace(-2,2,0.1)
     x = sin(t)+randn(len(t))*0.1
     y = _smooth(x)
-    
-    see also: 
-    
-    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, 
-    numpy.convolve, scipy.signal.lfilter 
+
+    see also:
+
+    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman,
+    numpy.convolve, scipy.signal.lfilter
     """
     if x.ndim != 1:
         raise ValueError("smooth only accepts 1 dimension arrays.")
 
     if x.size < window_len:
         raise ValueError("Input vector needs to be bigger than window size.")
-    
+
     if window_len<3:
         return x
     #declare valid windows in a dictionary
@@ -1296,7 +1296,7 @@ def _smooth(x, window_len=11, window="hanning"):
         "bartlett": np.bartlett,
         "blackman": np.blackman
         }
-    
+
     s = np.r_[x[window_len-1:0:-1], x, x[-1:-window_len:-1]]
     try:
         w = window_funcs[window](window_len)
@@ -1304,45 +1304,45 @@ def _smooth(x, window_len=11, window="hanning"):
         raise ValueError(
             "Window is not one of '{0}', '{1}', '{2}', '{3}', '{4}'".format(
             *window_funcs.keys()))
-    
+
     y = np.convolve(w / w.sum(), s, mode = "valid")
-    
+
     return y
-    
-    
-def zero_crossings(y_axis, window_len = 11, 
+
+
+def zero_crossings(y_axis, window_len = 11,
     window_f="hanning", offset_corrected=False):
     """
     Algorithm to find zero crossings. Smooths the curve and finds the
     zero-crossings by looking for a sign change.
-    
-    
+
+
     keyword arguments:
     y_axis -- A list containing the signal over which to find zero-crossings
-    
+
     window_len -- the dimension of the smoothing window; should be an odd
         integer (default: 11)
-    
-    window_f -- the type of window from 'flat', 'hanning', 'hamming', 
+
+    window_f -- the type of window from 'flat', 'hanning', 'hamming',
         'bartlett', 'blackman' (default: 'hanning')
-    
+
     offset_corrected -- Used for recursive calling to remove offset when needed
-    
-    
+
+
     return: the index for each zero-crossing
     """
     # smooth the curve
     length = len(y_axis)
-    
+
     # discard tail of smoothed signal
     y_axis = _smooth(y_axis, window_len, window_f)[:length]
     indices = np.where(np.diff(np.sign(y_axis)))[0]
-    
+
     # check if zero-crossings are valid
     diff = np.diff(indices)
     if diff.std() / diff.mean() > 0.1:
         #Possibly bad zero crossing, see if it's offsets
-        if ((diff[::2].std() / diff[::2].mean()) < 0.1 and 
+        if ((diff[::2].std() / diff[::2].mean()) < 0.1 and
         (diff[1::2].std() / diff[1::2].mean()) < 0.1 and
         not offset_corrected):
             #offset present attempt to correct by subtracting the average
@@ -1361,15 +1361,15 @@ def zero_crossings(y_axis, window_len = 11,
     return indices - (window_len // 2 - 1)
     # used this to test the fft function's sensitivity to spectral leakage
     #return indices + np.asarray(30 * np.random.randn(len(indices)), int)
-    
+
 ############################Frequency calculation#############################
 #    diff = np.diff(indices)
 #    time_p_period = diff.mean()
-#    
+#
 #    if diff.std() / time_p_period > 0.1:
 #        raise ValueError(
 #            "smoothing window too small, false zero-crossing found")
-#    
+#
 #    #return frequency
 #    return 1.0 / time_p_period
 ##############################################################################
@@ -1381,35 +1381,35 @@ def zero_crossings_sine_fit(y_axis, x_axis, fit_window = None, smooth_window = 1
     around the zero crossings:
     y = A * sin(2 * pi * Hz * (x - tau)) + k * x + m
     Only tau (the zero crossing) is varied during fitting.
-    
+
     Offset and a linear drift of offset is accounted for by fitting a linear
     function the negative respective positive raw peaks of the wave-shape and
     the amplitude is calculated using data from the offset calculation i.e.
     the 'm' constant from the negative peaks is subtracted from the positive
     one to obtain amplitude.
-    
+
     Frequency is calculated using the mean time between raw peaks.
-    
+
     Algorithm seems to be sensitive to first guess e.g. a large smooth_window
     will give an error in the results.
-    
-    
+
+
     keyword arguments:
     y_axis -- A list containing the signal over which to find peaks
-    
+
     x_axis -- A x-axis whose values correspond to the y_axis list
         and is used in the return to specify the position of the peaks. If
         omitted an index of the y_axis is used. (default: None)
-    
+
     fit_window -- Number of points around the approximate zero crossing that
         should be used when fitting the sine wave. Must be small enough that
         no other zero crossing will be seen. If set to none then the mean
         distance between zero crossings will be used (default: None)
-    
+
     smooth_window -- the dimension of the smoothing window; should be an odd
         integer (default: 11)
-    
-    
+
+
     return: A list containing the positions of all the zero crossings.
     """
     # check input data
@@ -1421,29 +1421,29 @@ def zero_crossings_sine_fit(y_axis, x_axis, fit_window = None, smooth_window = 1
         fit_window = np.diff(zero_indices).mean() // 3
     else:
         fit_window = fit_window // 2
-    
+
     #x_axis is a np array, use the indices to get a subset with zero crossings
     approx_crossings = x_axis[zero_indices]
-    
-    
-    
+
+
+
     #get raw peaks for calculation of offsets and frequency
     raw_peaks = peakdetect_zero_crossing(y_axis, x_axis)
     #Use mean time between peaks for frequency
     ext = lambda x: list(zip(*x)[0])
     _diff = map(np.diff, map(ext, raw_peaks))
-    
-    
+
+
     Hz = 1 / np.mean(map(np.mean, _diff))
     #Hz = 1 / np.diff(approx_crossings).mean() #probably bad precision
-    
-    
+
+
     #offset model function
     offset_func = lambda x, k, m: k * x + m
     k = []
     m = []
     amplitude = []
-    
+
     for peaks in raw_peaks:
         #get peak data as nparray
         x_data, y_data = map(np.asarray, zip(*peaks))
@@ -1457,15 +1457,15 @@ def zero_crossings_sine_fit(y_axis, x_axis, fit_window = None, smooth_window = 1
         k.append(popt[0])
         m.append(popt[1])
         amplitude.append(abs(A))
-    
+
     #store offset constants
     p_offset = (np.mean(k), np.mean(m))
     A = m[0] - m[1]
     #define model function to fit to zero crossing
     #y = A * sin(2*pi * Hz * (x - tau)) + k * x + m
     func = lambda x, tau: A * np.sin(2 * pi * Hz * (x - tau)) + offset_func(x, *p_offset)
-    
-    
+
+
     #get true crossings
     true_crossings = []
     for indice, crossing in zip(zero_indices, approx_crossings):
@@ -1476,21 +1476,21 @@ def zero_crossings_sine_fit(y_axis, x_axis, fit_window = None, smooth_window = 1
         y_subset = np.asarray(y_axis[subset_start:subset_end])
         #fit
         popt, pcov = curve_fit(func, x_subset, y_subset, p0)
-        
+
         true_crossings.append(popt[0])
-    
-    
+
+
     return true_crossings
-        
-        
-    
-    
+
+
+
+
 def _test_zero():
     _max, _min = peakdetect_zero_crossing(y,x)
 def _test():
     _max, _min = peakdetect(y,x, delta=0.30)
-    
-    
+
+
 def _test_graph():
     i = 10000
     x = np.linspace(0,3.7*pi,i)
@@ -1498,18 +1498,18 @@ def _test_graph():
     np.random.randn(i))
     y *= -1
     x = range(i)
-    
+
     _max, _min = peakdetect(y,x,750, 0.30)
     xm = [p[0] for p in _max]
     ym = [p[1] for p in _max]
     xn = [p[0] for p in _min]
     yn = [p[1] for p in _min]
-    
+
     plot = pylab.plot(x,y)
     pylab.hold(True)
     pylab.plot(xm, ym, "r+")
     pylab.plot(xn, yn, "g+")
-    
+
     _max, _min = peak_det_bad.peakdetect(y, 0.7, x)
     xm = [p[0] for p in _max]
     ym = [p[1] for p in _max]
@@ -1518,7 +1518,7 @@ def _test_graph():
     pylab.plot(xm, ym, "y*")
     pylab.plot(xn, yn, "k*")
     pylab.show()
-    
+
 def _test_graph_cross(window = 11):
     i = 10000
     x = np.linspace(0,8.7*pi,i)
@@ -1527,17 +1527,17 @@ def _test_graph_cross(window = 11):
     y *= -1
     pylab.plot(x,y)
     #pylab.show()
-    
-    
+
+
     crossings = zero_crossings_sine_fit(y,x, smooth_window = window)
     y_cross = [0] * len(crossings)
-    
-    
+
+
     plot = pylab.plot(x,y)
     pylab.hold(True)
     pylab.plot(crossings, y_cross, "b+")
     pylab.show()
-    
+
 def _is_array_like(arr):
     return isinstance(arr, (list, np.ndarray))
 

@@ -464,9 +464,6 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
   
     return mean_shifted_waves, mean_shift_all,median_max_spike_ids
     
-    
-
-    
 
 def max_amp_consecutive_peaks(mean_waves: np.array) -> tuple:
     
@@ -586,7 +583,7 @@ def get_peak_chan(dp, unit, use_template=True, again=False, absolute=True):
     wvf_m = np.mean(waveforms, axis=0)
     max_min_wvf=np.max(wvf_m,0)-np.min(wvf_m,0)
     peak_chan = np.argmax(max_min_wvf)
-    return cm[:,0][peak_chan] if absolute else peak_chan
+    return cm[:,0][peak_chan] if (absolute and use_template) else peak_chan
 
 def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, again=False):
     '''
@@ -608,7 +605,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
         # If no units, load them all from dataset
         # and prepare to save the FULL array of peak channels at the end
         units=get_units(dp, quality=quality, again=again)
-        assert any(units)
+        assert any(units), f'No units of quality {quality} found in this dataset.'
         pc_fname=f'peak_channels_{strdic[use_template]}_{quality}.npy'
         if op.exists(Path(dp, pc_fname)) and not again:
             peak_chans=np.load(Path(dp, pc_fname))

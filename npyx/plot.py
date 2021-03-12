@@ -318,7 +318,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8, ignore_nwvf=True, bpfilter=False, whiten=False, med_sub=False, again=False, subset_selection='regular',
                title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
-               labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None):
+               labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None, ignore_ks_chanfilt = True):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
     Parameters:
@@ -345,12 +345,17 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
 
 
     fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
-    cm=chan_map(dp, y_orig='surface', probe_version='local')
+    pv=None if ignore_ks_chanfilt else 'local'
+
+    cm=chan_map(dp, y_orig='surface', probe_version=pv)
     peak_chan=get_peak_chan(dp, u)
     peak_chan_i = int(np.nonzero(np.abs(cm[:,0]-peak_chan)==min(np.abs(cm[:,0]-peak_chan)))[0][0]);
     t_waveforms_s=int(t_waveforms*(fs/1000))
+    #waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, subset_selection=subset_selection, wvf_batch_size=10, again=again,
+     #             ignore_nwvf=ignore_nwvf, bpfilter=bpfilter, whiten=whiten, med_sub=med_sub)
+
     waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, subset_selection=subset_selection, wvf_batch_size=10, again=again,
-                  ignore_nwvf=ignore_nwvf, bpfilter=bpfilter, whiten=whiten, med_sub=med_sub)
+                  ignore_nwvf=ignore_nwvf,  whiten=whiten, med_sub=med_sub, ignore_ks_chanfilt = ignore_ks_chanfilt)
     tplts=templates(dp, u)
     if waveforms.shape[0]==0:
         raise ValueError('No waveforms were found in the provided subset_selection!')
@@ -379,7 +384,6 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
     chEnd_i = int(chStart_i+Nchannels)
     pci_rel=peak_chan_i-chStart_i
-
     data = waveforms[:, :, chStart_i:chEnd_i]
     data=data[~np.isnan(data[:,0,0]),:,:] # filter out nan waveforms
     datam = np.rollaxis(data.mean(0),1)

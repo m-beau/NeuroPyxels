@@ -470,9 +470,6 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
         np.save(Path(dprm, fn_peakchan),median_common_chan ) 
     return mean_shifted_waves, mean_shift_all,median_max_spike_ids, median_common_chan
     
-    
-
-    
 
 def max_amp_consecutive_peaks(mean_waves: np.array) -> tuple:
     
@@ -554,14 +551,14 @@ def shift_neg_peak(first_wvf : np.array) -> int:
     return first_neg_peak -fourties
 
 
-def get_peak_chan(dp, unit, use_template=True, again=False, absolute=True):
+def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=True):
     '''
     Parameters:
         - datapath, string
         - unit, integer or string
         - use_template: bool, whether to use templates instead of raw waveform to find peak channel.
         - again: whether to recompute the waveforms/templates
-        - ret_name: whether to return the absolute channel name
+        - ignore_ks_chanfilt: whether to return the absolute channel name
                     rather than the relative channel index.
                     They will be the same if all channels are used for spike sorting.
                     E.g. if kilosort only used 380 channels (out of 384), 
@@ -570,6 +567,9 @@ def get_peak_chan(dp, unit, use_template=True, again=False, absolute=True):
         - best_channel, integer indexing the channel
           where the unit averaged raw waveform (n=100 spanning the whole recording)
           has the largest peak to trough amplitude.
+          
+          WARNING: this value is ABSOLUTE ON THE PROBE SHANK BY DEFAULT. If you wish the relative channel index
+          taking into account channels ignored by kilosort, set ignore_ks_chanfilt to False.
     '''
     dp, unit = get_source_dp_u(dp, unit)
     
@@ -587,13 +587,21 @@ def get_peak_chan(dp, unit, use_template=True, again=False, absolute=True):
         waveforms=templates(dp, unit)
     else:
         waveforms=wvf(dp, u=unit, n_waveforms=200, t_waveforms=82, subset_selection='regular', spike_ids=None, again=again,
-                      use_old=False, loop=True, parallel=False, memorysafe=False)
+                      use_old=False, loop=True, parallel=False, memorysafe=False, ignore_ks_chanfilt=True)
             
     wvf_m = np.mean(waveforms, axis=0)
     max_min_wvf=np.max(wvf_m,0)-np.min(wvf_m,0)
     peak_chan = np.argmax(max_min_wvf)
-    return cm[:,0][peak_chan] if absolute else peak_chan
-
+    
+    if use_template: # will always be in kilosort relative channel index
+        peak_chan=cm[:,0][peak_chan]
+    
+    if not ignore_ks_chanfilt:
+        peak_chan=np.nonzero(cm[:,0]==peak_chan)
+    
+    return peak_chan
+    
+    
 def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, again=False):
     '''
     Usage:
@@ -614,7 +622,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
         # If no units, load them all from dataset
         # and prepare to save the FULL array of peak channels at the end
         units=get_units(dp, quality=quality, again=again)
-        assert any(units)
+        assert any(units), f'No units of quality {quality} found in this dataset.'
         pc_fname=f'peak_channels_{strdic[use_template]}_{quality}.npy'
         if op.exists(Path(dp, pc_fname)) and not again:
             peak_chans=np.load(Path(dp, pc_fname))

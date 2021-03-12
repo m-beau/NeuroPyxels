@@ -94,7 +94,7 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
     assert y_orig in ['surface', 'tip']
     if probe_version is None: probe_version=read_spikeglx_meta(dp)['probe_version']
     
-    if probe_version in probe_version in ['3A', '1.0_staggered']:
+    if probe_version in ['3A', '1.0_staggered']:
         Nchan=384
         cm_el = npa([[  27,   0],
                            [  59,   0],
@@ -591,7 +591,7 @@ def paq_read(file_path=None):
         num_chars = int(np.fromfile(fid, dtype='>f', count=1))
         chan_name = ''
         for j in range(num_chars):
-            chan_name = chan_name + chr(np.fromfile(fid, dtype='>f', count=1))
+            chan_name = chan_name + chr(int(np.fromfile(fid, dtype='>f', count=1)))
         chan_names.append(chan_name)
 
     # get channel hardware lines
@@ -600,7 +600,7 @@ def paq_read(file_path=None):
         num_chars = int(np.fromfile(fid, dtype='>f', count=1))
         hw_chan = ''
         for j in range(num_chars):
-            hw_chan = hw_chan + chr(np.fromfile(fid, dtype='>f', count=1))
+            hw_chan = hw_chan + chr(int(np.fromfile(fid, dtype='>f', count=1)))
         hw_chans.append(hw_chan)
 
     # get acquisition units
@@ -609,7 +609,7 @@ def paq_read(file_path=None):
         num_chars = int(np.fromfile(fid, dtype='>f', count=1))
         unit = ''
         for j in range(num_chars):
-            unit = unit + chr(np.fromfile(fid, dtype='>f', count=1))
+            unit = unit + chr(int(np.fromfile(fid, dtype='>f', count=1)))
         units.append(unit)
 
     # get data

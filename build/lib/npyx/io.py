@@ -17,11 +17,9 @@ import numpy as np
 from math import floor
 from scipy import signal
 
-import matplotlib.pylab as plt
-import tkinter
 from tkinter import filedialog as tkFileDialog
 
-from npyx.utils import npa, _as_array
+from npyx.utils import npa
 
 
 #%% IO utilities
@@ -35,6 +33,9 @@ def read_spikeglx_meta(dp, subtype='ap'):
     '''
     Read spikeGLX metadata file.
     '''
+    if assert_multi(dp):
+        dp=get_ds_table(dp)['dp'].values[0]
+        #print(f'Multidataset detected - spikeGLX metadata taken from 1st dataset ({dp}).')
     assert subtype in ['ap', 'lf']
     metafile=''
     for file in os.listdir(dp):
@@ -48,7 +49,7 @@ def read_spikeglx_meta(dp, subtype='ap'):
         meta = {}
         for ln in f.readlines():
             tmp = ln.split('=')
-            k, val = tmp
+            k, val = tmp[0], ''.join(tmp[1:])
             k = k.strip()
             val = val.strip('\r\n')
             if '~' in k:
@@ -93,7 +94,7 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
     assert y_orig in ['surface', 'tip']
     if probe_version is None: probe_version=read_spikeglx_meta(dp)['probe_version']
     
-    if probe_version in probe_version in ['3A', '1.0_staggered']:
+    if probe_version in ['3A', '1.0_staggered']:
         Nchan=384
         cm_el = npa([[  27,   0],
                            [  59,   0],
@@ -590,7 +591,7 @@ def paq_read(file_path=None):
         num_chars = int(np.fromfile(fid, dtype='>f', count=1))
         chan_name = ''
         for j in range(num_chars):
-            chan_name = chan_name + chr(np.fromfile(fid, dtype='>f', count=1))
+            chan_name = chan_name + chr(int(np.fromfile(fid, dtype='>f', count=1)))
         chan_names.append(chan_name)
 
     # get channel hardware lines
@@ -599,7 +600,7 @@ def paq_read(file_path=None):
         num_chars = int(np.fromfile(fid, dtype='>f', count=1))
         hw_chan = ''
         for j in range(num_chars):
-            hw_chan = hw_chan + chr(np.fromfile(fid, dtype='>f', count=1))
+            hw_chan = hw_chan + chr(int(np.fromfile(fid, dtype='>f', count=1)))
         hw_chans.append(hw_chan)
 
     # get acquisition units
@@ -608,7 +609,7 @@ def paq_read(file_path=None):
         num_chars = int(np.fromfile(fid, dtype='>f', count=1))
         unit = ''
         for j in range(num_chars):
-            unit = unit + chr(np.fromfile(fid, dtype='>f', count=1))
+            unit = unit + chr(int(np.fromfile(fid, dtype='>f', count=1)))
         units.append(unit)
 
     # get data
@@ -809,4 +810,4 @@ def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
     return myrange
 
 
-from npyx.gl import get_rec_len
+from npyx.gl import get_rec_len, assert_multi, get_ds_table

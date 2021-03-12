@@ -7,10 +7,11 @@ with open("README.md", "r") as readme_file:
 requirements=['ipython', 'spyder', 'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'six', 'elephant', 'vispy', 'statsmodels', 'progressbar2',
       'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils',
-      'h5py', 'holoviews', 'hvplot', 'numba']
+      'h5py', 'holoviews', 'hvplot', 'numba',
+      'tk', 'urllib3', 'certifi', 'idna', 'tensorflow']
 
 setup(name='npyx',
-      version='1.22',
+      version='1.42',
       author='Maxime Beau',
       author_email='maximebeaujeanroch047@gmail.com',
       description='Python routines dealing with Neuropixels data.',

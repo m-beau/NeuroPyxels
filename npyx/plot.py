@@ -343,7 +343,6 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         - matplotlib figure with Nchannels subplots, plotting the mean
     '''
 
-
     fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     pv=None if ignore_ks_chanfilt else 'local'
 
@@ -351,8 +350,6 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
     peak_chan=get_peak_chan(dp, u)
     peak_chan_i = int(np.nonzero(np.abs(cm[:,0]-peak_chan)==min(np.abs(cm[:,0]-peak_chan)))[0][0]);
     t_waveforms_s=int(t_waveforms*(fs/1000))
-    #waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, subset_selection=subset_selection, wvf_batch_size=10, again=again,
-     #             ignore_nwvf=ignore_nwvf, bpfilter=bpfilter, whiten=whiten, med_sub=med_sub)
 
     waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, subset_selection=subset_selection, wvf_batch_size=10, again=again,
                   ignore_nwvf=ignore_nwvf,  whiten=whiten, med_sub=med_sub, ignore_ks_chanfilt = ignore_ks_chanfilt)

@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: npyx
-Version: 1.42
+Version: 1.43
 Summary: Python routines dealing with Neuropixels data.
 Home-page: https://github.com/Npix-routines/NeuroPyxels
 Author: Maxime Beau

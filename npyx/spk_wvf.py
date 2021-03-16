@@ -26,7 +26,7 @@ from npyx.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_m
 
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, subset_selection='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
         save=True, prnt=False, again=False,
-        whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=False,
+        whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=True,
         use_old=False, loop=True, parallel=False, memorysafe=False):
     '''
     ********

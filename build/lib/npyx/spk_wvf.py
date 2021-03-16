@@ -26,7 +26,7 @@ from npyx.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_m
 
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, subset_selection='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
         save=True, prnt=False, again=False,
-        whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=False,
+        whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=True,
         use_old=False, loop=True, parallel=False, memorysafe=False):
     '''
     ********
@@ -151,7 +151,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
             all_waves=Parallel(n_jobs=1, prefer='threads')(delayed(get_w)(traces, slc, _n_samples_extract) for slc in slices)
             waveforms = np.array(all_waves)
         else:
-            waveforms = np.zeros((n_spikes, nc, _n_samples_extract), dtype=np.float16)
+            waveforms = np.zeros((n_spikes, nc, _n_samples_extract), dtype=np.float32)
             for i, slc in enumerate(slices):
                 # Extract from memorymapped traces
                 extract = traces[slc].astype(np.float32)
@@ -339,7 +339,6 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
     # Extract the waveforms using the wvf function in blocks of 10.
     # After waves have been extracted, put the index of the channel with the
     # max amplitude as well as the max amplitude into the peak_chan_split array
-    # hi 
     if fast:
         spike_ids_split = spike_ids_split.flatten()
         raw_waves = wvf(dp, u = None, n_waveforms= 100, t_waveforms = t_waveforms,

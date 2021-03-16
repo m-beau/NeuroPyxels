@@ -318,7 +318,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8, ignore_nwvf=True, bpfilter=False, whiten=False, med_sub=False, again=False, subset_selection='regular',
                title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
-               labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None):
+               labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None, ignore_ks_chanfilt = True):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
     Parameters:
@@ -343,14 +343,16 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         - matplotlib figure with Nchannels subplots, plotting the mean
     '''
 
-
     fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
-    cm=chan_map(dp, y_orig='surface', probe_version='local')
+    pv=None if ignore_ks_chanfilt else 'local'
+
+    cm=chan_map(dp, y_orig='surface', probe_version=pv)
     peak_chan=get_peak_chan(dp, u)
     peak_chan_i = int(np.nonzero(np.abs(cm[:,0]-peak_chan)==min(np.abs(cm[:,0]-peak_chan)))[0][0]);
     t_waveforms_s=int(t_waveforms*(fs/1000))
+
     waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, subset_selection=subset_selection, wvf_batch_size=10, again=again,
-                  ignore_nwvf=ignore_nwvf, bpfilter=bpfilter, whiten=whiten, med_sub=med_sub)
+                  ignore_nwvf=ignore_nwvf,  whiten=whiten, med_sub=med_sub, ignore_ks_chanfilt = ignore_ks_chanfilt)
     tplts=templates(dp, u)
     if waveforms.shape[0]==0:
         raise ValueError('No waveforms were found in the provided subset_selection!')
@@ -378,14 +380,12 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0]) # if not all channels were processed by kilosort,
     chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
     chEnd_i = int(chStart_i+Nchannels)
-    pci_rel=peak_chan_i-chStart_i
-
+    
     data = waveforms[:, :, chStart_i:chEnd_i]
     data=data[~np.isnan(data[:,0,0]),:,:] # filter out nan waveforms
     datam = np.rollaxis(data.mean(0),1)
     datastd = np.rollaxis(data.std(0),1)
     tplts=tplts[:, :, chStart_i:chEnd_i]
-
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
     ylim1, ylim2 = (np.nanmin(datam-datastd)-50, np.nanmax(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
     x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot t datapoints between 0 and t/30 ms
@@ -397,7 +397,10 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
             ax[i1, i2].plot(x, data[j,:, i], linewidth=0.3, alpha=0.3, color=color)
         #r, c = int(Nchannels*1./2)-1-(i//2),i%2
         if plot_templates:
+            pci_rel=peak_chan_i-chStart_i if chStart is None else np.argmax(np.max(datam, 1)-np.min(datam, 1))
             tpl_scalings=[(max(datam[pci_rel, :])-min(datam[pci_rel, :]))/(max(tpl[:,pci_rel])-min(tpl[:,pci_rel])) for tpl in tplts]
+            tpl_scalings[tpl_scalings==np.inf]=1
+            if np.any(tpl_scalings==1): print('WARNING manually selected channel range does not comprise template (all zeros).')
             for tpl_i, tpl in enumerate(tplts):
                 ax[i1, i2].plot(x_tplts, tpl[:,i]*tpl_scalings[tpl_i], linewidth=1, color=(0,0,0), alpha=0.4)
         if plot_mean:

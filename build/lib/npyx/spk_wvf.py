@@ -26,7 +26,7 @@ from npyx.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_m
 
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, subset_selection='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
         save=True, prnt=False, again=False,
-        whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=False,
+        whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=True,
         use_old=False, loop=True, parallel=False, memorysafe=False):
     '''
     ********
@@ -151,7 +151,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
             all_waves=Parallel(n_jobs=1, prefer='threads')(delayed(get_w)(traces, slc, _n_samples_extract) for slc in slices)
             waveforms = np.array(all_waves)
         else:
-            waveforms = np.zeros((n_spikes, nc, _n_samples_extract), dtype=np.float16)
+            waveforms = np.zeros((n_spikes, nc, _n_samples_extract), dtype=np.float32)
             for i, slc in enumerate(slices):
                 # Extract from memorymapped traces
                 extract = traces[slc].astype(np.float32)
@@ -238,7 +238,6 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                   save=True, prnt=False, again=False,
                   whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
                   nRangeWhiten=None, nRangeMedSub=None,
-                  ignore_ks_chanfilt=False,
                   use_old=False, loop=True, parallel=False,
                   memorysafe=False, fast = False ):
     
@@ -309,10 +308,10 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
     
     dprm = Path(dp,'routinesMemory')
 
-    fn=f"dsm_{u}_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
-    fn_all=f"dsm_{u}_all_waves_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
-    fn_spike_id=f"dsm_{u}_spike_id_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
-
+    fn=f"dsm_{u}_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
+    fn_all=f"dsm_{u}_all_waves_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
+    fn_spike_id=f"dsm_{u}_spike_id_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
+    fn_peakchan=f"dsm_{u}_peakchan_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
 
     if not dprm.is_dir(): dprm.mkdir()
     # if not os.path.isdir(dprm): os.makedirs(dprm)
@@ -340,7 +339,6 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
     # Extract the waveforms using the wvf function in blocks of 10.
     # After waves have been extracted, put the index of the channel with the
     # max amplitude as well as the max amplitude into the peak_chan_split array
-    # hi 
     if fast:
         spike_ids_split = spike_ids_split.flatten()
         raw_waves = wvf(dp, u = None, n_waveforms= 100, t_waveforms = t_waveforms,
@@ -348,7 +346,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                                 wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                                 save=save , prnt = prnt,  again=True, whiten = whiten, 
                                 hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                                nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=ignore_ks_chanfilt,
+                                nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
                                 use_old=use_old, loop=loop, parallel=parallel, 
                                 memorysafe=memorysafe)
         raw_waves = raw_waves.reshape(peak_chan_split.shape[0], 10, 82, -1) 
@@ -366,7 +364,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                                 wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                                 save=save , prnt = prnt,  again=True, whiten = whiten, 
                                 hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                                nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=ignore_ks_chanfilt,
+                                nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
                                 use_old=use_old, loop=loop, parallel=parallel, 
                                 memorysafe=memorysafe)    
             
@@ -423,7 +421,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                         wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                         save=save, prnt = prnt,  again=True, whiten = whiten, 
                         hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                        nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=ignore_ks_chanfilt,
+                        nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
                         use_old=use_old, loop=loop, parallel=parallel, 
                         memorysafe=memorysafe)
         raw_waves = raw_waves.reshape(median_max_spike_ids.shape[0],10, 82, no_chans )
@@ -436,7 +434,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                         wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                         save=save, prnt = prnt,  again=True, whiten = whiten, 
                         hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                        nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=ignore_ks_chanfilt,
+                        nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
                         use_old=use_old, loop=loop, parallel=parallel, 
                         memorysafe=memorysafe)
 
@@ -450,19 +448,26 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
     
     # shift waves for all channels 
     shifted_all_waves = np.zeros((len(median_max_spike_ids),82,no_chans ))
-
+    # need to make sure that for each wave the shifts along channels are same
+    # so find the shift needed on peak chan, apply to all waves
+    
+    need_shift = shift_neg_peak(all_closest_waves[:,:,median_common_chan])
     for chani in range(all_closest_waves.shape[2]):
-        shifted_all_waves[:,:,chani] = shift_many_waves(all_closest_waves[:,:,chani])
+        shifted_all_waves[:,:,chani] = shift_many_waves(all_closest_waves[:,:,chani], need_shift)
+
+    #for chani in range(all_closest_waves.shape[2]):
+       # shifted_all_waves[:,:,chani] = shift_many_waves(all_closest_waves[:,:,chani])
         
     mean_shift_all = np.mean(shifted_all_waves, axis = 0)
-    # save the drift and shift mean wave
+    # save the drift and shift mean eave
+    #breakpoint()
     
     if save:
         np.save(Path(dprm,fn), mean_shifted_waves)
         np.save(Path(dprm,fn_all), mean_shift_all)
         np.save(Path(dprm,fn_spike_id), median_max_spike_ids)
-  
-    return mean_shifted_waves, mean_shift_all,median_max_spike_ids
+        np.save(Path(dprm, fn_peakchan),median_common_chan ) 
+    return mean_shifted_waves, mean_shift_all,median_max_spike_ids, median_common_chan
     
 
 def max_amp_consecutive_peaks(mean_waves: np.array) -> tuple:

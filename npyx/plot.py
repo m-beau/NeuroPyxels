@@ -1665,7 +1665,7 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
               text=False, markers=False, ticks=True, depth_ticks=False,
               regions={}, reg_colors={}, vminmax=[-7,7], figsize=(6,6),
               saveFig=False, saveDir=None, _format='pdf',
-              again=False, againCCG=False, use_template_for_peakchan=False):
+              again=False, againCCG=False, use_template_for_peakchan=False, subset_selection='all'):
     '''
     Visually represents the connectivity datafrane outputted by 'gen_sfc'.
     Each line/row is a good unit.
@@ -1676,7 +1676,8 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     sfc, sfcm, peakChs = gen_sfc(dp, corr_type, metric, cbin, cwin,
                                  p_th, n_consec_bins, fract_baseline, W_sd, test,
                                  again, againCCG, drop_seq, units, name,
-                                 cross_cont_proof=False, use_template_for_peakchan=use_template_for_peakchan)
+                                 cross_cont_proof=False, use_template_for_peakchan=use_template_for_peakchan,
+                                 subset_selection=subset_selection)
     gu = peakChs[:,0]
     ch = peakChs[:,1].astype(int)
 

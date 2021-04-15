@@ -251,6 +251,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         if prnt: print("File {} not found in routines memory.".format(fn))
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, subset_selection=subset_selection, prnt=prnt, trains=trains)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
+        if crosscorrelograms.shape[0]<2: # no spikes were found in this period
+            crosscorrelograms=np.zeros((len(U), len(U), crosscorrelograms.shape[2]))
         if normalize in ['Hertz', 'Pearson', 'zscore']:
             for i1,u1 in enumerate(sortedU):
                 Nspikes1=len(trn(dp, u1, prnt=False))
@@ -281,7 +283,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
                 sortedC[i1,i2,:]=crosscorrelograms[ii1, ii2, :]
     else:
         sortedC=crosscorrelograms
-
+        
     return sortedC
 
 def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, subset_selection='all', again=False):
@@ -320,7 +322,7 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
     return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, prnt, subset_selection, again)[0,0,:]
 
-def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all_to_all=False, name=None, sav=True, again=False):
+def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all_to_all=False, name=None, sav=True, again=False, subset_selection='all'):
     '''
     Routine generating a stack of correlograms for faster subsequent analysis,
     between all U_src and U_trg units.
@@ -350,8 +352,8 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
     Nu=len(U_src)+len(U_trg)
     if name is not None:
         norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
-        fn='ccgstack_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin)
-        fnu='ccgstack_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin)
+        fn='ccgstack_{}_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', ''))
+        fnu='ccgstack_{}_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', ''))
 
         if op.exists(dprm/fn) and not again:
             stack=np.load(dprm/fn)
@@ -378,16 +380,16 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                     #pgbar.update(i1*len(U_trg)+i2+1)
                     ustack[i1, i2, :]=[u1,u2]
                     if i1==i2:
-                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)
+                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again, subset_selection=subset_selection).squeeze()
                     elif i2>i1:
-                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)[0,1,:]
+                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again, subset_selection=subset_selection)[0,1,:]
                         stack[i2, i1, :]=stack[i1, i2, ::-1]
         else:
             for i1, u1 in enumerate(U_src):
                 for i2, u2 in enumerate(U_trg):
                     pgbar.update(i1*len(U_trg)+i2+1)
                     ustack[i1, i2, :]=[u1,u2]
-                    stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)[0,1,:]
+                    stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again, subset_selection=subset_selection)[0,1,:]
     else:
         assert len(U_src)==len(U_trg)
         assert not np.any(U_src==U_trg), 'Looks like you requested to compute a CCG between a unit and itself - check U_src and U_trg.'
@@ -397,7 +399,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
         for i, (u1, u2) in enumerate(zip(U_src, U_trg)):
             pgbar.update(i+1)
             ustack[i, :]=[u1,u2]
-            stack[i, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)[0,1,:]
+            stack[i, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again, subset_selection=subset_selection)[0,1,:]
 
     if sav and name is not None:
         np.save(dprm/fn, stack)
@@ -1291,7 +1293,7 @@ def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseli
 
 def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
                   p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-                  again=False, againCCG=False, ret_features=False, only_max=True):
+                  again=False, againCCG=False, ret_features=False, only_max=True, subset_selection='all'):
     '''
     Parameters:
         - dp: string, datapath to manually curated kilosort output
@@ -1328,21 +1330,27 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 
     # Directly load sig stack if was already computed
     if name is not None:
+        # in signame, only parameters not fed to ccg_stack
+        # (as others will already be added to the saved file name by ccg_stack)
         signame=name+'-{}-{}-{}-{}-{}'.format(test, p_th, n_consec_bins, fract_baseline, W_sd)
         dprm = Path(dp,'routinesMemory');
         if not op.isdir(dprm): os.makedirs(dprm)
-        feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_features.csv'.format(signame, 'Counts', cbin, cwin, sgn, only_max))
+        feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_{}_features.csv'.format(\
+                       signame, 'Counts', cbin, cwin, str(subset_selection)[0:50].replace(' ', ''), sgn, only_max))
 
-        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=again)
+        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=again,
+                                        subset_selection=subset_selection)
         if np.any(sigstack): # will be empty if the array exists but again=True
             if not ret_features:
                 return sigstack, sigustack
             if op.exists(feat_path):
                 features=pd.read_csv(feat_path)
                 return sigstack, sigustack, features
-            features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
+            features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 
+                                           'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
             for i,c in enumerate(sigstack):
-                pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
+                pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn, 
+                                fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
                 for p in pks:
                     features=features.append(dict(zip(features.columns,np.append(sigustack[i, :], p))), ignore_index=True)
             features.to_csv(feat_path, index=False)
@@ -1351,9 +1359,11 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
     assert any(U_src)&any(U_trg)
     ptdic={1:'peak', -1:'trough'}
     sigustack=[]
-    if ret_features: features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
+    if ret_features: features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms',
+                                                    'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
 
-    stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG)
+    stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG,
+                              subset_selection=subset_selection)
     same_src_trg=np.all(U_src==U_trg) if len(U_src)==len(U_trg) else False
     inco=False
     if same_src_trg:
@@ -1361,8 +1371,10 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         else:
             if not np.all(np.unique(ustack)==np.unique(U_src)): inco=True
     if inco:
-        print(f'Incoherence detected between loaded ccg_stack ({len(np.unique(ustack))} units) and expected ccg_stack ({len(U_src)} units) - recomputing as if againCCG were True...')
-        stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=True)
+        print(f'Incoherence detected between loaded ccg_stack ({len(np.unique(ustack))} units) \
+              and expected ccg_stack ({len(U_src)} units) - recomputing as if againCCG were True...')
+        stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=True,
+                                  subset_selection=subset_selection)
 
     for i in range(stack.shape[0]):
         for j in range(stack.shape[1]):
@@ -1379,7 +1391,8 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 
     sigustack=npa(sigustack)
     if np.any(sigustack):
-        sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True)
+        sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True,
+                                        subset_selection=subset_selection)
     else:
         bins=get_bins(cwin, cbin)
         sigstack, sigustack = npa(zeros=(0, len(bins))), sigustack
@@ -1390,8 +1403,11 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         return sigstack, sigustack, features
     return sigstack, sigustack
 
-def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None, cross_cont_proof=False, use_template_for_peakchan=False):
+def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
+            p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'],
+             units=None, name=None, cross_cont_proof=False, use_template_for_peakchan=False,
+             subset_selection='all'):
     '''
     Function generating a functional correlation dataframe sfc (Nsig x 2+8 features) and matrix sfcm (Nunits x Nunits)
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -1479,7 +1495,8 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
         gu = peakChs[:,0]
 
     sigstack, sigustack, sfc = ccg_sig_stack(dp, gu, gu, cbin, cwin, name,
-                  p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True, only_max=only_max)
+                  p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True, only_max=only_max,
+                  subset_selection=subset_selection)
 
     # If filtering of connections wishes to be done at a later stage, simply return
     if corr_type=='all': return sfc, np.zeros((len(gu),len(gu))), peakChs

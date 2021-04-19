@@ -96,10 +96,10 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
     
     if probe_version in ['3A', '1.0_staggered']:
         Nchan=384
-        cm_el = npa([[  27,   0],
-                           [  59,   0],
-                           [  11,   20],
-                           [  43,   20]])
+        cm_el = npa([[  43,   0],
+                           [  11,   0],
+                           [  59,   20],
+                           [  27,   20]])
         vert=npa([[  0,   40],
                   [  0,   40],
                   [  0,   40],
@@ -112,8 +112,8 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
     
     elif probe_version=='1.0_aligned':
         Nchan=384
-        cm_el = npa([[  11,   0],
-                     [  43,   0]])
+        cm_el = npa([[  43,   0],
+                     [  11,   0]])
         vert=npa([[  0,   20],
                   [  0,   20]])
         
@@ -124,8 +124,8 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
         
     elif probe_version=='2.0_singleshank':
         Nchan=384
-        cm_el = npa([[  0,   0],
-                           [  32,   0]])
+        cm_el = npa([[  32,   0],
+                     [  0,   0]])
         vert=npa([[  0,   15],
                   [  0,   15]])
         

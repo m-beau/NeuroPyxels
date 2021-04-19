@@ -15,6 +15,7 @@ import pandas as pd
 import matplotlib
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import Divider, Size
 from matplotlib.ticker import AutoLocator
 
 mpl.rcParams['figure.dpi']=100
@@ -110,19 +111,21 @@ def myceil(x, base=5):
 def myfloor(x, base=5):
     return base * np.floor(x/base)
 
-def get_bestticks_from_array(arr, step=None):
+def get_bestticks_from_array(arr, step=None, light=False):
     span=arr[-1]-arr[0]
     if step is None:
         upper10=10**np.ceil(np.log10(span))
         if span<=upper10/5:
-            step=upper10/100
+            step=upper10*0.01
         elif span<=upper10/2:
-            step=upper10/10/2
+            step=upper10*0.05
         else:
-            step=upper10/10
-    assert step<span, 'Step {step} is too large for array span {span}!'
+            step=upper10*0.1
+    if light: step=2*step
+    assert step<span, f'Step {step} is too large for array span {span}!'
     ticks=np.arange(myceil(arr[0],step),myfloor(arr[-1],step)+step,step)
     if step==int(step):ticks=ticks.astype(int)
+    
     return ticks
 
 def get_labels_from_ticks(ticks):
@@ -316,9 +319,14 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 #%% Waveforms or raw data
 
-def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8, ignore_nwvf=True, bpfilter=False, whiten=False, med_sub=False, again=False, subset_selection='regular',
-               title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
-               labels=True, sample_lines='all', ylim=[0,0], saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf', ax=None, ignore_ks_chanfilt = True):
+def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
+             subset_selection='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
+             whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
+             title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
+             labels=False, scalebar_w=5, ticks_lw=1, sample_lines='all', ylim=[0,0], 
+             saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf',
+             ignore_ks_chanfilt = True, ax_edge_um_x=22, ax_edge_um_y=18, margin=0.12, figw_inch=6,
+             as_heatmap=False):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
     Parameters:
@@ -334,104 +342,159 @@ def plot_wvf(dp, u, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
         - template: boolean, whether or not to plot the waveform template | default True
         - color: (r,g,b) tuple or [0 to 1] floats, color of the mean waveform | default black
         - sample_lines: 'all' or int, whether to plot all or sample_lines individual samples in the background. Set to 0 to plot nothing.
-        - labels: boolean, whether to plot or not the axis, axis labels, title... If False, only lines are plotted
+        - labels: boolean, whether to plot or not the axis, axis labels, title...
+                  If False, only waveforms are plotted along with a scale bar. | Default False
         - ylim: upper limit of plots, in uV
         - saveDir  | default False
         - saveFig: boolean, save figure source data to saveDir | default Downloads
         - saveData: boolean, save waveforms source data to saveDir | default Downloads
+        - _format: string, figure saving format (any format accepted by matplotlib savefig). | Default: pdf
+        - ignore_ks_chanfilt: bool, whether to ignore kilosort channel filtering (some are jumped if low activity)
+        - ax_edge_um_x: float, width of subplot (electrode site) in micrometers, relatively to the electrode channel map | Default 20
+        - ax_edge_um_y: float, height of subplot.
+        - margin: [0-1], figure margin (in proportion of figure)
+        - figw_inch: float, figure width in inches (height is derived from width, in inches)
     Returns:
         - matplotlib figure with Nchannels subplots, plotting the mean
     '''
-
+    
+    # Get metadata
+    saveDir=op.expanduser(saveDir)
     fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     pv=None if ignore_ks_chanfilt else 'local'
-
-    cm=chan_map(dp, y_orig='surface', probe_version=pv)
+    cm=chan_map(dp, y_orig='tip', probe_version=pv)
+    
     peak_chan=get_peak_chan(dp, u)
-    peak_chan_i = int(np.nonzero(np.abs(cm[:,0]-peak_chan)==min(np.abs(cm[:,0]-peak_chan)))[0][0]);
+    peak_chan_i = int(np.argmin(np.abs(cm[:,0]-peak_chan)));
     t_waveforms_s=int(t_waveforms*(fs/1000))
-
-    waveforms=wvf(dp, u, n_waveforms, t_waveforms_s, subset_selection=subset_selection, wvf_batch_size=10, again=again,
-                  ignore_nwvf=ignore_nwvf,  whiten=whiten, med_sub=med_sub, ignore_ks_chanfilt = ignore_ks_chanfilt)
-    tplts=templates(dp, u)
-    if waveforms.shape[0]==0:
-        raise ValueError('No waveforms were found in the provided subset_selection!')
+    
+    # Get data
+    waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s,
+                  subset_selection=subset_selection, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
+                  whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
+                  ignore_ks_chanfilt = ignore_ks_chanfilt,
+                  use_old=False, loop=True, parallel=False, memorysafe=False)
+    assert waveforms.shape[0]!=0,'No waveforms were found in the provided subset_selection!'
     assert waveforms.shape[1:]==(t_waveforms_s, cm.shape[0])
-
+    tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
+    assert tplts.shape[2]==waveforms.shape[2]==cm.shape[0]
+    
+    # Filter the right channels
+    if chStart is None:
+        chStart_i = int(max(peak_chan_i-Nchannels//2, 0))
+        chStart=cm[chStart_i,0]
+    else:
+        chStart_i = int(max(int(np.argmin(np.abs(cm[:,0]-chStart))), 0)) # finds closest chStart given kilosort chanmap
+        chStart=cm[chStart_i,0] # Should remain the same, unless chStart was capped to 384 or is a channel ignored to kilosort
+        
+    chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
+    chEnd_i = int(chStart_i+Nchannels) # no lower capping needed as 
+    assert chEnd_i <= waveforms.shape[2]-1
+    
+    data = waveforms[:, :, chStart_i:chEnd_i]
+    data=data[~np.isnan(data[:,0,0]),:,:] # filter out nan waveforms
+    datam = np.mean(data,0).T
+    datastd = np.std(data,0).T
+    tplts=tplts[:, :, chStart_i:chEnd_i]
+    subcm=cm[chStart_i:chEnd_i,:].copy().astype(np.float32)
+    
+    # Format plotting parameters
     if type(sample_lines) is str:
         assert sample_lines=='all'
         sample_lines=min(waveforms.shape[0],n_waveforms)
     elif type(sample_lines) is float or type(sample_lines) is int:
         sample_lines=min(waveforms.shape[0],sample_lines, n_waveforms)
-
-    saveDir=op.expanduser(saveDir)
-    if Nchannels>=2:
-        Nchannels=Nchannels+Nchannels%2
-        fig, ax = plt.subplots(int(Nchannels*1./2), 2, figsize=(8, 2*Nchannels), dpi=80)
-        if Nchannels==2:
-            ax=ax.reshape((1, 2))#to handle case of 2 subplots
-    else:
-        fig, ax = plt.subplots(1, 1, figsize=(4, 4), dpi=80)
-        ax=np.array(ax).reshape((1, 1))
-    if chStart is None:
-        chStart_i = peak_chan_i-Nchannels//2
-        chStart=cm[chStart_i,0]
-    else:
-        chStart_i = int(np.nonzero(np.abs(cm[:,0]-chStart)==min(np.abs(cm[:,0]-chStart)))[0][0]) # if not all channels were processed by kilosort,
-    chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
-    chEnd_i = int(chStart_i+Nchannels)
     
-    data = waveforms[:, :, chStart_i:chEnd_i]
-    data=data[~np.isnan(data[:,0,0]),:,:] # filter out nan waveforms
-    datam = np.rollaxis(data.mean(0),1)
-    datastd = np.rollaxis(data.std(0),1)
-    tplts=tplts[:, :, chStart_i:chEnd_i]
+    title = 'waveforms of {}'.format(u) if title=='' else title
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
     ylim1, ylim2 = (np.nanmin(datam-datastd)-50, np.nanmax(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
     x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot t datapoints between 0 and t/30 ms
     x_tplts = x[(data.shape[1]-tplts.shape[1])//2:(data.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
-    for i in range(data.shape[2]):
-        i1, i2 = max(0,data.shape[2]//2-1-i//2), i%2
-        ax[i1, i2].set_ylim([ylim1, ylim2])
-        for j in range(sample_lines):
-            ax[i1, i2].plot(x, data[j,:, i], linewidth=0.3, alpha=0.3, color=color)
-        #r, c = int(Nchannels*1./2)-1-(i//2),i%2
-        if plot_templates:
-            pci_rel=peak_chan_i-chStart_i if chStart is None else np.argmax(np.max(datam, 1)-np.min(datam, 1))
-            tpl_scalings=[(max(datam[pci_rel, :])-min(datam[pci_rel, :]))/(max(tpl[:,pci_rel])-min(tpl[:,pci_rel])) for tpl in tplts]
-            tpl_scalings[tpl_scalings==np.inf]=1
-            if np.any(tpl_scalings==1): print('WARNING manually selected channel range does not comprise template (all zeros).')
-            for tpl_i, tpl in enumerate(tplts):
-                ax[i1, i2].plot(x_tplts, tpl[:,i]*tpl_scalings[tpl_i], linewidth=1, color=(0,0,0), alpha=0.4)
-        if plot_mean:
-            ax[i1, i2].plot(x, datam[i, :], linewidth=2, color=color_dark, alpha=1)
-        if plot_std:
-            ax[i1, i2].plot(x, datam[i, :]+datastd[i,:], linewidth=1, color=color, alpha=0.5)
-            ax[i1, i2].plot(x, datam[i, :]-datastd[i,:], linewidth=1, color=color, alpha=0.5)
-            ax[i1, i2].fill_between(x, datam[i, :]-datastd[i,:], datam[i, :]+datastd[i,:], facecolor=color, interpolate=True, alpha=0.2)
-        ax[i1, i2].spines['right'].set_visible(False)
-        ax[i1, i2].spines['top'].set_visible(False)
-        ax[i1, i2].spines['left'].set_lw(2)
-        ax[i1, i2].spines['bottom'].set_lw(2)
-        if labels:
-            ax[i1, i2].set_title(cm[:,0][chStart_i+(2*(i//2)+i%2)], size=12, loc='right', weight='bold')
-            ax[i1, i2].tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
-            if i2==0 and i1==max(0,int(Nchannels/2)-1):#start plotting from top
-                ax[i1, i2].set_ylabel('EC V (\u03bcV)', size=14, weight='bold')
-                ax[i1, i2].set_xlabel('t (ms)', size=14, weight='bold')
+    
+    #Plot
+    if as_heatmap:
+        hm_yticks=get_bestticks_from_array(subcm[:,0], step=None)[::-1]
+        hm_xticks=get_bestticks_from_array(x, step=None)
+        fig=imshow_cbar(datam, origin='bottom', xevents_toplot=[], yevents_toplot=[], events_color='k', events_lw=2,
+                xvalues=x, yvalues=subcm[::-1,0], xticks=hm_xticks, yticks=hm_yticks,
+                xticklabels=hm_xticks, yticklabels=hm_yticks, xlabel='Time (ms)', ylabel='Channel', xtickrot=0, title=title,
+                cmapstr="RdBu_r", vmin=ylim1*0.5, vmax=ylim2*0.5, center=0, colorseq='linear',
+                clabel='Voltage (\u03bcV)', extend_cmap='neither', cticks=None,
+                figsize=(figw_inch/2,figw_inch/4+0.04*subcm.shape[0]), aspect='auto', function='imshow',
+                ax=None)
+    else:
+        # Initialize figure and subplots layout
+        assert 0<=margin<1
+        fig_hborder=[margin,1-margin] # proportion of figure used for plotting
+        fig_wborder=[margin,1-margin] # proportion of figure used for plotting
+        minx_um,maxx_um=min(subcm[:,1])-ax_edge_um_x/2, max(subcm[:,1])+ax_edge_um_x/2
+        miny_um,maxy_um=min(subcm[:,2])-ax_edge_um_y/2, max(subcm[:,2])+ax_edge_um_y/2
+        figh_inch=figw_inch*(maxy_um-miny_um)/(maxx_um-minx_um)
+        fig=plt.figure(figsize=(figw_inch, figh_inch))
+        
+        subcm[:,1]=((subcm[:,1]-minx_um)/(maxx_um-minx_um)*np.diff(fig_wborder)+fig_wborder[0]).round(2)
+        subcm[:,2]=((subcm[:,2]-miny_um)/(maxy_um-miny_um)*np.diff(fig_hborder)+fig_hborder[0]).round(2)
+        axw=(ax_edge_um_x/(maxx_um-minx_um)*np.diff(fig_wborder))[0] # in ratio of figure size
+        axh=(ax_edge_um_y/(maxy_um-miny_um)*np.diff(fig_hborder))[0] # in ratio of figure size
+        
+        ax=np.empty((subcm.shape[0]), dtype='O')
+        # i is the relative raw data /channel index (low is bottom channel)
+        i_bottomleft=np.nonzero((subcm[:2,1]==min(subcm[:2,1]))&(subcm[:2,2]==min(subcm[:2,2])))[0]
+        i_bottomleft=np.argmin(subcm[:2,2]) if i_bottomleft.shape[0]==0 else i_bottomleft[0]
+        for i in range(subcm.shape[0]):
+            x0,y0 = subcm[i,1:] 
+            ax[i] =fig.add_axes([x0-axw/2,y0-axh/2,axw,axh], autoscale_on=False)
+        
+        # Plot on subplots
+        for i in range(subcm.shape[0]):
+            for j in range(sample_lines):
+                ax[i].plot(x, data[j,:, i], linewidth=0.3, alpha=0.3, color=color)
+            if plot_templates:
+                pci_rel=peak_chan_i-chStart_i if chStart is None else np.argmax(np.max(datam, 1)-np.min(datam, 1))
+                tpl_scalings=[(max(datam[pci_rel, :])-min(datam[pci_rel, :]))/(max(tpl[:,pci_rel])-min(tpl[:,pci_rel])) for tpl in tplts]
+                if np.inf in tpl_scalings:
+                    tpl_scalings[tpl_scalings==np.inf]=1
+                    print('WARNING manually selected channel range does not comprise template (all zeros).')
+                for tpl_i, tpl in enumerate(tplts):
+                    ax[i].plot(x_tplts, tpl[:,i]*tpl_scalings[tpl_i], linewidth=1, color=(0,0,0), alpha=0.7, zorder=10000)
+            if plot_mean:
+                ax[i].plot(x, datam[i, :], linewidth=2, color=color_dark, alpha=1)
+            if plot_std:
+                ax[i].plot(x, datam[i, :]+datastd[i,:], linewidth=1, color=color, alpha=0.5)
+                ax[i].plot(x, datam[i, :]-datastd[i,:], linewidth=1, color=color, alpha=0.5)
+                ax[i].fill_between(x, datam[i, :]-datastd[i,:], datam[i, :]+datastd[i,:], facecolor=color, interpolate=True, alpha=0.2)
+            ax[i].set_ylim([ylim1, ylim2])
+            ax[i].set_xlim([x[0], x[-1]])
+            ax[i].spines['right'].set_visible(False)
+            ax[i].spines['top'].set_visible(False)
+            ax[i].spines['left'].set_lw(ticks_lw)
+            ax[i].spines['bottom'].set_lw(ticks_lw)
+            if labels:
+                ax[i].text(0.99, 0.99, int(subcm[i,0]),
+                                size=12, weight='regular', ha='right', va='top', transform = ax[i].transAxes)
+                ax[i].tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=ticks_lw, length=3*ticks_lw, labelsize=12)
+                if i==i_bottomleft:
+                    ax[i].set_ylabel('Voltage (\u03bcV)', size=12, weight='bold')
+                    ax[i].set_xlabel('Time (ms)', size=12, weight='bold')
+                else:
+                    ax[i].set_xticklabels([])
+                    ax[i].set_yticklabels([])
             else:
-                ax[i1, i2].set_xticklabels([])
-                ax[i1, i2].set_yticklabels([])
-        else:
-            ax[i1, i2].axis('off')
+                ax[i].axis('off')
+        if not labels:
+            xlimdiff=np.diff(ax[i_bottomleft].get_xlim())
+            ylimdiff=ylim2-ylim1
+            y_scale=int(ylimdiff*0.3-(ylimdiff*0.3)%10)
+            ax[i_bottomleft].plot([0,1],[ylim1,ylim1], c='k', lw=scalebar_w)
+            ax[i_bottomleft].text(0.5, ylim1-0.05*ylimdiff, '1 ms', weight='bold', size=18, va='top', ha='center')
+            ax[i_bottomleft].plot([0,0],[ylim1,ylim1+y_scale], c='k', lw=scalebar_w)
+            ax[i_bottomleft].text(-0.05*xlimdiff, ylim1+y_scale*0.5, f'{y_scale} \u03bcV', weight='bold', size=18, va='center', ha='right')
+    
+        if labels: fig.suptitle(t=title, x=0.5, y=0.92+0.02*(len(title.split('\n'))-1), size=18, weight='bold', va='top')
 
-    title = 'waveforms of {}'.format(u) if title=='' else title
-    if labels: fig.suptitle(title, size=18, weight='bold')
-    fig.tight_layout(rect=[0, 0.03, 1, 0.95-0.07*(len(title.split('\n'))-1)])
-
+    # Save figure
     if saveFig:
-        assert _format in ['png', 'pdf', 'eps']
-        fig.savefig(Path(saveDir, title+'.{}'.format(_format)), format=_format)
+        save_mpl_fig(fig, title, saveDir, _format)
     if saveData:
         np.save(Path(saveDir, title+'.npy'), waveforms)
 
@@ -1493,7 +1556,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
 
 def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_color='k', events_lw=2,
                 xvalues=None, yvalues=None, xticks=None, yticks=None,
-                xticklabels=None, yticklabels=None, xlabel=None, ylabel=None, title='',
+                xticklabels=None, yticklabels=None, xlabel=None, ylabel=None, xtickrot=45, title='',
                 cmapstr="RdBu_r", vmin=-1, vmax=1, center=0, colorseq='nonlinear',
                 clabel=None, extend_cmap='neither', cticks=None,
                 figsize=(6,4), aspect='auto', function='imshow',
@@ -1565,13 +1628,13 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
             xl=ax.get_xlim()
             ax.plot(xl,[e,e],lw=events_lw,ls='--',c=events_color)
             ax.set_xlim(xl)
-
+    
     mplp(fig, ax, figsize=figsize,
           xlim=None, ylim=None, xlabel=xlabel, ylabel=ylabel,
           xticks=xticks, yticks=yticks, xtickslabels=xticklabels, ytickslabels=yticklabels,
-          reset_xticks=False, reset_yticks=False, xtickrot=45, ytickrot=0,
-          xtickha='right', xtickva='top', ytickha='right', ytickva='center',
-          axlab_w='bold', axlab_s=12,
+          reset_xticks=False, reset_yticks=False, xtickrot=xtickrot, ytickrot=0,
+          xtickha={0:'center',45:'right'}[xtickrot], xtickva='top', ytickha='right', ytickva='center',
+          axlab_w='bold', axlab_s=14,
           ticklab_w='regular', ticklab_s=10, ticks_direction='out', lw=1,
           title=title, title_w='bold', title_s=14,
           hide_top_right=False, hide_axis=False)
@@ -1580,19 +1643,22 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     axpos=ax.get_position()
     cbaraxx0,cbaraxy0 = float(axpos.x0+axpos.width+0.01), float(axpos.y0)
     cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, .01, .3])
+    if cticks is None: cticks=get_bestticks_from_array(np.arange(vmin,vmax), light=True)
     fig.colorbar(axim, cax=cbar_ax, ax=ax,
              orientation='vertical', label=clabel,
              extend=extend_cmap, ticks=cticks, use_gridspec=True)
     if clabel is not None:
-        cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family='arial',weight='bold', size=16))
+        cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family='arial',weight='bold', size=14))
         cbar_ax.yaxis.label.set_rotation(-90)
         cbar_ax.yaxis.label.set_va('bottom')
         cbar_ax.yaxis.label.set_ha('center')
         cbar_ax.yaxis.labelpad=5
     fig.canvas.draw()
-    cbar_ax.yaxis.set_ticklabels([t.get_text() for t in cbar_ax.yaxis.get_ticklabels()], ha='center')
-    cbar_ax.yaxis.set_tick_params(pad=11, labelsize=14)
     set_ax_size(ax,*fig.get_size_inches())
+    #cticks=[t.get_text() for t in cbar_ax.yaxis.get_ticklabels()]
+    cbar_ax.yaxis.set_ticklabels(cticks, ha='left')
+    cbar_ax.yaxis.set_tick_params(pad=5, labelsize=12)
+    
 
     return fig
 

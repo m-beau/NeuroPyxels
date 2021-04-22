@@ -239,7 +239,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                   save=True, prnt=False, again=False,
                   whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
                   nRangeWhiten=None, nRangeMedSub=None,
-                  use_old=False, loop=True, parallel=False,
+                  use_old=False, parallel=False,
                   memorysafe=False, fast = False ):
     
     
@@ -348,7 +348,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                                 save=save , prnt = prnt,  again=True, whiten = whiten, 
                                 hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
                                 nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-                                use_old=use_old, loop=loop, parallel=parallel, 
+                                use_old=use_old, loop=False, parallel=parallel, 
                                 memorysafe=memorysafe)
         raw_waves = raw_waves.reshape(peak_chan_split.shape[0], 10, 82, -1) 
         mean_times = np.mean(raw_waves, axis = 1)
@@ -366,7 +366,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                                 save=save , prnt = prnt,  again=True, whiten = whiten, 
                                 hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
                                 nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-                                use_old=use_old, loop=loop, parallel=parallel, 
+                                use_old=use_old, loop=True, parallel=parallel, 
                                 memorysafe=memorysafe)    
             
             mean_times = np.mean(raw_waves, axis = 0)

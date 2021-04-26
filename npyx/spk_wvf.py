@@ -317,7 +317,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
     # if not os.path.isdir(dprm): os.makedirs(dprm)
     if Path(dprm,fn).is_file() and (not again) and (spike_ids is None):
         if prnt: print(f"File {fn} found in routines memory.")
-        return np.load(Path(dprm,fn)),np.load(Path(dprm,fn_all)),np.load(Path(dprm,fn_spike_id))
+        return np.load(Path(dprm,fn)),np.load(Path(dprm,fn_all)),np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
     
     # Load the spike clusters file 
     spike_clusters= np.load(Path(dp, 'spike_clusters.npy')).flatten()

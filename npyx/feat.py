@@ -30,6 +30,7 @@ import scipy.optimize as opt
 from itertools import compress
 from sklearn.metrics import mean_squared_error
 from scipy import ndimage
+from psutil import virtual_memory as vmem
 
 #############################################
 # Waveform features
@@ -1049,7 +1050,7 @@ def chan_spread_bp_plot(dp, unit, n_chans=20):
             to_plot = csp_x[0]-1
         chan_plot(all_waves_unit_x.T, csp_x[0], to_plot)
 
-def temporal_features(all_spikes, unit):
+def temporal_features(dp,all_spikes, unit):
     """
     Input: spike times
     Returns: list of features
@@ -1083,7 +1084,7 @@ def temp_feat(dp, units, use_or_operator = True, use_consecutive = False):
     all_ft_list = []
     for unit in units:
         unit_spikes = trn_filtered(dp, unit, use_or_operator = use_or_operator, use_consecutive = use_consecutive)
-        all_ft_list.append(temporal_features(unit_spikes, unit))
+        all_ft_list.append(temporal_features(dp,unit_spikes, unit))
 
     return all_ft_list
 

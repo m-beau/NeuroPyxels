@@ -422,7 +422,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                         save=save, prnt = prnt,  again=True, whiten = whiten, 
                         hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
                         nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-                        use_old=use_old, loop=loop, parallel=parallel, 
+                        use_old=use_old, loop=False, parallel=parallel, 
                         memorysafe=memorysafe)
         raw_waves = raw_waves.reshape(median_max_spike_ids.shape[0],10, 82, no_chans )
         closest_waves_median_max = np.mean(raw_waves, axis = 1)[:,:,median_common_chan]
@@ -435,7 +435,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                         save=save, prnt = prnt,  again=True, whiten = whiten, 
                         hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
                         nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-                        use_old=use_old, loop=loop, parallel=parallel, 
+                        use_old=use_old, loop=True, parallel=parallel, 
                         memorysafe=memorysafe)
 
             closest_waves_median_max[slice_id] = np.mean(raw_waves, axis = 0)[:,median_common_chan]

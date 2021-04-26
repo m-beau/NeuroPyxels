@@ -1133,9 +1133,14 @@ def temp_wvf_feat(dp, units):
         # if one of the features is null, the unit is unclassifiable
     make matrix from vectors
     """
-    if isinstance(units, int):
-        units = [units]
 
+
+    if np.isscalar(units):
+        if units == int(units):
+            units = [int(units)]
+        else:
+            raise TypeError("Only ints, list of ints or ints disguised as floats allowed")
+    breakpoint()
     all_feats = []
     for unit in units:
         t_feat = temp_feat(dp, unit)[0]

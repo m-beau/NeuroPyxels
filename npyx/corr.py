@@ -29,7 +29,7 @@ from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
 from npyx.io import read_spikeglx_meta
 from npyx.gl import get_units, get_source_dp_u, get_rec_len, assert_same_dataset, assert_multi
 from npyx.spk_t import trn, trnb, binarize, firing_periods, get_firing_periods
-from npyx.spk_wvf import get_depthSort_peakChans
+#import npyx.spk_t as spk_t #  spk_t.trn, trnb, binarize, spk_t.firing_periods, get_firing_periods
 
 import scipy.signal as sgnl
 from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
@@ -240,7 +240,6 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     dprm = Path(dp,'routinesMemory')
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
-
     fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(subset_selection)[0:50].replace(' ', ''))
     if os.path.exists(Path(dprm,fn)) and not again and trains is None:
         if prnt: print("File {} found in routines memory.".format(fn))
@@ -251,7 +250,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         if prnt: print("File {} not found in routines memory.".format(fn))
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, subset_selection=subset_selection, prnt=prnt, trains=trains)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
-        if crosscorrelograms.shape[0]<2: # no spikes were found in this period
+#        breakpoint()
+        if not any(crosscorrelograms.ravel()!=0): # no spikes were found in this period
             crosscorrelograms=np.zeros((len(U), len(U), crosscorrelograms.shape[2]))
         if normalize in ['Hertz', 'Pearson', 'zscore']:
             for i1,u1 in enumerate(sortedU):
@@ -882,9 +882,9 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
     - fs: float in Hz, t1 and trains sampling frequency
     - t_end: int in samples, end of recording of t1 and trains, in samples
     - sync_win: float in ms, synchrony window to define synchrony
-    - b: int in ms, binsize defining the binning of timestamps to define 'broad firing periods' (see npyx.spk_t.firing_periods)
-    - sd: int in ms, gaussian window sd to convolve the binned timestamps defining 'broad firing periods' (see npyx.spk_t.firing_periods)
-    - th: float [0-1], threshold defining the fraction of mean firing rate reached in the 'broad firing periods' (see npyx.spk_t.firing_periods)
+    - b: int in ms, binsize defining the binning of timestamps to define 'broad firing periods' (see npyx.firing_periods)
+    - sd: int in ms, gaussian window sd to convolve the binned timestamps defining 'broad firing periods' (see npyx.firing_periods)
+ float [0-1], threshold defining the fraction of mean firing rate reached in the 'broad firing periods' (see npyx.firing_periods)
     - again: bool, whether to recompute the firing periods of units in U (trains)
     - dp: string, datapath to dataset with units corresponding to trains - optional, to ensure fast loading of firing_periods
     - U: list, units matching trains (NOT t1)!
@@ -2024,4 +2024,4 @@ from npyx.plot import plot_pval_borders
 #                 correlograms[i2, i1, :]=np.array([corr[-v+1] for v in range(len(corr))])*1./(0.001*bin_size*np.sqrt(len(trn(dp, u1, prnt=False))*len(trn(dp, u2, prnt=False))))
 
 #     return correlograms
-
+from npyx.spk_wvf import get_depthSort_peakChans

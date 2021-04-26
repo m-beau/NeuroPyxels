@@ -19,7 +19,6 @@ import numpy as np
 from math import ceil
 
 from npyx.utils import _as_array, npa, split, n_largest_samples
-from npyx.spk_t import ids
 from npyx.gl import get_units, assert_multi, get_ds_ids, get_source_dp_u
 from npyx.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 
@@ -33,7 +32,7 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, subset_selection='regular',
     routine from rtn.npyx.spk_wvf
     Extracts a sample of waveforms from the raw data file.
     ********
-    
+
     Parameters:
         - dp:                 str or PosixPath, path to kilosorted dataset.
         - u:                  int, unit index.
@@ -1112,3 +1111,4 @@ def _slice(index, n_samples, margin=None):
     before = int(before)
     after = int(after)
     return slice(max(0, index - before), index + after, None)
+from npyx.spk_t import ids

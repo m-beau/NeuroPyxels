@@ -21,6 +21,7 @@ from pathlib import Path
 from npyx.utils import peakdetect
 from npyx.io import chan_map
 from npyx.spk_wvf import wvf, wvf_dsmatch
+from npyx.spk_t import trn_filtered
 from npyx.plot import plot_wvf
 import matplotlib.pyplot as plt
 from scipy.stats import iqr, skew, norm
@@ -29,7 +30,6 @@ import scipy.optimize as opt
 from itertools import compress
 from sklearn.metrics import mean_squared_error
 from scipy import ndimage
-
 
 #############################################
 # Waveform features
@@ -490,15 +490,15 @@ def recovery_slope(waves):
     # all data points between two peaks
     # multiply by first coeff and add the second one
     return coeff, coeff[0]*np.linspace(0,dots_pos_neg_20,dots_pos_neg_20+1)+coeff[1], pos_t, pos_v
-def previous_peak(waves, chan_path, unit):
+
+def previous_peak(waves, chan_path, unit, n_chans = 20):
     """
     takes as input 384x82 matrix
 
     - take a matrix of waves along the probe
     - find the peak chan
     - find channels +- 20 from the peak chan
-    - get the value of the previous peak in standard deviations compared
-        to baseline period at the start of the recording
+    - find the ratio between the most negative peak and the peak preceding it
     """
 
     # loop through each wave
@@ -507,47 +507,33 @@ def previous_peak(waves, chan_path, unit):
     # check if there is a peak before the most negative one
     max_chan_path = list(Path(chan_path/'routinesMemory').glob(f'dsm_{unit}_peakchan*'))[0]
     max_chan = int(np.load(max_chan_path))
-    if max_chan < 19:
-        bounds = (0, max_chan+21)
-    elif max_chan > 365:
-        bounds = (max_chan-20, 384)
+   # waves = waves.T
+    if max_chan < n_chans - 1:
+        bounds = (0, max_chan+n_chans +1)
+    elif max_chan > 384 - n_chans -1:
+        bounds = (max_chan-n_chans, 384)
     else:
-        bounds = (max_chan-20, max_chan+21)
+        bounds = (max_chan-n_chans, max_chan+n_chans+1)
 
     bound_waves = waves[bounds[0]:bounds[1]+1]
-#    bound_waves = waves.T[bounds[0]:bounds[1]+1]
 
     pbp = np.zeros((bound_waves.shape[0]))
     # first n values to calculate mean and std
     no_baseline_values = bound_waves.shape[1]//4
-    #breakpoint()
-
-    # get the max_chan waveform
-    max_wave = waves[max_chan]
-    # get the mean of the start of this wave and the std at the start
-    # these measurements will be use for getting the backprop values
-    mean_s = np.mean(max_wave[np.r_[0:no_baseline_values, -no_baseline_values:-1]])
-    std_s = np.std(max_wave[np.r_[0:no_baseline_values,-no_baseline_values:-1]])
     for ids, wav in enumerate(bound_waves):
         peak_t, peak_v  = detect_peaks(wav)
-#       check if the values passed from detect_peaks are useful
-#       in some cases the wvf passed to detect_peaks is flat, this is due to hardware error
-#       these cases have to be taken care of manually, hence the following if statements
-        if (isinstance(peak_t, int)) & (isinstance(peak_v,int)):
-            pbp[ids] = 0
+        mean_s = np.mean(wav[np.r_[0:no_baseline_values, -no_baseline_values:-1]])
+        std_s = np.std(wav[np.r_[0:no_baseline_values,-no_baseline_values:-1]])
+        peak_v = (peak_v-mean_s)/std_s
+        neg_t = np.argmin(peak_v)
+        neg_v = peak_t[neg_t]
+        # if the time when the negative peak happened is not 0
+        # meaning this is not the first peak that happed
+        # and hence there might be a 'previous peak'
+        if neg_t != 0:
+            pbp[ids] = np.abs(peak_v[neg_t -1])
         else:
-         #   breakpoint()
-            peak_v = (peak_v-mean_s)/std_s
-            neg_t = np.argmin(peak_v)
-            neg_v = peak_t[neg_t]
-            # if the time when the negative peak happened is not 0
-            # meaning this is not the first peak that happed
-            # and hence there might be a 'previous peak'
-            if neg_t != 0:
-                pbp[ids] = np.abs(peak_v[neg_t -1])
-            else:
-                pbp[ids] =0
-  #  breakpoint()
+            pbp[ids] =0
     # find the max amd argmax of pbp
     argmax_pbp = np.argmax(pbp)
     max_pbp = pbp[argmax_pbp]
@@ -564,20 +550,6 @@ def previous_peak(waves, chan_path, unit):
         spread = argmax_pbp - before_half_chan + after_half_chan - 1
     else:
         spread = 0
-#    breakpoint()
-
-    # quantify the backpropagation
-    # binary feature, if the peak is larger than some value
-    # continuous feature, purely the value of the peak
-    # what can I normalise by?
-    # if there are more than 3 channels where the values are over 50% of max
-    # and if there are 
-
-#    if max_pbp > backprop_std:
-#        yes_backp = 1
-#    else:
-#        yes_backp = 0
-
     return pbp, spread, max_pbp
 
 def consecutive_peaks_amp(mean_waves: np.array) -> tuple:
@@ -609,7 +581,7 @@ def consecutive_peaks_amp(mean_waves: np.array) -> tuple:
     for idx, row in enumerate(mean_waves.T):
         truncated_waves[idx, middle_value:middle_value + mid_range] = row[middle_value:middle_value + mid_range]
     truncated_waves = truncated_waves.T
-    breakpoint()
+#    breakpoint()
     return np.argmax(np.ptp(truncated_waves,axis=0)), np.max(np.ptp(truncated_waves,axis=0)), np.ptp(truncated_waves, axis = 0)
 
 def chan_dist(chan, chanmap):
@@ -624,12 +596,10 @@ def chan_dist(chan, chanmap):
     # depending on which side of the peak chan it is
     sign_mask = np.ones((384))
     sign_mask[:chan] = -1
-    breakpoint()
+#    breakpoint()
     return all_dist * sign_mask
 
-
-
-def chan_spread(all_wav, chan_path, unit):
+def chan_spread(all_wav, chan_path, unit, n_chans = 20):
     """
     - take a 82*384 matrix
     - find the peak chan by looking at the amplitude differnce on all chans
@@ -638,6 +608,13 @@ def chan_spread(all_wav, chan_path, unit):
     - make a plot with the distance from peak chan on x axis and amplitude on y
     -
     """
+    all_wav = all_wav
+
+    #find peak chan
+    # find difference between min and max on all chans
+    # use peal-to-peak
+
+#    p2p = np.ptp(all_wav, axis = 1)
 
     # find the most negative peak and the peak after that to
     # get the distance between peak and trough
@@ -645,6 +622,7 @@ def chan_spread(all_wav, chan_path, unit):
     _,_, p2p = consecutive_peaks_amp(all_wav.T)
 
     # search for the file that has the given peak chan 
+#    max_chan_path = glob.glob(str(chan_path/'routinesMemory'/f'dsm_{unit}_peakchan*'))
     max_chan_path = list(Path(chan_path/'routinesMemory').glob(f'dsm_{unit}_peakchan*'))[0]
     max_chan = int(np.load(max_chan_path))
 
@@ -659,13 +637,14 @@ def chan_spread(all_wav, chan_path, unit):
     # plot the second column 
     sort_dist = np.argsort(dists)
     sort_dist_p2p = np.vstack((dists[sort_dist], p2p[sort_dist])).T
-    breakpoint()
-    if max_chan < 21:
-        bounds = (0, max_chan+21)
-    elif max_chan > 363:
-        bounds = (max_chan-20, 384)
+#    spread = np.var(p2p)
+
+    if max_chan < n_chans +1:
+        bounds = (0, max_chan+n_chans+1)
+    elif max_chan > 384 - n_chans - 1:
+        bounds = (max_chan-n_chans, 384)
     else:
-        bounds = (max_chan-20, max_chan+21)
+        bounds = (max_chan-n_chans, max_chan+n_chans+1)
 
     bound_dist = dists[bounds[0]:bounds[1]+1]
     bound_p2p = p2p[bounds[0]:bounds[1]+1]
@@ -680,6 +659,7 @@ def chan_spread(all_wav, chan_path, unit):
     after_max  = sort_dist_p2p[:,1][argmax_peak:]
     before_boolean = np.where(before_max < max_peak * 0.5)
     after_boolean = np.where(after_max < max_peak * 0.5)
+#    breakpoint()
     if len(before_boolean[0]) > 0 or len(after_boolean[0]) > 0:
     #    print(before_max < max_peak * 0.5)
         if len(before_boolean[0]) > 0:
@@ -690,10 +670,15 @@ def chan_spread(all_wav, chan_path, unit):
             after_half_chan = after_boolean[0][0]
         else:
             after_half_chan = 0
+     #   print(before_half_chan, after_half_chan, argmax_peak)
         spread = argmax_peak - before_half_chan + after_half_chan - 1
     else:
         spread = 0
+#    breakpoint()
     return max_chan, dists, p2p, dist_p2p, sort_dist_p2p, spread
+
+
+
 
 
 def wvf_shape(wave):
@@ -740,7 +725,7 @@ def wvf_shape(wave):
 
 
 
-def chan_plot(waves, peak_chan, n_chans):
+def chan_plot(waves, peak_chan, n_chans=20):
 
     '''
     find the peak chan and the n_chans on either side
@@ -749,7 +734,7 @@ def chan_plot(waves, peak_chan, n_chans):
     '''
 
     plot_waves = waves[peak_chan-n_chans:peak_chan+n_chans+2]
-    print(plot_waves.shape)
+#    print(plot_waves.shape)
     fig,ax  = plt.subplots(n_chans+1,2)
 
     for i in range(plot_waves.shape[0]):
@@ -786,116 +771,6 @@ def chan_plot(waves, peak_chan, n_chans):
 
 ####################################################
 # Temporal features
-
-def gaussian_cut(x, a, mu, sigma, x_cut):
-    g = a * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
-    g[x < x_cut] = 0
-    return g
-
-
-def curve_fit_(x, num, p1):
-    pop_t = opt.curve_fit(gaussian_cut, x, num, p1, maxfev=10000)
-    return pop_t
-
-
-
-
-def ampli_fit_gaussian_cut(x, n_bins):
-    # inputs: vector we want to estimate where the missing values start
-    # inputs: number of bins
-    # returns: ???
-
-    # make inputs into numpy array
-    a = np.asarray(x, dtype='float64')
-    # get a histogram of the data, with the  number of entries in each bin
-    # and the bin edges
-    num, bins = np.histogram(a, bins=n_bins)
-    # bin bottom bracket with the most entries
-    # this can return more than one value for the mode
-    mode_seed = bins[np.where(num == max(num))]
-    #mode_seed = bins[np.argmax(num)]
-    # find the bin width 
-    bin_steps = np.diff(bins[0:2])[0]
-    #get the mean values of each bin
-    x = bins[0:len(bins) - 1] + bin_steps / 2
-    # get the value of the start of the first bin
-    next_low_bin = x[0] - bin_steps
-    #next_low = bins[0] - bin_steps/2
-
-    # now we make more bins so they go all the way to 0
-    add_points = np.arange(start =  0, stop=next_low_bin, step=bin_steps)
-    #add_points = np.arange(start=next_low_bin, stop=0, step=-bin_steps)
-    #add_points = np.flipud(add_points)
-    # concatenate the new bin midpoints with the old ones
-    x = np.concatenate([add_points, x])
-    zeros = np.zeros((len(add_points), 1))
-    zeros = zeros.reshape(len(zeros), )
-    # concatenate the old number of bin elements with 0 for the new bins
-    num = np.concatenate([zeros, num])
-
-    # if there is  more than one mode of the  distribution, mean them  
-    if len(mode_seed) > 1:
-        mode_seed = np.mean(mode_seed)
-
-    # return: max, new mod, std for non nan values, and first percentile
-    p0 = [np.max(num), mode_seed, np.nanstd(a), np.percentile(a, 1)]
-    p0 = np.asarray(p0, dtype='float64')
-
-    # Curve fit
-    popt = curve_fit_(x, num, p0)
-    p0 = popt[0]
-
-    return x, p0
-
-
-def gaussian_amp_est(x, n_bins):
-#    breakpoint()
-    try:
-        x1, p0 = ampli_fit_gaussian_cut(x, n_bins)
-        n_fit = gaussian_cut(x1, a=p0[0], mu=p0[1], sigma=p0[2], x_cut=p0[3])
-        min_amp = p0[3]
-        n_fit_no_cut = gaussian_cut(x1, a=p0[0], mu=p0[1], sigma=p0[2], x_cut=0)
-        percent_missing = int(round(100 * norm.cdf((min_amp - p0[1]) / p0[2]), 0))
-
-    except RuntimeError:
-        x1, p0, min_amp, n_fit, n_fit_no_cut, percent_missing = None, None, None, None, None, np.nan
-
-    return x1, p0, min_amp, n_fit, n_fit_no_cut, percent_missing
-
-
-def estimate_bins(x, rule):
-
-    n = len(x)
-    maxi = max(x)
-    mini = min(x)
-
-    # Freedman-Diaconis rule
-    if rule == 'Fd':
-
-        data = np.asarray(x, dtype=np.float_)
-        iqr_ = iqr(data, scale="raw", nan_policy="omit")
-        n = data.size
-        bw = (2 * iqr_) / np.power(n, 1 / 3)
-        datmin= min(data)
-        datmax = max(data)
-        datrng = datmax - datmin
-        bins = int(datrng/bw + 1)
-
-        # q75, q25 = np.percentile(x, [75, 25])
-        # iqr_ = q75 - q25
-        # print('iqr', iqr_)
-        # h = 2 * iqr_ * (n ** (-1/3))
-        # print('h', h)
-        # b = int(round((maxi-mini)/h, 0))
-
-        return bins
-
-    # Square-root choice
-    elif rule == 'Sqrt':
-        b = int(np.sqrt(n))
-        return b
-
-
 def compute_isi(train, quantile = 0.02):
 
     """
@@ -1128,40 +1003,32 @@ def plot_all(one_wave):
     fig.suptitle('Wvf features for an MLI unit ')
 
 
-
-def chan_spread_bp_plot(dp, unit):
+def chan_spread_bp_plot(dp, unit, n_chans=20):
     """
     Generates a plot with number of channels and the channels on left
     and backprop and chan spread on the right
     Input: datapath and unit (drift and shift matched datasets for now)
     Returns: plot
     """
-    curr_fil = dp/'routinesMemory'/f'dsm_{i}_all_waves_100-82_regular_False300-FalseNone-FalseNone.npy'
+    curr_fil = dp/'routinesMemory'/f'dsm_{unit}_all_waves_100-82_regular_False300-FalseNone-FalseNone.npy'
     if curr_fil.is_file():
 
+        if n_chans %2 !=0: n_chans +=1
         all_waves_unit_x = np.load(curr_fil)
-        backp, bp_spread, true_bp =  previous_peak(all_waves_unit_x.T, dpath21, i)
-     #   print(i, true_bp, bp_spread)
-        csp_x = chan_spread(all_waves_unit_x.T,dpath21, i)
-        ct = str(dpath2).split('/')[7]
+        backp, bp_spread, true_bp =  previous_peak(all_waves_unit_x.T, dp, unit, n_chans)
+        csp_x = chan_spread(all_waves_unit_x.T,dp, unit, n_chans)
         peak_chan = csp_x[0]
 
-    #    recording  = str(dpath2).split('/')[8]
         fig,ax = plt.subplots(3,1)
         if backp.shape[0] == 42:
-    #        ax[0].plot(np.linspace(-20,21,42).astype('int'),backp)
 
             ax[0].plot(csp_x[4][:,0],backp)
         else:
-            n_chans = backp.shape[0] 
-            ax[0].plot(np.linspace(0, n_chans-1, n_chans).astype('int'), backp)
-        #ax[0].set_xlabel('Distance from peak chan (micrometer)')
+            n_chans_edge = backp.shape[0]
+            ax[0].plot(np.linspace(0, n_chans_edge-1, n_chans_edge).astype('int'), backp)
         ax[0].set_ylabel('Z-scored value \n  of the previous peak')
-        #ax[0].axvline(21, color = 'red')
-        ax[0].title.set_text(f'Z-scored value of previous peak to most negative peak, \n 20 chan from peak chan in each direction {ct} unit {i}')
 
         ax[1].plot(csp_x[4][:,0],csp_x[4][:,1])
-        #ax[1].plot(np.linspace(-20,21,42).astype('int'),csp_x[4][:,1])
         ax[1].set_xlabel('Distance from peak chan (micrometer)')
         ax[1].set_ylabel('Amplitude of  negative \n to positive peak')
         ax[1].title.set_text(f'Amplitude of most negative peak to next peak for all chans {csp_x[5]}')
@@ -1175,5 +1042,106 @@ def chan_spread_bp_plot(dp, unit):
 
         ax[2].title.set_text(f'Wvf of Peak chan {csp_x[0]} ')
         fig.tight_layout()
+
+        if csp_x[0]> n_chans//2:
+            to_plot = n_chans//2
+        else:
+            to_plot = csp_x[0]-1
+        chan_plot(all_waves_unit_x.T, csp_x[0], to_plot)
+
+def temporal_features(all_spikes, unit):
+    """
+    Input: spike times
+    Returns: list of features
+    """
+    all_spikes = np.hstack(np.array(all_spikes))
+
+    isi_block_clipped = compute_isi(all_spikes)
+
+    mifr, med_isi, mode_isi, prct5ISI, entropy, CV2_mean, CV2_median, CV, IR, Lv, LvR, LcV, SI, skw \
+    = compute_isi_features(isi_block_clipped)
+
+    all_recs = [dp, unit, mifr, med_isi, mode_isi, prct5ISI, entropy, CV2_mean, CV2_median, CV, IR, Lv, LvR, LcV, SI, skw]
+    return all_recs
+
+
+def temp_feat(dp, units, use_or_operator = True, use_consecutive = False):
+    """
+    High level function for getting the temporal features from a single (integer) or
+    set of units (list of units) from a dp dataset.
+    """
+    # get the train quality for each unit in the list of units
+    # pass the spike times for that unit
+    # accumulate all features for passed units
+    # return matrix of features
+
+    # units can be either a single integer or a list or np array of units
+
+    if isinstance(units, int):
+        units = [units]
+
+    all_ft_list = []
+    for unit in units:
+        unit_spikes = trn_filtered(dp, unit, use_or_operator = use_or_operator, use_consecutive = use_consecutive)
+        all_ft_list.append(temporal_features(unit_spikes, unit))
+
+    return all_ft_list
+
+
+def wvf_feat(dp, units):
+    """
+    High level function for getting the wvf features from a single (integer) or
+    set of units (list of units) from a dp dataset.
+    """
+    if isinstance(units, int):
+        units = [units]
+
+    all_ft_list = []
+    spike_clusters= np.load(Path(dp, 'spike_clusters.npy'))
+    for unit in units:
+
+#       the below 10_000 spike value was chosen by testing what the lowest
+#       value is that still works
+        len_unit_spks = len(spike_clusters[spike_clusters == unit])
+        if len_unit_spks > 10_000:
+#           if there is enough ram then the process is much faster
+#           How much RAM is available and how much is needed
+#           number of spikes * number of channels per spike * number of datapoints per chan (including padding) 
+            ram_needed =  len_unit_spks * 384 *182
+            ram_available = vmem().available
+            if ram_needed < ram_available:
+                # if there is enough ram to store all the spikes in memory, FAST 
+                mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(dp,unit, prnt=False, again=False,fast =True, save = True)
+            else:
+                # not enough RAM to store all spikes in memory, Slow
+                mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(dp,unit, prnt=False, again=False,fast =False, save = True)
+            curr_feat = waveform_features(extracted_waves.T,dp, max_chan, unit)
+            curr_feat.insert(0, dp)
+            all_ft_list.append(curr_feat)
+        else:
+            all_ft_list.append(0)
+
+    return all_ft_list
+
+def temp_wvf_feat(dp, units):
+    """
+    get all the temporal and wvf features for the given units
+    for all unnits:
+        # get temp features
+        # get wvf features
+        # if one of the features is null, the unit is unclassifiable
+    make matrix from vectors
+    """
+    if isinstance(units, int):
+        units = [units]
+
+    all_feats = []
+    for unit in units:
+        t_feat = temp_feat(dp, unit)[0]
+        w_feat = wvf_feat(dp, unit)[0][2:]
+        all_feat = t_feat + w_feat
+        all_feats.append(all_feat)
+    all_feats = np.array((all_feats))
+    return all_feats
 
 

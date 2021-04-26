@@ -1510,6 +1510,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='mixte', color=0, saveDir='~
     ylim1, ylim2 = ylim[0], ylim[1]
 
     ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, subset_selection=subset_selection, again=again)
+    breakpoint()
     if normalize=='zscore':
         ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, subset_selection=subset_selection)
         acg25, acg35 = ACG_hertz[:int(len(ACG_hertz)*2./5)], ACG_hertz[int(len(ACG_hertz)*3./5):]
@@ -2237,3 +2238,5 @@ def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Downl
 # lr.sigRegionChanged.connect(updatePlot)
 # p9.sigXRangeChanged.connect(updateRegion)
 # updatePlot()
+#from npyx.spk_t import trn
+#from npyx.corr import acg, ccg, gen_sfc, get_ccg_sig, get_cm

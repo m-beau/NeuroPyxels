@@ -310,7 +310,7 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=
     return periods
 
 
-def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False, use_consecutive = True, make_plot = False):
+def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False):
 
     """
     Apply a filter over the spike times in order to find time points with
@@ -330,7 +330,7 @@ def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg
     Once we have both of these filters applied to the recording, we can take
     the intersection of them. Hence we will have the times when both filters
     were passed.
-    Returns: times when the false positive, false negative and both filters were passed 
+    Returns: times when the false positive, false negative and both filters were passed
     """
     # check that the passed values make sense
 
@@ -617,9 +617,9 @@ def get_consec_sections(seconds):
         return start_end
 
 
-def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False, use_consecutive = True, make_plot = False, prnt = False):
+def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False, use_consecutive = True, prnt = False):
 
-    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes, consecutive_n_seconds, acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size, use_or_operator, use_consecutive, make_plot)
+    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes, consecutive_n_seconds, acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size, use_or_operator)
 
     """
     High level function for getting the spike ids for the spikes that passed

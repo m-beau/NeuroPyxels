@@ -517,24 +517,28 @@ def previous_peak(waves, chan_path, unit, n_chans = 20):
         bounds = (max_chan-n_chans, max_chan+n_chans+1)
 
     bound_waves = waves[bounds[0]:bounds[1]+1]
-
+    no_baseline_values = bound_waves.shape[1]//4
+    max_wav = waves[max_chan]
+    mean_s = np.mean(max_wav[np.r_[0:no_baseline_values, -no_baseline_values:-1]])
+    std_s = np.std(max_wav[np.r_[0:no_baseline_values,-no_baseline_values:-1]])
+#    breakpoint()
     pbp = np.zeros((bound_waves.shape[0]))
     # first n values to calculate mean and std
-    no_baseline_values = bound_waves.shape[1]//4
     for ids, wav in enumerate(bound_waves):
         peak_t, peak_v  = detect_peaks(wav)
-        mean_s = np.mean(wav[np.r_[0:no_baseline_values, -no_baseline_values:-1]])
-        std_s = np.std(wav[np.r_[0:no_baseline_values,-no_baseline_values:-1]])
-        peak_v = (peak_v-mean_s)/std_s
-        neg_t = np.argmin(peak_v)
-        neg_v = peak_t[neg_t]
-        # if the time when the negative peak happened is not 0
-        # meaning this is not the first peak that happed
-        # and hence there might be a 'previous peak'
-        if neg_t != 0:
-            pbp[ids] = np.abs(peak_v[neg_t -1])
+        if isinstance(peak_t, int):
+            pbp[ids] = 0
         else:
-            pbp[ids] =0
+            peak_v = (peak_v-mean_s)/std_s
+            neg_t = np.argmin(peak_v)
+            neg_v = peak_t[neg_t]
+            # if the time when the negative peak happened is not 0
+            # meaning this is not the first peak that happed
+            # and hence there might be a 'previous peak'
+            if neg_t != 0:
+                pbp[ids] = np.abs(peak_v[neg_t -1])
+            else:
+                pbp[ids] =0
     # find the max amd argmax of pbp
     argmax_pbp = np.argmax(pbp)
     max_pbp = pbp[argmax_pbp]
@@ -577,10 +581,10 @@ def consecutive_peaks_amp(mean_waves: np.array) -> tuple:
     truncated_waves = np.zeros_like(mean_waves.T)
     loc_min_val = np.argmin(mean_waves,axis = 0)
     # truncate the waves so we can look at the amplitudes of the neg and next peak
-#    for idx, row in enumerate(mean_waves.T):
-#        truncated_waves[idx, loc_min_val[idx]:] = row[loc_min_val[idx]:]
     for idx, row in enumerate(mean_waves.T):
-        truncated_waves[idx, middle_value:middle_value + mid_range] = row[middle_value:middle_value + mid_range]
+        truncated_waves[idx, loc_min_val[idx]:] = row[loc_min_val[idx]:]
+#    for idx, row in enumerate(mean_waves.T):
+#        truncated_waves[idx, middle_value:middle_value + mid_range] = row[middle_value:middle_value + mid_range]
     truncated_waves = truncated_waves.T
 #    breakpoint()
     return np.argmax(np.ptp(truncated_waves,axis=0)), np.max(np.ptp(truncated_waves,axis=0)), np.ptp(truncated_waves, axis = 0)
@@ -646,7 +650,7 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20):
         bounds = (max_chan-n_chans, 384)
     else:
         bounds = (max_chan-n_chans, max_chan+n_chans+1)
-
+    print(max_chan)
     bound_dist = dists[bounds[0]:bounds[1]+1]
     bound_p2p = p2p[bounds[0]:bounds[1]+1]
     bound_dist_p2p = dist_p2p[bounds[0]:bounds[1]+1]
@@ -677,9 +681,6 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20):
         spread = 0
 #    breakpoint()
     return max_chan, dists, p2p, dist_p2p, sort_dist_p2p, spread
-
-
-
 
 
 def wvf_shape(wave):
@@ -1019,7 +1020,10 @@ def chan_spread_bp_plot(dp, unit, n_chans=20):
         backp, bp_spread, true_bp =  previous_peak(all_waves_unit_x.T, dp, unit, n_chans)
         csp_x = chan_spread(all_waves_unit_x.T,dp, unit, n_chans)
         peak_chan = csp_x[0]
-
+        print(peak_chan)
+        plt.figure()
+        plt.plot(csp_x[4][:,0],csp_x[4][:,1])
+        plt.show()
         fig,ax = plt.subplots(3,1)
         if backp.shape[0] == 42:
 

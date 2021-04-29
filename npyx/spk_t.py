@@ -340,19 +340,19 @@ def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg
     elif isinstance(dp, PosixPath) == False:
         raise TypeError('Provide a string or a pathlib object as the source directory')
 
-    if not isinstance(unit, int):
+    if not isinstance(unit, (int, np.int16, np.int32, np.int64)):
         raise TypeError('Unit provided should be an int')
 
-    if not isinstance(acg_window_len , int):
+    if not isinstance(acg_window_len , (int, np.int16, np.int32, np.int64)):
         raise TypeError('acg_window_len provided should be an int')
 
-    if not isinstance(acg_chunk_size , int):
+    if not isinstance(acg_chunk_size , (int, np.int16, np.int32, np.int64)):
         raise TypeError('acg_chunk_size provided should be an int')
 
-    if not isinstance(gauss_window_len , int):
+    if not isinstance(gauss_window_len , (int, np.int16, np.int32, np.int64)):
         raise TypeError('gauss_window_len provided should be an int')
 
-    if not isinstance(gauss_chunk_size , int):
+    if not isinstance(gauss_chunk_size , (int, np.int16, np.int32, np.int64)):
         raise TypeError('gauss_chunk_size provided should be an int')
 
     assert acg_chunk_size >= 1, "ACG window length needs to be larger than 1 sec"

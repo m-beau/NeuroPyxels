@@ -32,7 +32,7 @@ from npyx.stats import fractile_normal, fractile_poisson
 from npyx.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
 from npyx.gl import get_units, assert_multi, get_ds_ids
 from npyx.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
-from npyx.spk_t import trn
+from npyx.spk_t import trn, train_quality
 from npyx.corr import acg, ccg, gen_sfc, get_ccg_sig, get_cm
 from npyx.behav import align_times, get_processed_ifr, get_events, get_processed_popsync
 from mpl_toolkits.mplot3d import Axes3D
@@ -2150,6 +2150,66 @@ def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Downl
 
     os.chdir(oldDir)
 
+
+def plot_filtered_times(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False):
+    unit_size_s = first_n_minutes * 60
+
+    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes, consecutive_n_seconds, acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size, use_or_operator)
+
+    good_sec = []
+    for i in goodsec:
+        good_sec.append(list(range(i[0], i[1]+1)))
+    good_sec = np.hstack((good_sec))
+
+    acg_sec = []
+    for i in acgsec:
+        acg_sec.append(list(range(i[0], i[1]+1)))
+    acg_sec = np.hstack((acg_sec))
+
+    gauss_sec = []
+    for i in gausssec:
+        gauss_sec.append(list(range(i[0], i[1]+1)))
+    gauss_sec = np.hstack((gauss_sec))
+
+    # Parameters
+    fs = 30000
+    amples_fr = unit_size_s * fs
+
+    samples_fr = unit_size_s * fs
+    spike_clusters = np.load(dp/'spike_clusters.npy')
+    amplitudes_sample = np.load(dp/'amplitudes.npy')  # shape N_tot_spikes x 1
+    spike_times = np.load(dp/'spike_times.npy')  # in samples
+
+    amplitudes_unit = amplitudes_sample[spike_clusters == unit]
+    spike_times_unit = spike_times[spike_clusters == unit]
+    unit_mask_20 = (spike_times_unit <= samples_fr)
+    spike_times_unit_20 = spike_times_unit[unit_mask_20]
+    amplitudes_unit_20 = amplitudes_unit[unit_mask_20]
+
+
+    plt.figure()
+    plt.plot(spike_times_unit_20/fs, amplitudes_unit_20, '.', alpha = 0.5)
+    plt.text(0, 3,'Gaussian FN', fontsize = 5, color = 'blue')
+    plt.text(0, 1,'FP + FN', fontsize = 5, color = 'green')
+    plt.text(0, -3,'ACG FP', fontsize = 5, color = 'red')
+    plt.title(f"Amplitudes in first 20 min for {unit}")
+
+    for i in good_sec:
+        s_time, e_time = i ,(i+1)
+        plt.hlines(0, s_time, e_time, color = 'green')
+#     # find the longest consecutive section
+# # check if this is longer than 3 minutes, 18 sections
+#
+#     breakpoint()
+    for i in acg_sec:
+        s_time, e_time = i ,(i+1)
+        plt.hlines(-2, s_time, e_time, color = 'red')
+#
+    for i in gauss_sec:
+        s_time, e_time = i ,(i+1)
+        plt.hlines(2, s_time, e_time, color = 'blue')
+    plt.show()
+#     breakpoint()
 
 #%% How to plot 2D things with pyqtplot
 

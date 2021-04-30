@@ -604,7 +604,7 @@ def chan_dist(chan, chanmap):
 #    breakpoint()
     return all_dist * sign_mask
 
-def chan_spread(all_wav, chan_path, unit, n_chans = 20):
+def chan_spread(all_wav, chan_path, unit, n_chans = 20, chan_spread_dist = 25.6):
     """
     - take a 82*384 matrix
     - find the peak chan by looking at the amplitude differnce on all chans
@@ -613,6 +613,10 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20):
     - make a plot with the distance from peak chan on x axis and amplitude on y
     -
     """
+
+    assert chan_spread_dist in [0, 25.6, 32, 40], \
+            """chan_spread_dist needs to be one of 0, 25.6, 32, 40 or a fp
+            npyx channel distance"""
     all_wav = all_wav
 
     #find peak chan
@@ -627,7 +631,6 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20):
     _,_, p2p = consecutive_peaks_amp(all_wav.T)
 
     # search for the file that has the given peak chan 
-#    max_chan_path = glob.glob(str(chan_path/'routinesMemory'/f'dsm_{unit}_peakchan*'))
     max_chan_path = list(Path(chan_path/'routinesMemory').glob(f'dsm_{unit}_peakchan*'))[0]
     max_chan = int(np.load(max_chan_path))
 
@@ -642,7 +645,6 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20):
     # plot the second column 
     sort_dist = np.argsort(dists)
     sort_dist_p2p = np.vstack((dists[sort_dist], p2p[sort_dist])).T
-#    spread = np.var(p2p)
 
     if max_chan < n_chans +1:
         bounds = (0, max_chan+n_chans+1)
@@ -655,31 +657,12 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20):
     bound_p2p = p2p[bounds[0]:bounds[1]+1]
     bound_dist_p2p = dist_p2p[bounds[0]:bounds[1]+1]
     sort_dist_p2p = sort_dist_p2p[bounds[0]:bounds[1]+1]
-    spread = np.var(bound_p2p)
-    # find the number of channels between the two half widths
+    # get the chanel maximum peak-to-peak distance from the channels
+    # at chan_spread_dist appart from the peak chan
+    if chan_spread_dist = 25.6: chan_spread_dist = 25.61249695
+    vals_at_25 = sort_dist_p2p[:,1][np.isclose(sort_dist_p2p[:,0], chan_spread_dist )]
+    spread =np.max(vals_at_25)
 
-    argmax_peak = np.argmax(sort_dist_p2p[:,1])
-    max_peak = np.max(sort_dist_p2p[:,1])
-    before_max = sort_dist_p2p[:,1][:argmax_peak+1]
-    after_max  = sort_dist_p2p[:,1][argmax_peak:]
-    before_boolean = np.where(before_max < max_peak * 0.5)
-    after_boolean = np.where(after_max < max_peak * 0.5)
-#    breakpoint()
-    if len(before_boolean[0]) > 0 or len(after_boolean[0]) > 0:
-    #    print(before_max < max_peak * 0.5)
-        if len(before_boolean[0]) > 0:
-            before_half_chan = before_boolean[0][-1]
-        else:
-            before_half_chan = 0
-        if len(after_boolean[0]) > 0:
-            after_half_chan = after_boolean[0][0]
-        else:
-            after_half_chan = 0
-     #   print(before_half_chan, after_half_chan, argmax_peak)
-        spread = argmax_peak - before_half_chan + after_half_chan - 1
-    else:
-        spread = 0
-#    breakpoint()
     return max_chan, dists, p2p, dist_p2p, sort_dist_p2p, spread
 
 

@@ -597,7 +597,7 @@ def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg
 
         return good_start_end, acg_start_end, gauss_start_end
     else:
-        return np.array([0])
+        return [0]
 
 def get_consec_sections(seconds):
         """

@@ -255,10 +255,10 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
             crosscorrelograms=np.zeros((len(U), len(U), crosscorrelograms.shape[2]))
         if normalize in ['Hertz', 'Pearson', 'zscore']:
             for i1,u1 in enumerate(sortedU):
-                Nspikes1=len(trn(dp, u1, prnt=False))
+                Nspikes1=len(trn(dp, u1, prnt=False, subset_selection=subset_selection))
                 #imfr1=np.mean(1000./isi(dp, u1)[isi(dp, u1)>0])
                 for i2,u2 in enumerate(sortedU):
-                    Nspikes2=len(trn(dp, u2, prnt=False))
+                    Nspikes2=len(trn(dp, u2, prnt=False, subset_selection=subset_selection))
                     #imfr2=np.mean(1000./isi(dp, u2)[isi(dp, u2)>0])
                     arr=crosscorrelograms[i1,i2,:]
                     if normalize == 'Hertz':

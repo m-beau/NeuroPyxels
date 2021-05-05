@@ -659,7 +659,7 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20, chan_spread_dist = 25.6)
     sort_dist_p2p = sort_dist_p2p[bounds[0]:bounds[1]+1]
     # get the chanel maximum peak-to-peak distance from the channels
     # at chan_spread_dist appart from the peak chan
-    if chan_spread_dist = 25.6: chan_spread_dist = 25.61249695
+    if chan_spread_dist == 25.6: chan_spread_dist = 25.61249695
     vals_at_25 = sort_dist_p2p[:,1][np.isclose(sort_dist_p2p[:,0], chan_spread_dist )]
     spread =np.max(vals_at_25)
 

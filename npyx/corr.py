@@ -21,14 +21,16 @@ num_cores = multiprocessing.cpu_count()
 import numpy as np
 import pandas as pd
 
+from scipy.interpolate import interp1d
 import progressbar as pgb
 
 from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
-                    _as_array, _unique, _index_of, any_n_consec, assert_int
+                    _as_array, _unique, _index_of, any_n_consec, assert_int, smooth
 
 from npyx.io import read_spikeglx_meta
 from npyx.gl import get_units, get_source_dp_u, get_rec_len, assert_same_dataset, assert_multi
-from npyx.spk_t import trn, trnb, binarize, firing_periods, get_firing_periods
+from npyx.spk_t import trn, trnb, binarize, firing_periods,\
+                        get_firing_periods, isi, mfr, train_quality
 #import npyx.spk_t as spk_t #  spk_t.trn, trnb, binarize, spk_t.firing_periods, get_firing_periods
 
 import scipy.signal as sgnl
@@ -283,7 +285,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
                 sortedC[i1,i2,:]=crosscorrelograms[ii1, ii2, :]
     else:
         sortedC=crosscorrelograms
-        
+
     return sortedC
 
 def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, subset_selection='all', again=False):
@@ -321,6 +323,136 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
       '''
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
     return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, prnt, subset_selection, again)[0,0,:]
+
+def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz', min_sec = 180, again = False, first_n_minutes = 20, consecutive_n_seconds = 180, acg_window_len = 3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False):
+    """
+    - get the spike times passing our quality metric from the first 20 mins
+    - get the argmax of the quality ISI
+    - find the corresponding acg
+    - shift the ACG in x-axis so the peak is aligned at the 100th value of the vector
+    - scale the ACG with the the mfr for the quality period
+    - return scaled ACG
+    - depending whether it is a single unit or a list of units return a matrix
+    """
+
+    spike_clusters= np.load(Path(dp, 'spike_clusters.npy'))
+    # check if units are a list
+    if isinstance(units, (int, np.int16, np.int32, np.int64)):
+        # check if it's len 1
+        units = [units]
+    elif isinstance(units, str):
+        if units.strip() == 'all':
+            units = get_units(dp, quality = 'good')
+        else:
+            raise ValueError("You can only pass 'all' as a string")
+    elif isinstance(units, list):
+        pass
+    else:
+            raise TypeError("Only the string 'all', ints, list of ints or ints disguised as floats allowed")
+
+    return_acgs = []
+    return_isi_mode = []
+    return_isi_hist_counts = []
+    return_isi_hist_range_clipped = []
+    return_cut_acg_unnormed = []
+
+    for unit in units:
+#        print(unit)
+        if len(spike_clusters[spike_clusters == unit]) > 1_000:
+            # train quality throws two warnings, ignore these
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+
+                # get the spikes that passed our quality metric
+                good_times_list = train_quality(dp, unit, first_n_minutes = 20, consecutive_n_seconds = consecutive_n_seconds, acg_window_len=acg_window_len, acg_chunk_size = acg_chunk_size, gauss_window_len = gauss_window_len, gauss_chunk_size = gauss_chunk_size, use_or_operator = use_or_operator)
+
+
+            if len(good_times_list) >1 :
+
+                # make a tuple to be passed as the good_sections parameter
+                good_sections = [tuple(x) for x in good_times_list[0]]
+
+                # arbitrary filter, need at least 180 good seconds to continue
+                all_time = np.sum(np.ptp(good_sections, axis = 1))
+                if all_time >min_sec:
+
+                    unit_isi= isi(dp, unit, subset_selection = good_sections, again = again)/30
+                    # get the mfr of the section that pass our criteria
+                    mean_fr = mfr(dp, unit, subset_selection = good_sections)
+                    # pass the outputs of the unit ISI to get a histogram with given binsize
+                    isi_hist_counts, isi_hist_range = np.histogram(unit_isi, bins = np.arange(0,100,bs))
+                    #get the mode of the ISI values that are larges than 3ms
+                    # first smooth the ISI, convolving it with a gaussian
+                    isi_hist_counts = smooth(isi_hist_counts, sd=1)
+                    # next the ISI and the ACG need to be made of the same shape, ISI is longer by one
+                    isi_hist_range_clipped = isi_hist_range[:-1]
+                    isi_mode = isi_hist_range_clipped[np.argmax(isi_hist_counts)]
+                    # get the ACG for the unit 
+                    unit_acg = acg(dp, unit, bin_size= bs, win_size = isi_mode * 20, fs = fs, normalize = normalize,  subset_selection = good_sections, prnt = False, again = again)
+
+                    # rewrite ISI mode so it is divided by bin size
+                    isi_mode_bin = isi_mode / bs
+                    half_len = unit_acg.shape[0]//2
+
+                    # divide by MFR to normalise shape of ACG 
+                    cut_acg_unnormed = unit_acg[half_len:]
+                    cut_acg = cut_acg_unnormed/mean_fr
+
+                    # upsample the ACG so that the peak is at 100
+                    interp_fn = interp1d(np.linspace(0, half_len, cut_acg.shape[0]),cut_acg,axis=-1)
+                    new_wave = interp_fn(np.linspace(0, half_len, int(cut_acg.shape[0]*100/isi_mode_bin )))
+
+                    normed_new = new_wave/ np.mean(new_wave[:-50])
+                    return_acgs.append(normed_new[:cut_at])
+                    return_isi_mode.append(isi_mode)
+                    return_isi_hist_counts.append(isi_hist_counts)
+                    return_isi_hist_range_clipped.append(isi_hist_range_clipped)
+                    return_cut_acg_unnormed.append(cut_acg_unnormed)
+
+                else:
+                    normed_new = np.zeros(cut_at)
+                    short_zeros = np.zeros(10)
+                    return_acgs.append(normed_new)
+                    return_isi_mode.append(short_zeros)
+                    return_isi_hist_counts.append(short_zeros)
+                    return_isi_hist_range_clipped.append(short_zeros)
+                    return_cut_acg_unnormed.append(short_zeros)
+
+            else:
+                normed_new = np.zeros(cut_at)
+                return_acgs.append(normed_new)
+                short_zeros = np.zeros(10)
+                return_isi_mode.append(short_zeros)
+                return_isi_hist_counts.append(short_zeros)
+                return_isi_hist_range_clipped.append(short_zeros)
+                return_cut_acg_unnormed.append(short_zeros)
+
+        else:
+            normed_new = np.zeros(cut_at)
+            return_acgs.append(normed_new)
+            short_zeros = np.zeros(10)
+            return_isi_mode.append(short_zeros)
+            return_isi_hist_counts.append(short_zeros)
+            return_isi_hist_range_clipped.append(short_zeros)
+            return_cut_acg_unnormed.append(short_zeros)
+
+    # I want to return numpy arrays, and inorder to do this the lists going into
+    # the arrays need to be the same length. Hence we can find the list with the maximal length,
+    # and for all lists that are not this long add np.nan values to it
+
+    # get the maximal length of each sublist
+    len_isi_hist_counts = np.max([ i.shape[0] for i in return_isi_hist_counts])
+    len_isi_hist_range_clipped = np.max([i.shape[0] for i in return_isi_hist_range_clipped])
+    len_cut_acg_unnormed = np.max([i.shape[0] for i in return_cut_acg_unnormed])
+
+    # append the missing number of np.nan values to each list that is shorter than max value
+    np_isi_hist_counts = np.array([list(xi) + [np.nan] * (len_isi_hist_counts - len(xi)) for xi in return_isi_hist_counts])
+    np_isi_hist_range_clipped = np.array([list(xi) + [np.nan] * (len_isi_hist_range_clipped - len(xi)) for xi in return_isi_hist_range_clipped])
+    np_cut_acg_unnormed = np.array([list(xi) + [np.nan] * (len_cut_acg_unnormed - len(xi)) for xi in return_cut_acg_unnormed])
+
+
+    return np.vstack(return_acgs), np.array(return_isi_mode), np_isi_hist_counts, np_isi_hist_range_clipped, np_cut_acg_unnormed
+
 
 def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all_to_all=False, name=None, sav=True, again=False, subset_selection='all'):
     '''

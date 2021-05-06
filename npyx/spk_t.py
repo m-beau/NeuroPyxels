@@ -581,15 +581,25 @@ def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg
             good_acg_sec.append(list(np.linspace(i*acg_chunk_size,(i+1)*acg_chunk_size-1, acg_chunk_size ).astype('int')))
         good_acg_sec = np.array(good_acg_sec).flatten()
 
+        # if the array is empty add a single 0 to it, so it doesn't break elsewhere
+        if len(good_acg_sec) ==0:
+            good_acg_sec = np.array([0])
         # get the good gauss seconds
         good_gauss_sec = []
         for i in good_vals_gauss:
             good_gauss_sec.append(list(np.linspace(i*gauss_chunk_size, (i+1)*gauss_chunk_size -1, gauss_chunk_size).astype('int')))
         good_gauss_sec = np.array(good_gauss_sec).flatten()
 
+        # if the array is empty add a single 0 to it, so it doesn't break elsewhere
+        if len(good_gauss_sec) == 0:
+            good_gauss_sec = np.array([0])
         acg_start_end  = get_consec_sections(good_acg_sec)
         # get the seconds where both the intervals overlap
         good_sec = np.array(list(set(good_gauss_sec) & set(good_acg_sec) ))
+
+        # if the array is empty add a single 0 to it, so it doesn't break elsewhere
+        if len(good_sec) == 0:
+            good_sec = np.array([0])
         gauss_start_end  = get_consec_sections(good_gauss_sec)
 
         # get the good overlapping seconds

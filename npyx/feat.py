@@ -32,6 +32,8 @@ from sklearn.metrics import mean_squared_error
 from scipy import ndimage
 from psutil import virtual_memory as vmem
 
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 #############################################
 # Waveform features
 
@@ -1137,4 +1139,34 @@ def temp_wvf_feat(dp, units):
     all_feats = np.array((all_feats))
     return all_feats
 
+
+def get_pca_weights(all_acgs_matrix, n_components = 5, show = False):
+    """
+    Input: matrix with all the normalised acgs, size: n x m
+    Return: matrix n x no_pca_feat
+    """
+
+    X = StandardScaler().fit_transform(good_acgs)
+    pca2 = PCA(n_components = n_components)
+    projected = pca2.fit_transform(X)
+    # show two plots
+    #   - first one with the PCA features for the number of components
+    #   - second is the variance explained per PC
+    if show:
+        pca_comp = pca2.components_
+        plt.ion()
+        plt.figure()
+        line_objects = plt.plot(pca_comp.T )
+        plt.title(f'First {n_components} PC features, ACGs cut at {good_acgs.shape[1]}')
+        plt.legend(line_objects, tuple(np.arange(n_components)), title = 'PCA features')
+
+        exp_var = np.round(np.sum(pca2.explained_variance_ratio_),3)
+
+        plt.figure()
+        plt.plot(np.arange(n_components), pca2.explained_variance_ratio_)
+        plt.xticks(np.arange(n_components),np.arange(n_components))
+        plt.yticks(pca2.explained_variance_ratio_,np.round(pca2.explained_variance_ratio_, 2))
+        plt.title(f'Smoothed ACG, first {n_components} PCs and the variance explained by each,\n overall explain {exp_var} of variance, ACGs cut at {good_acgs.shape[1]}')
+
+    return projected
 

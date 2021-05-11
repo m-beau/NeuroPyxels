@@ -1548,7 +1548,6 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
     bChs=get_depthSort_peakChans(dp, units=[unit])[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
     ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, subset_selection=subset_selection, again=again)
-    breakpoint()
     if normalize=='zscore':
         ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, subset_selection=subset_selection)
         acg25, acg35 = ACG_hertz[:int(len(ACG_hertz)*2./5)], ACG_hertz[int(len(ACG_hertz)*3./5):]

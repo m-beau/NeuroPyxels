@@ -31,7 +31,6 @@ from npyx.io import read_spikeglx_meta
 from npyx.gl import get_units, get_source_dp_u, get_rec_len, assert_same_dataset, assert_multi
 from npyx.spk_t import trn, trnb, binarize, firing_periods,\
                         get_firing_periods, isi, mfr, train_quality
-#import npyx.spk_t as spk_t #  spk_t.trn, trnb, binarize, spk_t.firing_periods, get_firing_periods
 
 import scipy.signal as sgnl
 from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal

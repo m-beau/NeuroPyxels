@@ -153,10 +153,10 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
             all_waves=Parallel(n_jobs=1, prefer='threads')(delayed(get_w)(traces, slc, _n_samples_extract) for slc in slices)
             waveforms = np.array(all_waves)
         else:
-            waveforms = np.zeros((n_spikes, n_channels_rec, _n_samples_extract), dtype=np.float32)
+            waveforms = np.zeros((n_spikes, n_channels_rec, _n_samples_extract), dtype=np.float16)
             for i, slc in enumerate(slices):
                 # Extract from memorymapped traces
-                extract = traces[slc].astype(np.float32)
+                extract = traces[slc].astype(np.float16)
                 # Center channels individually
                 extract = extract-np.median(extract, axis=0)
                 # Pad the extracted chunk if at recording limit.
@@ -189,7 +189,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
         waveforms_t = spike_samples[spike_ids_subset].astype(int)
         assert np.all(0 <= waveforms_t)&np.all(waveforms_t < traces.shape[0]), "Invalid time!"
         waveforms_tspans=(waveforms_t+np.arange(-n_samples_before_after[0]-pad[0], n_samples_before_after[1]+pad[1])[:,np.newaxis]).T.ravel()
-        stitched_waveforms=traces[waveforms_tspans,:].astype(np.float32).T
+        stitched_waveforms=traces[waveforms_tspans,:].astype(np.float16).T
         # Center median subtract in time before preprocessing to center waveforms on channels
         waveforms=stitched_waveforms.reshape((n_channels_rec, n_spikes, _n_samples_extract))
         waveforms=waveforms-np.median(waveforms, axis=2)[:,:,np.newaxis] # median has shape n_channels_rec x n_spikes, 1 per channel per waveform!
@@ -218,7 +218,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     # Correct voltage scaling
     waveforms*=read_spikeglx_meta(dp, 'ap')['scale_factor']
         
-    return  waveforms
+    return  waveforms.astype(np.float16)
 
 def get_w(traces, slc, _n_samples_extract):
     # Get slice

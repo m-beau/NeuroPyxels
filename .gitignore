@@ -3,4 +3,7 @@ __pycache__/
 *~
 *swo
 *swp
+.*.sw*
+*~
+__*
 npyx.egg-info/

@@ -4,6 +4,7 @@ npyx/__init__.py
 npyx/behav.py
 npyx/circuitProphyler.py
 npyx/corr.py
+npyx/feat.py
 npyx/gl.py
 npyx/io.py
 npyx/ml.py

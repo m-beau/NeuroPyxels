@@ -1010,9 +1010,9 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
     - fs: float in Hz, t1 and trains sampling frequency
     - t_end: int in samples, end of recording of t1 and trains, in samples
     - sync_win: float in ms, synchrony window to define synchrony
-    - b: int in ms, binsize defining the binning of timestamps to define 'broad firing periods' (see npyx.firing_periods)
-    - sd: int in ms, gaussian window sd to convolve the binned timestamps defining 'broad firing periods' (see npyx.firing_periods)
- float [0-1], threshold defining the fraction of mean firing rate reached in the 'broad firing periods' (see npyx.firing_periods)
+    - b: int in ms, binsize defining the binning of timestamps to define 'broad firing periods' (see npyx.spk_t.firing_periods)
+    - sd: int in ms, gaussian window sd to convolve the binned timestamps defining 'broad firing periods' (see npyx.spk_t.firing_periods)
+    - th: float [0-1], threshold defining the fraction of mean firing rate reached in the 'broad firing periods' (see npyx.spk_t.firing_periods)
     - again: bool, whether to recompute the firing periods of units in U (trains)
     - dp: string, datapath to dataset with units corresponding to trains - optional, to ensure fast loading of firing_periods
     - U: list, units matching trains (NOT t1)!

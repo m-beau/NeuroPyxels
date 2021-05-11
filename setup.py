@@ -4,11 +4,11 @@ from setuptools import setup, find_packages
 with open("README.md", "r") as readme_file:
     readme = readme_file.read()
 
-requirements=['ipython', 'spyder', 'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
-      'six', 'elephant', 'vispy', 'statsmodels', 'progressbar2',
-      'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils',
+requirements=['ipython', 'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
+      'six', 'vispy', 'statsmodels', 'progressbar2',
+      'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils', 'python_utils',
       'h5py', 'holoviews', 'hvplot', 'numba',
-      'tk', 'urllib3', 'certifi', 'idna', 'tensorflow']
+      'tk', 'urllib3', 'certifi', 'idna', 'elephant', 'neo']
 
 setup(name='npyx',
       version='1.45',

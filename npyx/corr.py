@@ -252,8 +252,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         if prnt: print("File {} not found in routines memory.".format(fn))
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, subset_selection=subset_selection, prnt=prnt, trains=trains)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
-#        breakpoint()
-        if not any(crosscorrelograms.ravel()!=0): # no spikes were found in this period
+        if crosscorrelograms.shape[0]<len(U): # no spikes were found in this period
+            # Maybe if not any(crosscorrelograms.ravel()!=0):
             crosscorrelograms=np.zeros((len(U), len(U), crosscorrelograms.shape[2]))
         if normalize in ['Hertz', 'Pearson', 'zscore']:
             for i1,u1 in enumerate(sortedU):

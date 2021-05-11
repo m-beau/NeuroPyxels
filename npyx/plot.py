@@ -26,7 +26,7 @@ import hvplot.pandas
 
 import seaborn as sns
 
-from npyx.utils import phyColorsDic, DistinctColors20, npa, zscore, isnumeric
+from npyx.utils import phyColorsDic, DistinctColors20, npa, zscore, isnumeric, assert_iterable
 from npyx.stats import fractile_normal, fractile_poisson
 
 from npyx.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
@@ -231,6 +231,39 @@ def mplp(fig=None, ax=None, figsize=None,
 
     return fig, ax
 
+def mpl_hex(color):
+    'converts a matplotlib string name to its hex representation.'
+    mpl_colors=matplotlib.colors.CSS4_COLORS
+    message='color should be a litteral string recognized by matplotlib.'
+    assert isinstance(color, str), message
+    basecolors={'b': 'blue', 'g': 'green', 'r': 'red', 'c': 'cyan', 'm': 'magenta', 'y': 'yellow', 'k': 'black', 'w': 'white'}
+    if color in basecolors.keys(): color=basecolors[color]
+    assert color in mpl_colors.keys(), message
+    return mpl_colors[color]
+
+def hex_rgb(color):
+    'converts a hex color to its rgb representation.'
+    message='color must be a hex string starting with #.'
+    assert color[0]=='#', message
+    return tuple(int(color[1:][i:i+2], 16)/255 for i in (0, 2, 4))
+
+def to_rgb(color):
+    'converts a matplotlib string name to its hex representation.'''''''
+    message='color must either be a litteral matplotlib string name or a hex string starting with #.'
+    assert isinstance(color, str), message
+    mpl_colors=list(matplotlib.colors.CSS4_COLORS.keys())+list(matplotlib.colors.BASE_COLORS.keys())
+    if color in mpl_colors: color=mpl_hex(color)
+    assert color[0]=='#', message
+    return hex_rgb(color)
+
+def rgb_hex(color):
+    'converts a (r,g,b) color (either 0-1 or 0-255) to its hex representation.'
+    message='color must be an iterable of length 3.'
+    assert assert_iterable(color), message
+    assert len(color)==3, message
+    if not all([0<=c<=1 for c in color]): color=[c/255 for c in color] # in case provided rgb is 0-255
+    color=tuple(color)
+    return '#%02x%02x%02x' % color
 
 def format_colors(colors):
     '''
@@ -340,7 +373,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         - std: boolean, whether or not to plot the underlying standard deviation area | default True
         - mean: boolean, whether or not to plot the mean waveform | default True
         - template: boolean, whether or not to plot the waveform template | default True
-        - color: (r,g,b) tuple or [0 to 1] floats, color of the mean waveform | default black
+        - color: (r,g,b) tuple, hex or matplotlib litteral string, color of the mean waveform | default black
         - sample_lines: 'all' or int, whether to plot all or sample_lines individual samples in the background. Set to 0 to plot nothing.
         - labels: boolean, whether to plot or not the axis, axis labels, title...
                   If False, only waveforms are plotted along with a scale bar. | Default False
@@ -364,7 +397,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     pv=None if ignore_ks_chanfilt else 'local'
     cm=chan_map(dp, y_orig='tip', probe_version=pv)
     
-    peak_chan=get_peak_chan(dp, u)
+    peak_chan=get_peak_chan(dp, u, use_template=False)
     peak_chan_i = int(np.argmin(np.abs(cm[:,0]-peak_chan)));
     t_waveforms_s=int(t_waveforms*(fs/1000))
     
@@ -402,10 +435,12 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     if type(sample_lines) is str:
         assert sample_lines=='all'
         sample_lines=min(waveforms.shape[0],n_waveforms)
-    elif type(sample_lines) is float or type(sample_lines) is int:
+    elif type(sample_lines) in [int, float]:
         sample_lines=min(waveforms.shape[0],sample_lines, n_waveforms)
     
     title = 'waveforms of {}'.format(u) if title=='' else title
+    if isinstance(color, str):
+        color=to_rgb(color)
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
     ylim1, ylim2 = (np.nanmin(datam-datastd)-50, np.nanmax(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
     x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot t datapoints between 0 and t/30 ms
@@ -504,7 +539,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
              offset=450, color='multi', lw=1,
              title=None, _format='pdf',  saveDir='~/Downloads', saveData=0, saveFig=0, figsize=(20,8),
              whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
-             plot_ylabels=True, show_allyticks=0, yticks_jump=50,
+             plot_ylabels=True, show_allyticks=0, yticks_jump=50, plot_baselines=False,
              events=[], set0atEvent=1,
              ax=None, ext_data=None, ext_datachans=np.arange(384),
              as_heatmap=False, vmin=-50,vmax=50,center=0):
@@ -540,7 +575,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     pyqtgraph=0
     meta=read_spikeglx_meta(dp, subtype)
     fs = int(meta['sRateHz'])
-    assert type(events) is list
+    assert assert_iterable(events)
     # Get data
     if ext_data is None:
         channels=assert_chan_in_dataset(dp, channels)
@@ -588,8 +623,9 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
         t=t+window[0]
         events=[0]
     if not pyqtgraph:
-        if color=='multi':
-            color=None
+        if isinstance(color, str):
+            if color=='multi':color=None
+            else:color=to_rgb(color)
         if as_heatmap:
             xticklabels = get_bestticks_from_array(t, step=None)
             xticks=xticklabels*fs/1000
@@ -607,9 +643,10 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
             fig, ax = plt.subplots(figsize=figsize)
             t=np.tile(t, (rc.shape[0], 1))
             rc+=plt_offsets[:,np.newaxis]
-            for i in np.arange(rc.shape[0]):
-                y=i*offset
-                ax.plot([t[0,0], t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
+            if plot_baselines:
+                for i in np.arange(rc.shape[0]):
+                    y=i*offset
+                    ax.plot([t[0,0], t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
             ax.plot(t.T, rc.T, linewidth=lw, color=color)
             ax.set_yticks(y_ticks)
             ax.set_yticklabels(y_ticks_labels) if plot_ylabels else ax.set_yticklabels([])
@@ -728,19 +765,22 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
              plot_ylabels=True, ax=None, title=title, lw=lw)
 
     if not pyqtgraph: ax=fig.get_axes()[0]
-    assert type(units) is list
+    assert assert_iterable(units)
     assert len(units)>=1
     fs=read_spikeglx_meta(dp, 'ap')['sRateHz']
     spk_w1 = spk_window // 2
     spk_w2 = spk_window - spk_w1
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
 
-    if colors=='phy':
+    if isinstance(colors, str):
+        assert colors=='phy', 'You can only use phy as colors palette keyword.'
         phy_c=list(phyColorsDic.values())[:-1]
         colors=[phy_c[ci%len(phy_c)] for ci in range(len(units))]
     else:
-        assert type(colors) is str
+        colors=list(colors)
         assert len(colors)==len(units), 'The length of the list of colors should be the same as the list of units!!'
+        for ic, c in enumerate(colors):
+            if isinstance(c, str): colors[ic]=to_rgb(c)
 
     tx=np.tile(np.arange(rc.shape[1]), (rc.shape[0], 1))[0] # in samples
     tx_ms=np.tile(np.arange(rc.shape[1])*1000./fs, (rc.shape[0], 1)) # in ms
@@ -752,7 +792,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
     if pyqtgraph:fig[1].disableAutoRange()
     for iu, u in enumerate(units):
         print('plotting unit {}...'.format(u))
-        peakChan=get_peak_chan(dp,u)
+        peakChan=get_peak_chan(dp,u, use_template=False)
         assert peakChan in channels, "WARNING the peak channel of {}, {}, is not in the set of channels plotted here!".format(u, peakChan)
         peakChan_rel=np.nonzero(peakChan==channels)[0][0]
         ch1, ch2 = max(0,peakChan_rel-Nchan_plot//2), min(rc.shape[0], peakChan_rel-Nchan_plot//2+Nchan_plot)
@@ -762,20 +802,19 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
         for t_spki, t_spk in enumerate(twin):
             print('plotting spike {}/{}...'.format(t_spki, len(twin)))
             spk_id=(tx>=t_spk-spk_w1)&(tx<=t_spk+spk_w2)
-            color=colors[iu]
             if pyqtgraph:
                 win,p = fig
                 for line in np.arange(ch1, ch2, 1):
-                    p.plot(tx_ms[line, spk_id].T, rc[line, spk_id].T, linewidth=1, pen=tuple(npa(color)*255))
+                    p.plot(tx_ms[line, spk_id].T, rc[line, spk_id].T, linewidth=1, pen=tuple(npa(colors[iu])*255))
                 fig = win,p
             else:
-                ax.plot(tx_ms[ch1:ch2, spk_id].T, rc[ch1:ch2, spk_id].T, lw=lw+0.1, color=color)
+                ax.plot(tx_ms[ch1:ch2, spk_id].T, rc[ch1:ch2, spk_id].T, lw=lw+0.1, color=colors[iu])
                 #ax.plot(tx_ms[peakChan_rel, spk_id].T, rc[peakChan_rel, spk_id].T, lw=1.5, color=color)
                 fig.tight_layout()
 
     if saveFig and not pyqtgraph:
         saveDir=op.expanduser(saveDir)
-        rcn = '{}_{}_t{}-{}_ch{}-{}'.format(op.basename(dp), units, times[0], times[1], channels[0], channels[-1]) # raw chunk name
+        rcn = '{}_{}_t{}-{}_ch{}-{}'.format(op.basename(dp), list(units), times[0], times[1], channels[0], channels[-1]) # raw chunk name
         rcn=rcn+'_whitened' if whiten else rcn+'_raw'
         if title is not None: rcn=title
         fig.savefig(Path(saveDir, '{}.{}'.format(rcn, _format)), format=_format)
@@ -1279,7 +1318,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     global phyColorsDic
 
     cbin = np.clip(cbin, 1000*1./fs, 1e8)
-    if type(color)==int: # else, an actual color is passed
+    if isinstance(color, int): # else, an actual color is passed
         color=phyColorsDic[color]
     fig, ax = plt.subplots(figsize=(10,8))
     x=np.linspace(-cwin*1./2, cwin*1./2, CCG.shape[0])
@@ -1334,7 +1373,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
             ax.set_ylabel("Crosscorrelation (z-score)", size=20)
         ax.set_xlabel('Time (ms)', size=20)
         ax.set_xlim([-cwin*1./2, cwin*1./2])
-        if type(title)!=str:
+        if not isinstance(title, str):
             if bChs is None:
                 title="Units {}->{} ({})s".format(uls[0], uls[1], str(subset_selection)[0:50].replace(' ',  ''))
             else:
@@ -1367,7 +1406,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     '''
     global phyColorsDic
     cbin = np.clip(cbin, 1000*1./fs, 1e8)
-    if type(color)==int: # else, an actual color is passed
+    if isinstance(color, int): # else, an actual color is passed
         color=phyColorsDic[color]
     fig, ax = plt.subplots(figsize=(10,8))
     x=np.linspace(-cwin*1./2, cwin*1./2, ACG.shape[0])
@@ -1398,7 +1437,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
         y=ACG.copy()
     elif normalize=='zscore':
         y=ACG.copy()+abs(ylim1)
-    ax.fill_between(x, y*0, y, color=color)
+    ax.fill_between(x, y*0, y, color=color, step='mid')
     ax.step(x, y, where='mid', color='black', lw=1)
 
     if labels:
@@ -1412,7 +1451,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
             ax.set_ylabel("Autocorrelation (z-score)", size=20)
         ax.set_xlabel('Time (ms)', size=20)
         ax.set_xlim([-cwin*1./2, cwin*1./2])
-        if type(title)!=str:
+        if not isinstance(title, str):
             if  bChs is None:
                 title="Unit {} ({})s".format(unit, str(subset_selection)[0:50].replace(' ',  ''))
             else:
@@ -1508,7 +1547,6 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=[unit])[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
-
     ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, subset_selection=subset_selection, again=again)
     breakpoint()
     if normalize=='zscore':
@@ -1524,7 +1562,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloads', saveFig=False, prnt=False, show=True,
              _format='pdf', subset_selection='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False,
              ylim=[0,0], ccg_mn=None, ccg_std=None, again=False, trains=None, ccg_grid=False, use_template=True):
-    assert type(units) in [list, np.ndarray]
+    assert assert_iterable(units)
     units=list(units)
     _, _idx=np.unique(units, return_index=True)
     units=npa(units)[np.sort(_idx)].tolist()

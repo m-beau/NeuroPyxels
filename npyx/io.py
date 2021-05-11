@@ -25,8 +25,10 @@ from npyx.utils import npa
 #%% IO utilities
 
 def list_files(directory, extension):
-    return [f for f in os.listdir(directory) if f.endswith('.' + extension)]
-
+    files = [f for f in os.listdir(directory) if f.endswith('.' + extension)]
+    files.sort()
+    return files
+    
 #%% Extract metadata and sync channel
 
 def read_spikeglx_meta(dp, subtype='ap'):

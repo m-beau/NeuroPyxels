@@ -6,9 +6,9 @@ with open("README.md", "r") as readme_file:
 
 requirements=['ipython', 'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'six', 'vispy', 'statsmodels', 'progressbar2',
-      'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils',
+      'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils', 'python_utils',
       'h5py', 'holoviews', 'hvplot', 'numba',
-      'tk', 'urllib3', 'certifi', 'idna', 'elephant']
+      'tk', 'urllib3', 'certifi', 'idna', 'elephant', 'neo']
 
 setup(name='npyx',
       version='1.45',

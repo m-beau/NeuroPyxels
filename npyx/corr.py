@@ -25,7 +25,8 @@ from scipy.interpolate import interp1d
 import progressbar as pgb
 
 from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
-                    _as_array, _unique, _index_of, any_n_consec, assert_int, smooth
+                    _as_array, _unique, _index_of, any_n_consec, \
+                    assert_int, assert_float, assert_iterable, smooth
 
 from npyx.io import read_spikeglx_meta
 from npyx.gl import get_units, get_source_dp_u, get_rec_len, assert_same_dataset, assert_multi
@@ -335,19 +336,18 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz', m
     """
 
     spike_clusters= np.load(Path(dp, 'spike_clusters.npy'))
-    # check if units are a list
-    if isinstance(units, (int, np.int16, np.int32, np.int64)):
-        # check if it's len 1
+    # Ensure units are an iterable of floats/ints
+    if assert_int(units) or assert_float(units):
         units = [units]
     elif isinstance(units, str):
         if units.strip() == 'all':
             units = get_units(dp, quality = 'good')
         else:
             raise ValueError("You can only pass 'all' as a string")
-    elif isinstance(units, list):
-        pass
+    elif assert_iterable(units):
+        pass # all good
     else:
-            raise TypeError("Only the string 'all', ints, list of ints or ints disguised as floats allowed")
+        raise TypeError("Only the string 'all', ints, list of ints or ints disguised as floats allowed")
 
     return_acgs = []
     return_isi_mode = []
@@ -356,15 +356,12 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz', m
     return_cut_acg_unnormed = []
 
     for unit in units:
-#        print(unit)
         if len(spike_clusters[spike_clusters == unit]) > 1_000:
             # train quality throws two warnings, ignore these
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-
                 # get the spikes that passed our quality metric
                 good_times_list = train_quality(dp, unit, first_n_minutes = 20, consecutive_n_seconds = consecutive_n_seconds, acg_window_len=acg_window_len, acg_chunk_size = acg_chunk_size, gauss_window_len = gauss_window_len, gauss_chunk_size = gauss_chunk_size, use_or_operator = use_or_operator)
-
 
             if len(good_times_list) >1 :
 
@@ -378,8 +375,8 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz', m
                     unit_isi= isi(dp, unit, subset_selection = good_sections, again = again)/30
                     # get the mfr of the section that pass our criteria
                     mean_fr = mfr(dp, unit, subset_selection = good_sections)
-                    # pass the outputs of the unit ISI to get a histogram with given binsize
-                    isi_hist_counts, isi_hist_range = np.histogram(unit_isi, bins = np.arange(0,100,bs))
+                    # pass the outputs of the unit ISI (in ms) to get a histogram with given binsize
+                    isi_hist_counts, isi_hist_range = np.histogram(unit_isi, bins = np.arange(0,100,bs)) # ms
                     #get the mode of the ISI values that are larges than 3ms
                     # first smooth the ISI, convolving it with a gaussian
                     isi_hist_counts = smooth(isi_hist_counts, sd=1)

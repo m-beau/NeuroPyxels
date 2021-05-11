@@ -98,6 +98,9 @@ def assert_int(x):
     return type(x) in [int, np.int, np.int8, np.int16, np.uint8,
                        np.uint16, np.int32, np.int64, np.uint32, np.uint64]
 
+def assert_iterable(x):
+    return hasattr(x, '__iter__')
+
 def npa(arr=[], **kwargs):
     '''Returns np.array of some kind.
     Optional params:

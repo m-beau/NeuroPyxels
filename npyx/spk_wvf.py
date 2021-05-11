@@ -19,7 +19,6 @@ import numpy as np
 from math import ceil
 
 from npyx.utils import _as_array, npa, split, n_largest_samples
-from npyx.spk_t import ids
 from npyx.gl import get_units, assert_multi, get_ds_ids, get_source_dp_u
 from npyx.io import ConcatenatedArrays, _pad, _range_from_slice, read_spikeglx_meta, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 
@@ -33,7 +32,7 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, subset_selection='regular',
     routine from rtn.npyx.spk_wvf
     Extracts a sample of waveforms from the raw data file.
     ********
-    
+
     Parameters:
         - dp:                 str or PosixPath, path to kilosorted dataset.
         - u:                  int, unit index.
@@ -239,7 +238,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                   save=True, prnt=False, again=False,
                   whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
                   nRangeWhiten=None, nRangeMedSub=None,
-                  use_old=False, loop=True, parallel=False,
+                  use_old=False, parallel=False,
                   memorysafe=False, fast = False ):
     
     
@@ -318,7 +317,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
     # if not os.path.isdir(dprm): os.makedirs(dprm)
     if Path(dprm,fn).is_file() and (not again) and (spike_ids is None):
         if prnt: print(f"File {fn} found in routines memory.")
-        return np.load(Path(dprm,fn)),np.load(Path(dprm,fn_all)),np.load(Path(dprm,fn_spike_id))
+        return np.load(Path(dprm,fn)),np.load(Path(dprm,fn_all)),np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
     
     # Load the spike clusters file 
     spike_clusters= np.load(Path(dp, 'spike_clusters.npy')).flatten()
@@ -348,7 +347,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                                 save=save , prnt = prnt,  again=True, whiten = whiten, 
                                 hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
                                 nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-                                use_old=use_old, loop=loop, parallel=parallel, 
+                                use_old=use_old, loop=False, parallel=parallel, 
                                 memorysafe=memorysafe)
         raw_waves = raw_waves.reshape(peak_chan_split.shape[0], 10, 82, -1) 
         mean_times = np.mean(raw_waves, axis = 1)
@@ -366,7 +365,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                                 save=save , prnt = prnt,  again=True, whiten = whiten, 
                                 hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
                                 nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-                                use_old=use_old, loop=loop, parallel=parallel, 
+                                use_old=use_old, loop=True, parallel=parallel, 
                                 memorysafe=memorysafe)    
             
             mean_times = np.mean(raw_waves, axis = 0)
@@ -423,7 +422,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                         save=save, prnt = prnt,  again=True, whiten = whiten, 
                         hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
                         nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-                        use_old=use_old, loop=loop, parallel=parallel, 
+                        use_old=use_old, loop=False, parallel=parallel, 
                         memorysafe=memorysafe)
         raw_waves = raw_waves.reshape(median_max_spike_ids.shape[0],10, 82, no_chans )
         closest_waves_median_max = np.mean(raw_waves, axis = 1)[:,:,median_common_chan]
@@ -436,7 +435,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                         save=save, prnt = prnt,  again=True, whiten = whiten, 
                         hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
                         nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-                        use_old=use_old, loop=loop, parallel=parallel, 
+                        use_old=use_old, loop=True, parallel=parallel, 
                         memorysafe=memorysafe)
 
             closest_waves_median_max[slice_id] = np.mean(raw_waves, axis = 0)[:,median_common_chan]
@@ -1112,3 +1111,4 @@ def _slice(index, n_samples, margin=None):
     before = int(before)
     after = int(after)
     return slice(max(0, index - before), index + after, None)
+from npyx.spk_t import ids

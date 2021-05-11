@@ -32,8 +32,8 @@ from npyx.stats import fractile_normal, fractile_poisson
 from npyx.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
 from npyx.gl import get_units, assert_multi, get_ds_ids
 from npyx.spk_wvf import get_depthSort_peakChans, wvf, get_peak_chan, templates
-from npyx.spk_t import trn
-from npyx.corr import acg, ccg, gen_sfc, get_ccg_sig, get_cm
+from npyx.spk_t import trn, train_quality
+from npyx.corr import acg, ccg, gen_sfc, get_ccg_sig, get_cm, scaled_acg
 from npyx.behav import align_times, get_processed_ifr, get_events, get_processed_popsync
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -1542,7 +1542,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, Title=None, save
 
     return fig
 
-def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='mixte', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True,
+def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True,
              _format='pdf', subset_selection='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0], acg_mn=None, acg_std=None, again=False):
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=[unit])[:,1].flatten()
@@ -1591,6 +1591,53 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
     return fig
 
 #%% Heatmaps including correlation matrices
+
+def plot_scaled_acg( dp, units, cut_at = 150, bs = 0.5, min_sec = 180, again = False):
+    """
+    Make the plot used for showing different ACG shapes
+    Return: plot
+    """
+    # check if units are a list
+    if isinstance(units, (int, np.int16, np.int32, np.int64)):
+        # check if it's len 1
+        units = [units]
+    elif isinstance(units, str):
+        if units.strip() == 'all':
+            units = get_units(dp, quality = 'good')
+        else:
+            raise ValueError("You can only pass 'all' as a string")
+    elif isinstance(units, list):
+        pass
+    else:
+            raise TypeError("Only the string 'all', ints, list of ints or ints disguised as floats allowed")
+
+    rec_name = str(dp).split('/')[-1]
+
+    normed_new, isi_mode, isi_hist_counts, isi_hist_range, acg_unnormed  = scaled_acg(dp, units, cut_at = cut_at, bs = bs, min_sec = min_sec, again = again)
+
+    # find the units where the normed_new values pass our filter
+    good_ones = np.sum(normed_new, axis = 1) !=0
+    good_acgs = normed_new[good_ones]
+    good_units = np.array(units)[good_ones]
+    good_isi_mode = isi_mode[good_ones]
+    good_isi_hist_counts = isi_hist_counts[good_ones]
+    good_isi_hist_range = isi_hist_range[good_ones]
+    good_acg_unnormed = acg_unnormed[good_ones]
+
+    for unit_id in range(good_units.shape[0]):
+        unit = good_units[unit_id]
+        fig,ax = plt.subplots(3)
+        fig.suptitle(f"Unit {unit} on dp \n {rec_name} \n and mfr mean_fr and isi_hist_mode isi_hist_mode len acg.shape[0]")
+        ax[0].vlines(good_isi_mode[unit_id], 0, np.nanmax(good_isi_hist_counts[unit_id]), color = 'red')
+        ax[0].bar(good_isi_hist_range[unit_id],good_isi_hist_counts[unit_id])
+        ax[1].vlines(good_isi_mode[unit_id], 0,np.nanmax(good_acg_unnormed[unit_id]), color = 'red')
+        ax[1].plot(np.arange(0, good_acg_unnormed[unit_id].shape[0]*bs, bs),good_acg_unnormed[unit_id])
+#                    ax[2].plot(smooth_new)
+        ax[2].plot(good_acgs[unit_id])
+#                    ax[2].plot(unit_normed)
+        ax[2].vlines(100, 0,np.max(good_acgs[unit_id]), color = 'red')
+        fig.tight_layout()
+
 
 def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_color='k', events_lw=2,
                 xvalues=None, yvalues=None, xticks=None, yticks=None,
@@ -2188,6 +2235,66 @@ def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Downl
     os.chdir(oldDir)
 
 
+def plot_filtered_times(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False):
+    unit_size_s = first_n_minutes * 60
+
+    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes, consecutive_n_seconds, acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size, use_or_operator)
+
+    good_sec = []
+    for i in goodsec:
+        good_sec.append(list(range(i[0], i[1]+1)))
+    good_sec = np.hstack((good_sec))
+
+    acg_sec = []
+    for i in acgsec:
+        acg_sec.append(list(range(i[0], i[1]+1)))
+    acg_sec = np.hstack((acg_sec))
+
+    gauss_sec = []
+    for i in gausssec:
+        gauss_sec.append(list(range(i[0], i[1]+1)))
+    gauss_sec = np.hstack((gauss_sec))
+
+    # Parameters
+    fs = 30000
+    amples_fr = unit_size_s * fs
+
+    samples_fr = unit_size_s * fs
+    spike_clusters = np.load(dp/'spike_clusters.npy')
+    amplitudes_sample = np.load(dp/'amplitudes.npy')  # shape N_tot_spikes x 1
+    spike_times = np.load(dp/'spike_times.npy')  # in samples
+
+    amplitudes_unit = amplitudes_sample[spike_clusters == unit]
+    spike_times_unit = spike_times[spike_clusters == unit]
+    unit_mask_20 = (spike_times_unit <= samples_fr)
+    spike_times_unit_20 = spike_times_unit[unit_mask_20]
+    amplitudes_unit_20 = amplitudes_unit[unit_mask_20]
+
+
+    plt.figure()
+    plt.plot(spike_times_unit_20/fs, amplitudes_unit_20, '.', alpha = 0.5)
+    plt.text(0, 3,'Gaussian FN', fontsize = 5, color = 'blue')
+    plt.text(0, 1,'FP + FN', fontsize = 5, color = 'green')
+    plt.text(0, -3,'ACG FP', fontsize = 5, color = 'red')
+    plt.title(f"Amplitudes in first 20 min for {unit}")
+
+    for i in good_sec:
+        s_time, e_time = i ,(i+1)
+        plt.hlines(0, s_time, e_time, color = 'green')
+#     # find the longest consecutive section
+# # check if this is longer than 3 minutes, 18 sections
+#
+#     breakpoint()
+    for i in acg_sec:
+        s_time, e_time = i ,(i+1)
+        plt.hlines(-2, s_time, e_time, color = 'red')
+#
+    for i in gauss_sec:
+        s_time, e_time = i ,(i+1)
+        plt.hlines(2, s_time, e_time, color = 'blue')
+    plt.show()
+#     breakpoint()
+
 #%% How to plot 2D things with pyqtplot
 
 
@@ -2275,3 +2382,5 @@ def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Downl
 # lr.sigRegionChanged.connect(updatePlot)
 # p9.sigXRangeChanged.connect(updateRegion)
 # updatePlot()
+#from npyx.spk_t import trn
+#from npyx.corr import acg, ccg, gen_sfc, get_ccg_sig, get_cm

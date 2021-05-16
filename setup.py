@@ -11,7 +11,7 @@ requirements=['ipython', 'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'tk', 'urllib3', 'certifi', 'idna', 'elephant', 'neo']
 
 setup(name='npyx',
-      version='1.45',
+      version='1.51',
       author='Maxime Beau',
       author_email='maximebeaujeanroch047@gmail.com',
       description='Python routines dealing with Neuropixels data.',

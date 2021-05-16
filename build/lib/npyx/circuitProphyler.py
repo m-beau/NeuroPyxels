@@ -195,10 +195,8 @@ class Prophyler:
                 spike_clusters.append(np.load(Path(ds.dp, 'spike_clusters.npy')).flatten())
                 if len(self.ds_table.index)>1: # sync signals only needed if alignment necessary
                     ons, offs = get_npix_sync(ds.dp, output_binary = False, sourcefile='ap', unit='samples')
-                    if ds.probe_version == '3A':
-                        ds.sync_chan_ons=ons[sync_idx3A]
-                    elif ds.probe_version in ['1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']:
-                        ds.sync_chan_ons=ons[6]
+                    syncchan=ask_syncchan(ons)
+                    ds.sync_chan_ons=ons[syncchan]
                     sync_signals.append(ds.sync_chan_ons)
             NspikesTotal=0
             for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
@@ -1086,6 +1084,26 @@ def map_sfc_on_graph(g, dp, cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, sgn=
                    n_triplets=f[4], n_bincrossing=f[5], bin_heights=f[6], entropy=f[7],
                    criteria=criteria)
     return g
+
+def ask_syncchan(ons):
+    chan_len=''.join([f'chan {k} ({len(v)} events).\n' for k,v in ons.items()])
+    syncchan=None
+    while (syncchan is None):
+        syncchan=input(f'Data found on sync channels:\n{chan_len}Which channel shall be used to synchronize probes? >>> ')
+        try:
+            syncchan=int(syncchan)
+            if syncchan not in ons.keys():
+                print(f'!! You need to feed an integer amongst {list(ons.keys())}!')
+                syncchan=None
+        except:
+            print('!! You need to feed an integer!')
+            syncchan=None
+        if syncchan is not None:
+            if not any(ons[syncchan]):
+                print('!! This sync channel does not have any events! Pick another one!')
+                syncchan=None
+    return syncchan
+
 
 class Dataset:
     

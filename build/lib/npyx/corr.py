@@ -21,15 +21,17 @@ num_cores = multiprocessing.cpu_count()
 import numpy as np
 import pandas as pd
 
+from scipy.interpolate import interp1d
 import progressbar as pgb
 
 from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
-                    _as_array, _unique, _index_of, any_n_consec, assert_int
+                    _as_array, _unique, _index_of, any_n_consec, \
+                    assert_int, assert_float, assert_iterable, smooth
 
 from npyx.io import read_spikeglx_meta
 from npyx.gl import get_units, get_source_dp_u, get_rec_len, assert_same_dataset, assert_multi
-from npyx.spk_t import trn, trnb, binarize, firing_periods, get_firing_periods
-from npyx.spk_wvf import get_depthSort_peakChans
+from npyx.spk_t import trn, trnb, binarize, firing_periods,\
+                        get_firing_periods, isi, mfr, train_quality
 
 import scipy.signal as sgnl
 from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
@@ -240,7 +242,6 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     dprm = Path(dp,'routinesMemory')
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
-
     fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(subset_selection)[0:50].replace(' ', ''))
     if os.path.exists(Path(dprm,fn)) and not again and trains is None:
         if prnt: print("File {} found in routines memory.".format(fn))
@@ -251,12 +252,15 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
         if prnt: print("File {} not found in routines memory.".format(fn))
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, subset_selection=subset_selection, prnt=prnt, trains=trains)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
+        if crosscorrelograms.shape[0]<len(U): # no spikes were found in this period
+            # Maybe if not any(crosscorrelograms.ravel()!=0):
+            crosscorrelograms=np.zeros((len(U), len(U), crosscorrelograms.shape[2]))
         if normalize in ['Hertz', 'Pearson', 'zscore']:
             for i1,u1 in enumerate(sortedU):
-                Nspikes1=len(trn(dp, u1, prnt=False))
+                Nspikes1=len(trn(dp, u1, prnt=False, subset_selection=subset_selection))
                 #imfr1=np.mean(1000./isi(dp, u1)[isi(dp, u1)>0])
                 for i2,u2 in enumerate(sortedU):
-                    Nspikes2=len(trn(dp, u2, prnt=False))
+                    Nspikes2=len(trn(dp, u2, prnt=False, subset_selection=subset_selection))
                     #imfr2=np.mean(1000./isi(dp, u2)[isi(dp, u2)>0])
                     arr=crosscorrelograms[i1,i2,:]
                     if normalize == 'Hertz':
@@ -320,7 +324,133 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
     return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, prnt, subset_selection, again)[0,0,:]
 
-def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all_to_all=False, name=None, sav=True, again=False):
+def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz', min_sec = 180, again = False, first_n_minutes = 20, consecutive_n_seconds = 180, acg_window_len = 3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False):
+    """
+    - get the spike times passing our quality metric from the first 20 mins
+    - get the argmax of the quality ISI
+    - find the corresponding acg
+    - shift the ACG in x-axis so the peak is aligned at the 100th value of the vector
+    - scale the ACG with the the mfr for the quality period
+    - return scaled ACG
+    - depending whether it is a single unit or a list of units return a matrix
+    """
+
+    spike_clusters= np.load(Path(dp, 'spike_clusters.npy'))
+    # Ensure units are an iterable of floats/ints
+    if assert_int(units) or assert_float(units):
+        units = [units]
+    elif isinstance(units, str):
+        if units.strip() == 'all':
+            units = get_units(dp, quality = 'good')
+        else:
+            raise ValueError("You can only pass 'all' as a string")
+    elif assert_iterable(units):
+        pass # all good
+    else:
+        raise TypeError("Only the string 'all', ints, list of ints or ints disguised as floats allowed")
+
+    return_acgs = []
+    return_isi_mode = []
+    return_isi_hist_counts = []
+    return_isi_hist_range_clipped = []
+    return_cut_acg_unnormed = []
+
+    for unit in units:
+        if len(spike_clusters[spike_clusters == unit]) > 1_000:
+            # train quality throws two warnings, ignore these
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                # get the spikes that passed our quality metric
+                good_times_list = train_quality(dp, unit, first_n_minutes = 20, consecutive_n_seconds = consecutive_n_seconds, acg_window_len=acg_window_len, acg_chunk_size = acg_chunk_size, gauss_window_len = gauss_window_len, gauss_chunk_size = gauss_chunk_size, use_or_operator = use_or_operator)
+
+            if len(good_times_list) >1 :
+
+                # make a tuple to be passed as the good_sections parameter
+                good_sections = [tuple(x) for x in good_times_list[0]]
+
+                # arbitrary filter, need at least 180 good seconds to continue
+                all_time = np.sum(np.ptp(good_sections, axis = 1))
+                if all_time >min_sec:
+
+                    unit_isi= isi(dp, unit, subset_selection = good_sections, again = again)/30
+                    # get the mfr of the section that pass our criteria
+                    mean_fr = mfr(dp, unit, subset_selection = good_sections)
+                    # pass the outputs of the unit ISI (in ms) to get a histogram with given binsize
+                    isi_hist_counts, isi_hist_range = np.histogram(unit_isi, bins = np.arange(0,100,bs)) # ms
+                    #get the mode of the ISI values that are larges than 3ms
+                    # first smooth the ISI, convolving it with a gaussian
+                    isi_hist_counts = smooth(isi_hist_counts, sd=1)
+                    # next the ISI and the ACG need to be made of the same shape, ISI is longer by one
+                    isi_hist_range_clipped = isi_hist_range[:-1]
+                    isi_mode = isi_hist_range_clipped[np.argmax(isi_hist_counts)]
+                    # get the ACG for the unit 
+                    unit_acg = acg(dp, unit, bin_size= bs, win_size = isi_mode * 20, fs = fs, normalize = normalize,  subset_selection = good_sections, prnt = False, again = again)
+
+                    # rewrite ISI mode so it is divided by bin size
+                    isi_mode_bin = isi_mode / bs
+                    half_len = unit_acg.shape[0]//2
+
+                    # divide by MFR to normalise shape of ACG 
+                    cut_acg_unnormed = unit_acg[half_len:]
+                    cut_acg = cut_acg_unnormed/mean_fr
+
+                    # upsample the ACG so that the peak is at 100
+                    interp_fn = interp1d(np.linspace(0, half_len, cut_acg.shape[0]),cut_acg,axis=-1)
+                    new_wave = interp_fn(np.linspace(0, half_len, int(cut_acg.shape[0]*100/isi_mode_bin )))
+
+                    normed_new = new_wave/ np.mean(new_wave[:-50])
+                    return_acgs.append(normed_new[:cut_at])
+                    return_isi_mode.append(isi_mode)
+                    return_isi_hist_counts.append(isi_hist_counts)
+                    return_isi_hist_range_clipped.append(isi_hist_range_clipped)
+                    return_cut_acg_unnormed.append(cut_acg_unnormed)
+
+                else:
+                    normed_new = np.zeros(cut_at)
+                    short_zeros = np.zeros(10)
+                    return_acgs.append(normed_new)
+                    return_isi_mode.append(short_zeros)
+                    return_isi_hist_counts.append(short_zeros)
+                    return_isi_hist_range_clipped.append(short_zeros)
+                    return_cut_acg_unnormed.append(short_zeros)
+
+            else:
+                normed_new = np.zeros(cut_at)
+                return_acgs.append(normed_new)
+                short_zeros = np.zeros(10)
+                return_isi_mode.append(short_zeros)
+                return_isi_hist_counts.append(short_zeros)
+                return_isi_hist_range_clipped.append(short_zeros)
+                return_cut_acg_unnormed.append(short_zeros)
+
+        else:
+            normed_new = np.zeros(cut_at)
+            return_acgs.append(normed_new)
+            short_zeros = np.zeros(10)
+            return_isi_mode.append(short_zeros)
+            return_isi_hist_counts.append(short_zeros)
+            return_isi_hist_range_clipped.append(short_zeros)
+            return_cut_acg_unnormed.append(short_zeros)
+
+    # I want to return numpy arrays, and inorder to do this the lists going into
+    # the arrays need to be the same length. Hence we can find the list with the maximal length,
+    # and for all lists that are not this long add np.nan values to it
+
+    # get the maximal length of each sublist
+    len_isi_hist_counts = np.max([ i.shape[0] for i in return_isi_hist_counts])
+    len_isi_hist_range_clipped = np.max([i.shape[0] for i in return_isi_hist_range_clipped])
+    len_cut_acg_unnormed = np.max([i.shape[0] for i in return_cut_acg_unnormed])
+
+    # append the missing number of np.nan values to each list that is shorter than max value
+    np_isi_hist_counts = np.array([list(xi) + [np.nan] * (len_isi_hist_counts - len(xi)) for xi in return_isi_hist_counts])
+    np_isi_hist_range_clipped = np.array([list(xi) + [np.nan] * (len_isi_hist_range_clipped - len(xi)) for xi in return_isi_hist_range_clipped])
+    np_cut_acg_unnormed = np.array([list(xi) + [np.nan] * (len_cut_acg_unnormed - len(xi)) for xi in return_cut_acg_unnormed])
+
+
+    return np.vstack(return_acgs), np.array(return_isi_mode), np_isi_hist_counts, np_isi_hist_range_clipped, np_cut_acg_unnormed
+
+
+def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all_to_all=False, name=None, sav=True, again=False, subset_selection='all'):
     '''
     Routine generating a stack of correlograms for faster subsequent analysis,
     between all U_src and U_trg units.
@@ -350,8 +480,8 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
     Nu=len(U_src)+len(U_trg)
     if name is not None:
         norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
-        fn='ccgstack_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin)
-        fnu='ccgstack_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin)
+        fn='ccgstack_{}_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', ''))
+        fnu='ccgstack_{}_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', ''))
 
         if op.exists(dprm/fn) and not again:
             stack=np.load(dprm/fn)
@@ -378,16 +508,16 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                     #pgbar.update(i1*len(U_trg)+i2+1)
                     ustack[i1, i2, :]=[u1,u2]
                     if i1==i2:
-                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)
+                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again, subset_selection=subset_selection).squeeze()
                     elif i2>i1:
-                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)[0,1,:]
+                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again, subset_selection=subset_selection)[0,1,:]
                         stack[i2, i1, :]=stack[i1, i2, ::-1]
         else:
             for i1, u1 in enumerate(U_src):
                 for i2, u2 in enumerate(U_trg):
                     pgbar.update(i1*len(U_trg)+i2+1)
                     ustack[i1, i2, :]=[u1,u2]
-                    stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)[0,1,:]
+                    stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again, subset_selection=subset_selection)[0,1,:]
     else:
         assert len(U_src)==len(U_trg)
         assert not np.any(U_src==U_trg), 'Looks like you requested to compute a CCG between a unit and itself - check U_src and U_trg.'
@@ -397,7 +527,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
         for i, (u1, u2) in enumerate(zip(U_src, U_trg)):
             pgbar.update(i+1)
             ustack[i, :]=[u1,u2]
-            stack[i, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again)[0,1,:]
+            stack[i, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, prnt=False, again=again, subset_selection=subset_selection)[0,1,:]
 
     if sav and name is not None:
         np.save(dprm/fn, stack)
@@ -1291,7 +1421,7 @@ def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseli
 
 def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
                   p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-                  again=False, againCCG=False, ret_features=False, only_max=True):
+                  again=False, againCCG=False, ret_features=False, only_max=True, subset_selection='all'):
     '''
     Parameters:
         - dp: string, datapath to manually curated kilosort output
@@ -1328,21 +1458,27 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 
     # Directly load sig stack if was already computed
     if name is not None:
+        # in signame, only parameters not fed to ccg_stack
+        # (as others will already be added to the saved file name by ccg_stack)
         signame=name+'-{}-{}-{}-{}-{}'.format(test, p_th, n_consec_bins, fract_baseline, W_sd)
         dprm = Path(dp,'routinesMemory');
         if not op.isdir(dprm): os.makedirs(dprm)
-        feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_features.csv'.format(signame, 'Counts', cbin, cwin, sgn, only_max))
+        feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_{}_features.csv'.format(\
+                       signame, 'Counts', cbin, cwin, str(subset_selection)[0:50].replace(' ', ''), sgn, only_max))
 
-        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=again)
+        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=again,
+                                        subset_selection=subset_selection)
         if np.any(sigstack): # will be empty if the array exists but again=True
             if not ret_features:
                 return sigstack, sigustack
             if op.exists(feat_path):
                 features=pd.read_csv(feat_path)
                 return sigstack, sigustack, features
-            features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
+            features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 
+                                           'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
             for i,c in enumerate(sigstack):
-                pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
+                pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn, 
+                                fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
                 for p in pks:
                     features=features.append(dict(zip(features.columns,np.append(sigustack[i, :], p))), ignore_index=True)
             features.to_csv(feat_path, index=False)
@@ -1351,9 +1487,11 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
     assert any(U_src)&any(U_trg)
     ptdic={1:'peak', -1:'trough'}
     sigustack=[]
-    if ret_features: features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
+    if ret_features: features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms',
+                                                    'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
 
-    stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG)
+    stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG,
+                              subset_selection=subset_selection)
     same_src_trg=np.all(U_src==U_trg) if len(U_src)==len(U_trg) else False
     inco=False
     if same_src_trg:
@@ -1361,8 +1499,10 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         else:
             if not np.all(np.unique(ustack)==np.unique(U_src)): inco=True
     if inco:
-        print(f'Incoherence detected between loaded ccg_stack ({len(np.unique(ustack))} units) and expected ccg_stack ({len(U_src)} units) - recomputing as if againCCG were True...')
-        stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=True)
+        print(f'Incoherence detected between loaded ccg_stack ({len(np.unique(ustack))} units) \
+              and expected ccg_stack ({len(U_src)} units) - recomputing as if againCCG were True...')
+        stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=True,
+                                  subset_selection=subset_selection)
 
     for i in range(stack.shape[0]):
         for j in range(stack.shape[1]):
@@ -1379,7 +1519,8 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 
     sigustack=npa(sigustack)
     if np.any(sigustack):
-        sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True)
+        sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True,
+                                        subset_selection=subset_selection)
     else:
         bins=get_bins(cwin, cbin)
         sigstack, sigustack = npa(zeros=(0, len(bins))), sigustack
@@ -1390,8 +1531,11 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         return sigstack, sigustack, features
     return sigstack, sigustack
 
-def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None, cross_cont_proof=False, use_template_for_peakchan=False):
+def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
+            p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'],
+             units=None, name=None, cross_cont_proof=False, use_template_for_peakchan=False,
+             subset_selection='all'):
     '''
     Function generating a functional correlation dataframe sfc (Nsig x 2+8 features) and matrix sfcm (Nunits x Nunits)
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -1479,7 +1623,8 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_t
         gu = peakChs[:,0]
 
     sigstack, sigustack, sfc = ccg_sig_stack(dp, gu, gu, cbin, cwin, name,
-                  p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True, only_max=only_max)
+                  p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True, only_max=only_max,
+                  subset_selection=subset_selection)
 
     # If filtering of connections wishes to be done at a later stage, simply return
     if corr_type=='all': return sfc, np.zeros((len(gu),len(gu))), peakChs
@@ -2007,4 +2152,4 @@ from npyx.plot import plot_pval_borders
 #                 correlograms[i2, i1, :]=np.array([corr[-v+1] for v in range(len(corr))])*1./(0.001*bin_size*np.sqrt(len(trn(dp, u1, prnt=False))*len(trn(dp, u2, prnt=False))))
 
 #     return correlograms
-
+from npyx.spk_wvf import get_depthSort_peakChans

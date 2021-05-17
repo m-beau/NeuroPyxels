@@ -310,7 +310,11 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=
     return periods
 
 
-def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False):
+def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
+        acg_chunk_size = 10, gauss_window_len = 3,
+        gauss_chunk_size = 10, use_or_operator = False, violations_ms = 0.8,
+        rpv_threshold = 0.05,  missing_spikes_threshold=5, again = False,
+        save = True, prnt = False):
 
     """
     Apply a filter over the spike times in order to find time points with
@@ -360,24 +364,33 @@ def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg
     assert acg_window_len >= 1, "ACG chunk size needs to be larger than 1 "
     assert gauss_window_len >= 1, "Gaussian chunk size needs to be larger than 1 "
 
+    dprm = Path(dp,'routinesMemory')
+
+    fn=f"trn_qual_{unit}_{str(acg_window_len)}_{str(acg_chunk_size)}_{str(gauss_window_len)}_{str(gauss_chunk_size)}_{str(violations_ms)}_{str(rpv_threshold)}_{str(missing_spikes_threshold)}.npy"
+
+    if not dprm.is_dir(): dprm.mkdir()
+    if Path(dprm,fn).is_file() and (not again):
+        if prnt: print(f"File {fn} found in routines memory.")
+        good_start_end, acg_start_end, gauss_start_end = np.load(Path(dprm,fn), allow_pickle = True)
+        return good_start_end.tolist(), acg_start_end.tolist(), gauss_start_end.tolist()
+
     unit_size_s = first_n_minutes * 60
 
     no_gauss_chunks =  int(unit_size_s / gauss_chunk_size)
     no_acg_chunks =  int(unit_size_s / acg_chunk_size)
-
     all_recs = []
     # Parameters
-    fs = 30000
-    exclusion_quantile = 0.02
-    amples_fr = unit_size_s * fs
+    fs = 30_000
+#    exclusion_quantile = 0.02
+#    amples_fr = unit_size_s * fs
     c_bin = 0.2
     c_win = 100
-    violations_ms = 0.8
-    rpv_threshold = 0.05
-    taur = 0.0015
-
+#    violations_ms = 0.8
+#    rpv_threshold = 0.05
+#    missing_spikes_threshold=5
+#    taur = 0.0015
     samples_fr = unit_size_s * fs
-    tauc = 0.0005
+#    tauc = 0.0005
     spikes_threshold = 300
 
     routines_mem = dp/'routinesMemory'
@@ -465,7 +478,7 @@ def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg
 
                         x_c, p0_c, min_amp_c, n_fit_c, n_fit_no_cut_c, chunk_spikes_missing = gaussian_amp_est(amplitudes_chunk, chunk_bins)
 
-                        if (~np.isnan(chunk_spikes_missing)) & (chunk_spikes_missing <= 5):
+                        if (~np.isnan(chunk_spikes_missing)) & (chunk_spikes_missing <= missing_spikes_threshold):
                             chunk_gauss_qual[chunk_id] = [chunk_start_time, chunk_end_time, 1]
 
 
@@ -493,9 +506,9 @@ def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg
                         block_ACG = acg(dp, unit, c_bin, c_win, prnt = False,  subset_selection=[(chunk_start_time, chunk_end_time)])
                         x_block = np.linspace(-c_win * 1. / 2, c_win * 1. / 2, block_ACG.shape[0])
                         y_block = block_ACG.copy()
-                        y_lim1_unit = 0
-                        yl_unit = max(block_ACG)
-                        y_lim2_unit = int(yl_unit) + 5 - (yl_unit % 5)
+#                        y_lim1_unit = 0
+#                        yl_unit = max(block_ACG)
+#                        y_lim2_unit = int(yl_unit) + 5 - (yl_unit % 5)
 
                         # Find refractory period violations
                         booleanCond = np.zeros(len(y_block), dtype=np.bool)
@@ -604,10 +617,14 @@ def train_quality(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg
 
         # get the good overlapping seconds
         good_start_end  = get_consec_sections(good_sec)
-
+        if save:
+            np.save(Path(dprm,fn), np.array( (np.array(good_start_end), np.array(acg_start_end), np.array(gauss_start_end)), dtype = object))
         return good_start_end, acg_start_end, gauss_start_end
     else:
-        return [0]
+        zeros3 = np.zeros((1,3), dtype = np.int8)
+        if save:
+            np.save(Path(dprm,fn), np.array((zeros3, zeros3, zeros3), dtype = object)  )
+        return zeros3, zeros3, zeros3
 
 def get_consec_sections(seconds):
         """
@@ -627,9 +644,9 @@ def get_consec_sections(seconds):
         return start_end
 
 
-def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False, use_consecutive = True, prnt = False):
+def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False, use_consecutive = True, prnt = False, again = False, save = True):
 
-    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes, consecutive_n_seconds, acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size, use_or_operator)
+    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes, acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size, use_or_operator, again=again, save = save, prnt =prnt)
 
     """
     High level function for getting the spike ids for the spikes that passed

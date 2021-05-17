@@ -189,7 +189,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     # Correct voltage scaling
     waveforms*=read_spikeglx_meta(dp, 'ap')['scale_factor']
         
-    return  waveforms
+    return  waveforms.astype(np.float32)
 
 def wvf_dsmatch(dp, u, n_waveforms=100,
                   t_waveforms=82, subset_selection='regular',

@@ -654,7 +654,6 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20, chan_spread_dist = 25.6)
         bounds = (max_chan-n_chans, 384)
     else:
         bounds = (max_chan-n_chans, max_chan+n_chans+1)
-    print(max_chan)
     bound_dist = dists[bounds[0]:bounds[1]+1]
     bound_p2p = p2p[bounds[0]:bounds[1]+1]
     bound_dist_p2p = dist_p2p[bounds[0]:bounds[1]+1]
@@ -904,7 +903,7 @@ def waveform_features(all_waves, dpath,  peak_chan, unit):
     neg_t = peak_t[neg_id]
 
     if not wvf_shape(best_wave):
-        return np.zeros(17)
+        return list(np.zeros(17))
     # get positive peak
     if neg_id + 1 <= peak_t.shape:
         pos_v = peak_v[neg_id + 1]
@@ -1072,8 +1071,12 @@ def temp_feat(dp, units, use_or_operator = True, use_consecutive = False):
 
     all_ft_list = []
     for unit in units:
+
         unit_spikes = trn_filtered(dp, unit, use_or_operator = use_or_operator, use_consecutive = use_consecutive)
-        all_ft_list.append(temporal_features(dp,unit_spikes, unit))
+        if len(unit_spikes) >1:
+            all_ft_list.append(temporal_features(dp,unit_spikes, unit))
+        else:
+            all_ft_list.append([dp] + list(np.zeros(15)))
 
     return all_ft_list
 
@@ -1109,9 +1112,10 @@ def wvf_feat(dp, units):
             curr_feat.insert(0, dp)
             all_ft_list.append(curr_feat)
         else:
-            all_ft_list.append(0)
+            all_ft_list.append([dp]+[0]*17)
+            mean_pc = np.zeros(82)
 
-    return all_ft_list
+    return all_ft_list, mean_pc
 
 def temp_wvf_feat(dp, units):
     """
@@ -1133,31 +1137,38 @@ def temp_wvf_feat(dp, units):
     all_feats = []
     for unit in units:
         t_feat = temp_feat(dp, unit)[0]
-        w_feat = wvf_feat(dp, unit)[0][2:]
-        all_feat = t_feat + w_feat
+        w_feat, mean_wvf = wvf_feat(dp, unit)
+        all_feat = t_feat + w_feat[0][2:]
         all_feats.append(all_feat)
-    all_feats = np.array((all_feats))
-    return all_feats
+#    all_feats = np.array((all_feats))
+    return all_feats, mean_wvf
 
 
-def get_pca_weights(all_acgs_matrix, n_components = 5, show = False):
+def get_pca_weights(all_acgs_matrix, n_components = 5, show = False, titl = 'WVF'):
     """
     Input: matrix with all the normalised acgs, size: n x m
     Return: matrix n x no_pca_feat
     """
 
-    X = StandardScaler().fit_transform(good_acgs)
+    X = StandardScaler().fit_transform(all_acgs_matrix)
     pca2 = PCA(n_components = n_components)
     projected = pca2.fit_transform(X)
     # show two plots
     #   - first one with the PCA features for the number of components
     #   - second is the variance explained per PC
     if show:
+
+        plt.figure()
+        plt.scatter(projected[:,0], projected[:,1] )
+        plt.title(f'Projection of first and second principal components for {titl}')
+        plt.xlabel('PC1')
+        plt.ylabel('PC2')
+
         pca_comp = pca2.components_
         plt.ion()
         plt.figure()
         line_objects = plt.plot(pca_comp.T )
-        plt.title(f'First {n_components} PC features, ACGs cut at {good_acgs.shape[1]}')
+        plt.title(f'First {n_components} PC features, {titl} vector len {all_acgs_matrix.shape[1]}')
         plt.legend(line_objects, tuple(np.arange(n_components)), title = 'PCA features')
 
         exp_var = np.round(np.sum(pca2.explained_variance_ratio_),3)
@@ -1166,7 +1177,7 @@ def get_pca_weights(all_acgs_matrix, n_components = 5, show = False):
         plt.plot(np.arange(n_components), pca2.explained_variance_ratio_)
         plt.xticks(np.arange(n_components),np.arange(n_components))
         plt.yticks(pca2.explained_variance_ratio_,np.round(pca2.explained_variance_ratio_, 2))
-        plt.title(f'Smoothed ACG, first {n_components} PCs and the variance explained by each,\n overall explain {exp_var} of variance, ACGs cut at {good_acgs.shape[1]}')
+        plt.title(f'{titl} first {n_components} PCs and the variance explained by each,\n overall explain {exp_var} of variance, {titl} vector len is {all_acgs_matrix.shape[1]}')
 
     return projected
 

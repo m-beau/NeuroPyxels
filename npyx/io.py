@@ -200,7 +200,7 @@ def get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='seconds'):
                     onsets[file_i]=np.load(Path(sync_dp,file))/srate
                     offsets[file_i]=np.load(Path(sync_dp,file[:-13]+'f'+file[-12:]))/srate
                         
-                    return onsets, offsets
+        return onsets, offsets
 
     # Tries to load pre-saved compressed binary
     if op.exists(sync_dp):

@@ -17,7 +17,9 @@ import math
 import numpy as np
 import scipy as sp
 import pandas as pd
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
 import seaborn as sns
 
 import scipy.signal as sgnl
@@ -1145,7 +1147,110 @@ def convert_rot_to_pos(A, B, fs=100, d=200, rot_res=628, sgn=1):
 
     return P
 
-#%%
+#%% Rig-related
+
+def ellipsis_string(x, a, b, axis='major'):
+    '''
+    - x: float, x (or y) coordinate of string on axis 'axis' (mm)
+    - a: float, minor axis of ellipsis (mm)
+    - b: float, major axis of ellipsis (mm)
+    - axis: string, whether x is along the major or minor axis - default major.
+    '''
+    
+    return a*np.sqrt(1-x**2/b**2) if axis=='major' else b*np.sqrt(1-x**2/a**2)
+    
+    
+
+def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, saveFig=False, saveDir=None):
+    '''Homologous to a cylindrical wedge (plane crossing <1 basis of cylinder).
+    - string: float, desired lateral coverage below the mouse
+    - depth: float, desired depth of mirror below the mouse (alternative to string)
+    - theta: float, angle of mirror (degrees) - default 45 degrees
+    - r: float, radius of the wheel (mm) - default 97 (mm)
+    - H: float, width of the wheel (mm) - default 75
+    - plot: bool, whether to plot ellipse or not
+    '''
+    
+    assert (depth is not None) or (string is not None), 'You need to provide either depth or string.'
+    assert not (depth is not None) and (string is not None), 'You can only provide either depth or string - not both.'
+    if depth is None:
+        assert 0<string<2*r
+        h=np.sqrt(r**2-(string/2)**2)
+        depth=r-h
+    elif string is None:
+        assert 0<depth<r
+        h=r-depth
+        string=2*np.sqrt(r**2-h**2)
+    print(f'Border of mirror will be {round(depth, 1)}mm below the mouse, covering {round(string, 1)}mm laterally.')
+    
+    # Distances parallel to major axis inside cylinder
+    theta=theta*2*np.pi/360
+    e1=h/np.cos(theta)
+    E=np.sqrt(2*H**2)
+    e2=E-e1
+    
+    # Vertical distances
+    dH=np.tan(theta)*(h+r)
+    
+    # Ellipse axis
+    a=r # minor axis
+    b=np.sqrt(dH**2+(h+r)**2)-e1
+    print(f'Ellipsis minor axis: {round(a, 1)}mm, major axis:{round(b, 1)}mm.')
+    
+    # Distances parallel to minor axis inside cylinder
+    y1=ellipsis_string(e1, a, b, axis='major')
+    assert round(y1)==round(string/2)
+    y2=ellipsis_string(e2, a, b, axis='major')
+    print(f'Ellipsis strings: {round(2*y1, 1)}mm on one side ({round(e1, 1)}mm away from center), \
+    {round(2*y2, 1)}mm on the other ({round(e2, 1)}mm away from center).')
+    
+    # Plot ellipse to real-world scale
+    if plot:
+        figure_width = 2*b/10 # cm
+        figure_height = 2*a/10 # cm
+        left_right_margin = 0 # cm
+        top_bottom_margin = 0 # cm
+        
+        left   = left_right_margin / figure_width # Percentage from height
+        bottom = top_bottom_margin / figure_height # Percentage from height
+        width  = 1 - left*2
+        height = 1 - bottom*2
+        cm2inch = 1/2.54 # inch per cm
+        
+        # specifying the width and the height of the box in inches
+        fig = plt.figure(figsize=(figure_width*cm2inch,figure_height*cm2inch))
+        ax = fig.add_axes((left, bottom, width, height))
+        
+        # limits settings (important)
+        plt.xlim(-(figure_width * width)/2, (figure_width * width)/2)
+        plt.ylim(-(figure_height * height)/2, (figure_height * height)/2)
+        
+        # Ticks settings
+        ax.xaxis.set_major_locator(mpl.ticker.MultipleLocator(5))
+        ax.xaxis.set_minor_locator(mpl.ticker.MultipleLocator(1))
+        ax.yaxis.set_major_locator(mpl.ticker.MultipleLocator(5))
+        ax.yaxis.set_minor_locator(mpl.ticker.MultipleLocator(1))
+        
+        # Grid settings
+        for spi in ['top', 'right', 'left', 'bottom']: ax.spines[spi].set_visible(False)
+        ax.grid(color="gray", which="both", linestyle=':', linewidth=0.5)
+        
+        # your Plot (consider above limits)
+        ellipse = Ellipse((0, 0), 2*b/10, 2*a/10, angle=0, fill=False, ec='k', lw=2, ls='--')
+        ax.add_artist(ellipse)
+        ax.plot([-e1/10, -e1/10], [-y1/10, y1/10], c='k', lw=2, ls='--')
+        ax.plot([e2/10, e2/10], [-y2/10, y2/10], c='k', lw=2, ls='--')
+        ax.scatter([0],[0], c='k', lw=2, s=500, marker='+', zorder=100)
+        
+        # save figure ( printing png file had better resolution, pdf was lighter and better on screen)
+        if saveFig:
+            saveDir=Path.home() if saveDir is None else Path(saveDir)
+            assert saveDir.exists()
+            fig.savefig(saveDir/f'mirror_string{round(string, 1)}_depth{round(depth, 1)}_a{round(a, 1)}_b{round(b, 1)}.png', dpi=100)
+            fig.savefig(saveDir/f'mirror_string{round(string, 1)}_depth{round(depth, 1)}_a{round(a, 1)}_b{round(b, 1)}.pdf')
+
+
+#%% archive
 
 def dat_to_dic(dp, variables='all'):
     '''DEPRECATED loads matlab-exported np arrays...'''

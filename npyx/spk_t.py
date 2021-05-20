@@ -471,13 +471,12 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
                 amplitudes_chunk = np.asarray(amplitudes_chunk, dtype='float64')
 
                 if amplitudes_chunk.shape[0] > 15:
+
                     chunk_bins = estimate_bins(amplitudes_chunk, rule='Fd')
 
                     # % of missing spikes per chunk
                     if chunk_bins> 3:
-
                         x_c, p0_c, min_amp_c, n_fit_c, n_fit_no_cut_c, chunk_spikes_missing = gaussian_amp_est(amplitudes_chunk, chunk_bins)
-
                         if (~np.isnan(chunk_spikes_missing)) & (chunk_spikes_missing <= missing_spikes_threshold):
                             chunk_gauss_qual[chunk_id] = [chunk_start_time, chunk_end_time, 1]
 
@@ -527,7 +526,6 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
                         rpv_ratio_acg = round(violations_mean / normal_obs_mean, 2)
                         if (rpv_ratio_acg <= rpv_threshold):
                             chunk_acg_qual[chunk_id] = [chunk_start_time, chunk_end_time, 1]
-
     # start at thi col
     # have all the good chunks 
     # find sequences where there are more than 3  
@@ -773,7 +771,8 @@ def gaussian_amp_est(x, n_bins):
         x1, p0 = ampli_fit_gaussian_cut(x, n_bins)
         n_fit = gaussian_cut(x1, a=p0[0], mu=p0[1], sigma=p0[2], x_cut=p0[3])
         min_amp = p0[3]
-        n_fit_no_cut = gaussian_cut(x1, a=p0[0], mu=p0[1], sigma=p0[2], x_cut=0)
+        n_fit_no_cut = 0
+        #n_fit_no_cut = gaussian_cut(x1, a=p0[0], mu=p0[1], sigma=p0[2], x_cut=0)
         percent_missing = int(round(100 * norm.cdf((min_amp - p0[1]) / p0[2]), 0))
 
     except RuntimeError:
@@ -792,7 +791,7 @@ def estimate_bins(x, rule):
     if rule == 'Fd':
 
         data = np.asarray(x, dtype=np.float_)
-        iqr_ = iqr(data, scale="raw", nan_policy="omit")
+        iqr_ = iqr(data, scale=1, nan_policy="omit")
         n = data.size
         bw = (2 * iqr_) / np.power(n, 1 / 3)
         datmin= min(data)

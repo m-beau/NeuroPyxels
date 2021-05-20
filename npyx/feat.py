@@ -511,7 +511,7 @@ def previous_peak(waves, chan_path, unit, n_chans = 20):
     max_chan_path = list(Path(chan_path/'routinesMemory').glob(f'dsm_{unit}_peakchan*'))[0]
     max_chan = int(np.load(max_chan_path))
    # waves = waves.T
-    if max_chan < n_chans - 1:
+    if max_chan <= n_chans - 1:
         bounds = (0, max_chan+n_chans +1)
     elif max_chan > 384 - n_chans -1:
         bounds = (max_chan-n_chans, 384)
@@ -544,20 +544,7 @@ def previous_peak(waves, chan_path, unit, n_chans = 20):
     # find the max amd argmax of pbp
     argmax_pbp = np.argmax(pbp)
     max_pbp = pbp[argmax_pbp]
-    # get the values before the peak
-    before_max = pbp[:argmax_pbp]
-    # get the values after
-    after_max = pbp[argmax_pbp+1:]
-    # find the crossing points with the fn below
-
-    if len(before_max) > 0 and len(after_max) > 0:
-        before_half_chan = np.where(before_max < max_pbp * 0.5)[0][-1]
-        after_half_chan = np.where(after_max < max_pbp * 0.5)[0][0]
-#        print(before_half_chan, after_half_chan, argmax_pbp)
-        spread = argmax_pbp - before_half_chan + after_half_chan - 1
-    else:
-        spread = 0
-    return pbp, spread, max_pbp
+    return pbp, max_pbp
 
 def consecutive_peaks_amp(mean_waves: np.array) -> tuple:
 
@@ -678,7 +665,6 @@ def wvf_shape(wave):
     peak_trough, most_neg, start_thres, end_thres, peak_order = (False,) * 5
 
     # first get the length of the waveform so we can determine length of the end
-
     if wave.shape[0] == 82:
         end_section = 10
     elif wave.shape[0] == 8200:
@@ -897,14 +883,16 @@ def waveform_features(all_waves, dpath,  peak_chan, unit):
     best_wave = all_waves[peak_chan].reshape(1,-1)
     best_wave -= np.mean(best_wave[:20])
     best_wave = interp_wave(best_wave).reshape(-1)
+
+    if not wvf_shape(best_wave):
+        return list(np.zeros(17))
+    # get positive peak
+
     peak_t, peak_v = detect_peaks(best_wave)
     neg_id = np.argmin(peak_v)
     neg_v = peak_v[neg_id]
     neg_t = peak_t[neg_id]
 
-    if not wvf_shape(best_wave):
-        return list(np.zeros(17))
-    # get positive peak
     if neg_id + 1 <= peak_t.shape:
         pos_v = peak_v[neg_id + 1]
         pos_t = peak_t[neg_id + 1]
@@ -939,7 +927,7 @@ def waveform_features(all_waves, dpath,  peak_chan, unit):
     _,_,_,_,_, chans = chan_spread(all_waves, dpath, unit)
 
     #backprop spread
-    _, bp_spread, backp_max =  previous_peak(all_waves, dpath, unit)
+    _, backp_max =  previous_peak(all_waves, dpath, unit)
 
     ret_arr = [unit, neg_v, neg_t, pos_v, pos_t,pos_10_90_t,
         neg_10_90_t, pos50, neg50, onset_t, onset_amp, wvfd, ptr, coeff1[0], coeff2[0], chans, backp_max]
@@ -1001,7 +989,7 @@ def chan_spread_bp_plot(dp, unit, n_chans=20):
 
         if n_chans %2 !=0: n_chans +=1
         all_waves_unit_x = np.load(curr_fil)
-        backp, bp_spread, true_bp =  previous_peak(all_waves_unit_x.T, dp, unit, n_chans)
+        backp, true_bp =  previous_peak(all_waves_unit_x.T, dp, unit, n_chans)
         csp_x = chan_spread(all_waves_unit_x.T,dp, unit, n_chans)
         peak_chan = csp_x[0]
         print(peak_chan)
@@ -1066,7 +1054,7 @@ def temp_feat(dp, units, use_or_operator = True, use_consecutive = False):
 
     # units can be either a single integer or a list or np array of units
 
-    if isinstance(units, int):
+    if isinstance(units, (int, np.int16, np.int32, np.int64)):
         units = [units]
 
     all_ft_list = []
@@ -1086,7 +1074,7 @@ def wvf_feat(dp, units):
     High level function for getting the wvf features from a single (integer) or
     set of units (list of units) from a dp dataset.
     """
-    if isinstance(units, int):
+    if isinstance(units, (int, np.int16, np.int32, np.int64)):
         units = [units]
 
     all_ft_list = []
@@ -1133,7 +1121,6 @@ def temp_wvf_feat(dp, units):
             units = [int(units)]
         else:
             raise TypeError("Only ints, list of ints or ints disguised as floats allowed")
-#    breakpoint()
     all_feats = []
     for unit in units:
         t_feat = temp_feat(dp, unit)[0]

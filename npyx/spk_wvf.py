@@ -140,7 +140,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
         f'''Mismatch between ap.meta and ap.bin file size (assumed encoding is {dtype} and Nchannels is {n_channels_dat})!!
         Prob wrong meta file - just edit fileSizeBytes and be aware that something went wrong in your data management...'''
     
-    # Select subset of waveforms
+    # Select subset of spikes
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
     if spike_ids is None:
         spike_ids_subset=get_ids_subset(dp, u, n_waveforms, wvf_batch_size, subset_selection, ignore_nwvf, prnt)
@@ -169,6 +169,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
             wave = wave-np.median(wave, axis = 0)[np.newaxis,:]
             waveforms[i,:,:] = wave[:,:-1]# get rid of sync channel
     
+    # Preprocess waveforms
     if hpfilt|med_sub|whiten:
         waveforms=waveforms.reshape((n_spikes*t_waveforms, n_channels_rec))
         if hpfilt:
@@ -179,9 +180,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
             waveforms=whitening(waveforms.T, nRange=nRangeWhiten).T # whitens across channels so gotta transpose
         waveforms=waveforms.reshape((n_spikes,t_waveforms, n_channels_rec))
     
-    # Remove the padding after processing, then filter channels.
-    assert waveforms.shape[1] == t_waveforms
-    assert waveforms.shape[2] == n_channels_rec
+    # Filter channels ignored by kilosort if necesssary
     if not ignore_ks_chanfilt:
         channel_ids_ks = np.load(Path(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
         channel_ids_ks=channel_ids_ks[channel_ids_ks!=384]

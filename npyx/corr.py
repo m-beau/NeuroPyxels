@@ -242,7 +242,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     dprm = Path(dp,'routinesMemory')
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
-    fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(subset_selection)[0:50].replace(' ', ''))
+    fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(subset_selection)[0:50].replace(' ', '').replace('\n',''))
     if os.path.exists(Path(dprm,fn)) and not again and trains is None:
         if prnt: print("File {} found in routines memory.".format(fn))
         crosscorrelograms = np.load(Path(dprm,fn))
@@ -480,8 +480,8 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
     Nu=len(U_src)+len(U_trg)
     if name is not None:
         norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
-        fn='ccgstack_{}_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', ''))
-        fnu='ccgstack_{}_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', ''))
+        fn='ccgstack_{}_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', '').replace('\n',''))
+        fnu='ccgstack_{}_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', '').replace('\n',''))
 
         if op.exists(dprm/fn) and not again:
             stack=np.load(dprm/fn)
@@ -1464,7 +1464,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         dprm = Path(dp,'routinesMemory');
         if not op.isdir(dprm): os.makedirs(dprm)
         feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_{}_features.csv'.format(\
-                       signame, 'Counts', cbin, cwin, str(subset_selection)[0:50].replace(' ', ''), sgn, only_max))
+                       signame, 'Counts', cbin, cwin, str(subset_selection)[0:50].replace(' ', '').replace('\n',''), sgn, only_max))
 
         sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=again,
                                         subset_selection=subset_selection)

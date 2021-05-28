@@ -7,7 +7,6 @@ Npyx is a pure python library built for electrophysiologists using Neuropixels. 
 This package results from the needs of an experimentalist who could not stand MATLAB, hence wrote himself a suite of functions to emotionally bear doing neuroscience. There isn't any dedicated preprint available yet, so if you enjoy this package and use it for your research, please cite [this paper](https://www.nature.com/articles/s41593-019-0381-8). Cheers!
 
 ## Documentation:
------------------
 Npyx works in harmony with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) and [Phy](https://phy.readthedocs.io/en/latest/).
 
 Most npyx functions take at least one input: **`dp`**, which is the path to your Kilosort/phy dataset. You can find a [full description of the structure of such datasets](https://phy.readthedocs.io/en/latest/sorting_user_guide/#installation) on phy documentation.
@@ -110,7 +109,6 @@ There isn't any better doc atm - email [Maxime Beau](mailto:maximebeaujeanroch04
 <br/>
 
 ## Installation:
-----------------
 
 Using a conda environment is very much advised. Instructions here: [manage conda environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
 
@@ -149,7 +147,6 @@ Npyx supports Python 3.7+.
 <br/>
 
 ## Developer cheatsheet
--------------------
 
 Useful link to [create a python package from a git repository](https://towardsdatascience.com/build-your-first-open-source-python-project-53471c9942a7)
 

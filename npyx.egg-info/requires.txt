@@ -8,6 +8,7 @@ six
 vispy
 statsmodels
 progressbar2
+cmcrameri
 scikit-learn
 umap-learn
 networkx
@@ -22,3 +23,4 @@ certifi
 idna
 elephant
 neo
+opencv-python

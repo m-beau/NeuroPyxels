@@ -11,7 +11,7 @@ requirements=['ipython', 'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'opencv-python']
 
 setup(name='npyx',
-      version='1.6.1',
+      version='1.6.2',
       author='Maxime Beau',
       author_email='maximebeaujeanroch047@gmail.com',
       description='Python routines dealing with Neuropixels data.',

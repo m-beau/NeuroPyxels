@@ -1037,7 +1037,7 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
     else:
         assert len(U)==len(trains), 'u1 should not be included in U!'
         assert dp is not None, 'Need to provide datapath along with unit indices.'
-        t_end = np.load(Path(dp,'spike_times.npy'))[-1,0]
+        t_end = np.load(Path(dp,'spike_times.npy')).ravel()[-1]
     if t_end is None: t_end=np.max(np.concatenate(trains))
 
     sync_win=sync_win*fs/1000 # conversion to samples

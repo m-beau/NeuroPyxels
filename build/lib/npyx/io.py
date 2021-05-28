@@ -24,9 +24,12 @@ from npyx.utils import npa
 
 #%% IO utilities
 
-def list_files(directory, extension):
+def list_files(directory, extension, full_path=False):
+    directory=str(directory)
     files = [f for f in os.listdir(directory) if f.endswith('.' + extension)]
     files.sort()
+    if full_path:
+        return ['/'.join([directory,f]) for f in files]
     return files
     
 #%% Extract metadata and sync channel

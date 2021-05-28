@@ -15,6 +15,10 @@ import matplotlib
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoLocator
+from cmcrameri import cm as cmcr
+cmcr=cmcr.__dict__
+from IPython.core.display import HTML,display
+
 
 mpl.rcParams['figure.dpi']=100
 
@@ -24,7 +28,7 @@ mpl.rcParams['figure.dpi']=100
 
 import seaborn as sns
 
-from npyx.utils import phyColorsDic, DistinctColors20, npa, zscore, isnumeric, assert_iterable
+from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, assert_int
 from npyx.stats import fractile_normal, fractile_poisson
 
 from npyx.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
@@ -60,31 +64,31 @@ def mplshow(fig):
     new_manager.canvas.figure = fig
     fig.set_canvas(new_manager.canvas)
 
-def bkshow(bkfig, title=None, save=0, savePath='~/Downloads'):
-    if title is None: title=bkfig.__repr__()
-    if save:bk.plotting.output_file(f'{title}.html')
-    bk.plotting.show(bkfig)
+# def bkshow(bkfig, title=None, save=0, savePath='~/Downloads'):
+#     if title is None: title=bkfig.__repr__()
+#     if save:bk.plotting.output_file(f'{title}.html')
+#     bk.plotting.show(bkfig)
 
-def hvshow(hvobject, backend='matplotlib', return_mpl=True):
-    '''
-    Holoview utility which
-    - for dynamic display, interaction and data exploration:
-        in browser, pops up a holoview object as a bokeh figure
-    - for static instanciation, refinement and data exploitation:
-        in matplotlib current backend, pops up a holoview object as a matplotlib figure
-        and eventually returns it for further tweaking.
-    Parameters:
-        - hvobject: a Holoviews object e.g. Element, Overlay or Layout.
-        - backend: 'bokeh' or 'matplotlib', which backend to use to show figure
-        - return_mpl: bool, returns a matplotlib figure
+# def hvshow(hvobject, backend='matplotlib', return_mpl=True):
+#     '''
+#     Holoview utility which
+#     - for dynamic display, interaction and data exploration:
+#         in browser, pops up a holoview object as a bokeh figure
+#     - for static instanciation, refinement and data exploitation:
+#         in matplotlib current backend, pops up a holoview object as a matplotlib figure
+#         and eventually returns it for further tweaking.
+#     Parameters:
+#         - hvobject: a Holoviews object e.g. Element, Overlay or Layout.
+#         - backend: 'bokeh' or 'matplotlib', which backend to use to show figure
+#         - return_mpl: bool, returns a matplotlib figure
 
-    '''
-    assert backend in ['bokeh', 'matplotlib']
-    if backend=='matplotlib' or return_mpl:
-        mplfig=hv.render(hvobject, backend='matplotlib')
-    if backend=='bokeh': bkshow(hv.render(hvobject, backend='bokeh'))
-    elif backend=='matplotlib': mplshow(mplfig)
-    if return_mpl: return mplfig
+#     '''
+#     assert backend in ['bokeh', 'matplotlib']
+#     if backend=='matplotlib' or return_mpl:
+#         mplfig=hv.render(hvobject, backend='matplotlib')
+#     if backend=='bokeh': bkshow(hv.render(hvobject, backend='bokeh'))
+#     elif backend=='matplotlib': mplshow(mplfig)
+#     if return_mpl: return mplfig
 
 
 def mpl_pickledump(fig, figname, path):
@@ -123,7 +127,7 @@ def get_bestticks_from_array(arr, step=None, light=False):
     assert step<span, f'Step {step} is too large for array span {span}!'
     ticks=np.arange(myceil(arr[0],step),myfloor(arr[-1],step)+step,step)
     if step==int(step):ticks=ticks.astype(int)
-    
+
     return ticks
 
 def get_labels_from_ticks(ticks):
@@ -232,9 +236,19 @@ def mplp(fig=None, ax=None, figsize=None,
 
     return fig, ax
 
+def get_mpl_css_colors(sort=True, aslist=False):
+    colors=matplotlib.colors.CSS4_COLORS
+    if sort:
+        by_hsv = sorted((tuple(mpl.colors.rgb_to_hsv(mpl.colors.to_rgb(color))),
+                         name)
+                        for name, color in colors.items())
+        colors={name:colors[name] for hsv, name in by_hsv}
+    if aslist: colors=list(colors.values())
+    return colors
+
 def mpl_hex(color):
     'converts a matplotlib string name to its hex representation.'
-    mpl_colors=matplotlib.colors.CSS4_COLORS
+    mpl_colors=get_mpl_css_colors(sort=True)
     message='color should be a litteral string recognized by matplotlib.'
     assert isinstance(color, str), message
     basecolors={'b': 'blue', 'g': 'green', 'r': 'red', 'c': 'cyan', 'm': 'magenta', 'y': 'yellow', 'k': 'black', 'w': 'white'}
@@ -249,7 +263,7 @@ def hex_rgb(color):
     return tuple(int(color[1:][i:i+2], 16)/255 for i in (0, 2, 4))
 
 def to_rgb(color):
-    'converts a matplotlib string name to its hex representation.'''''''
+    'converts a matplotlib string name or hex string to its rgb representation.'
     message='color must either be a litteral matplotlib string name or a hex string starting with #.'
     assert isinstance(color, str), message
     mpl_colors=list(matplotlib.colors.CSS4_COLORS.keys())+list(matplotlib.colors.BASE_COLORS.keys())
@@ -257,14 +271,93 @@ def to_rgb(color):
     assert color[0]=='#', message
     return hex_rgb(color)
 
+def to_hsv(color):
+    if isinstance(color,str):
+        color=to_rgb(color)
+    return mpl.colors.rgb_to_hsv(color)
+
+def to_hex(color):
+    'rgb or matplotlib litteral representation to hex representation'
+    if isinstance(color,str):
+        return mpl_hex(color)
+    return rgb_hex(color)
+
 def rgb_hex(color):
-    'converts a (r,g,b) color (either 0-1 or 0-255) to its hex representation.'
+    '''converts a (r,g,b) color (either 0-1 or 0-255) to its hex representation.
+    for ambiguous pure combinations of 0s and 1s e,g, (0,0,1), (1/1/1) is assumed.'''
     message='color must be an iterable of length 3.'
     assert assert_iterable(color), message
     assert len(color)==3, message
-    if not all([0<=c<=1 for c in color]): color=[c/255 for c in color] # in case provided rgb is 0-255
+    if all([(c<=1)&(c>=0) for c in color]): color=[int(round(c*255)) for c in color] # in case provided rgb is 0-1
     color=tuple(color)
     return '#%02x%02x%02x' % color
+
+def html_palette(colors, maxwidth=20, as_str=False, show=True):
+    'colors must be a list of (r,g,b) values ([0-255 or 0-1]) or hex strings.'
+    s=55
+    n=min(len(colors),maxwidth)
+    col_rows=[colors[i*maxwidth:i*maxwidth+maxwidth] for i in range(len(colors)//maxwidth+1)]
+    col_rows=[c for c in col_rows if any(c)]
+    h=len(col_rows)
+    palette = f'<svg  width="{n * s}" height="{s * h}">'
+    for r,colors in enumerate(col_rows):
+        for i, c in enumerate(colors):
+            if not isinstance(c,str):c=rgb_hex(c)
+            palette += (
+                f'<rect x="{i * s}" y="{r*s}" width="{s}" height="{s}" style="fill:{c};'
+                f'stroke-width:2;stroke:rgb(255,255,255)"/>'
+            )
+    palette += '</svg>'
+    if not as_str: palette = HTML(palette)
+    if show and not as_str: display(palette)
+    return palette
+
+def get_cmap(cmap_str):
+    if cmap_str in list(cmcr.keys()):
+        return cmcr[cmap_str]
+    else:
+        return mpl.cm.get_cmap(cmap_str)
+
+def get_ncolors_cmap(cmap_str, n, plot=False):
+    '''Returns homogeneously distributed n colors from specified colormap.
+    - cmap_str: str, matplotlib or crameri colormap
+    - n_ int, n colors
+    - plot: bool, whether to display colormap in HTML (works in jupyter npotebooks)
+    '''
+    assert n==int(n)
+    n=int(n)
+    cmap = get_cmap(cmap_str)
+    ids=np.linspace(0,1,n)
+    colors = cmap(ids)[:,:-1].tolist() # get rid of alpha
+    if plot:
+        html_palette(colors, 20, 0, 1)
+    return colors
+
+def get_color_families(ncolors, nfamilies, cmapstr=None, gap_between_families=4):
+    '''
+    Return nfamilies of ncolors colors which are perceptually closer within than between families.
+
+    Within each family, the colors are neighbours on a perceptually sequential colormap.
+
+    Between each family, stand gap_between_families colors.
+    Increase this value to make colors within families more similar and colors between families more distinct.
+
+    If you decide to provide a cmap, it NEEDS to be perceptually sequential,
+    as this function assumes that colors with close ranks are perceptually close.
+    If no cmap is provided, the matplotlib literal colors sorted by HSV are used by default.
+
+    '''
+    if cmapstr is None:
+        colors_all=get_mpl_css_colors(sort=True, aslist=True)[15:-10]
+        colors=npa(colors_all)[np.linspace(0,len(colors_all)-1,(ncolors+gap_between_families)*nfamilies).astype(int)].tolist()
+    else:
+        colors=get_ncolors_cmap(cmapstr, (ncolors+gap_between_families//2)*nfamilies, plot=False)
+    highsat_colors=[c for c in colors if to_hsv(c)[1]>0.4]
+    seed_ids=np.linspace(0, len(highsat_colors)-ncolors, nfamilies).astype(int)
+
+    color_families=[[highsat_colors[si+i] for i in range(ncolors)] for si in seed_ids]
+
+    return color_families
 
 def format_colors(colors):
     '''
@@ -357,7 +450,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
              subset_selection='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
              whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
              title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
-             labels=False, scalebar_w=5, ticks_lw=1, sample_lines='all', ylim=[0,0], 
+             labels=False, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf',
              ignore_ks_chanfilt = True, ax_edge_um_x=22, ax_edge_um_y=18, margin=0.12, figw_inch=6,
              as_heatmap=False):
@@ -391,17 +484,17 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     Returns:
         - matplotlib figure with Nchannels subplots, plotting the mean
     '''
-    
+
     # Get metadata
     saveDir=op.expanduser(saveDir)
     fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     pv=None if ignore_ks_chanfilt else 'local'
     cm=chan_map(dp, y_orig='tip', probe_version=pv)
-    
+
     peak_chan=get_peak_chan(dp, u, use_template=False)
     peak_chan_i = int(np.argmin(np.abs(cm[:,0]-peak_chan)));
     t_waveforms_s=int(t_waveforms*(fs/1000))
-    
+
     # Get data
     waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s,
                       subset_selection=subset_selection, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
@@ -412,7 +505,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     assert waveforms.shape[1:]==(t_waveforms_s, cm.shape[0])
     tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
     assert tplts.shape[2]==waveforms.shape[2]==cm.shape[0]
-    
+
     # Filter the right channels
     if chStart is None:
         chStart_i = int(max(peak_chan_i-Nchannels//2, 0))
@@ -420,25 +513,25 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     else:
         chStart_i = int(max(int(np.argmin(np.abs(cm[:,0]-chStart))), 0)) # finds closest chStart given kilosort chanmap
         chStart=cm[chStart_i,0] # Should remain the same, unless chStart was capped to 384 or is a channel ignored to kilosort
-        
+
     chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
-    chEnd_i = int(chStart_i+Nchannels) # no lower capping needed as 
+    chEnd_i = int(chStart_i+Nchannels) # no lower capping needed as
     assert chEnd_i <= waveforms.shape[2]-1
-    
+
     data = waveforms[:, :, chStart_i:chEnd_i]
     data=data[~np.isnan(data[:,0,0]),:,:] # filter out nan waveforms
     datam = np.mean(data,0).T
     datastd = np.std(data,0).T
     tplts=tplts[:, :, chStart_i:chEnd_i]
     subcm=cm[chStart_i:chEnd_i,:].copy().astype(np.float32)
-    
+
     # Format plotting parameters
     if type(sample_lines) is str:
         assert sample_lines=='all'
         sample_lines=min(waveforms.shape[0],n_waveforms)
     elif type(sample_lines) in [int, float]:
         sample_lines=min(waveforms.shape[0],sample_lines, n_waveforms)
-    
+
     title = 'waveforms of {}'.format(u) if title=='' else title
     if isinstance(color, str):
         color=to_rgb(color)
@@ -446,7 +539,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     ylim1, ylim2 = (np.nanmin(datam-datastd)-50, np.nanmax(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
     x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot t datapoints between 0 and t/30 ms
     x_tplts = x[(data.shape[1]-tplts.shape[1])//2:(data.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
-    
+
     #Plot
     if as_heatmap:
         hm_yticks=get_bestticks_from_array(subcm[:,0], step=None)[::-1]
@@ -467,20 +560,20 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         miny_um,maxy_um=min(subcm[:,2])-ax_edge_um_y/2, max(subcm[:,2])+ax_edge_um_y/2
         figh_inch=figw_inch*(maxy_um-miny_um)/(maxx_um-minx_um)
         fig=plt.figure(figsize=(figw_inch, figh_inch))
-        
+
         subcm[:,1]=((subcm[:,1]-minx_um)/(maxx_um-minx_um)*np.diff(fig_wborder)+fig_wborder[0]).round(2)
         subcm[:,2]=((subcm[:,2]-miny_um)/(maxy_um-miny_um)*np.diff(fig_hborder)+fig_hborder[0]).round(2)
         axw=(ax_edge_um_x/(maxx_um-minx_um)*np.diff(fig_wborder))[0] # in ratio of figure size
         axh=(ax_edge_um_y/(maxy_um-miny_um)*np.diff(fig_hborder))[0] # in ratio of figure size
-        
+
         ax=np.empty((subcm.shape[0]), dtype='O')
         # i is the relative raw data /channel index (low is bottom channel)
         i_bottomleft=np.nonzero((subcm[:2,1]==min(subcm[:2,1]))&(subcm[:2,2]==min(subcm[:2,2])))[0]
         i_bottomleft=np.argmin(subcm[:2,2]) if i_bottomleft.shape[0]==0 else i_bottomleft[0]
         for i in range(subcm.shape[0]):
-            x0,y0 = subcm[i,1:] 
+            x0,y0 = subcm[i,1:]
             ax[i] =fig.add_axes([x0-axw/2,y0-axh/2,axw,axh], autoscale_on=False)
-        
+
         # Plot on subplots
         for i in range(subcm.shape[0]):
             for j in range(sample_lines):
@@ -525,7 +618,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
             ax[i_bottomleft].text(0.5, ylim1-0.05*ylimdiff, '1 ms', weight='bold', size=18, va='top', ha='center')
             ax[i_bottomleft].plot([0,0],[ylim1,ylim1+y_scale], c='k', lw=scalebar_w)
             ax[i_bottomleft].text(-0.05*xlimdiff, ylim1+y_scale*0.5, f'{y_scale} \u03bcV', weight='bold', size=18, va='center', ha='right')
-    
+
         if labels: fig.suptitle(t=title, x=0.5, y=0.92+0.02*(len(title.split('\n'))-1), size=18, weight='bold', va='top')
 
     # Save figure
@@ -857,7 +950,7 @@ def psth_popsync_plot(trains, events, psthb=10, window=[-1000,1000],
 
 def psth_plot(times, events, psthb=5, psthw=[-1000, 1000], remove_empty_trials=False, events_toplot=[0], events_color='r',
            title='', color='darkgreen',
-           saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf',
+           saveDir='~/Downloads', saveFig=0, ret_data=0, _format='pdf',
            zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000], ylim=None,
            convolve=True, gsd=2, xticks=None, xticklabels=None, xlabel=None, ylabel=None,
            ax=None, figsize=None, tight_layout=True, hspace=None, wspace=None):
@@ -867,16 +960,18 @@ def psth_plot(times, events, psthb=5, psthw=[-1000, 1000], remove_empty_trials=F
                                       convolve=convolve, gsd=gsd, method='gaussian_causal',
                                       bsl_subtract=bsl_subtract, bsl_window=bsl_window)
 
-    return psth_plt(x, y_p, y_p_var, psthw, events_toplot, events_color,
+    fig = psth_plt(x, y_p, y_p_var, psthw, events_toplot, events_color,
            title, color,
-           saveDir, saveFig, saveData, _format,
+           saveDir, saveFig, _format,
            zscore, bsl_subtract, bsl_window, ylim,
            convolve, gsd, xticks, xticklabels, xlabel, ylabel,
            ax, figsize, tight_layout, hspace, wspace)
 
+    return (x,y,y_p,y_p_var) if ret_data else fig
+
 def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
            title='', color='darkgreen',
-           saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf',
+           saveDir='~/Downloads', saveFig=0, _format='pdf',
            zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000], ylim=None,
            convolve=True, gsd=2, xticks=None, xticklabels=None, xlabel='Time (ms)', ylabel='IFR (Hz)',
            ax=None, figsize=None, tight_layout=True, hspace=None, wspace=None):
@@ -900,7 +995,7 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
         if zscore or bsl_subtract: ax.step(x, y_p-y_p_var, color='black', lw=0.5, where='post')
         ax.step(x, y_p+y_p_var, color='black', lw=0.5, where='post')
         ax.step(x, y_p, color='black', lw=2,where='post')
-    
+
     yl=ax.get_ylim() if ylim is None else ylim
     assert assert_iterable(yl), 'WARNING the provided ylim need to be of format [ylim1, ylim2]!'
     if not (zscore or bsl_subtract): yl=[0,yl[1]]
@@ -919,7 +1014,7 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
     if ylabel is None:
         ylabel='IFR\n(zscore)' if zscore else r'$\Delta$ FR (Hz)' if bsl_subtract else 'IFR (Hz)'
     if xlabel is None: xlabel='Time (ms)'
-    
+
     fig,ax=mplp(fig=fig, ax=ax, figsize=figsize,
      xlim=psthw, ylim=yl, xlabel=xlabel, ylabel=ylabel,
      xticks=xticks, xtickslabels=xticklabels,
@@ -931,17 +1026,18 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
     if saveFig:
         figname=title
         save_mpl_fig(fig, figname, saveDir, _format)
-    if saveData: np.save(y_p)
 
     return fig
 
-def raster_plot(times, events, events_toplot=[0], events_color='r', trials_toplot=[], window=[-1000, 1000], remove_empty_trials=False,
-           title='', color='darkgreen', colorpalette="tab10", marker='|', malpha=0.9, size=None, lw=3, sparseylabels=True, figsize=None,
-           saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf',
-           as_heatmap=False, vmin=None, center=None, vmax=None, cmap_str=None,
-           show_psth=False, psthb=10,
-           zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000], ylim_psth=None,
-           convolve=True, gsd=2):
+def raster_plot(times, events, window=[-1000, 1000], events_toplot=[0], events_color='r',
+                trials_toplot=[], remove_empty_trials=False,
+                title='', color='darkgreen', palette='batlow',
+                marker='|', malpha=0.9, size=None, lw=3, sparseylabels=True, figsize=None,
+                saveDir='~/Downloads', saveFig=0, ret_data=0, _format='pdf',
+                as_heatmap=False, vmin=None, center=None, vmax=None, cmap_str=None,
+                show_psth=False, psthb=10,
+                zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000], ylim_psth=None,
+                convolve=True, gsd=2):
     '''
     Make a raster plot of the provided 'times' aligned on the provided 'events', from window[0] to window[1].
     By default, there will be len(events) lines. you can pick a subset of events to plot
@@ -958,8 +1054,8 @@ def raster_plot(times, events, events_toplot=[0], events_color='r', trials_toplo
         - color: string or list of strings of size
         - figsize: tuple, (x,y) figure size
         - saveDir: save directory to save data and figure
-        - saevFig: boolean, if 1 saves figure with name raster_title._format at saveDir
-        - saveData: boolean, if 1 saves data as 2D array 2xlen(times), with first line being the event index and second line the relative timestamp time in seconds.
+        - saveFig: boolean, if 1 saves figure with name raster_title._format at saveDir
+        - ret_data: boolean, whether to return data (x,y,y_p,y_p_var) instead of matplotlib figure.
         - _format: string, format used to save figure if saveFig=1 | Default: 'pdf'
 
     Returns:
@@ -974,7 +1070,7 @@ def raster_plot(times, events, events_toplot=[0], events_color='r', trials_toplo
     print(f'{n_cells} cell(s) detected.')
     if isinstance(color, str):
         if n_cells==1: color=[color]
-        else: color=sns.color_palette(colorpalette, n_cells).as_hex()
+        else: color=get_ncolors_cmap(palette, n_cells, plot=False)
     else: assert len(color)==n_cells
     subplots_ratio=[4*n_cells,n_cells]
 
@@ -1071,30 +1167,30 @@ def raster_plot(times, events, events_toplot=[0], events_color='r', trials_toplo
             ax_psth=fig.add_subplot(grid[-n_cells+ci, :])
             xticklabels_subplot=xticklabels if ci==n_cells-1 else ['' for i in xticklabels]
             xlabel_subplot=xlabel if ci==n_cells-1 else None
-            psth_plot(times[ci], events, psthb=psthb, psthw=window, events_toplot=events_toplot, events_color=events_color,
-                     remove_empty_trials=remove_empty_trials,
+            psth_plot(times[ci], events, psthb=psthb, psthw=window,
+                      remove_empty_trials=remove_empty_trials, events_toplot=events_toplot, events_color=events_color,
                        title=None, color=color[ci],
-                       saveDir=saveDir,
+                       saveDir=saveDir, saveFig=0, ret_data=0, _format='pdf',
                        zscore=zscore, bsl_subtract=bsl_subtract, bsl_window=bsl_window, ylim=ylim_psth,
                        convolve=convolve, gsd=gsd,
-                       xticks=xticks, xticklabels=xticklabels_subplot, xlabel=xlabel_subplot,
-                       ax=ax_psth, figsize=None)
+                       xticks=xticks, xticklabels=xticklabels_subplot, xlabel=xlabel_subplot, ylabel=None,
+                       ax=ax_psth, figsize=None, tight_layout=True, hspace=None, wspace=None)
 
     if saveFig:
         figname=title
         save_mpl_fig(fig, figname, saveDir, _format)
 
-    return fig
+    return (x,y,y_p,y_p_var) if ret_data else fig
 
 def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1000],
                  zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000], convolve=True, gsd=2,
-                 events_toplot=[0], events_col=None, trains_col_sat=None,
+                 events_toplot=[0], events_col=None, trains_col_groups=None,
                  title=None, saveFig=0, saveDir='~/Downloads', _format='pdf',
-                 figh=None, figratio=None, transpose=False,
+                 figh=None, figratio=None, transpose=False, ylim=None,
                  as_heatmap=False,  vmin=None, center=None, vmax=None, cmap_str=None):
     '''
     Function to plot a bunch of PSTHs, all trains aligned to all sets of events, in a single summary figure.
-    
+
     Parameters:
         Related to PSTH data:
             - trains: list of np arrays (s), spike trains
@@ -1111,8 +1207,9 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
             - gsd: float (ms), std of causal gaussian window | Default 2
         Related to events coloring/display:
             - events_toplot: list of floats, times at which to draw a vertical line | Default [0]
-            - events_col: list of str/(r,g,b)/hex strings, color of PSTHs (1 per event) | Default None
-            - trains_col_sat: list of floats [0-1], saturation of events_col for each unit | Default None
+            - events_col: list of str/(r,g,b)/hex strings of len n_events, color of PSTHs (1 per event)
+                          or str, matplotlib / crameri colormap | Default None
+            - trains_col_groups: list of int of len n_trains, groups of units which should be colored alike | Default None
         Related to figure saving:
             - title: str, figure suptitle also used as filename if saveFig is True | Default None
             - saveFig: bool, whether to save figure as saveDir/title._format | Default 0
@@ -1130,18 +1227,30 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
             - cmap_str: str, colormap of heatmap  | Default None
     '''
     ## TODO overlay=False, overlay_dim='events',
-            
+    nevents=len(events)
+    ntrains=len(trains)
+    if trains_col_groups is None: trains_col_groups=[0]*ntrains
+    ntraingroups=np.unique(trains_col_groups).shape[0]
+
     if events_col is None:
-        events_col = sns.color_palette(n_colors=len(events))
-    trains_col_s=[0.9]*len(trains) if trains_col_sat is None else trains_col_sat
-    assert np.all(npa(trains_col_s)>=0) and np.all(npa(trains_col_s)<=1), 'WARNING saturations must be between [0-1]!'
-    assert len(trains)==len(trains_str)==len(trains_col_s)
-    assert len(events)==len(events_str)==len(events_col)
-    
+        colorfamilies = get_color_families(ntraingroups, nevents)
+    else:#convert to rgb
+        if isinstance(events_col,str): # assumes colormap if str
+            colorfamilies = get_color_families(ntraingroups, nevents, events_col)
+        elif assert_iterable(events_col) and ():
+            events_col=[to_rgb(c) for c in events_col]
+            colorfamilies = [[c]*ntraingroups for c in events_col]
+        else:
+            raise TypeError('You must provide a LIST of colors or a colormap string.')
+
+
+    assert ntrains==len(trains_str)==len(trains_col_groups)
+    assert nevents==len(events_str)==len(colorfamilies)
+
     assert len(psthw)==2
     psthw=[psthw[0], psthw[1]+psthb]
     (lw1, lw2) = (0.5, 1) if (zscore or bsl_subtract) else (0.5, 1)
-    
+
     # Plot as 2D grid of PSTHs
     if not as_heatmap:
         if figh is None: figh=8
@@ -1151,30 +1260,27 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
         figh=nrows*3
         figw=ncols*3*fig_ratio
         fig = plt.figure(figsize=(figw,figh))
-        for ei, (e, es, ec) in enumerate(zip(events, events_str, events_col)):
-            for ti, (t, ts, tc) in enumerate(zip(trains, trains_str, trains_col_s)):
+        for ei, (e, es, cf) in enumerate(zip(events, events_str, colorfamilies)):
+            for ti, (t, ts) in enumerate(zip(trains, trains_str)):
                 ax_id=ax_ids[ei,ti] if not transpose else ax_ids[ti,ei]
                 ax_psth=fig.add_subplot(nrows, ncols, ax_id)
-                
+
                 xlab='Time (ms)' if ax_id in ax_ids[-1,:] else ''
                 ylab='IFR\n(zscore)' if zscore else r'$\Delta$ FR (Hz)' if bsl_subtract else 'IFR (Hz)'
                 (ttl_s, y_s) = (ts, es) if not transpose else (es, ts)
-                ylab= f'{y_s}' if ax_id in ax_ids[:,0] else ''
+                ylab= f'{y_s}\n{ylab}' if ax_id in ax_ids[:,0] else ''
                 ttl=ttl_s if ax_id in ax_ids[0,:] else None
-                
-                color=mpl.colors.rgb_to_hsv(ec)
-                color=mpl.colors.hsv_to_rgb([color[0],tc,color[2]])
-                
-                psth_plot(t, e, psthb=psthb, psthw=psthw, events_toplot=events_toplot, events_color='k',
-                         remove_empty_trials=True,
-                           title=ttl, color=color,
-                           saveDir=saveDir,
-                           zscore=zscore, bsl_subtract=bsl_subtract, bsl_window=bsl_window, ylim=None,
-                           convolve=convolve, gsd=gsd,
-                           xticks=None, xticklabels=None, xlabel=xlab, ylabel=ylab,
-                           ax=ax_psth, figsize=None,
-                           tight_layout=False, hspace=0.5, wspace=0.5)
-        
+
+                tc=cf[trains_col_groups[ti]]
+
+                psth_plot(t, e, psthb, psthw,
+                          remove_empty_trials=True, events_toplot=events_toplot, events_color='k',
+                           title=ttl, color=tc,
+                           saveDir=saveDir, saveFig=False, ret_data=False, _format=_format,
+                           zscore=zscore, bsl_subtract=bsl_subtract, bsl_window=bsl_window, ylim=ylim,
+                           convolve=convolve, gsd=gsd, xticks=None, xticklabels=None, xlabel=xlab, ylabel=ylab,
+                           ax=ax_psth, figsize=None, tight_layout=False, hspace=0.5, wspace=0.5)
+
         fig.tight_layout()
         if title is not None: fig.suptitle(title)
         if saveFig:save_mpl_fig(fig, title, saveDir, _format)
@@ -1189,12 +1295,12 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
     fig = plt.figure(figsize=(figw,figh))
     nmaps=len(events) if not transpose else len(trains)
     grid = plt.GridSpec(nmaps, 1, wspace=0.2, hspace=0.3)
-    (l1,ls1,lc1,l2,ls2,lc2)=(events, events_str, events_col, trains, trains_str, trains_col_s)
-    if transpose:(l1,ls1,lc1,l2,ls2,lc2)=(l2,ls2,lc2,l1,ls1,lc1)
-    for _i1, (_1, _s1, _c1) in enumerate(zip(l1,ls1,lc1)):
+    (l1,ls1,l2,ls2)=(events, events_str, trains, trains_str)
+    if transpose:(l1,ls1,l2,ls2)=(l2,ls2,l1,ls1)
+    for _i1, (_1, _s1) in enumerate(zip(l1,ls1)):
         Y=None
         ax_im=fig.add_subplot(grid[_i1,:])
-        for _i2, (_2, _s2, _c2) in enumerate(zip(l2,ls2,lc2)):
+        for _i2, (_2, _s2) in enumerate(zip(l2,ls2)):
             (e,t)=(_1,_2) if not transpose else (_2,_1)
             x, y, y_p, y_p_var = get_processed_ifr(t, e, b=psthb, window=psthw, remove_empty_trials=True,
                                                       zscore=zscore, zscoretype='within',
@@ -1210,9 +1316,9 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
         y_ticks_labels=trains_str if not transpose else events_str
         clab='Inst. firing rate (Hz)' if not zscore else 'Inst. firing rate (zscore)'
         ylab=f'Units\n{_s1}' if not transpose else f'Events\n{_s1}'
-        ec = _c1 if not transpose else _c2
+        tc=colorfamilies[_i1][trains_col_groups[_i2]] if not transpose else colorfamilies[_i2][trains_col_groups[_i1]]
         xlab='Time (ms)' if _i1==len(l1)-1 else None
-        imshow_cbar(Y, origin='top', xevents_toplot=events_toplot, events_color=ec,
+        imshow_cbar(Y, origin='top', xevents_toplot=events_toplot, events_color=tc,
                     xvalues=np.arange(psthw[0], psthw[1], psthb), yvalues=np.arange(nunits)+1,
                     xticks=None, yticks=np.arange(Y.shape[0])+1,
                     xticklabels=None, yticklabels=y_ticks_labels, xlabel=xlab, xtickrot=0,
@@ -1221,7 +1327,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
                     clabel=clab, extend_cmap='neither', cticks=None,
                     figsize=None, aspect='auto', function='imshow', ax=ax_im, tight_layout=False,
                     cmap_h=0.6/nmaps)
-    
+
     if title is not None: fig.suptitle(title)
     fig.tight_layout()
     if saveFig:save_mpl_fig(fig, title, saveDir, _format)
@@ -1592,7 +1698,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
     bChs=npa(bChs).astype(int)
     l=len(units)
     x=np.arange(-cwin/2, cwin/2+cbin, cbin)
-    
+
     if figsize is None: figsize=(2*l,2*l)
     fig = plt.figure(figsize=figsize)
     for row in range(l):
@@ -1770,7 +1876,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
                             Allows to alter the value to which pixel positions are mapped (which are dumb pixel ranks by default).
         - xticks, yticks: allows to alter the position of the ticks (in [0,npixels] space by default, in xvalues/yvalues space if they are provided)
         - xticklabels, yticklabels: allows to alter the label of the ticks - should have the same size as xticks/yticks
-        - cmapstr: string, colormap name
+        - cmapstr: string, colormap name from matplotlib ('RdBu_r') or Fabio Crameri package ('batlow')
         - vmin: value to which the lower boundary of the colormap corresponds
         - vmax: value to which the upper boundary of the colormap corresponds
         - center: value to which the center of the colormap corresponds
@@ -1788,7 +1894,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
 
     # Make custom colormap.
     # If center if provided, reindex colors accordingly
-    cmap = mpl.cm.get_cmap(cmapstr)
+    cmap = get_cmap(cmapstr)
     if center is not None:
         vrange = max(vmax - center, center - vmin)
         if colorseq=='linear':
@@ -1827,7 +1933,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
             xl=ax.get_xlim()
             ax.plot(xl,[e,e],lw=events_lw,ls='--',c=events_color)
             ax.set_xlim(xl)
-    
+
     mplp(fig, ax, figsize=figsize,
           xlim=None, ylim=None, xlabel=xlabel, ylabel=ylabel,
           xticks=xticks, yticks=yticks, xtickslabels=xticklabels, ytickslabels=yticklabels,
@@ -1857,7 +1963,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     #cticks=[t.get_text() for t in cbar_ax.yaxis.get_ticklabels()]
     cbar_ax.yaxis.set_ticklabels(cticks, ha='left')
     cbar_ax.yaxis.set_tick_params(pad=5, labelsize=12)
-    
+
 
     return fig
 

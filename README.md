@@ -1,85 +1,193 @@
-# routines
+# Npyx: loading, processing and plotting Neuropixels data
 
-***************************************************************************************************
-Formal Definition of a "routine" -> a python function with the following properties:
-- short memorable name
-- computes a commonly used Variable from a raw dataset directory.
-- when called, looks for the Variable in dir/routinesMemory where dir is the directory of 
-  the dataset. If not found, the routine saves the variable after having computed it.
-***************************************************************************************************
+[![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)
 
-Python version has to be >=3.7 ot there will be imports issues!
+Npyx is a pure python library built for electrophysiologists using Neuropixels. It features a suite of core utility functions for loading, processing and plotting Neuropixels data.
+
+This package results from the needs of an experimentalist who could not stand MATLAB, hence wrote himself a suite of functions to emotionally bear doing neuroscience. There isn't any dedicated preprint available yet, so if you enjoy this package and use it for your research, please cite [this paper](https://www.nature.com/articles/s41593-019-0381-8). Cheers!
+
+## Documentation:
+-----------------
+Npyx works in harmony with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) and [Phy](https://phy.readthedocs.io/en/latest/).
+
+Most npyx functions take at least one input: **`dp`**, which is the path to your Kilosort/phy dataset. You can find a [full description of the structure of such datasets](https://phy.readthedocs.io/en/latest/sorting_user_guide/#installation) on phy documentation.
+
+More precisely, every function requires the files `myrecording.ap.meta`, `spike_times.npy` and `spike_clusters.npy`. Then particular functions will require particular files: loading waveforms with `npyx.spk_wvf.wvf` or extracting your sync channel with `npyx.io.get_npix_sync` require the raw data `myrecording.ap.bin`, extracting the spike sorted group of your units `cluster_groups.tsv` and so on.
+
+Example use cases are:
+### Load synchronization channel
+```python
+from npyx.io import get_npix_sync
+dp = 'path/to/dataset'
+onsets, offsets = get_npix_sync(dp)
+# onsets/offsets are dictionnaries
+# whose keys are ids of sync channel where signal was detected,
+# and values the times of up (onsets) or down (offsets) threshold crosses in seconds.
+```
+### Get good units from dataset
+```python
+from npyx.gl import get_units
+dp = 'path/to/dataset'
+units = get_units(dp, quality='good')
+```
+### Load spikes from unit u
+```python
+from npyx.spk_t import trn
+dp = 'path/to/dataset'
+u=234
+t = trn(dp, u) # gets all spikes from unit 234, in samples
+```
+
+### Load waveforms from unit u
+```python
+from npyx.io import read_spikeglx_meta
+from npyx.spk_t import ids, trn
+from npyx.spk_wvf import get_peak_chan, wvf, template
+dp = 'path/to/dataset'
+u=234
+# returns a random sample of 100 waveforms from unit 234, in uV, across 384 channels
+waves = wvf(dp, u, n_waveforms=100, t_waveforms=82) # return array of shape (100, 82, 384) by default
+# Get the unit peak channel (channel with the biggest amplitude)
+peak_chan = get_peak_chan(dp,u)
+# extract the waveforms located on peak channel
+w=waves[:,:,peak_chan]
+
+# Extract waveforms of spikes occurring between
+# 900 and 1000s in the recording, because that's when your mouse scratched its butt
+fs=read_spikeglx_meta['sRateHz']
+t=trn(dp,u)/fs # convert in s
+ids=ids(dp,u)[(t>900)&(t<1000))]
+waves = wvf(dp, u, spike_ids=ids)
+
+# If you want to load the templates instead (lighter)
+temp = templates(dp,u) # return array of shape (n_templates, 82, n_channels)
+```
+
+### Compute auto/crosscorrelogram between 2 units
+```python
+from npyx.corr import ccg
+dp = 'path/to/dataset'
+# returns ccg between 234 and 92 with a binsize of 0.2 and a window of 80
+c = ccg(dp, [234,92], cbin=0.2, cwin=80)
+```
+
+### Plot correlograms and waveforms from unit u
+```python
+# all plotting functions return matplotlib figures
+from npyx.plot import plot_wvf
+dp = 'path/to/dataset'
+u=234
+# plot waveform, 2.8ms around center, on 8 channels around peak channel,
+# with no single waveforms in the background (sample_lines)
+fig = plot_wvf(dp, u, Nchannels=8, t_waveforms=2.8, sample_lines=0)
+
+# plot ccg between 234 and 92
+fig = plot_ccg(dp, [u,92], cbin=0.2, cwin=80)
+```
+
+### Merge datasets acquired on two probes simultaneously
+```python
+# The three recordings need to include the same sync channel.
+from npyx.Prophyler import Prophyler
+dps = ['same_folder/lateralprobe_dataset',
+       'same_folder/medialprobe_dataset',
+       'same_folder/anteriorprobe_dataset']
+probenames = ['lateral','medial','anterior']
+dp_dict = {p:dp for p, dp in zip(dps, probenames)}
+multipro = Prophyler(dp_dic)
+dp=multipro.dp_pro
+# This will merge the 3 datasets (only relevant information, not the raw data) in a new folder at
+# same_folder/prophyler_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset
+# which can then be used as if it were a single dataset by all npyx functions.
+# The only difference is that units now need to be called as floats, of format unit_id.dataset_id.
+# lateralprobe, medial probe and anteriorprobe dataset_ids will be 0,1 and 2.
+t = trn(dp, 92.1) # get spikes of unit 92 in dataset 1 i.e. medialprobe
+fig=plot_ccg(dp,[10,0,92.1,cbin=0.2,cwin=80]) # compute CCG between 2 units across datasets
+```
+
+There isn't any better doc atm - email [Maxime Beau](mailto:maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL at time of writing) if you have any questions!
+
+<br/>
+
+## Installation:
+----------------
+
+Using a conda environment is very much advised. Instructions here: [manage conda environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
+
+Npyx supports Python 3.7+.
+
+- as a user
+  - from pip (normally up to date)
+  ```bash
+  conda create -n my_env python=3.7
+  conda activate my_env
+  pip install npyx
+  python -c 'import npyx' # should not return any error
+  # If it does, install any missing dependencies with pip (hopefully none!)
+  ```
+  - from the remote repository (always up to date - still private at time of writing, pip is a prerelease)
+  ```bash
+  conda activate env_name
+  pip install git+https://github.com/Npix-routines/NeuroPyxels@master
+  ```
+- as a superuser (recommended if plans to work on it/regularly pull upgrades)
+  > Tip: in an ipython/jupyter session, use `%load_ext autoreload` then `%autoreload` to make your local edits active in your session without having to restart your kernel. Amazing for development.
+    ```bash
+    conda activate my_env
+    cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
+    git clone https://github.com/Npix-routines/NeuroPyxels
+    cd NeuroPyxels
+    python setup.py develop # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you pull an udpate from github.
+    ```
+    and pull every now and then:
+    ```bash
+    conda activate env_name
+    cd path/to/save_dir/NeuroPyxels
+    git pull
+    # And that's it, thanks to the egg link no need to reinstall the package!
+    ```
+<br/>
+
+## Developer cheatsheet
+-------------------
 
 Useful link to [create a python package from a git repository](https://towardsdatascience.com/build-your-first-open-source-python-project-53471c9942a7)
 
-## Installation:
-Using a conda environment is very much advised. Instructions here: [manage conda environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
-- from a local repository (recommended if plans to work on it/regularly pull upgrades)
 
-```
-$ conda activate env_name
-$ cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
-$ git clone https://github.com/Npix-routines/NeuroPyxels
-$ cd NeuroPyxels
-$ python setup.py develop # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you pull an udpate from github.
-
-```
-- from the remote repository (recommended for easy passive install)
-```
-$ conda activate env_name
-$ pip install git+https://github.com/Npix-routines/NeuroPyxels@master
-
-```
-- Now test that the installation works.
-If it doesn't, figure out which packages are missing from the error log.
-```
-$ conda activate env_name
-$ python
->>> import npix # NO ERROR OMG THIS PACKAGE IS SO AWESOME
-
-```
-
-### Pull remote updates (after Maxime's updates :)):
-```
-$ conda activate env_name
-$ cd path/to/save_dir/NeuroPyxels
-$ git pull
-# And that's it, thanks to the egg link no need to reinstall the package!
-```
-
-### Push local updates:
-```
+### Push local updates to github:
+```bash
 # DO NOT DO THAT WITHOUT CHECKING WITH MAXIME FIRST
 # ONLY ON DEDICATED BRANCH CREATED WITH THE GITHUB BROWSER INTERFACE
 
-$ cd path/to/save_dir/NeuroPyxels
-$ git checkout DEDICATED_BRANCH_NAME # ++++++ IMPORTANT
-$ git add.
-$ git commit -m "commit details - try to be specific"
-$ git push origin DEDICATED_BRANCH_NAME # ++++++ IMPORTANT
+cd path/to/save_dir/NeuroPyxels
+git checkout DEDICATED_BRANCH_NAME # ++++++ IMPORTANT
+git add.
+git commit -m "commit details - try to be specific"
+git push origin DEDICATED_BRANCH_NAME # ++++++ IMPORTANT
 
 # Then pull request to master branch using the online github green button! Do not forget this last step, to allow the others repo to sync.
 ```
 
 ### Push local updates to PyPI (only Maxime)
 First change the version in ./setup.py in a text editor
-```
+```python
 setup(name='npyx',
-      version='1.0',... # change to 1.1 or whatev
+      version='1.0',... # change to 1.1, 1.1.1...
 ```
 Then delete the old distribution files before re-generating them for the new version using twine:
-```
+```bash
 rm -r ./dist
 rm -r ./build
 rm -r ./npyx.egg-info
 python setup.py sdist bdist_wheel # this will generate version 1.1 wheel without overwriting version 1.0 wheel in ./dist
 ```
 Before pushing them to PyPI (older versions are saved online!)
-```
-$ twine upload dist/*
+```bash
+twine upload dist/*
+
 Uploading distributions to https://upload.pypi.org/legacy/
 Enter your username: your-username
-Enter your password: 
+Enter your password: ****
 Uploading npyx-1.1-py3-none-any.whl
 100%|████████████████████████████████████████████████████████| 156k/156k [00:01<00:00, 96.8kB/s]
 Uploading npyx-1.1.tar.gz

@@ -15,8 +15,6 @@ psutil
 imutils
 python_utils
 h5py
-holoviews
-hvplot
 numba
 tk
 urllib3

@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 
 import scipy.stats as stats
+from numpy import pi, cos, sin
 
 import cv2
 
@@ -112,20 +113,17 @@ def get_events(dp, event_type, f_behav=None, include_wheel_data=False, add_spont
 
 #%% Generate trials dataframe from either paqIO file or matlab datastructure
 
-def paq_to_trialsdf(dp, f_behav=None, tasktype='wheelturn_rew', again=False, plot=True, lick_ili_th=0.075, **taskwargs):
-    f'''
+def paq_to_trialsdf(dp, f_behav=None, again=False, plot=True, lick_ili_th=0.075, **taskwargs):
+    '''
     Parameters:
         - dp: string, path to neuropixels dataset directory.
         - f_behav: string, path to paqIO behavioral file (None by default, will seek any .paq file in dp/behavior)
         - tasktype: should be either 'wheelturn_rew' (stirring wheel task with interleaved cued rewards) or 'running_rew' (locomotion with cued rewards)
         - again: whether to recompute trials dataframe even if it has been saved on disk in the past.
         - taskwargs: task arguments passed to the task-specific function actually computing the trials dataframe:
-            if tasktype is 'wheelturn_rew':
-                {paq_to_trials_wheelturn_rew.__doc__}
-            if tasktype is 'running_rew':
-                {paq_to_trials_running_rew.__doc__}
     '''
     ## Process passed arguments
+    tasktype='wheelturn_rew'
     assert tasktype in ['wheelturn_rew','running_rew'], "WARNING tasktype should be either 'wheelturn_rew' or 'running_rew'!"
     wheelturn_args=['include_wheel_data', 'add_spont_licks',
                     'wheel_gain', 'rew_zone', 'rew_frames', 'vr_rate',
@@ -181,7 +179,8 @@ def paq_to_trialsdf(dp, f_behav=None, tasktype='wheelturn_rew', again=False, plo
     if tasktype=='wheelturn_rew':
         return paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, **taskwargs)
     elif tasktype=='running_rew':
-        return paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, **taskwargs)
+        pass
+        #return paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, **taskwargs)
 
 def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_data=False, add_spont_licks=False,
                     wheel_gain=3, rew_zone=12.5, rew_frames=3, vr_rate=30,
@@ -380,9 +379,9 @@ def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_d
     df.to_csv(fn)
     return df
 
-def processed_paqdic(dp, f_behav=None, vid_path=None, again=False, 
+def processed_paqdic(dp, f_behav=None, vid_path=None, again=False, again_align=False, again_rawpaq=False,
                      lick_ili_th=0.075, n_ticks=1024, diam=200, gsd=25,
-                     plot=False, drop_raw=True):
+                     plot=False, drop_raw=True, cam_paqi_to_use=None):
     '''
     Remove artefactual licking and processes rotary encoder.
     - dp: str, path of kilosort dataset.
@@ -397,7 +396,7 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False,
     fn=dp/'behavior'/'paq_dic_proc.pkl'
     if fn.exists() and not again: return pickle.load(open(str(fn),"rb"))
     
-    paqdic=npix_aligned_paq(dp,f_behav=f_behav, again=again)
+    paqdic=npix_aligned_paq(dp,f_behav=f_behav, again=again_align, again_rawpaq=again_rawpaq)
     paq_fs=paqdic['paq_fs']
     npix_fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
 
@@ -425,6 +424,7 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False,
     # Process rotary encoder
     # Get periods with/without 
     v=decode_rotary(paqdic['ROT_A'], paqdic['ROT_B'], paq_fs, n_ticks, diam, gsd, True)
+    v*=sign(abs(np.max(v))-abs(np.min(v))) # 1 if running forward is positive
     paqdic['ROT_SPEED']=v
     
     # Process extra camera frames
@@ -435,14 +435,25 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False,
     if not any(videos):
         print(f'No videos found at {vid_path} - camera triggers not processed.\n')
     else:
+        if cam_paqi_to_use is not None:
+            assert len(cam_paqi_to_use)==2
+            assert cam_paqi_to_use[0]>=0
+            assert cam_paqi_to_use[1]<=len(paqdic['CameraFrames'])-1
+            if cam_paqi_to_use[1]<0:cam_paqi_to_use[1]=len(paqdic['CameraFrames'])+cam_paqi_to_use[1]
+            ON=paqdic['CameraFrames_ON']
+            OFF=paqdic['CameraFrames_OFF']
+            mon=(ON>=cam_paqi_to_use[0])&(ON<=cam_paqi_to_use[1])
+            mof=(OFF>=cam_paqi_to_use[0])&(OFF<=cam_paqi_to_use[1])
+            paqdic['CameraFrames_ON_npix']=paqdic['CameraFrames_ON_npix'][mon]
+            paqdic['CameraFrames_OFF_npix']=paqdic['CameraFrames_OFF_npix'][mof]
         frames_npix=paqdic['CameraFrames_ON_npix']/paqdic['npix_fs']
         nframes=[get_nframes(v) for v in videos]
-        print(f'{frames_npix.shape[0]} frames in paqIO file, {sum(nframes)} in video files.')
+        print(f'{frames_npix.shape[0]} frames in paqIO file, {np.sum(nframes)} in video files.')
         print(f'**{frames_npix.shape[0]-sum(nframes)}** unexpected camera triggers... \
         ({sum(np.diff(frames_npix)<0.001)} below 1ms)')
         print(f'(Videos nframes:{nframes}.)')
-        print(f'There are **{sum(npa(nframes)!=60000)}** seemingly manually aborted videos - \
-        check that the discrepancy matches.\nIf they do not, figure out why.')
+        print(f'''There are **{sum(npa(nframes)!=60000)}** seemingly manually aborted videos - 
+        check that the discrepancy matches.\nIf they do not, figure out why. There might be some trashed video triggers somewhere.''')
         
         fi=0
         n_man_abort=0
@@ -504,8 +515,9 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False,
     
     return paqdic
 
-def npix_aligned_paq(dp, f_behav=None, again=False):
-
+def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
+    '''Aligns thresholded paqIO data at f_behav to npix data at dp.
+    '''
     dp=Path(dp)
     if not (dp/'behavior').exists(): (dp/'behavior').mkdir()
     fn=dp/'behavior'/'paq_dic.pkl'
@@ -1094,10 +1106,6 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     - gsd: float (ms), std of gaussian kernel (mandatory gaussian-causal smoothing)
     - med_filt: bool, whether to median filter on top of mandatory gaussian smoothing
     '''
-    ## Preprocess parameters
-    # *4 because 4 threshold crosses per period (Aup,Bup,Adown,Bdown)
-    n_ticks*=4
-    mm_per_tick=np.pi*diam/n_ticks
     
     ## Compute channels on/offsets
     ath=A.min()+(A.max()-A.min())*0.2
@@ -1117,31 +1125,61 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     # > 0 everywhere else (init. with 0s)
     d=np.zeros((a.shape))
     
-    # Arbitrary decision:
-    # if a is crossed up, and b is high, displacement is 1.
-    # everything else necessarily follows.
-    for aon in a_on:
-        if not b[aon]:d[aon]=1 # if a up and b is up, 1.
-        else:d[aon]=-1 # if a up and b is down, -1.
-    for aof in a_of:
-        if b[aof]:d[aof]=1 # if a down and b is up, -1.
-        else:d[aof]=-1 # if a down and b is down, 1.
-            
-    for bon in b_on:
-        if a[bon]:d[bon]=1 # if b up and a is up, -1.
-        else:d[bon]=-1 # if b up and a is down, 1.
-    for bof in b_of:
-        if not a[bof]:d[bof]=1 # if b down and a is down, -1.
-        else:d[bof]=-1 # if b down and a is up, 1.
-            
-    ## Convert array of delta-ticks to mm/s
+    # If only one channel was recorded, everything isn't lost.
+    a_mess=f'WARNING half max of rotary channel A is {ath} -> channel must be dead. Skipping rotary decoding.\n'
+    b_mess=f'WARNING half max of rotary channel B is {bth} -> channel must be dead. Skipping rotary decoding.\n'
+    if (ath<0.2)&(bth<0.2):
+        print(a_mess)
+        print(b_mess)
+        
+        return npa([np.nan])
     
+    elif (ath<0.2)|(bth<0.2):
+        if (bth>0.2):
+            print(a_mess)
+            print('Only channel B used -> only absolute speed with a 1/2 period precision.\n')
+            d[b_on]=1
+            d[b_of]=1
+        if (ath>0.2):
+            print(b_mess)
+            print('Only channel A used -> only absolute speed with a 1/2 period precision.\n')
+            d[a_on]=1
+            d[a_of]=1
+        
+        # *2 because 2 threshold crosses per period (Aup,Adown OR Bup,Bdown)
+        n_ticks*=2
+    
+    elif (ath>0.2)&(bth>0.2):
+        # Arbitrary decision:
+        # if a is crossed up, and b is high, displacement is 1.
+        # everything else necessarily follows.
+        for aon in a_on:
+            if not b[aon]:d[aon]=1 # if a up and b is up, 1.
+            else:d[aon]=-1 # if a up and b is down, -1.
+        for aof in a_of:
+            if b[aof]:d[aof]=1 # if a down and b is up, -1.
+            else:d[aof]=-1 # if a down and b is down, 1.
+                
+        for bon in b_on:
+            if a[bon]:d[bon]=1 # if b up and a is up, -1.
+            else:d[bon]=-1 # if b up and a is down, 1.
+        for bof in b_of:
+            if not a[bof]:d[bof]=1 # if b down and a is down, -1.
+            else:d[bof]=-1 # if b down and a is up, 1.
+                
+        
+        # *4 because 4 threshold crosses per period (Aup,Bup,Adown,Bdown)
+        n_ticks*=4
+    
+    ## Convert array of delta-ticks to mm/s
+    # periphery/n_ticks to get mm per tick
+    mm_per_tick=np.pi*diam/n_ticks
     # delta rotary ticks to delta mm
     d*=mm_per_tick
     # delta mm to mm/s using sampling rate
     d*=fs
     
-    # mandatory smooth (it makes no sense to keep an instantaneous speed at resolution fs)
+    ## mandatory smooth (it makes no sense to keep an instantaneous speed at resolution fs)
     gsd=int(gsd*fs/1000) # convert from ms to array sampling (1ms -> 5 samples)
     d=smooth(d, method='gaussian_causal', sd=gsd)
     if med_filt:
@@ -1180,6 +1218,42 @@ def frame_from_vid(video_path, frame_i, plot=True):
 
 #%% Rig-related
 
+def ellipsis(a, b, x0=0, y0=0, rot=0):
+    '''
+    - a, b: floats, length of horizontal/vertical axis (for rot=0), respectively
+    - x0, y0: floats, (x,y) coordinates of origin
+    - rot: float (degrees), ellipsis clockwise rotation
+    '''
+    rot*=2*pi/360
+    t=np.linspace(0, 2*pi, 100)
+
+    ell = npa([a * cos(t), b * sin(t)])
+    rotM = np.array([[cos(rot) , -sin(rot)],[sin(rot) , cos(rot)]])  
+    ellrot = np.zeros((2,ell.shape[1]))
+    for i in range(ell.shape[1]):
+        ellrot[:,i] = np.dot(rotM,ell[:,i])
+    ellrot[0,:]=ellrot[0,:]+x0
+    ellrot[1,:]=ellrot[1,:]+y0
+    
+    return ellrot
+
+def in_ellipsis(X, Y, a, b, x0=0, y0=0, rot=0, a_axis='major', plot=False):
+    f'''
+    - X, Y: 1dim np arrays or shape (n,), coordinates to test
+    {ellipsis.__doc__}
+    
+    returns: m, boolean array of shape (n, ), True for points (X,Y) within ellipsis.
+    '''
+    
+    assert len(X)==len(Y)
+    if a_axis=='minor': X,Y=Y,X
+    
+    rot*=-2*pi/360
+    
+    m=( ( ((X-x0)*cos(rot)+(Y-y0)*sin(rot))**2 / a**2 ) + ( ((X-x0)*sin(rot)+(Y-y0)*cos(rot))**2 / b**2 ) )-1
+    
+    return (m<0)
+
 def ellipsis_string(x, a, b, axis='major'):
     '''
     - x: float, x (or y) coordinate of string on axis 'axis' (mm)
@@ -1215,7 +1289,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
     print(f'Border of mirror will be {round(depth, 1)}mm below the mouse, covering {round(string, 1)}mm laterally.')
     
     # Distances parallel to major axis inside cylinder
-    theta=theta*2*np.pi/360
+    theta=theta*2*pi/360
     e1=h/np.cos(theta)
     E=np.sqrt(2*H**2)
     e2=E-e1

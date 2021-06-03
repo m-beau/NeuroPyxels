@@ -254,10 +254,11 @@ def pos_10_90(waves, axes = 1):
 
 
     min_amp_arg = np.argmin(peak_v)
+    max_amp_arg = np.argmax(peak_v)
     min_amp = peak_v[min_amp_arg]
-    curr_peak_t = peak_t[min_amp_arg+1]
+    max_amp = peak_v[max_amp_arg]
+    curr_peak_t = peak_t[max_amp_arg]
     prev_peak_t = peak_t[min_amp_arg]
-    max_amp = peak_v[min_amp_arg+1]
 
 
     perc_10 = 0.1 * max_amp

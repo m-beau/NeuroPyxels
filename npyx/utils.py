@@ -226,7 +226,7 @@ def thresh(arr, th, sgn=1, pos=1):
     - pos: 1 or -1, position of closest value, just following or just preceeding.'''
     assert pos in [-1,1]
     assert sgn in [-1,1]
-    arr=np.asarray(arr)
+    arr=np.asarray(arr).copy()
     assert arr.ndim==1
     arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
 
@@ -236,6 +236,19 @@ def thresh(arr, th, sgn=1, pos=1):
         return np.array([])
     return  i[arr[np.clip(i-1, 0, len(arr)-1)]<th] if pos==1 else i[arr[np.clip(i+1, 0, len(arr)-1)]>th]
 
+def thresh_fast(arr, th, sgn=1, pos=1):
+    '''Returns indices of the data points closest to a directed crossing of th.
+    - data: numpy array.
+    - th: threshold value.
+    - sgn: 1 or -1, direction of the threshold crossing, either positive (1) or negative (-1).
+    - pos: 1 or -1, position of closest value, just following or just preceeding.'''
+    assert pos in [-1,1]
+    assert sgn in [-1,1]
+    assert arr.ndim==1
+    m=(arr>th).astype(np.int8)
+    ths=np.nonzero(np.diff(m)==sgn)[0]
+    if pos: ths+=1
+    return ths
 
 def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False, ret_values=True):
     '''
@@ -389,6 +402,11 @@ def get_bins(cwin, cbin):
         return np.arange(-cwin/2, cwin/2+cbin, cbin)
     else: # odd
         return np.arange(-cwin/2+cbin/2, cwin/2+cbin/2, cbin)
+
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return idx
 
 def mask_2d(x, m):
     '''
@@ -564,6 +582,49 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
 
     return timeseries if usage==1 else timeseries[1]
 
+
+def align_timeseries_interpol(timeseries, sync_signals, fs=None):
+    '''
+    Align a list of N timeseries in the frame of reference of the first timeserie.
+    
+    Assumes that the drift is going to be linear, it is interpolated for times far from sync signals
+    (sync_signal1 = a * sync_signal0 + b).
+    
+    timeseries: list of np arrays (len N), timeseries to align. In samples to ensure accurate alignment
+    sync_signals: list of np arrays (len N), sync signals respective to timeseries. In samples to ensure accurate alignment
+    fs: float or list of floats (len N), sampling frequencies of time series.
+        fs is optional (only to get drift and offset in seconds).
+    
+    returns:
+        - timeseries: list of np arrays (len N, in samples), timeries aligned in temporal reference frame of timeseries[0]
+    '''
+    
+    # Parameters formatting and checks
+    assert len(timeseries)>=2
+    assert len(sync_signals)==len(timeseries)
+    if fs is not None:
+        if assert_iterable(fs):assert len(timeseries)==len(fs)
+        else:fs=[fs]*len(timeseries)
+    for tsi, ts in enumerate(timeseries):
+        assert np.all(ts.astype(int)==ts), 'Timeseries need to be integers, in samples acquired at fs sampling rate!'
+        timeseries[tsi]=ts.astype(int)
+    for tsi, ts in enumerate(sync_signals):
+        assert np.all(ts.astype(int)==ts), 'Sync signals need to be integers, in samples acquired at fs sampling rate!'
+        sync_signals[tsi]=ts.astype(int)
+    
+    # Align
+    master_sync=sync_signals[0]
+    
+    for i, (ts, ss) in enumerate(zip(timeseries[1:], sync_signals[1:])):
+        (a, b) = np.polyfit(ss, master_sync, 1)
+        if fs is not None:
+            drift=round(abs(a*fs[i]/fs[0]-1)*3600*1000,2)
+            offset=round(b/fs[0],2)
+            print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between ephys and paq files.\n')
+        timeseries[i]=(a*ts+b).astype(int)
+    
+    return timeseries
+    
 #%% Stolen from phy
 def _as_array(arr, dtype=None):
     """Convert an object to a numerical NumPy array.

@@ -8,6 +8,7 @@ six
 vispy
 statsmodels
 progressbar2
+cmcrameri
 scikit-learn
 umap-learn
 networkx
@@ -15,8 +16,6 @@ psutil
 imutils
 python_utils
 h5py
-holoviews
-hvplot
 numba
 tk
 urllib3
@@ -24,3 +23,4 @@ certifi
 idna
 elephant
 neo
+opencv-python

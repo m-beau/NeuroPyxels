@@ -214,7 +214,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
       or 'Pearson' (in units of pearson correlation coefficient).
       - ret (bool - default False): if True, train returned by the routine.
       If False, by definition of the routine, drawn to global namespace.
-      - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
+      - sav (bool - default True): if True, by definition of the routine, saves the file in dp.
 
       returns numpy array (Nunits, Nunits, win_size/bin_size)
 
@@ -242,7 +242,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     dprm = Path(dp,'routinesMemory')
     if not os.path.isdir(dprm):
         os.makedirs(dprm)
-    fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(subset_selection)[0:50].replace(' ', ''))
+    fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(subset_selection)[0:50].replace(' ', '').replace('\n',''))
     if os.path.exists(Path(dprm,fn)) and not again and trains is None:
         if prnt: print("File {} found in routines memory.".format(fn))
         crosscorrelograms = np.load(Path(dprm,fn))
@@ -324,7 +324,11 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
     return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, prnt, subset_selection, again)[0,0,:]
 
-def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz', min_sec = 180, again = False, first_n_minutes = 20, consecutive_n_seconds = 180, acg_window_len = 3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False):
+def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
+            min_sec = 180, again = False, first_n_minutes = 20,
+            consecutive_n_seconds = 180, acg_window_len = 3, acg_chunk_size = 10,
+            gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False,
+            violations_ms = 0.8, rpv_threshold = 0.05, missing_spikes_threshold=5):
     """
     - get the spike times passing our quality metric from the first 20 mins
     - get the argmax of the quality ISI
@@ -361,7 +365,14 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz', m
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 # get the spikes that passed our quality metric
-                good_times_list = train_quality(dp, unit, first_n_minutes = 20, consecutive_n_seconds = consecutive_n_seconds, acg_window_len=acg_window_len, acg_chunk_size = acg_chunk_size, gauss_window_len = gauss_window_len, gauss_chunk_size = gauss_chunk_size, use_or_operator = use_or_operator)
+                good_times_list = train_quality(dp, unit, first_n_minutes = 20,
+                                                acg_window_len=acg_window_len,
+                                                acg_chunk_size = acg_chunk_size,
+                                                gauss_window_len = gauss_window_len,
+                                                gauss_chunk_size = gauss_chunk_size,
+                                                use_or_operator = use_or_operator,
+                                                violations_ms = violations_ms, rpv_threshold = rpv_threshold,
+                                                missing_spikes_threshold=missing_spikes_threshold)
 
             if len(good_times_list) >1 :
 
@@ -480,8 +491,8 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
     Nu=len(U_src)+len(U_trg)
     if name is not None:
         norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
-        fn='ccgstack_{}_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', ''))
-        fnu='ccgstack_{}_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', ''))
+        fn='ccgstack_{}_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', '').replace('\n',''))
+        fnu='ccgstack_{}_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin, str(subset_selection)[0:50].replace(' ', '').replace('\n',''))
 
         if op.exists(dprm/fn) and not again:
             stack=np.load(dprm/fn)
@@ -1026,7 +1037,7 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
     else:
         assert len(U)==len(trains), 'u1 should not be included in U!'
         assert dp is not None, 'Need to provide datapath along with unit indices.'
-        t_end = np.load(Path(dp,'spike_times.npy'))[-1,0]
+        t_end = np.load(Path(dp,'spike_times.npy')).ravel()[-1]
     if t_end is None: t_end=np.max(np.concatenate(trains))
 
     sync_win=sync_win*fs/1000 # conversion to samples
@@ -1464,7 +1475,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         dprm = Path(dp,'routinesMemory');
         if not op.isdir(dprm): os.makedirs(dprm)
         feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_{}_features.csv'.format(\
-                       signame, 'Counts', cbin, cwin, str(subset_selection)[0:50].replace(' ', ''), sgn, only_max))
+                       signame, 'Counts', cbin, cwin, str(subset_selection)[0:50].replace(' ', '').replace('\n',''), sgn, only_max))
 
         sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=again,
                                         subset_selection=subset_selection)

@@ -5,6 +5,8 @@
 """
 import os
 import os.path as op; opj=op.join
+import subprocess
+import sys
 from pathlib import Path
 
 import pickle as pkl
@@ -22,13 +24,13 @@ from IPython.core.display import HTML,display
 
 mpl.rcParams['figure.dpi']=100
 
-# import holoviews as hv
-# import bokeh as bk
-# import hvplot.pandas
+import holoviews as hv
+import bokeh as bk
+import hvplot.pandas
 
 import seaborn as sns
 
-from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, assert_int
+from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable
 from npyx.stats import fractile_normal, fractile_poisson
 
 from npyx.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
@@ -51,7 +53,13 @@ def save_mpl_fig(fig, figname, saveDir, _format):
     if not saveDir.exists():
         assert saveDir.parent.exists(), f'WARNING can only create a path of a single directory level, {saveDir.parent} must exist already!'
         saveDir.mkdir()
-    fig.savefig(saveDir/f"{figname}.{_format}", dpi=300, bbox_inches='tight')
+    p=saveDir/f"{figname}.{_format}"
+    fig.savefig(p, dpi=300, bbox_inches='tight')
+    platform=sys.platform
+    if platform=='linux':
+        bashCommand = f'sudo chmod a+rwx {p}'
+        process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+        output, error = process.communicate()
 
 
 def mplshow(fig):
@@ -64,31 +72,31 @@ def mplshow(fig):
     new_manager.canvas.figure = fig
     fig.set_canvas(new_manager.canvas)
 
-# def bkshow(bkfig, title=None, save=0, savePath='~/Downloads'):
-#     if title is None: title=bkfig.__repr__()
-#     if save:bk.plotting.output_file(f'{title}.html')
-#     bk.plotting.show(bkfig)
+def bkshow(bkfig, title=None, save=0, savePath='~/Downloads'):
+    if title is None: title=bkfig.__repr__()
+    if save:bk.plotting.output_file(f'{title}.html')
+    bk.plotting.show(bkfig)
 
-# def hvshow(hvobject, backend='matplotlib', return_mpl=True):
-#     '''
-#     Holoview utility which
-#     - for dynamic display, interaction and data exploration:
-#         in browser, pops up a holoview object as a bokeh figure
-#     - for static instanciation, refinement and data exploitation:
-#         in matplotlib current backend, pops up a holoview object as a matplotlib figure
-#         and eventually returns it for further tweaking.
-#     Parameters:
-#         - hvobject: a Holoviews object e.g. Element, Overlay or Layout.
-#         - backend: 'bokeh' or 'matplotlib', which backend to use to show figure
-#         - return_mpl: bool, returns a matplotlib figure
+def hvshow(hvobject, backend='matplotlib', return_mpl=True):
+    '''
+    Holoview utility which
+    - for dynamic display, interaction and data exploration:
+        in browser, pops up a holoview object as a bokeh figure
+    - for static instanciation, refinement and data exploitation:
+        in matplotlib current backend, pops up a holoview object as a matplotlib figure
+        and eventually returns it for further tweaking.
+    Parameters:
+        - hvobject: a Holoviews object e.g. Element, Overlay or Layout.
+        - backend: 'bokeh' or 'matplotlib', which backend to use to show figure
+        - return_mpl: bool, returns a matplotlib figure
 
-#     '''
-#     assert backend in ['bokeh', 'matplotlib']
-#     if backend=='matplotlib' or return_mpl:
-#         mplfig=hv.render(hvobject, backend='matplotlib')
-#     if backend=='bokeh': bkshow(hv.render(hvobject, backend='bokeh'))
-#     elif backend=='matplotlib': mplshow(mplfig)
-#     if return_mpl: return mplfig
+    '''
+    assert backend in ['bokeh', 'matplotlib']
+    if backend=='matplotlib' or return_mpl:
+        mplfig=hv.render(hvobject, backend='matplotlib')
+    if backend=='bokeh': bkshow(hv.render(hvobject, backend='bokeh'))
+    elif backend=='matplotlib': mplshow(mplfig)
+    if return_mpl: return mplfig
 
 
 def mpl_pickledump(fig, figname, path):
@@ -133,7 +141,7 @@ def get_bestticks_from_array(arr, step=None, light=False):
 def get_labels_from_ticks(ticks):
     ticks=npa(ticks)
     nflt=0
-    for i, t in enumerate(ticks):
+    for t in ticks:
         t=round(t,4)
         for roundi in range(4):
             if t == round(t, roundi):
@@ -166,7 +174,7 @@ def mplp(fig=None, ax=None, figsize=None,
     # Opportunity to easily hide everything
     if hide_axis:
         ax.axis('off')
-        return fig, ax
+
     else: ax.axis('on')
 
     # Axis labels
@@ -317,6 +325,22 @@ def get_cmap(cmap_str):
         return cmcr[cmap_str]
     else:
         return mpl.cm.get_cmap(cmap_str)
+
+def get_bounded_cmap(cmap_str, vmin, center, vmax, colorseq='linear'):
+    cmap = get_cmap(cmap_str)
+
+    vrange = max(vmax - center, center - vmin)
+    if colorseq=='linear':
+        vrange=[-vrange,vrange]
+        cmin, cmax = (vmin-vrange[0])/(vrange[1]-vrange[0]), (vmax-vrange[0])/(vrange[1]-vrange[0])
+        colors_reindex = np.linspace(cmin, cmax, 256)
+    elif colorseq=='nonlinear':
+        topratio=(vmax - center)/vrange
+        bottomratio=abs(vmin - center)/vrange
+        colors_reindex=np.append(np.linspace(0, 0.5, int(256*bottomratio/2)),np.linspace(0.5, 1, int(256*topratio/2)))
+    cmap = mpl.colors.ListedColormap(cmap(colors_reindex))
+
+    return cmap
 
 def get_ncolors_cmap(cmap_str, n, plot=False):
     '''Returns homogeneously distributed n colors from specified colormap.
@@ -492,7 +516,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     cm=chan_map(dp, y_orig='tip', probe_version=pv)
 
     peak_chan=get_peak_chan(dp, u, use_template=False)
-    peak_chan_i = int(np.argmin(np.abs(cm[:,0]-peak_chan)));
+    peak_chan_i = int(np.argmin(np.abs(cm[:,0]-peak_chan)))
     t_waveforms_s=int(t_waveforms*(fs/1000))
 
     # Get data
@@ -948,7 +972,7 @@ def psth_popsync_plot(trains, events, psthb=10, window=[-1000,1000],
            zscore, bsl_subtract, bsl_window,
            convolve, gsd, xticks, xticklabels, xlabel, ylabel, ax)
 
-def psth_plot(times, events, psthb=5, psthw=[-1000, 1000], remove_empty_trials=False, events_toplot=[0], events_color='r',
+def psth_plot(times, events, psthb=5, psthw=[-1000, 1000], remove_empty_trials=True, events_toplot=[0], events_color='r',
            title='', color='darkgreen',
            saveDir='~/Downloads', saveFig=0, ret_data=0, _format='pdf',
            zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000], ylim=None,
@@ -1218,7 +1242,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
         Related to plotting layout:
             - figh: fig height in inches | Default None
             - figratio: float, fig_width=fig_height*n_columns*fig_ratio | Default None
-            - transpose: bool, whether to transpose rows/columns (by defaults, events are rows and units columns) | Default False
+            - transpose: bool, whether to transpose rows/columnP (by defaults, events are rows and units columns) | Default False
         Related to heatmap plotting:
             - as_heatmap: bool, whether to represent data as heatmaps rather than columns of 2D PSTHs | Default True
             - vmin: float, min value of colormap of heatmap | Default None
@@ -1237,8 +1261,9 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
     else:#convert to rgb
         if isinstance(events_col,str): # assumes colormap if str
             colorfamilies = get_color_families(ntraingroups, nevents, events_col)
-        elif assert_iterable(events_col) and ():
-            events_col=[to_rgb(c) for c in events_col]
+        elif assert_iterable(events_col):
+            if isinstance(events_col[0],str):
+                events_col=[to_rgb(c) for c in events_col]
             colorfamilies = [[c]*ntraingroups for c in events_col]
         else:
             raise TypeError('You must provide a LIST of colors or a colormap string.')
@@ -1254,11 +1279,11 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
     # Plot as 2D grid of PSTHs
     if not as_heatmap:
         if figh is None: figh=8
-        if figratio is None: fig_ratio=1.2
+        if figratio is None: figratio=1.2
         (nrows, ncols) = (len(events), len(trains)) if not transpose else (len(trains), len(events))
         ax_ids=np.arange(nrows*ncols).reshape((nrows,ncols))+1
         figh=nrows*3
-        figw=ncols*3*fig_ratio
+        figw=ncols*3*figratio
         fig = plt.figure(figsize=(figw,figh))
         for ei, (e, es, cf) in enumerate(zip(events, events_str, colorfamilies)):
             for ti, (t, ts) in enumerate(zip(trains, trains_str)):
@@ -1780,13 +1805,13 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
 
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloads', saveFig=False, prnt=False,
              _format='pdf', figsize=None,subset_selection='all', labels=True, std_lines=True, title=None, show_ttl=True, color=-1, CCG=None, saveData=False,
-             ylim=[0,0], ccg_mn=None, ccg_std=None, again=False, trains=None, ccg_grid=False, use_template=True):
+             ylim=[0,0], ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False, use_template=True):
     assert assert_iterable(units)
     units=list(units)
     _, _idx=np.unique(units, return_index=True)
     units=npa(units)[np.sort(_idx)].tolist()
     assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'],"WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte']."#
-    if normalize=='mixte' and len(units)==2 and not ccg_grid: normalize='zscore'
+    if normalize=='mixte' and len(units)==2 and not as_grid: normalize='zscore'
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
@@ -1795,7 +1820,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
         normalize1 = normalize if normalize!='mixte' else 'Hertz'
         CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, prnt=prnt, subset_selection=subset_selection, again=again, trains=trains)
     assert CCG is not None
-    if CCG.shape[0]==2 and not ccg_grid:
+    if CCG.shape[0]==2 and not as_grid:
         if normalize=='zscore':
             CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, subset_selection=subset_selection, again=again, trains=trains)[0,1,:]
             ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
@@ -1894,18 +1919,10 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
 
     # Make custom colormap.
     # If center if provided, reindex colors accordingly
-    cmap = get_cmap(cmapstr)
-    if center is not None:
-        vrange = max(vmax - center, center - vmin)
-        if colorseq=='linear':
-            vrange=[-vrange,vrange]
-            cmin, cmax = (vmin-vrange[0])/(vrange[1]-vrange[0]), (vmax-vrange[0])/(vrange[1]-vrange[0])
-            colors_reindex = np.linspace(cmin, cmax, 256)
-        elif colorseq=='nonlinear':
-            topratio=(vmax - center)/vrange
-            bottomratio=abs(vmin - center)/vrange
-            colors_reindex=np.append(np.linspace(0, 0.5, int(256*bottomratio/2)),np.linspace(0.5, 1, int(256*topratio/2)))
-        cmap = mpl.colors.ListedColormap(cmap(colors_reindex))
+    if center is None:
+        cmap = get_cmap(cmapstr)
+    else:
+        cmap=get_bounded_cmap(cmapstr, vmin, center, vmax, colorseq)
 
     # Define pixel coordinates (default is 0 to n_rows-1 for y and n_columns=1 for x)
     if xvalues is None: xvalues=np.arange(im.shape[1])
@@ -2044,10 +2061,10 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     each column representing a positive or negatively significant peak collored accordingly to its size s.
     '''
 
-    sfc, sfcm, peakChs = gen_sfc(dp, corr_type, metric, cbin, cwin,
+    sfc, sfcm, peakChs, sigstack, sigustack = gen_sfc(dp, corr_type, metric, cbin, cwin,
                                  p_th, n_consec_bins, fract_baseline, W_sd, test,
                                  again, againCCG, drop_seq, units, name,
-                                 cross_cont_proof=False, use_template_for_peakchan=use_template_for_peakchan,
+                                 use_template_for_peakchan=use_template_for_peakchan,
                                  subset_selection=subset_selection)
     gu = peakChs[:,0]
     ch = peakChs[:,1].astype(int)
@@ -2234,63 +2251,6 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
 #         fig.savefig(Path(saveDir,ttl.replace('\n', '_')+'.pdf'))
 
 #     return fig
-
-
-#%% Graphs
-
-def network_plot_3D(G, angle, save=False):
-    '''https://www.idtools.com.au/3d-network-graphs-python-mplot3d-toolkit'''
-    # Get node positions
-    pos = nx.get_node_attributes(G, 'pos')
-
-    # Get number of nodes
-    n = G.number_of_nodes()
-
-    # Get the maximum number of edges adjacent to a single node
-    edge_max = max([G.degree(i) for i in range(n)])
-
-    # Define color range proportional to number of edges adjacent to a single node
-    colors = [plt.cm.plasma(G.degree(i)/edge_max) for i in range(n)]
-
-    # 3D network plot
-    with plt.style.context(('ggplot')):
-
-        fig = plt.figure(figsize=(10,7))
-        ax = Axes3D(fig)
-
-        # Loop on the pos dictionary to extract the x,y,z coordinates of each node
-        for key, value in pos.items():
-            xi = value[0]
-            yi = value[1]
-            zi = value[2]
-
-            # Scatter plot
-            ax.scatter(xi, yi, zi, c=colors[key], s=20+20*G.degree(key), edgecolors='k', alpha=0.7)
-
-        # Loop on the list of edges to get the x,y,z, coordinates of the connected nodes
-        # Those two points are the extrema of the line to be plotted
-        for i,j in enumerate(G.edges()):
-
-            x = np.array((pos[j[0]][0], pos[j[1]][0]))
-            y = np.array((pos[j[0]][1], pos[j[1]][1]))
-            z = np.array((pos[j[0]][2], pos[j[1]][2]))
-
-        # Plot the connecting lines
-            ax.plot(x, y, z, c='black', alpha=0.5)
-
-    # Set the initial view
-    ax.view_init(30, angle)
-
-    # Hide the axes
-    ax.set_axis_off()
-
-    if save is not False:
-        plt.savefig(str(angle).zfill(3)+".png")
-        plt.close('all')
-    else:
-         plt.show()
-
-    return
 
 #%% Save matplotlib animations
 # https://towardsdatascience.com/how-to-create-animated-graphs-in-python-bb619cc2dec1

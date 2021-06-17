@@ -19,7 +19,7 @@ import pandas as pd
 def get_rec_len(dp, unit='seconds'):
     assert unit in ['samples', 'seconds', 'milliseconds']
     fs=read_spikeglx_meta(dp)['sRateHz']
-    t_end=np.load(Path(dp,'spike_times.npy'))[-1,0]
+    t_end=np.load(Path(dp,'spike_times.npy')).ravel()[-1]
     if unit in ['seconds', 'milliseconds']:
         t_end/=fs
         if unit=='milliseconds':t_end*=1e3
@@ -36,41 +36,41 @@ def load_units_qualities(dp, again=False):
     else:
         print('cluster groups table not found in provided data path. Generated from spike_clusters.npy.')
         regenerate=True
-        
+
     if regenerate:
         units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
         qualities=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
         qualities.to_csv(Path(dp, 'cluster_group.tsv'), sep='	', index=False)
         return qualities
-        
+
     if again: # file was found if this line is reached
         units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
         new_unsorted_units=units[~np.isin(units, qualities['cluster_id'])]
         qualities=qualities.append(pd.DataFrame({'cluster_id':new_unsorted_units, 'group':['unsorted']*len(new_unsorted_units)}), ignore_index=True)
         qualities=qualities.sort_values('cluster_id')
         qualities.to_csv(Path(dp, 'cluster_group.tsv'), sep='	', index=False)
-        
+
     return qualities
 
 def get_units(dp, quality='all', chan_range=None, again=False):
     assert quality in ['all', 'good', 'mua', 'noise']
-    
+
     cl_grp = load_units_qualities(dp, again=again)
-        
+
     units=[]
     if assert_multi(dp): get_ds_table(dp)
     units=cl_grp.loc[cl_grp['group']==quality,'cluster_id'].values if quality!='all' else cl_grp['cluster_id'].values
-        
+
     if chan_range is None:
         return units
-    
+
     assert len(chan_range)==2, 'chan_range should be a list or array with 2 elements!'
-    
+
     # For regular datasets
     peak_channels=get_depthSort_peakChans(dp, units=units, quality=quality)
     chan_mask=(peak_channels[:,1]>=chan_range[0])&(peak_channels[:,1]<=chan_range[1])
     units=peak_channels[chan_mask,0].flatten()
-    
+
     return units
 
 def get_good_units(dp):

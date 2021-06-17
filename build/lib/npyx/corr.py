@@ -214,7 +214,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
       or 'Pearson' (in units of pearson correlation coefficient).
       - ret (bool - default False): if True, train returned by the routine.
       If False, by definition of the routine, drawn to global namespace.
-      - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
+      - sav (bool - default True): if True, by definition of the routine, saves the file in dp.
 
       returns numpy array (Nunits, Nunits, win_size/bin_size)
 
@@ -324,7 +324,11 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
     return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, prnt, subset_selection, again)[0,0,:]
 
-def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz', min_sec = 180, again = False, first_n_minutes = 20, consecutive_n_seconds = 180, acg_window_len = 3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False):
+def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
+            min_sec = 180, again = False, first_n_minutes = 20,
+            consecutive_n_seconds = 180, acg_window_len = 3, acg_chunk_size = 10,
+            gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False,
+            violations_ms = 0.8, rpv_threshold = 0.05, missing_spikes_threshold=5):
     """
     - get the spike times passing our quality metric from the first 20 mins
     - get the argmax of the quality ISI
@@ -361,7 +365,14 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz', m
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 # get the spikes that passed our quality metric
-                good_times_list = train_quality(dp, unit, first_n_minutes = 20, consecutive_n_seconds = consecutive_n_seconds, acg_window_len=acg_window_len, acg_chunk_size = acg_chunk_size, gauss_window_len = gauss_window_len, gauss_chunk_size = gauss_chunk_size, use_or_operator = use_or_operator)
+                good_times_list = train_quality(dp, unit, first_n_minutes = 20,
+                                                acg_window_len=acg_window_len,
+                                                acg_chunk_size = acg_chunk_size,
+                                                gauss_window_len = gauss_window_len,
+                                                gauss_chunk_size = gauss_chunk_size,
+                                                use_or_operator = use_or_operator,
+                                                violations_ms = violations_ms, rpv_threshold = rpv_threshold,
+                                                missing_spikes_threshold=missing_spikes_threshold)
 
             if len(good_times_list) >1 :
 

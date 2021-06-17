@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
+from . import utils, io, gl, spk_t, spk_wvf, corr, plot, ml, behav, circuitProphyler, stats
+
 from .utils import npa, sign, thresh, smooth, zscore
+
 
 __doc__="""
 
@@ -25,3 +28,5 @@ npyx submodules:
 
     npyx.stats
 """
+
+__version__ = '1.6.2'

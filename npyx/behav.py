@@ -394,8 +394,10 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False, again_align=F
     ## Try to load presaved df
     dp=Path(dp)
     fn=dp/'behavior'/'paq_dic_proc.pkl'
+    if again_rawpaq: again_align=True
+    if again_align: again=True
     if fn.exists() and not again: return pickle.load(open(str(fn),"rb"))
-    
+
     paqdic=npix_aligned_paq(dp,f_behav=f_behav, again=again_align, again_rawpaq=again_rawpaq)
     paq_fs=paqdic['paq_fs']
     npix_fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
@@ -420,64 +422,67 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False, again_align=F
         ax.set_xscale('log')
         plt.xlim(0.005,10)
         plt.ylim(0,max(hist[0][hist[1][:-1]>0.05])+10)
-    
+
     # Process rotary encoder
-    # Get periods with/without 
-    v=decode_rotary(paqdic['ROT_A'], paqdic['ROT_B'], paq_fs, n_ticks, diam, gsd, True)
-    v*=sign(abs(np.max(v))-abs(np.min(v))) # 1 if running forward is positive
-    paqdic['ROT_SPEED']=v
-    
-    # Process extra camera frames
-    if vid_path is None:
-        vid_path=dp/(dp.name+'_video')
-    videos=list_files(vid_path, 'avi', 1) if vid_path.exists() else []
-    
-    if not any(videos):
-        print(f'No videos found at {vid_path} - camera triggers not processed.\n')
+    # Get periods with/without
+    if not 'ROT_A' in paqdic.keys():
+        print('No rotary encoder data found in paqdic. Assuming no running, no camera.')
     else:
-        if cam_paqi_to_use is not None:
-            assert len(cam_paqi_to_use)==2
-            assert cam_paqi_to_use[0]>=0
-            assert cam_paqi_to_use[1]<=len(paqdic['CameraFrames'])-1
-            if cam_paqi_to_use[1]<0:cam_paqi_to_use[1]=len(paqdic['CameraFrames'])+cam_paqi_to_use[1]
-            ON=paqdic['CameraFrames_ON']
-            OFF=paqdic['CameraFrames_OFF']
-            mon=(ON>=cam_paqi_to_use[0])&(ON<=cam_paqi_to_use[1])
-            mof=(OFF>=cam_paqi_to_use[0])&(OFF<=cam_paqi_to_use[1])
-            paqdic['CameraFrames_ON_npix']=paqdic['CameraFrames_ON_npix'][mon]
-            paqdic['CameraFrames_OFF_npix']=paqdic['CameraFrames_OFF_npix'][mof]
-        frames_npix=paqdic['CameraFrames_ON_npix']/paqdic['npix_fs']
-        nframes=[get_nframes(v) for v in videos]
-        print(f'{frames_npix.shape[0]} frames in paqIO file, {np.sum(nframes)} in video files.')
-        print(f'**{frames_npix.shape[0]-sum(nframes)}** unexpected camera triggers... \
-        ({sum(np.diff(frames_npix)<0.001)} below 1ms)')
-        print(f'(Videos nframes:{nframes}.)')
-        print(f'''There are **{sum(npa(nframes)!=60000)}** seemingly manually aborted videos - 
-        check that the discrepancy matches.\nIf they do not, figure out why. There might be some trashed video triggers somewhere.''')
-        
-        fi=0
-        n_man_abort=0
-        last=0
-        for i,nf in enumerate(nframes):
-            if nf==nframes[-1]:last=1
-            fi+=nf
-            ii=fi+n_man_abort
-            if nf!=60000:#manually aborted
-                n_man_abort+=1
-                # ensure that where the gap between videos (>50ms)
-                # is expected, you actually have a short interval
-                assert frames_npix[ii]-frames_npix[ii-1]<0.05
-                if not last:assert frames_npix[ii+1]-frames_npix[ii]>0.05
-                frames_npix[ii]=np.nan
-            else:
-                # ensure that the gap between videos (>50ms)
-                # is where it is expected
-                assert frames_npix[ii-1]-frames_npix[ii-2]<0.05
-                if not last:assert frames_npix[ii]-frames_npix[ii-1]>0.05
-        frames_npix=(frames_npix[~np.isnan(frames_npix)]*paqdic['npix_fs']).astype(int)
-        print(f'Now the delta between expected/actual frames is **{frames_npix.shape[0]-sum(nframes)}**.')
-        paqdic['CameraFrames_ON_npix']=frames_npix
-    
+        v=decode_rotary(paqdic['ROT_A'], paqdic['ROT_B'], paq_fs, n_ticks, diam, gsd, True)
+        v*=sign(abs(np.max(v))-abs(np.min(v))) # 1 if running forward is positive
+        paqdic['ROT_SPEED']=v
+
+        # Process extra camera frames
+        if vid_path is None:
+            vid_path=dp/(dp.name+'_video')
+        videos=list_files(vid_path, 'avi', 1) if vid_path.exists() else []
+
+        if not any(videos):
+            print(f'No videos found at {vid_path} - camera triggers not processed.\n')
+        else:
+            if cam_paqi_to_use is not None:
+                assert len(cam_paqi_to_use)==2
+                assert cam_paqi_to_use[0]>=0
+                assert cam_paqi_to_use[1]<=len(paqdic['CameraFrames'])-1
+                if cam_paqi_to_use[1]<0:cam_paqi_to_use[1]=len(paqdic['CameraFrames'])+cam_paqi_to_use[1]
+                ON=paqdic['CameraFrames_ON']
+                OFF=paqdic['CameraFrames_OFF']
+                mon=(ON>=cam_paqi_to_use[0])&(ON<=cam_paqi_to_use[1])
+                mof=(OFF>=cam_paqi_to_use[0])&(OFF<=cam_paqi_to_use[1])
+                paqdic['CameraFrames_ON_npix']=paqdic['CameraFrames_ON_npix'][mon]
+                paqdic['CameraFrames_OFF_npix']=paqdic['CameraFrames_OFF_npix'][mof]
+            frames_npix=paqdic['CameraFrames_ON_npix']/paqdic['npix_fs']
+            nframes=[get_nframes(v) for v in videos]
+            print(f'{frames_npix.shape[0]} frames in paqIO file, {np.sum(nframes)} in video files.')
+            print(f'**{frames_npix.shape[0]-sum(nframes)}** unexpected camera triggers... \
+            ({sum(np.diff(frames_npix)<0.001)} below 1ms)')
+            print(f'(Videos nframes:{nframes}.)')
+            print(f'''There are **{sum(npa(nframes)!=60000)}** seemingly manually aborted videos -
+            check that the discrepancy matches.\nIf they do not, figure out why. There might be some trashed video triggers somewhere.''')
+
+            fi=0
+            n_man_abort=0
+            last=0
+            for i,nf in enumerate(nframes):
+                if nf==nframes[-1]:last=1
+                fi+=nf
+                ii=fi+n_man_abort
+                if nf!=60000:#manually aborted
+                    n_man_abort+=1
+                    # ensure that where the gap between videos (>50ms)
+                    # is expected, you actually have a short interval
+                    assert frames_npix[ii]-frames_npix[ii-1]<0.05
+                    if not last:assert frames_npix[ii+1]-frames_npix[ii]>0.05
+                    frames_npix[ii]=np.nan
+                else:
+                    # ensure that the gap between videos (>50ms)
+                    # is where it is expected
+                    assert frames_npix[ii-1]-frames_npix[ii-2]<0.05
+                    if not last:assert frames_npix[ii]-frames_npix[ii-1]>0.05
+            frames_npix=(frames_npix[~np.isnan(frames_npix)]*paqdic['npix_fs']).astype(int)
+            print(f'Now the delta between expected/actual frames is **{frames_npix.shape[0]-sum(nframes)}**.')
+            paqdic['CameraFrames_ON_npix']=frames_npix
+
     # Process other behavioural events
     fs=paqdic['npix_fs']
     cues=paqdic['CUE_ON_npix']
@@ -503,39 +508,40 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False, again_align=F
     paqdic['cued_rewards_npix']=cued_rewards
     paqdic['random_rewards_npix']=random_rewards
     paqdic['first_licks_npix']=first_licks
-    
+
     # Save behav dict
     if drop_raw:
         undesired=['RECON', 'RECON_ON', 'RECON_OFF', 'GAMEON', 'GAMEON_ON', 'GAMEON_OFF', 'TRIALON', 'TRIALON_ON', 'TRIALON_OFF',
                    'REW', 'CUE', 'VRframes', 'VRframes_ON', 'VRframes_OFF', 'GHOST_REW', 'ROT_A', 'ROT_B', 'CameraFrames', 'LICKS_Piezo']
         for k in undesired:
-            paqdic.pop(k)
+            if k in paqdic.keys():paqdic.pop(k)
         print(f'\nDropped: {undesired}.\n')
     pickle.dump(paqdic, open(str(fn),"wb"))
-    
+
     return paqdic
 
 def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
     '''Aligns thresholded paqIO data at f_behav to npix data at dp.
     '''
+    if again_rawpaq: again=True
     dp=Path(dp)
     if not (dp/'behavior').exists(): (dp/'behavior').mkdir()
     fn=dp/'behavior'/'paq_dic.pkl'
     ## Load paq data and npix sync channel data
     if f_behav is None:
         if fn.exists() and not again: return pickle.load(open(str(fn),"rb"))
-        
+
         files=list_files(dp/'behavior', 'paq')
         assert len(files)>0, f"WARNING no files with extension 'paq' were found at {dp/'behavior'} - either add one there or explicitely declare a file path with f_behav parameter."
         assert len(files)==1, f"WARNING more than 1 file with extension 'paq' were found at '{dp/'behavior'}' - clean up your directory structure and try again."
         f_behav=dp/'behavior'/files[0]
         print(f'Behavioural data loaded from: {f_behav}')
-    paqdic=load_PAQdata(f_behav, variables='all', unit='samples', again=again)
+    paqdic=load_PAQdata(f_behav, variables='all', unit='samples', again=again_rawpaq)
     paq_fs=paqdic['paq_fs']
     npix_ons, npix_ofs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
     npix_fs = read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     paqdic['npix_fs']=npix_fs
-    
+
     ## Match Paq data to npix data - convert paq onsets/offsets to npix time frame (or directly use it if available)
     # First, match npix sync channels to paqIO channels through exhaustive screening
     # (only one match for 3B recordings, several for 3A recordings)
@@ -554,17 +560,17 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
             paqk=paq_npix_df.loc[paq_npix_df['npix']==npixk, 'paq'][match_p|match_l].values
             assert paqk.shape[0]==1, f'WARNING, more than one match found ({paqk}) between npix sync channel and PaqIO!!'
             paqk=paqk[0]
-            print(f'\n\n>>> Match found between npix channel {npixk} and paqIO channel {paqk} ({len(npix_ons[npixk])} events)!\n\n')
+            print(f'\n>>> Match found between npix channel {npixk} and paqIO channel {paqk} ({len(npix_ons[npixk])} events)!\n')
             npix_paq[npixk]=paqk
             npix_paq[paqk]=npixk
     assert len(npix_paq)>0, 'WARNING no match was found between paqIO file and npix sync channel!'
-    
+
     # Then, pick the longest matching sync channel to align paqIO channels not acquired with npix
     len_arr=npa([[k,len(npix_ons[k])] for k in npix_paq.keys() if k in npix_ons.keys()])
     sync_npix_k=len_arr[np.argmax(len_arr[:,1]),0]
     sync_npix=npix_ons[sync_npix_k]
     sync_paq=paqdic[npix_paq[sync_npix_k]]
-    
+
     # Model drift: npix_sync = a * paq_sync + b
     (a, b) = np.polyfit(sync_paq, sync_npix, 1)
     paqdic['a']=a
@@ -582,9 +588,9 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
                 paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
                 paqdic[f'{paqk}_npix']=(a*paqv+b).astype(int)
                 paqdic[f"{off_key}_npix"]=(a*paqdic[off_key]+b).astype(int)
-                
+
     pickle.dump(paqdic, open(str(fn),"wb"))
-    
+
     return paqdic
 
 def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.2):
@@ -603,7 +609,7 @@ def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.
         - paqdic, dictionnary of all variables (under key var)
           as well as onset/offsets of digital variables (under keys var_ON and var_OFF)
     '''
-    
+
     # Load paq data
     paq = paq_read(paq_f)
 
@@ -1106,7 +1112,7 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     - gsd: float (ms), std of gaussian kernel (mandatory gaussian-causal smoothing)
     - med_filt: bool, whether to median filter on top of mandatory gaussian smoothing
     '''
-    
+
     ## Compute channels on/offsets
     ath=A.min()+(A.max()-A.min())*0.2
     bth=B.min()+(B.max()-B.min())*0.2
@@ -1118,22 +1124,22 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     a_of=np.nonzero(da==-1)[0]
     b_on=np.nonzero(db==1)[0]
     b_of=np.nonzero(db==-1)[0]
-    
+
     ## Compute array d: delta in rotary ticks
     # This has the size of record_length, and will be filled with
     # > -1/1 where A or B thresholds were crossed
     # > 0 everywhere else (init. with 0s)
     d=np.zeros((a.shape))
-    
+
     # If only one channel was recorded, everything isn't lost.
     a_mess=f'WARNING half max of rotary channel A is {ath} -> channel must be dead. Skipping rotary decoding.\n'
     b_mess=f'WARNING half max of rotary channel B is {bth} -> channel must be dead. Skipping rotary decoding.\n'
     if (ath<0.2)&(bth<0.2):
         print(a_mess)
         print(b_mess)
-        
+
         return npa([np.nan])
-    
+
     elif (ath<0.2)|(bth<0.2):
         if (bth>0.2):
             print(a_mess)
@@ -1145,10 +1151,10 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
             print('Only channel A used -> only absolute speed with a 1/2 period precision.\n')
             d[a_on]=1
             d[a_of]=1
-        
+
         # *2 because 2 threshold crosses per period (Aup,Adown OR Bup,Bdown)
         n_ticks*=2
-    
+
     elif (ath>0.2)&(bth>0.2):
         # Arbitrary decision:
         # if a is crossed up, and b is high, displacement is 1.
@@ -1159,18 +1165,18 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
         for aof in a_of:
             if b[aof]:d[aof]=1 # if a down and b is up, -1.
             else:d[aof]=-1 # if a down and b is down, 1.
-                
+
         for bon in b_on:
             if a[bon]:d[bon]=1 # if b up and a is up, -1.
             else:d[bon]=-1 # if b up and a is down, 1.
         for bof in b_of:
             if not a[bof]:d[bof]=1 # if b down and a is down, -1.
             else:d[bof]=-1 # if b down and a is up, 1.
-                
-        
+
+
         # *4 because 4 threshold crosses per period (Aup,Bup,Adown,Bdown)
         n_ticks*=4
-    
+
     ## Convert array of delta-ticks to mm/s
     # periphery/n_ticks to get mm per tick
     mm_per_tick=np.pi*diam/n_ticks
@@ -1178,7 +1184,7 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     d*=mm_per_tick
     # delta mm to mm/s using sampling rate
     d*=fs
-    
+
     ## mandatory smooth (it makes no sense to keep an instantaneous speed at resolution fs)
     gsd=int(gsd*fs/1000) # convert from ms to array sampling (1ms -> 5 samples)
     d=smooth(d, method='gaussian_causal', sd=gsd)
@@ -1186,9 +1192,9 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
         msd=int(25*fs/1000)
         msd=msd+(msd%2)-1 # gotta be odd
         d=sp.ndimage.median_filter(d, msd)
-    
+
     print('\nRotary data decoded.\n')
-    
+
     return d
 
 def get_nframes(video_path):
@@ -1228,30 +1234,30 @@ def ellipsis(a, b, x0=0, y0=0, rot=0):
     t=np.linspace(0, 2*pi, 100)
 
     ell = npa([a * cos(t), b * sin(t)])
-    rotM = np.array([[cos(rot) , -sin(rot)],[sin(rot) , cos(rot)]])  
+    rotM = np.array([[cos(rot) , -sin(rot)],[sin(rot) , cos(rot)]])
     ellrot = np.zeros((2,ell.shape[1]))
     for i in range(ell.shape[1]):
         ellrot[:,i] = np.dot(rotM,ell[:,i])
     ellrot[0,:]=ellrot[0,:]+x0
     ellrot[1,:]=ellrot[1,:]+y0
-    
+
     return ellrot
 
 def in_ellipsis(X, Y, a, b, x0=0, y0=0, rot=0, a_axis='major', plot=False):
     f'''
     - X, Y: 1dim np arrays or shape (n,), coordinates to test
     {ellipsis.__doc__}
-    
+
     returns: m, boolean array of shape (n, ), True for points (X,Y) within ellipsis.
     '''
-    
+
     assert len(X)==len(Y)
     if a_axis=='minor': X,Y=Y,X
-    
+
     rot*=-2*pi/360
-    
+
     m=( ( ((X-x0)*cos(rot)+(Y-y0)*sin(rot))**2 / a**2 ) + ( ((X-x0)*sin(rot)+(Y-y0)*cos(rot))**2 / b**2 ) )-1
-    
+
     return (m<0)
 
 def ellipsis_string(x, a, b, axis='major'):
@@ -1261,10 +1267,10 @@ def ellipsis_string(x, a, b, axis='major'):
     - b: float, major axis of ellipsis (mm)
     - axis: string, whether x is along the major or minor axis - default major.
     '''
-    
+
     return a*np.sqrt(1-x**2/b**2) if axis=='major' else b*np.sqrt(1-x**2/a**2)
-    
-    
+
+
 
 def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, saveFig=False, saveDir=None):
     '''Homologous to a cylindrical wedge (plane crossing <1 basis of cylinder).
@@ -1275,7 +1281,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
     - H: float, width of the wheel (mm) - default 75
     - plot: bool, whether to plot ellipse or not
     '''
-    
+
     assert (depth is not None) or (string is not None), 'You need to provide either depth or string.'
     assert not (depth is not None) and (string is not None), 'You can only provide either depth or string - not both.'
     if depth is None:
@@ -1287,66 +1293,66 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
         h=r-depth
         string=2*np.sqrt(r**2-h**2)
     print(f'Border of mirror will be {round(depth, 1)}mm below the mouse, covering {round(string, 1)}mm laterally.')
-    
+
     # Distances parallel to major axis inside cylinder
     theta=theta*2*pi/360
     e1=h/np.cos(theta)
     E=np.sqrt(2*H**2)
     e2=E-e1
-    
+
     # Vertical distances
     dH=np.tan(theta)*(h+r)
-    
+
     # Ellipse axis
     a=r # minor axis
     b=np.sqrt(dH**2+(h+r)**2)-e1
     print(f'Ellipsis minor axis: {round(a, 1)}mm, major axis:{round(b, 1)}mm.')
-    
+
     # Distances parallel to minor axis inside cylinder
     y1=ellipsis_string(e1, a, b, axis='major')
     assert round(y1)==round(string/2)
     y2=ellipsis_string(e2, a, b, axis='major')
     print(f'Ellipsis strings: {round(2*y1, 1)}mm on one side ({round(e1, 1)}mm away from center), \
     {round(2*y2, 1)}mm on the other ({round(e2, 1)}mm away from center).')
-    
+
     # Plot ellipse to real-world scale
     if plot:
         figure_width = 2*b/10 # cm
         figure_height = 2*a/10 # cm
         left_right_margin = 0 # cm
         top_bottom_margin = 0 # cm
-        
+
         left   = left_right_margin / figure_width # Percentage from height
         bottom = top_bottom_margin / figure_height # Percentage from height
         width  = 1 - left*2
         height = 1 - bottom*2
         cm2inch = 1/2.54 # inch per cm
-        
+
         # specifying the width and the height of the box in inches
         fig = plt.figure(figsize=(figure_width*cm2inch,figure_height*cm2inch))
         ax = fig.add_axes((left, bottom, width, height))
-        
+
         # limits settings (important)
         plt.xlim(-(figure_width * width)/2, (figure_width * width)/2)
         plt.ylim(-(figure_height * height)/2, (figure_height * height)/2)
-        
+
         # Ticks settings
         ax.xaxis.set_major_locator(mpl.ticker.MultipleLocator(5))
         ax.xaxis.set_minor_locator(mpl.ticker.MultipleLocator(1))
         ax.yaxis.set_major_locator(mpl.ticker.MultipleLocator(5))
         ax.yaxis.set_minor_locator(mpl.ticker.MultipleLocator(1))
-        
+
         # Grid settings
         for spi in ['top', 'right', 'left', 'bottom']: ax.spines[spi].set_visible(False)
         ax.grid(color="gray", which="both", linestyle=':', linewidth=0.5)
-        
+
         # your Plot (consider above limits)
         ellipse = Ellipse((0, 0), 2*b/10, 2*a/10, angle=0, fill=False, ec='k', lw=2, ls='--')
         ax.add_artist(ellipse)
         ax.plot([-e1/10, -e1/10], [-y1/10, y1/10], c='k', lw=2, ls='--')
         ax.plot([e2/10, e2/10], [-y2/10, y2/10], c='k', lw=2, ls='--')
         ax.scatter([0],[0], c='k', lw=2, s=500, marker='+', zorder=100)
-        
+
         # save figure ( printing png file had better resolution, pdf was lighter and better on screen)
         if saveFig:
             saveDir=Path.home() if saveDir is None else Path(saveDir)

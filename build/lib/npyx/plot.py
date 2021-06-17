@@ -2475,7 +2475,6 @@ def plot_filtered_times(dp, unit, first_n_minutes=20, consecutive_n_seconds = 18
 #     # find the longest consecutive section
 # # check if this is longer than 3 minutes, 18 sections
 #
-#     breakpoint()
     for i in acg_sec:
         s_time, e_time = i ,(i+1)
         plt.hlines(-2, s_time, e_time, color = 'red')
@@ -2484,7 +2483,6 @@ def plot_filtered_times(dp, unit, first_n_minutes=20, consecutive_n_seconds = 18
         s_time, e_time = i ,(i+1)
         plt.hlines(2, s_time, e_time, color = 'blue')
     plt.show()
-#     breakpoint()
 
 #%% How to plot 2D things with pyqtplot
 

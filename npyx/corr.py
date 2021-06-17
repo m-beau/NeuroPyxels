@@ -394,14 +394,14 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
                     # next the ISI and the ACG need to be made of the same shape, ISI is longer by one
                     isi_hist_range_clipped = isi_hist_range[:-1]
                     isi_mode = isi_hist_range_clipped[np.argmax(isi_hist_counts)]
-                    # get the ACG for the unit 
+                    # get the ACG for the unit
                     unit_acg = acg(dp, unit, bin_size= bs, win_size = isi_mode * 20, fs = fs, normalize = normalize,  subset_selection = good_sections, prnt = False, again = again)
 
                     # rewrite ISI mode so it is divided by bin size
                     isi_mode_bin = isi_mode / bs
                     half_len = unit_acg.shape[0]//2
 
-                    # divide by MFR to normalise shape of ACG 
+                    # divide by MFR to normalise shape of ACG
                     cut_acg_unnormed = unit_acg[half_len:]
                     cut_acg = cut_acg_unnormed/mean_fr
 
@@ -855,11 +855,6 @@ def get_cisi_parprocess(spk1, spk2, direction=0, prnt=True):
 
 #%% Pairwise correlations, synchrony, population coupling
 
-from neo import SpikeTrain
-from elephant.conversion import BinnedSpikeTrain
-from elephant.spike_train_correlation import covariance, corrcoef
-from quantities import ms
-
 def pearson_corr(M):
     '''
     Calculate the NxN matrix of pairwise Pearson’s correlation coefficients
@@ -911,7 +906,7 @@ def pearson_corr_trn(L, b, dp):
     M[0,:]=tb1
     del tb1
     for i, t in enumerate(L[1:]):
-        M[i+1,:] = bnr(t)
+        M[i+1,:] = bnr(t, b, rec_len)
     return pearson_corr(M)
 
 def correlation_index(L, dt, dp):
@@ -1066,7 +1061,7 @@ def fraction_pop_sync(dp, u1, U, sync_win=2, b=1, sd=1000, th=0.02, again=False,
         t1=trn(dp, u1, enforced_rp=0)
         trains=[trn(dp, u2, enforced_rp=0) for u2 in U]
         fs=read_spikeglx_meta(dp)['sRateHz']
-        t_end = np.load(Path(dp,'spike_times.npy'))[-1,0]
+        t_end = np.load(Path(dp,'spike_times.npy')).ravel()[-1]
 
         return frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, again=again, dp=dp, U=U)
     else:
@@ -1087,7 +1082,7 @@ def get_cm(dp, units, cbin=0.2, cwin=100, b=5, corrEvaluator='CCG', subset_selec
     subset_selection: section of the Neuropixels recording used for evaluation of correlation.'''
 
     # Sanity checks
-    allowedCorEvals = ['CCG', 'covar', 'corrcoeff_eleph', 'corrcoeff_MB']
+    allowedCorEvals = ['CCG', 'corrcoeff_MB']
     try:
         assert corrEvaluator in allowedCorEvals
     except:
@@ -1099,34 +1094,24 @@ def get_cm(dp, units, cbin=0.2, cwin=100, b=5, corrEvaluator='CCG', subset_selec
     if corrEvaluator =='corrcoeff_MB':
         Nbins_bms = len(trnb(dp, units[0], b)) # b in ms
         trnbM = npa(zeros=(len(units), Nbins_bms))
-    elif corrEvaluator in ['covar', 'corrcoeff_eleph']:
-        rec_len = get_rec_len(dp, unit='milliseconds') # in ms
-        trnLs = []
     elif corrEvaluator == 'CCG':
         cmCCG=npa(empty=(len(units), len(units)))
 
     # Populate empty arrays
     for i1, u1 in enumerate(units):
         if corrEvaluator =='corrcoeff_MB':
-            trnbM[i1,:]=trnb(dp, u1, b, constrainBin=False, subset_selection=subset_selection) # b in ms
-        elif corrEvaluator in ['covar', 'corrcoeff_eleph']:
-            t1 = SpikeTrain(trn(dp, u1, subset_selection=subset_selection)*1./30*ms, t_stop=rec_len)
-            trnLs.append(t1)
+            trnbM[i1,:]=trnb(dp, u1, b, subset_selection=subset_selection) # b in ms
         elif corrEvaluator == 'CCG':
             for i2, u2 in enumerate(units):
                 if u1==u2:
                     cmCCG[i1, i2]=0
                 if i1<i2:
-                    CCG = ccg(dp, [u1, u2], cbin, cwin, normalize='Counts', subset_selection=subset_selection)[0,1,:]
+                    CCG = ccg(dp, [u1, u2], cbin, cwin, normalize='Counts', subset_selection=subset_selection,prnt=False)[0,1,:]
                     cmCCG[i1, i2] = cmCCG[i2, i1] = synchrony(CCG, cbin, sync_win=1, fract_baseline=2./5)
 
     # Set correlation matrix and plotting parameters
     if corrEvaluator == 'CCG':
         cm = cmCCG
-    elif corrEvaluator == 'covar':
-        cm = covariance(BinnedSpikeTrain(trnLs, binsize=b*ms))
-    elif corrEvaluator == 'corrcoeff_eleph':
-        cm = corrcoef(BinnedSpikeTrain(trnLs, binsize=b*ms))
     elif corrEvaluator == 'corrcoeff_MB':
         cm = pearson_corr(trnbM)
 
@@ -1257,10 +1242,10 @@ def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, sgn=-1
     if CCG.ndim==1: CCG=CCG.reshape((1, CCG.shape[0]))
     m, n = CCG.shape
     if m == 1:
-        CCG             = CCG.T;
-        nsamps          = n;
+        CCG             = CCG.T
+        nsamps          = n
     else:
-        nsamps          = m;
+        nsamps          = m
 
     winlist=['gauss', 'rect', 'triang']
     assert W == round(W) and W >= 1, 'W must be non-negative integer!'
@@ -1467,12 +1452,15 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
     assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
     assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
 
+    feat_columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms',
+                  'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
+
     # Directly load sig stack if was already computed
     if name is not None:
         # in signame, only parameters not fed to ccg_stack
         # (as others will already be added to the saved file name by ccg_stack)
         signame=name+'-{}-{}-{}-{}-{}'.format(test, p_th, n_consec_bins, fract_baseline, W_sd)
-        dprm = Path(dp,'routinesMemory');
+        dprm = Path(dp,'routinesMemory')
         if not op.isdir(dprm): os.makedirs(dprm)
         feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_{}_features.csv'.format(\
                        signame, 'Counts', cbin, cwin, str(subset_selection)[0:50].replace(' ', '').replace('\n',''), sgn, only_max))
@@ -1485,10 +1473,9 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
             if op.exists(feat_path):
                 features=pd.read_csv(feat_path)
                 return sigstack, sigustack, features
-            features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 
-                                           'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
+            features=pd.DataFrame(columns=feat_columns)
             for i,c in enumerate(sigstack):
-                pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn, 
+                pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn,
                                 fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
                 for p in pks:
                     features=features.append(dict(zip(features.columns,np.append(sigustack[i, :], p))), ignore_index=True)
@@ -1498,8 +1485,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
     assert any(U_src)&any(U_trg)
     ptdic={1:'peak', -1:'trough'}
     sigustack=[]
-    if ret_features: features=pd.DataFrame(columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms',
-                                                    'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'])
+    if ret_features: features=pd.DataFrame(columns=feat_columns)
 
     stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG,
                               subset_selection=subset_selection)
@@ -1544,9 +1530,9 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 
 def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'],
-             units=None, name=None, cross_cont_proof=False, use_template_for_peakchan=False,
-             subset_selection='all'):
+            again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'],
+            pre_chanrange=None, post_chanrange=None, units=None, name=None, use_template_for_peakchan=False,
+            subset_selection='all'):
     '''
     Function generating a functional correlation dataframe sfc (Nsig x 2+8 features) and matrix sfcm (Nunits x Nunits)
     from a sorted Kilosort output at 'dp' containing 'N' good units
@@ -1577,7 +1563,9 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
         - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
         - againCCG: bool, whether to recompute ccg stack rather than loading from memory if already computed in the past.
-        - drop_seq
+        - drop_seq: list of str, sequence in which to filter connections
+        - pre_range: range of channels to which presynaptic units must belong
+        - post_range: range of channels to which postsynaptic units must belong
         - units: list/array, units to consider to test correlations | Default: None (i.e. use all the good units)
         - name: string, name of the all-to-all ccg_stack corresponding to the above-provided units
                 MANDATORY if you provide a list of units. | Default: None
@@ -1630,7 +1618,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             gu=[]
     else:
         name='good-all_to_all'
-        peakChs = get_depthSort_peakChans(dp, quality='good')
+        peakChs = get_depthSort_peakChans(dp, quality='good', use_template=use_template_for_peakchan)
         gu = peakChs[:,0]
 
     sigstack, sigustack, sfc = ccg_sig_stack(dp, gu, gu, cbin, cwin, name,
@@ -1687,6 +1675,21 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         for drop in drop_seq:
             sfc=drop_dic[drop](sfc, drop_dic[drop+'filt'], corr_type)
 
+    if (pre_chanrange is not None)|(post_chanrange is not None):
+        peakChs = get_depthSort_peakChans(dp, use_template=use_template_for_peakchan)
+        if pre_chanrange is not None:
+            pre_units=sfc.uSrc[sfc.t_ms>=0].append(sfc.uTrg[sfc.t_ms<0]).sort_index().values
+            peak_m=(peakChs[:,1]>pre_chanrange[0])&(peakChs[:,1]<pre_chanrange[1])
+            range_m=np.isin(pre_units,peakChs[peak_m,0])
+            sfc.drop(index=sfc.index[~range_m], inplace=True)
+            sfc.reset_index(inplace=True, drop=True)
+        if post_chanrange is not None:
+            post_units=sfc.uSrc[sfc.t_ms<0].append(sfc.uTrg[sfc.t_ms>=0]).sort_index().values
+            peak_m=(peakChs[:,1]>post_chanrange[0])&(peakChs[:,1]<post_chanrange[1])
+            range_m=np.isin(post_units,peakChs[peak_m,0])
+            sfc.drop(index=sfc.index[~range_m], inplace=True)
+            sfc.reset_index(inplace=True, drop=True)
+
     sfcm = np.zeros((len(gu),len(gu)))
     for i in sfc.index:
         u1,u2=sfc.loc[i,'uSrc':'uTrg']
@@ -1717,7 +1720,11 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             elif np.any(tmask2):
                 sfcm[ui2,ui1]=v[tmask2]
 
-    return sfc, sfcm, peakChs
+    filter_m = np.isin(sigustack[:,0], sfc.loc[:,'uSrc'].values)&np.isin(sigustack[:,1], sfc.loc[:,'uTrg'].values)
+    sigstack=sigstack[filter_m]
+    sigustack=sigustack[filter_m]
+
+    return sfc, sfcm, peakChs, sigstack, sigustack
 
 
 #%% Work in progress

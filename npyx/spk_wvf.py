@@ -649,11 +649,11 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
     save=False # can only turn True if no (i.e. all) units are fed
     strdic={True:'templates', False:'raw-waveforms'}
 
-    if not any(units):
+    if not np.any(units):
         # If no units, load them all from dataset
         # and prepare to save the FULL array of peak channels at the end
         units=get_units(dp, quality=quality, again=again)
-        assert any(units), f'No units of quality {quality} found in this dataset.'
+        assert np.any(units), f'No units of quality {quality} found in this dataset.'
         pc_fname=f'peak_channels_{strdic[use_template]}_{quality}.npy'
         if op.exists(Path(dp, pc_fname)) and not again:
             peak_chans=np.load(Path(dp, pc_fname))

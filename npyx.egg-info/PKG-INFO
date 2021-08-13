@@ -49,7 +49,7 @@ Description: # Npyx: loading, processing and plotting Neuropixels data
         ```python
         from npyx.io import read_spikeglx_meta
         from npyx.spk_t import ids, trn
-        from npyx.spk_wvf import get_peak_chan, wvf, template
+        from npyx.spk_wvf import get_peak_chan, wvf, templates
         dp = 'path/to/dataset'
         u=234
         # returns a random sample of 100 waveforms from unit 234, in uV, across 384 channels
@@ -63,7 +63,7 @@ Description: # Npyx: loading, processing and plotting Neuropixels data
         # 900 and 1000s in the recording, because that's when your mouse scratched its butt
         fs=read_spikeglx_meta['sRateHz']
         t=trn(dp,u)/fs # convert in s
-        ids=ids(dp,u)[(t>900)&(t<1000))]
+        ids=ids(dp,u)[(t>900)&(t<1000)]
         waves = wvf(dp, u, spike_ids=ids)
         
         # If you want to load the templates instead (lighter)

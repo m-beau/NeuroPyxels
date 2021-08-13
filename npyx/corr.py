@@ -962,7 +962,10 @@ def synchrony_regehr(CCG, cbin, sync_win=1, fract_baseline=2./5):
     '''
     nbins=int(sync_win/cbin)+1
     sync_CCG=CCG[len(CCG)//2-nbins//2:len(CCG)//2+nbins//2+1]
-    baseline_CCG=np.append(CCG[:int(len(CCG)*fract_baseline/2)],CCG[int(len(CCG)*(1-fract_baseline)/2):])
+    
+    start_index = int(len(CCG)*fract_baseline/2)
+    end_index = int(len(CCG)*(1-fract_baseline)/2)
+    baseline_CCG=np.append(CCG[:start_index],CCG[end_index:])
 
     sync=np.mean(sync_CCG)/np.mean(baseline_CCG)
 
@@ -971,14 +974,16 @@ def synchrony_regehr(CCG, cbin, sync_win=1, fract_baseline=2./5):
 def synchrony(CCG, cbin, sync_win=1, fract_baseline=4./5):
     '''
     - CCG: crosscorrelogram array, units does not matter. Should be long enough.
-    - cbin"correlogram binsize in millisecond
+    - cbin: correlogram binsize in millisecond
     - sync_win: synchrony full window in milliseconds
     - baseline_fract: CCG fraction to use to compute baseline
     '''
     assert CCG.ndim==1
     CCG=zscore(CCG, fract_baseline)
     nbins=int(sync_win/cbin)+1
-    sync_CCG=CCG[len(CCG)//2-nbins//2:len(CCG)//2+nbins//2+1]
+    left = len(CCG)//2-nbins//2
+    right = len(CCG)//2+nbins//2+1
+    sync_CCG=CCG[left:right]
 
     sync=np.mean(sync_CCG)
 
@@ -1719,6 +1724,9 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
                 sfcm[ui1,ui2]=v[tmask1]
             elif np.any(tmask2):
                 sfcm[ui2,ui1]=v[tmask2]
+
+    if not np.any(sigstack):
+        return sfc, sfcm, peakChs, sigstack, sigustack
 
     filter_m = np.isin(sigustack[:,0], sfc.loc[:,'uSrc'].values)&np.isin(sigustack[:,1], sfc.loc[:,'uTrg'].values)
     sigstack=sigstack[filter_m]

@@ -30,360 +30,13 @@ from npyx.io import read_spikeglx_meta, get_npix_sync, paq_read, list_files
 from npyx.spk_t import mean_firing_rate
 from npyx.corr import crosscorr_cyrille, frac_pop_sync
 
-#%% Extract behavioral event times in neuropixels recording reference time from trials dataframe
-
-def get_event_types():
-    dic={
-          'l_of': 'trial offsets for left trials',
-          'r_of': 'trial offsets for righttrials',
-          'c_of': 'trial offsets for correct trials',
-          'i_of': 'trial offsets for incorrect trials',
-          'lc_of': 'trial offsets for left correct trials',
-          'rc_of': 'trial offsets for left correct trials',
-          'li_of': 'trial offsets for left incorrect trials',
-          'ri_of': 'trial offsets for right incorrect trials',
-          'l_on': 'trial onsets for left trials',
-          'r_on': 'trial onsets for righttrials',
-          'c_on': 'trial onsets for correct trials',
-          'i_on': 'trial onsets for incorrect trials',
-          'lc_on': 'trial onsets for left correct trials',
-          'rc_on': 'trial onsets for left correct trials',
-          'li_on': 'trial onsets for left incorrect trials',
-          'ri_on': 'trial onsets for right incorrect trials',
-          'rr': 'reward onsets for random rewards',
-          'cr': 'reward onsets for left correct trials'}
-    return dic
-
-def get_events(dp, event_type, f_behav=None, include_wheel_data=False, add_spont_licks=False,
-                    wheel_gain=3, rew_zone=12.5, rew_frames=3, vr_rate=30,
-                    wheel_diam=45, difficulty=2, ballistic_thresh=100, plot=False, again=False):
-    '''
-    Parameters:
-        - dp: string, datapath to directory with binary file (and eventually sync_chan subdirectory)
-        - event_type: string, type of behavioral event to return amongst
-          > 'olc_on'/'oli_on': visual object onsets for correct trials
-          > 'orc_on'/orr_on: visual object onsets for incorrect trials
-
-          > 'lc_on'/'lc_of: movement on/offsets for left correct trials
-          > 'rc_on'/'rc_of: movement on/offsets for right correct trials
-
-          > 'c_r: reward onset for correct trials
-          > 'i_of: trial offsets for correct trials (timeout)
-
-          > 'rr': reward onsets for random rewards
-          > 'cr_c': cue onsets for cued rewards
-          > 'cr_r': reward onsets for cued rewards
-
-        - further parameters: see paq_to_trialsdf.__doc__
-    '''
-
-    taskwargs=dict(include_wheel_data=include_wheel_data, add_spont_licks=add_spont_licks,
-                    wheel_gain=wheel_gain, rew_zone=rew_zone, rew_frames=rew_frames,
-                    vr_rate=vr_rate, wheel_diam=wheel_diam, difficulty=difficulty, ballistic_thresh=ballistic_thresh,
-                    plot=plot)
-    trials_df=paq_to_trialsdf(dp, f_behav, 'wheelturn_rew', again, **taskwargs)
-
-    mask_left=(trials_df['trialside']==1)
-    mask_right=(trials_df['trialside']==-1)
-    mask_correct=(trials_df['correct']==1)&(trials_df['ballistic']==1)
-    mask_incorrect=(trials_df['correct']==0)
-    mask_rr=(trials_df['trial_type']=='random_reward')
-    mask_cr=(trials_df['trial_type']=='cued_reward')
-    events_dic=\
-    {'olc_on':  trials_df.loc[mask_left&mask_correct, 'object_onset'].values.astype(float),
-     'oli_on':  trials_df.loc[mask_left&mask_incorrect, 'object_onset'].values.astype(float),
-     'orc_on':  trials_df.loc[mask_right&mask_correct, 'object_onset'].values.astype(float),
-     'ori_on':  trials_df.loc[mask_right&mask_incorrect, 'object_onset'].values.astype(float),
-
-     'lc_on':  trials_df.loc[mask_left&mask_correct, 'movement_onset'].values.astype(float),
-     'rc_on':  trials_df.loc[mask_right&mask_correct, 'movement_onset'].values.astype(float),
-     'lc_of':  trials_df.loc[mask_left&mask_correct, 'movement_offset'].values.astype(float),
-     'rc_of':  trials_df.loc[mask_right&mask_correct, 'movement_offset'].values.astype(float),
-
-     'c_r':  trials_df.loc[mask_correct, 'reward_onset'].values.astype(float),
-     'i_of':  trials_df.loc[mask_incorrect, 'trial_offset'].values.astype(float),
-
-     'rr':    trials_df.loc[mask_rr, 'reward_onset'].values.astype(float),
-     'cr_c':    trials_df.loc[mask_cr, 'cue_onset'].values.astype(float),
-     'cr_r':    trials_df.loc[mask_cr, 'reward_onset'].values.astype(float)}
-
-    assert event_type in events_dic.keys(), 'WARNING your need to pick an event_type out of: {}'.format(list(events_dic.keys()))
-
-    return events_dic[event_type][~np.isnan(events_dic[event_type])] # HACK, TO FIX IN THE FUTURE: WHERE DO NANS COME FROM??
-
 #%% Generate trials dataframe from either paqIO file or matlab datastructure
 
-def paq_to_trialsdf(dp, f_behav=None, again=False, plot=True, lick_ili_th=0.075, **taskwargs):
-    '''
-    Parameters:
-        - dp: string, path to neuropixels dataset directory.
-        - f_behav: string, path to paqIO behavioral file (None by default, will seek any .paq file in dp/behavior)
-        - tasktype: should be either 'wheelturn_rew' (stirring wheel task with interleaved cued rewards) or 'running_rew' (locomotion with cued rewards)
-        - again: whether to recompute trials dataframe even if it has been saved on disk in the past.
-        - taskwargs: task arguments passed to the task-specific function actually computing the trials dataframe:
-    '''
-    ## Process passed arguments
-    tasktype='wheelturn_rew'
-    assert tasktype in ['wheelturn_rew','running_rew'], "WARNING tasktype should be either 'wheelturn_rew' or 'running_rew'!"
-    wheelturn_args=['include_wheel_data', 'add_spont_licks',
-                    'wheel_gain', 'rew_zone', 'rew_frames', 'vr_rate',
-                    'wheel_diam', 'difficulty', 'ballistic_thresh', 'plot']
-    running_args=['add_wheel_data',
-                  'vr_rate', 'runwheel_diam', 'plot',
-                  'opto_prot']
-    passed_args=list(taskwargs.keys())
-
-    ## Try to load presaved df
-    dp=Path(dp)
-    if tasktype=='wheelturn_rew':
-        areIn=np.isin(passed_args, wheelturn_args)
-        fn=dp/f"behavior/trials_df-{tasktype}-{lick_ili_th}-{taskwargs['include_wheel_data']}-{taskwargs['add_spont_licks']}-{taskwargs['difficulty']}-{taskwargs['ballistic_thresh']}.csv"
-    elif tasktype=='running_rew':
-        areIn=np.isin(passed_args, running_args)
-        fn=dp/f"behavior/trials_df-{tasktype}-{lick_ili_th}-{taskwargs['add_wheel_data']}-{taskwargs['vr_rate']}-{taskwargs['runwheel_diam']}.csv"
-    assert np.all(areIn), 'WARNING some of the passed arguments cannot be interpreted for the task type {tasktype}:{passed_args[~areIn]}'
-    if fn.exists() and not again:
-        if tasktype=='running_rew':
-            return pd.read_csv(fn), pickle.load(open(str(fn).replace('.csv','.pkl'),"rb"))
-        else:
-            return pd.read_csv(fn) ##TODO implement behav_dic for wheelturn_rew
-
-    paqdic=npix_aligned_paq(dp,f_behav=None)
-    npix_fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
-    paq_fs=5000
-
-    # Preprocessing of extracted behavioural data (only lick onsets so far)
-    licks_on=paqdic['LICKS_Piezo_ON_npix'].copy()
-    paqdic['LICKS_Piezo_ON_npix']=licks_on[np.diff(np.append([0],licks_on))>lick_ili_th*npix_fs] # 0.075 is the right threshold, across mice!
-    print('Inter lick interval lower threshold set at {lick_ili_th} seconds')
-    if plot:
-        hbins=np.logspace(np.log10(0.005),np.log10(10), 500)
-        fig,ax=plt.subplots()
-        ax.set_title('Licks distribution before filtering')
-        hist=np.histogram(np.diff(licks_on/npix_fs), bins=hbins)
-        ax.hist(np.diff(licks_on/npix_fs), bins=hbins)
-        ax.set_xscale('log')
-        plt.xlim(0.005,10)
-        plt.ylim(0,max(hist[0][hist[1][:-1]>0.05])+10)
-        fig,ax=plt.subplots()
-        ax.set_title('Licks distribution after filtering')
-        hist=np.histogram(np.diff(paqdic['LICKS_Piezo_ON_npix']/npix_fs), bins=hbins)
-        ax.hist(np.diff(paqdic['LICKS_Piezo_ON_npix']/npix_fs), bins=hbins)
-        ax.set_xscale('log')
-        plt.xlim(0.005,10)
-        plt.ylim(0,max(hist[0][hist[1][:-1]>0.05])+10)
-
-    # From the extracted and matched mpix and paq data,
-    # compute the task-type specific trials dataframe
-    taskwargs['plot']=plot
-    if tasktype=='wheelturn_rew':
-        return paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, **taskwargs)
-    elif tasktype=='running_rew':
-        pass
-        #return paq_to_trials_running_rew(dp, fn, paqdic, paq_fs, npix_fs, **taskwargs)
-
-def paq_to_trials_wheelturn_rew(dp, fn, paqdic, paq_fs, npix_fs, include_wheel_data=False, add_spont_licks=False,
-                    wheel_gain=3, rew_zone=12.5, rew_frames=3, vr_rate=30,
-                    wheel_diam=45, difficulty=2, ballistic_thresh=100,
-                    plot=True):
-    '''
-    Parameters:
-        - dp, fn, paqdic, paq_fs, npix_fs: will be passed on by wrapper function paq_to_trialsdf, check it for more details.
-
-        - include_wheel_data: bool, whether to add memory-heavy object position (in degrees) and wheel position (in mm) to the dataframe,
-                              sampled at paqIO sampling rate, and related metrics (movement onset in relative paqIO units etc)
-        - add_spont_licks: bool, whether to add memory-heavy spontaneous lick onsets
-                           at the end of the dataframe as trial_type 'spontaneous_licks'
-
-        - wheel_gain: float, gain between the wheel and the object (vr.rotgain virmen setting) | Default 3
-        - rew_zone: float, target zone at the center (vr.rewarddeg virmen setting) | Default 12.5
-        - rew_frames: int, number of frames where speed needs to be 0 (vr.rewardframes virmen setting) | Default 3 (about 100ms)
-        - vr_rate: int, refresh rate of virmen engine (Hz) | Default 30
-        - wheel_diam: float, lego wheel diameter in mm | Default 45
-        - difficulty: int, difficulty level of the task (vr.version virmen setting).
-                      2: 2 sided, overshoot allowed. 3: overshoot not allowed, probably 1 sided. | Default 2
-        - ballistic_thresh: how short a movement must to be called 'ballistic', in milliseconds | Default 100
-
-        - plot: bool, whether to plot wheel position, speed and detected movement onset/offset as the dataframe is populated | Default True
-
-    Returns:
-        df: session summary pandas dataframe, with columns
-            'trial_type'        - wheel_turn, random_reward, cued_reward or cue_alone
-            'trialnum'          - wheel turning trial number
-            'trialside'         - 1 or -1 (sign matches paqIO ROT channel start value)
-            'trial_onset'       - trial onset, in neuropixels temporal reference frame
-            'object_onset'      - object appearance onset, npix frame
-            'movement_onset'    - detected movement onset (norm. speed threshold), npix frame
-            'movement_offset'   - detected movement ofset (enters reward zone), npix frame
-            'movement_duration' - movement duration in ms (offset-onset)
-            'ballistic'         - True if movement is shorter than ballistic_thresh
-            'correct'           - 1 if correct, 0 if not
-            'trial_offset'      - trial offset, in npix frame
-            'reward_onset'      - reward onset, in npix frame
-            'cue_onset'         - cue onset, in npix frame
-            'ghost_onset'       - empty solenoid (fake reward) onset, in npix frame
-            'lick_onsets'       - array of lick onsets happening between trial onset and 5s after trial offset
-                                  or reward and 5s after reward for random rewards RR
-                                  or cue and 5s after reward for cued rewards CR
-                                  or cue and 5s after cue for omitted rewards OR
-            and if include_wheel_data:
-                'object_position'        - in degrees, in paqIO samples (5000Hz), clipped from to 4s before trial onset to 4s after offset
-                'wheel_position'         - in mm, in paqIO samples (5000Hz), clipped similarly
-                'trial_onset_relpaq'     - trial onset, in object_position and wheel_position relative paqIO samples
-                'movement_onset_relpaq'  - movement onset, in object_position and wheel_position relative paqIO samples
-                'movement_offset_relpaq' - movement offset, in object_position and wheel_position relative paqIO samples
-                'trial_offset_relpaq'    - trial offset, in object_position and wheel_position relative paqIO samples
-                'lick_trace'             - piezo_licks trace, in paqIO samples (5000Hz), clipped similarly
-    '''
-
-    ## Organize them in dataset, all in NEUROPIXELS time frame
-    # i.e. (use above-aligned paqdic[f'{paqk}_npix'] as onsets)
-    df=pd.DataFrame(columns=['trial_type', 'trialnum', 'trialside', 'trial_onset', 'object_onset',
-                             'movement_onset', 'movement_offset', 'movement_duration', 'ballistic', 'correct', 'trial_offset',
-                             'reward_onset', 'cue_onset', 'ghost_onset', 'lick_onsets'])
-
-    # Process wheel trials
-    nwheeltrials=len(paqdic['TRIALON_ON'])
-    df['trial_type']=['wheel_turn']*nwheeltrials
-    df["lick_onsets"]=df["lick_onsets"].astype(object) # to be able to store array
-    if include_wheel_data:
-        df['object_position']=np.nan
-        df['wheel_position']=np.nan
-        df['trial_onset_relpaq']=np.nan
-        df['movement_onset_relpaq']=np.nan
-        df['movement_offset_relpaq']=np.nan
-        df['trial_offset_relpaq']=np.nan
-        df['lick_trace']=np.nan
-        df["object_position"]=df["object_position"].astype(object)
-        df["wheel_position"]=df["wheel_position"].astype(object)
-        df['lick_trace']=df["wheel_position"].astype(object)
-    pad=4
-    assert difficulty in [2,3]
-    for tr in df.index:
-        npixon=paqdic['TRIALON_ON_npix'][tr]
-        npixof=paqdic['TRIALON_OFF_npix'][tr]
-        paqon=int(paqdic['TRIALON_ON'][tr])
-        paqoff=int(paqdic['TRIALON_OFF'][tr])
-        i1,i2 = int(paqon-pad*paq_fs),int(paqoff+pad*paq_fs)
-        ob_on_vel=np.diff(paqdic['ROTreal'][paqon:paqon+500])
-        ob_on_vel=abs(ob_on_vel)/max(abs(ob_on_vel))
-        ob_on_paq=thresh(ob_on_vel, 0.5, 1)[0]+1 # add 1 because velocity is thresholded
-        start_side=sign(paqdic['ROT'][paqon+ob_on_paq+1]) # 1 or -1
-        # wheel and object positions are clipped between -4s before trial onset and 4s after trial offset
-        opos=paqdic['ROT'][i1:i2] # in degrees
-        wpos=paqdic['ROTreal'][i1:i2]*(np.pi*wheel_diam)/360/wheel_gain # in mm, back-calculate wheel pos from object pos
-        wpos_mvt=paqdic['ROTreal'][paqon+ob_on_paq:paqoff]
-        wvel=np.diff(wpos)
-        wvel_mvt=wvel[int(pad*paq_fs+ob_on_paq):-int(pad*paq_fs)]
-        wvel_mvt_norm=wvel_mvt/min(abs({-1:max, 1:min}[start_side](wvel_mvt)), 2)
-
-        # assess trial outcome from wheel kinetics
-        wpos_outeval=paqdic['ROT'][int(paqon+ob_on_paq):int(paqoff)]
-        stay_for_rew=int(rew_frames/vr_rate*paq_fs)
-        correct=0
-        center_crossed=False
-        th0=np.append(thresh(wpos_outeval, 0, 1), thresh(wpos_outeval, 0, -1))
-        if np.any(th0):
-            jump=wpos_outeval[th0[0]+1]-wpos_outeval[th0[0]-1]
-            if jump<300: # handles cases where the object went all the way around -> false positive threshold cross
-                center_crossed = True
-        stayed_rew_zone=np.all((paqdic['ROT'][int(paqoff)-stay_for_rew:int(paqoff)]<=rew_zone)&\
-                               (paqdic['ROT'][int(paqoff)-stay_for_rew:int(paqoff)]>=-rew_zone))
-        #non_responsive=(paqdic['ROT'][int(paqoff)]<=rew_zone or paqdic['ROT'][int(paqoff)]>=-rew_zone)
-        if difficulty>=2: # rule: crossing threshold or ending in reward zone
-            if center_crossed or stayed_rew_zone: correct=1
-        if difficulty>=3: # rule: ending in reward zone
-            if stayed_rew_zone: correct=1
-        #if non_responsive: correct=np.nan
-
-        # Fill dataframe
-        df.loc[tr, 'trialnum']=tr
-        df.loc[tr, 'trial_onset']=npixon
-        df.loc[tr, 'trial_offset']=npixof
-        df.loc[tr, 'object_onset']=int(npixon+ob_on_paq*npix_fs/paq_fs)
-        df.loc[tr, 'trialside']=start_side
-        df.loc[tr, 'correct']=correct
-        lickmask=(paqdic['LICKS_Piezo_ON_npix']>npixon)&(paqdic['LICKS_Piezo_ON_npix']<npixof+5*npix_fs)
-        df.loc[tr, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
-        if correct:
-            movonpaq=ob_on_paq+thresh(wvel_mvt_norm, -start_side*0.5, -start_side)[0]
-            movofpaq=ob_on_paq+np.append(thresh(wpos_mvt, rew_zone, -1), thresh(wpos_mvt, -rew_zone, 1)).min()
-            mov_dur=(movofpaq-movonpaq)*1000/paq_fs
-            ballistic=(mov_dur<ballistic_thresh) # in ms
-            if plot:
-                plt.figure()
-                plt.plot(wvel[int(pad*paq_fs+500):-int(pad*paq_fs)], c='grey')
-                plt.plot(wpos[int(pad*paq_fs+500):-int(pad*paq_fs)], c='k')
-                ls='--' if ballistic else '-'
-                plt.plot([movonpaq-500, movonpaq-500], [min(wpos), max(wpos)], c='g', ls=ls)
-                plt.plot([movofpaq-500, movofpaq-500], [min(wpos), max(wpos)], c='r', ls=ls)
-                plt.title(f'trial {tr}\nduration:{mov_dur}ms')
-            df.loc[tr, 'movement_onset']=int(npixon+(movonpaq)*npix_fs/paq_fs)
-            df.loc[tr, 'movement_offset']=int(npixon+(movofpaq)*npix_fs/paq_fs)
-            df.loc[tr, 'movement_duration']=mov_dur
-            df.loc[tr, 'ballistic']=ballistic
-        if include_wheel_data:
-            df.at[tr, 'object_position']=opos
-            df.at[tr, 'wheel_position']=wpos
-            df.loc[tr, 'trial_onset_relpaq']=int(pad*paq_fs)
-            df.loc[tr, 'movement_onset_relpaq']=int(pad*paq_fs)+movonpaq
-            df.loc[tr, 'movement_offset_relpaq']=int(pad*paq_fs)+movofpaq
-            df.loc[tr, 'trial_offset_relpaq']=len(wpos)-int(pad*paq_fs)
-            df.at[tr, 'lick_trace']=paqdic['LICKS_Piezo'][i1:i2]
-
-    # Append trial rewards onsets ##TODO
-    for tr in df.index:
-        of=df.loc[tr, 'trial_offset']
-        rew_mask=(paqdic['REW_ON_npix']>of)&(paqdic['REW_ON_npix']<(of+1*npix_fs)) # happens about 400ms after trial offset
-        if np.any(rew_mask):
-            if df.loc[tr, 'correct']!=1: print(f'WARNING seems like a reward onset was found after trial {tr} offset, although incorrect...\
-                                               Probably beause of 360deg jump of ROT channel not followed by ROTreal.')
-            df.loc[tr, 'reward_onset']=paqdic['REW_ON_npix'][rew_mask][0]
-        else:
-            if df.loc[tr, 'correct']==1: print(f'WARNING no reward was found after trial {tr} offset, although correct!!! Figure out the problem ++!!')
-
-    # Now find random rewards and respective cues if any
-    random_rewards=paqdic['REW_ON_npix'][~np.isin(paqdic['REW_ON_npix'], df['reward_onset'])]
-    for r in random_rewards:
-        cue_mask=(paqdic['CUE_ON_npix']>r-1*npix_fs)&(paqdic['CUE_ON_npix']<r) # cues happen about 500ms before reward
-        i=df.index[-1]+1
-        if np.any(cue_mask):
-            c=paqdic['CUE_ON_npix'][cue_mask][0]
-            df.loc[i, 'trial_type']='cued_reward'
-            df.loc[i, 'reward_onset']=r
-            df.loc[i, 'cue_onset']=c
-            lickmask=(paqdic['LICKS_Piezo_ON_npix']>c)&(paqdic['LICKS_Piezo_ON_npix']<r+5*npix_fs) # from cue to 5s after reward
-        else:
-            df.loc[i, 'trial_type']='random_reward'
-            df.loc[i, 'reward_onset']=r
-            lickmask=(paqdic['LICKS_Piezo_ON_npix']>r)&(paqdic['LICKS_Piezo_ON_npix']<r+5*npix_fs) # from reward to 5s after reward
-        df.loc[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
-
-    # Finally, fill in the cues alone (omitted rewards)
-    cues_alone=paqdic['CUE_ON_npix'][~np.isin(paqdic['CUE_ON_npix'], df['cue_onset'])]
-    for c in cues_alone:
-        i=df.index[-1]+1
-        df.loc[i, 'trial_type']='cue_alone'
-        df.loc[i, 'cue_onset']=c
-        lickmask=(paqdic['LICKS_Piezo_ON_npix']>c)&(paqdic['LICKS_Piezo_ON_npix']<c+5*npix_fs) # from cue to 5s after cue
-        df.loc[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
-
-    # Also add spontaneous licks
-    if add_spont_licks:
-        allocated_licks=npa([list(df.loc[i, "lick_onsets"]) for i in df.index]).flatten()
-        spontaneous_licks=paqdic['LICKS_Piezo_ON_npix'][~np.isin(paqdic['LICKS_Piezo_ON_npix'], allocated_licks)]
-        i=df.index[-1]+1
-        df.loc[i, 'trial_type']='spontaneous_licks'
-        df.loc[i, "lick_onsets"]=spontaneous_licks
-
-    df.to_csv(fn)
-    return df
-
-def processed_paqdic(dp, f_behav=None, vid_path=None, again=False, again_align=False, again_rawpaq=False,
+def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, again_rawpaq=False,
                      lick_ili_th=0.075, n_ticks=1024, diam=200, gsd=25,
                      plot=False, drop_raw=True, cam_paqi_to_use=None):
     '''
-    Remove artefactual licking and processes rotary encoder.
+    Remove artefactual licking, processes rotary encoder and wheel turn trials.
     - dp: str, path of kilosort dataset.
     - f_behav: str, paqIO behavioural file.
     - again: bool, whether to recompute paqdic from paq file.
@@ -394,8 +47,10 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False, again_align=F
     ## Try to load presaved df
     dp=Path(dp)
     fn=dp/'behavior'/'paq_dic_proc.pkl'
+    if again_rawpaq: again_align=True
+    if again_align: again=True
     if fn.exists() and not again: return pickle.load(open(str(fn),"rb"))
-    
+
     paqdic=npix_aligned_paq(dp,f_behav=f_behav, again=again_align, again_rawpaq=again_rawpaq)
     paq_fs=paqdic['paq_fs']
     npix_fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
@@ -403,6 +58,7 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False, again_align=F
     # Preprocessing of extracted behavioural data (only lick onsets so far)
     licks_on=paqdic['LICKS_Piezo_ON_npix'].copy()
     paqdic['LICKS_Piezo_ON_npix']=licks_on[np.diff(np.append([0],licks_on))>lick_ili_th*npix_fs] # 0.075 is the right threshold, across mice!
+    paqdic['licks']=paqdic['LICKS_Piezo_ON_npix'] # for convenience
     print(f'\nInter lick interval lower threshold set at {lick_ili_th} seconds.\n')
     if plot:
         hbins=np.logspace(np.log10(0.005),np.log10(10), 500)
@@ -420,74 +76,79 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False, again_align=F
         ax.set_xscale('log')
         plt.xlim(0.005,10)
         plt.ylim(0,max(hist[0][hist[1][:-1]>0.05])+10)
-    
-    # Process rotary encoder
-    # Get periods with/without 
-    v=decode_rotary(paqdic['ROT_A'], paqdic['ROT_B'], paq_fs, n_ticks, diam, gsd, True)
-    v*=sign(abs(np.max(v))-abs(np.min(v))) # 1 if running forward is positive
-    paqdic['ROT_SPEED']=v
-    
-    # Process extra camera frames
-    if vid_path is None:
-        vid_path=dp/(dp.name+'_video')
-    videos=list_files(vid_path, 'avi', 1) if vid_path.exists() else []
-    
-    if not any(videos):
-        print(f'No videos found at {vid_path} - camera triggers not processed.\n')
+
+    # Process rotary encoder if running dataset
+    # Get periods with/without
+    if not 'ROT_A' in paqdic.keys():
+        print('No rotary encoder data found in paqdic. Assuming no running, no camera.')
     else:
-        if cam_paqi_to_use is not None:
-            assert len(cam_paqi_to_use)==2
-            assert cam_paqi_to_use[0]>=0
-            assert cam_paqi_to_use[1]<=len(paqdic['CameraFrames'])-1
-            if cam_paqi_to_use[1]<0:cam_paqi_to_use[1]=len(paqdic['CameraFrames'])+cam_paqi_to_use[1]
-            ON=paqdic['CameraFrames_ON']
-            OFF=paqdic['CameraFrames_OFF']
-            mon=(ON>=cam_paqi_to_use[0])&(ON<=cam_paqi_to_use[1])
-            mof=(OFF>=cam_paqi_to_use[0])&(OFF<=cam_paqi_to_use[1])
-            paqdic['CameraFrames_ON_npix']=paqdic['CameraFrames_ON_npix'][mon]
-            paqdic['CameraFrames_OFF_npix']=paqdic['CameraFrames_OFF_npix'][mof]
-        frames_npix=paqdic['CameraFrames_ON_npix']/paqdic['npix_fs']
-        nframes=[get_nframes(v) for v in videos]
-        print(f'{frames_npix.shape[0]} frames in paqIO file, {np.sum(nframes)} in video files.')
-        print(f'**{frames_npix.shape[0]-sum(nframes)}** unexpected camera triggers... \
-        ({sum(np.diff(frames_npix)<0.001)} below 1ms)')
-        print(f'(Videos nframes:{nframes}.)')
-        print(f'''There are **{sum(npa(nframes)!=60000)}** seemingly manually aborted videos - 
-        check that the discrepancy matches.\nIf they do not, figure out why. There might be some trashed video triggers somewhere.''')
-        
-        fi=0
-        n_man_abort=0
-        last=0
-        for i,nf in enumerate(nframes):
-            if nf==nframes[-1]:last=1
-            fi+=nf
-            ii=fi+n_man_abort
-            if nf!=60000:#manually aborted
-                n_man_abort+=1
-                # ensure that where the gap between videos (>50ms)
-                # is expected, you actually have a short interval
-                assert frames_npix[ii]-frames_npix[ii-1]<0.05
-                if not last:assert frames_npix[ii+1]-frames_npix[ii]>0.05
-                frames_npix[ii]=np.nan
-            else:
-                # ensure that the gap between videos (>50ms)
-                # is where it is expected
-                assert frames_npix[ii-1]-frames_npix[ii-2]<0.05
-                if not last:assert frames_npix[ii]-frames_npix[ii-1]>0.05
-        frames_npix=(frames_npix[~np.isnan(frames_npix)]*paqdic['npix_fs']).astype(int)
-        print(f'Now the delta between expected/actual frames is **{frames_npix.shape[0]-sum(nframes)}**.')
-        paqdic['CameraFrames_ON_npix']=frames_npix
-    
-    # Process other behavioural events
+        print('Running dataset detected.')
+        v=decode_rotary(paqdic['ROT_A'], paqdic['ROT_B'], paq_fs, n_ticks, diam, gsd, True)
+        v*=sign(abs(np.max(v))-abs(np.min(v))) # 1 if running forward is positive
+        paqdic['ROT_SPEED']=v
+
+        # Process extra camera frames
+        if vid_path is None:
+            vid_path=dp/(dp.name+'_video')
+        videos=list_files(vid_path, 'avi', 1) if vid_path.exists() else []
+
+        if not any(videos):
+            print(f'No videos found at {vid_path} - camera triggers not processed.\n')
+        else:
+            if cam_paqi_to_use is not None:
+                assert len(cam_paqi_to_use)==2
+                assert cam_paqi_to_use[0]>=0
+                assert cam_paqi_to_use[1]<=len(paqdic['CameraFrames'])-1
+                if cam_paqi_to_use[1]<0:cam_paqi_to_use[1]=len(paqdic['CameraFrames'])+cam_paqi_to_use[1]
+                ON=paqdic['CameraFrames_ON']
+                OFF=paqdic['CameraFrames_OFF']
+                mon=(ON>=cam_paqi_to_use[0])&(ON<=cam_paqi_to_use[1])
+                mof=(OFF>=cam_paqi_to_use[0])&(OFF<=cam_paqi_to_use[1])
+                paqdic['CameraFrames_ON_npix']=paqdic['CameraFrames_ON_npix'][mon]
+                paqdic['CameraFrames_OFF_npix']=paqdic['CameraFrames_OFF_npix'][mof]
+            frames_npix=paqdic['CameraFrames_ON_npix']/paqdic['npix_fs']
+            nframes=[get_nframes(v) for v in videos]
+            print(f'{frames_npix.shape[0]} frames in paqIO file, {np.sum(nframes)} in video files.')
+            print(f'**{frames_npix.shape[0]-sum(nframes)}** unexpected camera triggers... \
+            ({sum(np.diff(frames_npix)<0.001)} below 1ms)')
+            print(f'(Videos nframes:{nframes}.)')
+            print(f'''There are **{sum(npa(nframes)!=60000)}** seemingly manually aborted videos -
+            check that the discrepancy matches.\nIf they do not, figure out why. There might be some trashed video triggers somewhere.''')
+
+            fi=0
+            n_man_abort=0
+            last=0
+            for i,nf in enumerate(nframes):
+                if nf==nframes[-1]:last=1
+                fi+=nf
+                ii=fi+n_man_abort
+                if nf!=60000:#manually aborted
+                    n_man_abort+=1
+                    # ensure that where the gap between videos (>50ms)
+                    # is expected, you actually have a short interval
+                    assert frames_npix[ii]-frames_npix[ii-1]<0.05
+                    if not last:assert frames_npix[ii+1]-frames_npix[ii]>0.05
+                    frames_npix[ii]=np.nan
+                else:
+                    # ensure that the gap between videos (>50ms)
+                    # is where it is expected
+                    assert frames_npix[ii-1]-frames_npix[ii-2]<0.05
+                    if not last:assert frames_npix[ii]-frames_npix[ii-1]>0.05
+            frames_npix=(frames_npix[~np.isnan(frames_npix)]*paqdic['npix_fs']).astype(int)
+            print(f'Now the delta between expected/actual frames is **{frames_npix.shape[0]-sum(nframes)}**.')
+            paqdic['CameraFrames_ON_npix']=frames_npix
+
+    # Process cues and rewards - only engaged events are considered!
     fs=paqdic['npix_fs']
     cues=paqdic['CUE_ON_npix']
     rewards=paqdic['REW_ON_npix']
     licks=paqdic['LICKS_Piezo_ON_npix']
+
     rewarded_cues=[]
     cued_rewards=[]
     random_rewards=[]
-    first_licks=[]
-    for ri,r in enumerate(rewards):
+    post_r_lick=[]
+    for r in rewards:
         licks_m=(r<licks)&(licks<r+2*fs)
         if any(licks_m): #engaged_rewards
             cues_m=(r-2*fs<cues)&(cues<r)
@@ -495,47 +156,76 @@ def processed_paqdic(dp, f_behav=None, vid_path=None, again=False, again_align=F
                 c=cues[cues_m][0]
                 rewarded_cues.append(c)
                 cued_rewards.append(r)
-                first_licks.append(licks[(c<licks)&(licks<c+2*fs)][0])
+                licks_postr_m = ((c<licks)&(licks<c+2*fs))
+                if any(licks_postr_m):
+                    post_r_lick.append(licks[licks_postr_m][0])
             else:
                 random_rewards.append(r)
-                first_licks.append(licks[(r<licks)&(licks<r+2*fs)][0])
-    paqdic['rewarded_cues_npix']=rewarded_cues
-    paqdic['cued_rewards_npix']=cued_rewards
-    paqdic['random_rewards_npix']=random_rewards
-    paqdic['first_licks_npix']=first_licks
-    
+                post_r_lick.append(licks[(r<licks)&(licks<r+2*fs)][0])
+
+    cued_omission_c=[]
+    engaged_cues=[]
+    post_c_lick=[]
+    for c in cues:
+        licks_m=(c<licks)&(licks<c+2*fs)
+        if any(licks_m):
+            engaged_cues.append(c)
+            post_c_lick.append(licks[licks_m][0])
+            rew_m=(c<rewards)&(rewards<c+2*fs)
+            if not any(rew_m):
+                cued_omission_c.append(c)
+
+    paqdic['cr_c']=rewarded_cues
+    paqdic['cr_r']=cued_rewards
+    paqdic['rr']=random_rewards
+    paqdic['lick_r']=post_r_lick
+    paqdic['c']=engaged_cues
+    paqdic['co_c']=cued_omission_c
+    paqdic['lick_c']=post_c_lick
+
+    # Process turning wheel events if turning wheel dataset
+    if 'ROTreal' in paqdic.keys():
+        print('Wheel turning dataset detected.')
+        wheel_turn_dic = get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=False,
+                        wheel_gain=3, rew_zone=12.5, rew_frames=3, vr_rate=30,
+                        wheel_diam=45, difficulty=2, ballistic_thresh=100,
+                        plot=False, again=False)[1]
+        # merge giving priority to rr, cr_c and cr_r from wheel_turn_dic
+        paqdic={**paqdic,**wheel_turn_dic}
+
     # Save behav dict
     if drop_raw:
         undesired=['RECON', 'RECON_ON', 'RECON_OFF', 'GAMEON', 'GAMEON_ON', 'GAMEON_OFF', 'TRIALON', 'TRIALON_ON', 'TRIALON_OFF',
                    'REW', 'CUE', 'VRframes', 'VRframes_ON', 'VRframes_OFF', 'GHOST_REW', 'ROT_A', 'ROT_B', 'CameraFrames', 'LICKS_Piezo']
         for k in undesired:
-            paqdic.pop(k)
+            if k in paqdic.keys():paqdic.pop(k)
         print(f'\nDropped: {undesired}.\n')
     pickle.dump(paqdic, open(str(fn),"wb"))
-    
+
     return paqdic
 
 def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
     '''Aligns thresholded paqIO data at f_behav to npix data at dp.
     '''
+    if again_rawpaq: again=True
     dp=Path(dp)
     if not (dp/'behavior').exists(): (dp/'behavior').mkdir()
     fn=dp/'behavior'/'paq_dic.pkl'
     ## Load paq data and npix sync channel data
     if f_behav is None:
         if fn.exists() and not again: return pickle.load(open(str(fn),"rb"))
-        
+
         files=list_files(dp/'behavior', 'paq')
         assert len(files)>0, f"WARNING no files with extension 'paq' were found at {dp/'behavior'} - either add one there or explicitely declare a file path with f_behav parameter."
         assert len(files)==1, f"WARNING more than 1 file with extension 'paq' were found at '{dp/'behavior'}' - clean up your directory structure and try again."
         f_behav=dp/'behavior'/files[0]
         print(f'Behavioural data loaded from: {f_behav}')
-    paqdic=load_PAQdata(f_behav, variables='all', unit='samples', again=again)
+    paqdic=load_PAQdata(f_behav, variables='all', unit='samples', again=again_rawpaq)
     paq_fs=paqdic['paq_fs']
     npix_ons, npix_ofs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
     npix_fs = read_spikeglx_meta(dp, subtype='ap')['sRateHz']
     paqdic['npix_fs']=npix_fs
-    
+
     ## Match Paq data to npix data - convert paq onsets/offsets to npix time frame (or directly use it if available)
     # First, match npix sync channels to paqIO channels through exhaustive screening
     # (only one match for 3B recordings, several for 3A recordings)
@@ -554,17 +244,17 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
             paqk=paq_npix_df.loc[paq_npix_df['npix']==npixk, 'paq'][match_p|match_l].values
             assert paqk.shape[0]==1, f'WARNING, more than one match found ({paqk}) between npix sync channel and PaqIO!!'
             paqk=paqk[0]
-            print(f'\n\n>>> Match found between npix channel {npixk} and paqIO channel {paqk} ({len(npix_ons[npixk])} events)!\n\n')
+            print(f'\n>>> Match found between npix channel {npixk} and paqIO channel {paqk} ({len(npix_ons[npixk])} events)!\n')
             npix_paq[npixk]=paqk
             npix_paq[paqk]=npixk
     assert len(npix_paq)>0, 'WARNING no match was found between paqIO file and npix sync channel!'
-    
+
     # Then, pick the longest matching sync channel to align paqIO channels not acquired with npix
     len_arr=npa([[k,len(npix_ons[k])] for k in npix_paq.keys() if k in npix_ons.keys()])
     sync_npix_k=len_arr[np.argmax(len_arr[:,1]),0]
     sync_npix=npix_ons[sync_npix_k]
     sync_paq=paqdic[npix_paq[sync_npix_k]]
-    
+
     # Model drift: npix_sync = a * paq_sync + b
     (a, b) = np.polyfit(sync_paq, sync_npix, 1)
     paqdic['a']=a
@@ -582,9 +272,9 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
                 paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
                 paqdic[f'{paqk}_npix']=(a*paqv+b).astype(int)
                 paqdic[f"{off_key}_npix"]=(a*paqdic[off_key]+b).astype(int)
-                
+
     pickle.dump(paqdic, open(str(fn),"wb"))
-    
+
     return paqdic
 
 def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.2):
@@ -603,7 +293,7 @@ def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.
         - paqdic, dictionnary of all variables (under key var)
           as well as onset/offsets of digital variables (under keys var_ON and var_OFF)
     '''
-    
+
     # Load paq data
     paq = paq_read(paq_f)
 
@@ -643,7 +333,8 @@ def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.
 
         # Process packIO data and store it in a dict
         rawPAQVariables = {}
-        rawPAQVariables['paq_fs']=paq['rate']
+        rate_key=[k for k in list(paq.keys()) if 'rate' in k][0]
+        rawPAQVariables['paq_fs']=paq[rate_key]
         print('>> PackIO acquired channels: {}, of which {} will be extracted...'.format(allVariables, list(variables.keys())))
         for v in variables.keys():
             (i, ) = np.nonzero(v==np.array(allVariables))[0]
@@ -655,6 +346,7 @@ def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.
                 th = min(data)+(max(data)-min(data))*th_frac
                 rawPAQVariables[v+'_ON'] = thresh(data, th, 1).astype(int)
                 rawPAQVariables[v+'_OFF'] = thresh(data, th, -1).astype(int)
+
         # Pickle it
         if np.all(list(variables.keys())==allVariables):
             pickle.dump(rawPAQVariables, open(fn,"wb"))
@@ -666,109 +358,246 @@ def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.
 
     return rawPAQVariables
 
-def mat_to_trialsdf(dp, f_behav=None, trial_on_i=2, reward_i=5, cue_i=4,
-                    include_wheel_data=False, wheel_position_index=13, wheel_velocity_index=14, object_position_index=9):
+def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=False,
+                    wheel_gain=3, rew_zone=12.5, rew_frames=3, vr_rate=30,
+                    wheel_diam=45, difficulty=2, ballistic_thresh=100,
+                    plot=False, again=False):
     '''
-    DEPRECATED only orks for neuropixels 3A recordings with trialON, reward and cue recorded directly on sync channel
-    Loads the trials-related information from the matlab data structure outputted by Virmen.
     Parameters:
-        - dp: string, datapath to Neuropixels binary file (preferably LFP, faster)
-        - f_behav: string, path to the Virmen matlab structure
-        - trial_on_i: neuropixels sync channel index of trial onsets
-        - reward_i: neuropixels sync channel index of rewards onsets
-        - cue_i: neuropixels sync channel index of auditory cue onsets
+        - dp: str, path to neuropixels data directory (behavioural data is in dp/behavior)
+        - paqdic: paqIO dictionnary, with data cleaned up
+
+        - include_wheel_data: bool, whether to add memory-heavy object position (in degrees) and wheel position (in mm) to the dataframe,
+                              sampled at paqIO sampling rate, and related metrics (movement onset in relative paqIO units etc)
+        - add_spont_licks: bool, whether to add memory-heavy spontaneous lick onsets
+                           at the end of the dataframe as trial_type 'spontaneous_licks'
+
+        - wheel_gain: float, gain between the wheel and the object (vr.rotgain virmen setting) | Default 3
+        - rew_zone: float, target zone at the center (vr.rewarddeg virmen setting) | Default 12.5
+        - rew_frames: int, number of frames where speed needs to be 0 (vr.rewardframes virmen setting) | Default 3 (about 100ms)
+        - vr_rate: int, refresh rate of virmen engine (Hz) | Default 30
+        - wheel_diam: float, lego wheel diameter in mm | Default 45
+        - difficulty: int, difficulty level of the task (vr.version virmen setting).
+                      2: 2 sided, overshoot allowed. 3: overshoot not allowed, probably 1 sided. | Default 2
+        - ballistic_thresh: how short a movement must to be called 'ballistic', in milliseconds | Default 100
+
+        - plot: bool, whether to plot wheel position, speed and detected movement onset/offset as the dataframe is populated | Default True
+
     Returns:
-        - trials_df: pandas dataframe with Ntrials rows, and columns.
+        behav_df: session summary pandas dataframe, with columns
+            'trial_type'        - wheel_turn, random_reward, cued_reward or cue_alone
+            'trialnum'          - wheel turning trial number
+            'trialside'         - 1 or -1 (sign matches paqIO ROT channel start value)
+            'trial_onset'       - trial onset, in neuropixels temporal reference frame
+            'object_onset'      - object appearance onset, npix frame
+            'movement_onset'    - detected movement onset (norm. speed threshold), npix frame
+            'movement_offset'   - detected movement ofset (enters reward zone), npix frame
+            'movement_duration' - movement duration in ms (offset-onset)
+            'ballistic'         - True if movement is shorter than ballistic_thresh
+            'correct'           - 1 if correct, 0 if not
+            'trial_offset'      - trial offset, in npix frame
+            'reward_onset'      - reward onset, in npix frame
+            'cue_onset'         - cue onset, in npix frame
+            'ghost_onset'       - empty solenoid (fake reward) onset, in npix frame
+            'lick_onsets'       - array of lick onsets happening between trial onset and 5s after trial offset
+                                  or reward and 5s after reward for random rewards RR
+                                  or cue and 5s after reward for cued rewards CR
+                                  or cue and 5s after cue for omitted rewards OR
+            and if include_wheel_data:
+                'object_position'        - in degrees, in paqIO samples (5000Hz), clipped from to 4s before trial onset to 4s after offset
+                'wheel_position'         - in mm, in paqIO samples (5000Hz), clipped similarly
+                'trial_onset_relpaq'     - trial onset, in object_position and wheel_position relative paqIO samples
+                'movement_onset_relpaq'  - movement onset, in object_position and wheel_position relative paqIO samples
+                'movement_offset_relpaq' - movement offset, in object_position and wheel_position relative paqIO samples
+                'trial_offset_relpaq'    - trial offset, in object_position and wheel_position relative paqIO samples
+                'lick_trace'             - piezo_licks trace, in paqIO samples (5000Hz), clipped similarly
+
+        behav_dic: behav_df with events extracted in dictionnary with the following keys
+          > 'olc_on'/'oli_on': visual object onsets for correct trials
+          > 'orc_on'/orr_on: visual object onsets for incorrect trials
+
+          > 'lc_on'/'lc_of: movement on/offsets for left correct trials
+          > 'rc_on'/'rc_of: movement on/offsets for right correct trials
+
+          > 'c_r: reward onset for correct trials
+          > 'i_of: trial offsets for correct trials (timeout)
     '''
-    dp=Path(dp)
-    if f_behav is None:
-        files=list_files(dp/'behavior', 'mat')
-        assert len(files)>0, f"WARNING no files with extension 'mat' were found at {dp/'behavior'} - either add one there or explicitely declare a file path with f_behav parameter."
-        assert len(files)==1, f"WARNING more than 1 file with extension 'mat' were found at '{dp/'behavior'}' - clean up your directory structure and try again."
-        f_behav=dp/'behavior'/files[0]
-        print(f'Behavioural data loaded from: {f_behav}')
 
-    with h5py.File(f_behav, 'r') as f:
-        trials_dic={}
-        for col in ['trialnum', 'trialside', 'correct', 'reward', 'ghost']:
-            index=f['datastruct']['paqdata']['behav']['trials'][col]
-            trials_dic[col]=[]
-            for i in range(len(index)):
-                val=f[index[i,0]][:][0]
-                try:
-                    val=val[0]
-                except:
-                    assert val==0, 'WARNING this thing {} was expected to be either a np array or 0 but is not - figure out what the h5py decoding generated.'.format(val)
-                    val=np.nan# looks like '[]' in matlab
-                trials_dic[col].append(val)#[0,0] for i in range(len(index))]
+    ## Organize them in dataset, all in NEUROPIXELS time frame
+    # i.e. (use above-aligned paqdic[f'{paqk}_npix'] as onsets)
+    fn=dp/f"behavior/trials_df-{include_wheel_data}-{add_spont_licks}-{difficulty}-{ballistic_thresh}.csv"
+    if Path(fn).exists() and not again:
+        df = pd.read_csv(fn)
+    else:
+        paq_fs, npix_fs = paqdic['paq_fs'], paqdic['npix_fs']
+        df=pd.DataFrame(columns=['trial_type', 'trialnum', 'trialside', 'trial_onset', 'object_onset',
+                                'movement_onset', 'movement_offset', 'movement_duration', 'ballistic', 'correct', 'trial_offset',
+                                'reward_onset', 'cue_onset', 'ghost_onset', 'lick_onsets'])
 
-    # Load Neuropixels sync channel, in seconds
-    ons, ofs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples') # sync channels onsets and offsets
-    npix_trialOns=ons[trial_on_i]
-    npix_trialOfs=ofs[trial_on_i]
-    npix_rewards=ons[reward_i]
-    npix_tone_cues=ons[cue_i]
+        # Process wheel trials
+        nwheeltrials=len(paqdic['TRIALON_ON'])
+        df['trial_type']=['wheel_turn']*nwheeltrials
+        df["lick_onsets"]=df["lick_onsets"].astype(object) # to be able to store array
+        if include_wheel_data:
+            df['object_position']=np.nan
+            df['wheel_position']=np.nan
+            df['trial_onset_relpaq']=np.nan
+            df['movement_onset_relpaq']=np.nan
+            df['movement_offset_relpaq']=np.nan
+            df['trial_offset_relpaq']=np.nan
+            df['lick_trace']=np.nan
+            df["object_position"]=df["object_position"].astype(object)
+            df["wheel_position"]=df["wheel_position"].astype(object)
+            df['lick_trace']=df["wheel_position"].astype(object)
+        pad=4
+        assert difficulty in [2,3]
+        for tr in df.index:
+            npixon=paqdic['TRIALON_ON_npix'][tr]
+            npixof=paqdic['TRIALON_OFF_npix'][tr]
+            paqon=int(paqdic['TRIALON_ON'][tr])
+            paqoff=int(paqdic['TRIALON_OFF'][tr])
+            i1,i2 = int(paqon-pad*paq_fs),int(paqoff+pad*paq_fs)
+            ob_on_vel=np.diff(paqdic['ROTreal'][paqon:paqon+500])
+            ob_on_vel=abs(ob_on_vel)/max(abs(ob_on_vel))
+            ob_on_paq=thresh(ob_on_vel, 0.5, 1)[0]+1 # add 1 because velocity is thresholded
+            start_side=sign(paqdic['ROT'][paqon+ob_on_paq+1]) # 1 or -1
+            # wheel and object positions are clipped between -4s before trial onset and 4s after trial offset
+            opos=paqdic['ROT'][i1:i2] # in degrees
+            wpos=paqdic['ROTreal'][i1:i2]*(np.pi*wheel_diam)/360/wheel_gain # in mm, back-calculate wheel pos from object pos
+            wpos_mvt=paqdic['ROTreal'][paqon+ob_on_paq:paqoff]
+            wvel=np.diff(wpos)
+            wvel_mvt=wvel[int(pad*paq_fs+ob_on_paq):-int(pad*paq_fs)]
+            wvel_mvt_norm=wvel_mvt/min(abs({-1:max, 1:min}[start_side](wvel_mvt)), 2)
 
-    # Make trials dataframe
-    df=pd.DataFrame(data=trials_dic)
+            # assess trial outcome from wheel kinetics
+            wpos_outeval=paqdic['ROT'][int(paqon+ob_on_paq):int(paqoff)]
+            stay_for_rew=int(rew_frames/vr_rate*paq_fs)
+            correct=0
+            center_crossed=False
+            th0=np.append(thresh(wpos_outeval, 0, 1), thresh(wpos_outeval, 0, -1))
+            if np.any(th0):
+                jump=wpos_outeval[th0[0]+1]-wpos_outeval[th0[0]-1]
+                if jump<300: # handles cases where the object went all the way around -> false positive threshold cross
+                    center_crossed = True
+            stayed_rew_zone=np.all((paqdic['ROT'][int(paqoff)-stay_for_rew:int(paqoff)]<=rew_zone)&\
+                                (paqdic['ROT'][int(paqoff)-stay_for_rew:int(paqoff)]>=-rew_zone))
+            #non_responsive=(paqdic['ROT'][int(paqoff)]<=rew_zone or paqdic['ROT'][int(paqoff)]>=-rew_zone)
+            if difficulty>=2: # rule: crossing threshold or ending in reward zone
+                if center_crossed or stayed_rew_zone: correct=1
+            if difficulty>=3: # rule: ending in reward zone
+                if stayed_rew_zone: correct=1
+            #if non_responsive: correct=np.nan
 
-    # Add trial types
-    df.insert(0, 'trial_type', ['wheel_turn' for i in range(len(df.index))])
+            # Fill dataframe
+            df.loc[tr, 'trialnum']=tr
+            df.loc[tr, 'trial_onset']=npixon
+            df.loc[tr, 'trial_offset']=npixof
+            df.loc[tr, 'object_onset']=int(npixon+ob_on_paq*npix_fs/paq_fs)
+            df.loc[tr, 'trialside']=start_side
+            df.loc[tr, 'correct']=correct
+            lickmask=(paqdic['LICKS_Piezo_ON_npix']>npixon)&(paqdic['LICKS_Piezo_ON_npix']<npixof+5*npix_fs)
+            df.loc[tr, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
+            if correct:
+                movonpaq=ob_on_paq+thresh(wvel_mvt_norm, -start_side*0.5, -start_side)[0]
+                movofpaq=ob_on_paq+np.append(thresh(wpos_mvt, rew_zone, -1), thresh(wpos_mvt, -rew_zone, 1)).min()
+                mov_dur=(movofpaq-movonpaq)*1000/paq_fs
+                ballistic=(mov_dur<ballistic_thresh) # in ms
+                if plot:
+                    plt.figure()
+                    plt.plot(wvel[int(pad*paq_fs+500):-int(pad*paq_fs)], c='grey')
+                    plt.plot(wpos[int(pad*paq_fs+500):-int(pad*paq_fs)], c='k')
+                    ls='--' if ballistic else '-'
+                    plt.plot([movonpaq-500, movonpaq-500], [min(wpos), max(wpos)], c='g', ls=ls)
+                    plt.plot([movofpaq-500, movofpaq-500], [min(wpos), max(wpos)], c='r', ls=ls)
+                    plt.title(f'trial {tr}\nduration:{mov_dur}ms')
+                df.loc[tr, 'movement_onset']=int(npixon+(movonpaq)*npix_fs/paq_fs)
+                df.loc[tr, 'movement_offset']=int(npixon+(movofpaq)*npix_fs/paq_fs)
+                df.loc[tr, 'movement_duration']=mov_dur
+                df.loc[tr, 'ballistic']=ballistic
+            if include_wheel_data:
+                df.at[tr, 'object_position']=opos
+                df.at[tr, 'wheel_position']=wpos
+                df.loc[tr, 'trial_onset_relpaq']=int(pad*paq_fs)
+                df.loc[tr, 'movement_onset_relpaq']=int(pad*paq_fs)+movonpaq
+                df.loc[tr, 'movement_offset_relpaq']=int(pad*paq_fs)+movofpaq
+                df.loc[tr, 'trial_offset_relpaq']=len(wpos)-int(pad*paq_fs)
+                df.at[tr, 'lick_trace']=paqdic['LICKS_Piezo'][i1:i2]
 
-    # 1 is left, -1 is right
-    for tr in df.index:
-        df.loc[tr, 'trialside'] = 'left' if (df.loc[tr, 'trialside']==1) else 'right'
+        # Append trial rewards onsets ##TODO
+        for tr in df.index:
+            of=df.loc[tr, 'trial_offset']
+            rew_mask=(paqdic['REW_ON_npix']>of)&(paqdic['REW_ON_npix']<(of+1*npix_fs)) # happens about 400ms after trial offset
+            if np.any(rew_mask):
+                if df.loc[tr, 'correct']!=1: print(f'WARNING seems like a reward onset was found after trial {tr} offset, although incorrect...\
+                                                Probably beause of 360deg jump of ROT channel not followed by ROTreal.')
+                df.loc[tr, 'reward_onset']=paqdic['REW_ON_npix'][rew_mask][0]
+            else:
+                if df.loc[tr, 'correct']==1: print(f'WARNING no reward was found after trial {tr} offset, although correct!!! Figure out the problem ++!!')
 
-    # Add trial onsets and offsets in neuropixels time frame
-    assert len(npix_trialOns)==len(df.index)
-    df['npix_trialOns']=npix_trialOns
-    assert len(npix_trialOfs)==len(df.index)
-    df['npix_trialOfs']=npix_trialOfs
-
-    # Add wheel movement
-    if include_wheel_data:
-        df["object_position"] = np.nan;df["object_position"]=df["object_position"].astype(object)
-        df["wheel_position"] = np.nan;df["wheel_position"]=df["wheel_position"].astype(object)
-        df["wheel_velocity"] = np.nan;df["wheel_velocity"]=df["wheel_velocity"].astype(object)
-        with h5py.File(f_behav, 'r') as f:
-            for tr in df.index:
-                index=f['datastruct']['paqdata']['behav']['trials']['data']
-                obj=f[index[0,0]][:][object_position_index]
-                wheel_p=f[index[0,0]][:][wheel_position_index]
-                wheel_v=f[index[0,0]][:][wheel_velocity_index]
-                df.at[tr, 'object_position'] = obj
-                df.at[tr, 'wheel_position'] = wheel_p
-                df.at[tr, 'wheel_velocity'] = wheel_v
-                ##TODO check indices of actual wheel movements
-                # if npix_trialOns is not None:
-                #     df.at[tr, 'npix_movOns'] = get_weel_movement_onset(wheel_velocity=wheel_v, npix_trialOn=df.at[tr, 'npix_trialOns'], paq_fs=5000)
-
-    # Append random rewards, cued or not, at the end of the dataframe
-    rews=[]
-    for tr in df.index:
-        of=df.loc[tr, 'npix_trialOfs']
-        rew_mask=(npix_rewards>of)&(npix_rewards<(of+1)) # happens about 400ms after trial offset
-        if np.any(rew_mask):
-            assert df.loc[tr, 'reward']==1, 'WARNING seems like a reward onset was found during a trial considered Incorrect...'
-            rews.append(npix_rewards[rew_mask][0])
-        else:
-            rews.append(np.nan)
-    df['npix_rewards']=rews
-
-    # Now find random rewards
-    if npix_tone_cues is not None:
-        random_rewards=npix_rewards[~np.isin(npix_rewards, df['npix_rewards'])]
+        # Now find random rewards and respective cues if any
+        random_rewards=paqdic['REW_ON_npix'][~np.isin(paqdic['REW_ON_npix'], df['reward_onset'])]
         for r in random_rewards:
-            cue_mask=(npix_tone_cues>r-1)&(npix_tone_cues<r) # cues happen about 500ms before reward
+            cue_mask=(paqdic['CUE_ON_npix']>r-1*npix_fs)&(paqdic['CUE_ON_npix']<r) # cues happen about 500ms before reward
             i=df.index[-1]+1
             if np.any(cue_mask):
+                c=paqdic['CUE_ON_npix'][cue_mask][0]
                 df.loc[i, 'trial_type']='cued_reward'
-                df.loc[i, 'npix_rewards']=r
-                df.loc[i, 'npix_tone_cues']=npix_tone_cues[cue_mask]
+                df.loc[i, 'reward_onset']=r
+                df.loc[i, 'cue_onset']=c
+                lickmask=(paqdic['LICKS_Piezo_ON_npix']>c)&(paqdic['LICKS_Piezo_ON_npix']<r+5*npix_fs) # from cue to 5s after reward
             else:
                 df.loc[i, 'trial_type']='random_reward'
-                df.loc[i, 'npix_rewards']=r
-    return df
+                df.loc[i, 'reward_onset']=r
+                lickmask=(paqdic['LICKS_Piezo_ON_npix']>r)&(paqdic['LICKS_Piezo_ON_npix']<r+5*npix_fs) # from reward to 5s after reward
+            df.loc[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
+
+        # Finally, fill in the cues alone (omitted rewards)
+        cues_alone=paqdic['CUE_ON_npix'][~np.isin(paqdic['CUE_ON_npix'], df['cue_onset'])]
+        for c in cues_alone:
+            i=df.index[-1]+1
+            df.loc[i, 'trial_type']='cue_alone'
+            df.loc[i, 'cue_onset']=c
+            lickmask=(paqdic['LICKS_Piezo_ON_npix']>c)&(paqdic['LICKS_Piezo_ON_npix']<c+5*npix_fs) # from cue to 5s after cue
+            df.loc[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
+
+        # Also add spontaneous licks
+        if add_spont_licks:
+            allocated_licks=npa([list(df.loc[i, "lick_onsets"]) for i in df.index]).flatten()
+            spontaneous_licks=paqdic['LICKS_Piezo_ON_npix'][~np.isin(paqdic['LICKS_Piezo_ON_npix'], allocated_licks)]
+            i=df.index[-1]+1
+            df.loc[i, 'trial_type']='spontaneous_licks'
+            df.loc[i, "lick_onsets"]=spontaneous_licks
+
+        df.to_csv(fn)
+
+    # finally, convert to dictionnary - more convenient
+    mask_left=(df['trialside']==1)
+    mask_right=(df['trialside']==-1)
+    mask_correct=(df['correct']==1)&(df['ballistic']==1)
+    mask_incorrect=(df['correct']==0)
+    mask_rr=(df['trial_type']=='random_reward')
+    mask_cr=(df['trial_type']=='cued_reward')
+    events_dic=\
+    {'olc_on':  df.loc[mask_left&mask_correct, 'object_onset'].values.astype(float),
+     'oli_on':  df.loc[mask_left&mask_incorrect, 'object_onset'].values.astype(float),
+     'orc_on':  df.loc[mask_right&mask_correct, 'object_onset'].values.astype(float),
+     'ori_on':  df.loc[mask_right&mask_incorrect, 'object_onset'].values.astype(float),
+
+     'lc_on':  df.loc[mask_left&mask_correct, 'movement_onset'].values.astype(float),
+     'rc_on':  df.loc[mask_right&mask_correct, 'movement_onset'].values.astype(float),
+     'lc_of':  df.loc[mask_left&mask_correct, 'movement_offset'].values.astype(float),
+     'rc_of':  df.loc[mask_right&mask_correct, 'movement_offset'].values.astype(float),
+
+     'c_r':  df.loc[mask_correct, 'reward_onset'].values.astype(float),
+     'i_of':  df.loc[mask_incorrect, 'trial_offset'].values.astype(float),
+
+    # random/cued rewards are now handled in get_behav_dic
+    'rr':    df.loc[mask_rr, 'reward_onset'].values.astype(float),
+    'cr_c':    df.loc[mask_cr, 'cue_onset'].values.astype(float),
+    'cr_r':    df.loc[mask_cr, 'reward_onset'].values.astype(float)}
+
+
+    return df, events_dic
 
 #%% Alignement, binning and processing of time series
 
@@ -915,14 +744,14 @@ def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
             if zscoretype=='within':
                 y_mn = np.mean(np.mean(y_bsl, axis=0))
                 y_sd = np.std(np.mean(y_bsl, axis=0))
-                if y_sd==0: y_sd=1
+                if y_sd==0 or np.isnan(y_sd): y_sd=1
                 if process_y: y =  (y-y_mn)/y_sd
                 y_p = (np.mean(y, axis=0)-y_mn)/y_sd
                 y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
             elif zscoretype=='across':
                 y_mn = np.mean(y_bsl.flatten())
                 y_sd = np.std(y_bsl.flatten())
-                if y_sd==0: y_sd=1
+                if y_sd==0 or np.isnan(y_sd): y_sd=1
                 if process_y: y = (y-y_mn)/y_sd
                 y_p = (np.mean(y, axis=0)-y_mn)/y_sd
                 y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
@@ -936,16 +765,16 @@ def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
         y_p = np.mean(y, axis=0)
         y_p_var = stats.sem(y, axis=0) # sd across trials
 
+    assert not np.any(np.isnan(y_p)), 'WARNING nans found in trials array!'
     # Convolve or not
     if convolve:
         if process_y: y=smooth(y, method=method, sd=gsd)
         y_p = smooth(y_p, method=method, sd=gsd)
         y_p_var = smooth(y_p_var, method=method, sd=gsd)
 
-    assert not np.any(np.isnan(y_p)), 'WARNING nans found in trials array!'
     if np.any(np.isnan(y_p_var)):
         y_p_var=np.ones(y_p.shape)
-        print('WARNING f*cked up ifr alignement, y_p_var was filled with nan. Patched by filling with ones.')
+        #print('WARNING not enough spikes around events to compute std, y_p_var was filled with nan. Patched by filling with ones.')
 
     return y, y_p, y_p_var
 
@@ -994,6 +823,7 @@ def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_tri
             fr_dropped=thresh_consec(trial, m_fr*low_fr_th, sgn=-1, n_consec=consec_time, exclude_edges=True, only_max=False, ret_values=True)
             if len(fr_dropped)>0: y[triali,:]=np.nan
         y=y[~np.isnan(y[:,0]),:]
+        if not np.any(y): y = np.zeros((1,x.shape[0]))
 
     y_bsl = get_ifr(times, events, b, bsl_window, remove_empty_trials=True)
 
@@ -1106,7 +936,7 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     - gsd: float (ms), std of gaussian kernel (mandatory gaussian-causal smoothing)
     - med_filt: bool, whether to median filter on top of mandatory gaussian smoothing
     '''
-    
+
     ## Compute channels on/offsets
     ath=A.min()+(A.max()-A.min())*0.2
     bth=B.min()+(B.max()-B.min())*0.2
@@ -1118,22 +948,22 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     a_of=np.nonzero(da==-1)[0]
     b_on=np.nonzero(db==1)[0]
     b_of=np.nonzero(db==-1)[0]
-    
+
     ## Compute array d: delta in rotary ticks
     # This has the size of record_length, and will be filled with
     # > -1/1 where A or B thresholds were crossed
     # > 0 everywhere else (init. with 0s)
     d=np.zeros((a.shape))
-    
+
     # If only one channel was recorded, everything isn't lost.
     a_mess=f'WARNING half max of rotary channel A is {ath} -> channel must be dead. Skipping rotary decoding.\n'
     b_mess=f'WARNING half max of rotary channel B is {bth} -> channel must be dead. Skipping rotary decoding.\n'
     if (ath<0.2)&(bth<0.2):
         print(a_mess)
         print(b_mess)
-        
+
         return npa([np.nan])
-    
+
     elif (ath<0.2)|(bth<0.2):
         if (bth>0.2):
             print(a_mess)
@@ -1145,10 +975,10 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
             print('Only channel A used -> only absolute speed with a 1/2 period precision.\n')
             d[a_on]=1
             d[a_of]=1
-        
+
         # *2 because 2 threshold crosses per period (Aup,Adown OR Bup,Bdown)
         n_ticks*=2
-    
+
     elif (ath>0.2)&(bth>0.2):
         # Arbitrary decision:
         # if a is crossed up, and b is high, displacement is 1.
@@ -1159,18 +989,18 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
         for aof in a_of:
             if b[aof]:d[aof]=1 # if a down and b is up, -1.
             else:d[aof]=-1 # if a down and b is down, 1.
-                
+
         for bon in b_on:
             if a[bon]:d[bon]=1 # if b up and a is up, -1.
             else:d[bon]=-1 # if b up and a is down, 1.
         for bof in b_of:
             if not a[bof]:d[bof]=1 # if b down and a is down, -1.
             else:d[bof]=-1 # if b down and a is up, 1.
-                
-        
+
+
         # *4 because 4 threshold crosses per period (Aup,Bup,Adown,Bdown)
         n_ticks*=4
-    
+
     ## Convert array of delta-ticks to mm/s
     # periphery/n_ticks to get mm per tick
     mm_per_tick=np.pi*diam/n_ticks
@@ -1178,7 +1008,7 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     d*=mm_per_tick
     # delta mm to mm/s using sampling rate
     d*=fs
-    
+
     ## mandatory smooth (it makes no sense to keep an instantaneous speed at resolution fs)
     gsd=int(gsd*fs/1000) # convert from ms to array sampling (1ms -> 5 samples)
     d=smooth(d, method='gaussian_causal', sd=gsd)
@@ -1186,9 +1016,9 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
         msd=int(25*fs/1000)
         msd=msd+(msd%2)-1 # gotta be odd
         d=sp.ndimage.median_filter(d, msd)
-    
+
     print('\nRotary data decoded.\n')
-    
+
     return d
 
 def get_nframes(video_path):
@@ -1228,30 +1058,30 @@ def ellipsis(a, b, x0=0, y0=0, rot=0):
     t=np.linspace(0, 2*pi, 100)
 
     ell = npa([a * cos(t), b * sin(t)])
-    rotM = np.array([[cos(rot) , -sin(rot)],[sin(rot) , cos(rot)]])  
+    rotM = np.array([[cos(rot) , -sin(rot)],[sin(rot) , cos(rot)]])
     ellrot = np.zeros((2,ell.shape[1]))
     for i in range(ell.shape[1]):
         ellrot[:,i] = np.dot(rotM,ell[:,i])
     ellrot[0,:]=ellrot[0,:]+x0
     ellrot[1,:]=ellrot[1,:]+y0
-    
+
     return ellrot
 
 def in_ellipsis(X, Y, a, b, x0=0, y0=0, rot=0, a_axis='major', plot=False):
     f'''
     - X, Y: 1dim np arrays or shape (n,), coordinates to test
     {ellipsis.__doc__}
-    
+
     returns: m, boolean array of shape (n, ), True for points (X,Y) within ellipsis.
     '''
-    
+
     assert len(X)==len(Y)
     if a_axis=='minor': X,Y=Y,X
-    
+
     rot*=-2*pi/360
-    
+
     m=( ( ((X-x0)*cos(rot)+(Y-y0)*sin(rot))**2 / a**2 ) + ( ((X-x0)*sin(rot)+(Y-y0)*cos(rot))**2 / b**2 ) )-1
-    
+
     return (m<0)
 
 def ellipsis_string(x, a, b, axis='major'):
@@ -1261,10 +1091,10 @@ def ellipsis_string(x, a, b, axis='major'):
     - b: float, major axis of ellipsis (mm)
     - axis: string, whether x is along the major or minor axis - default major.
     '''
-    
+
     return a*np.sqrt(1-x**2/b**2) if axis=='major' else b*np.sqrt(1-x**2/a**2)
-    
-    
+
+
 
 def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, saveFig=False, saveDir=None):
     '''Homologous to a cylindrical wedge (plane crossing <1 basis of cylinder).
@@ -1275,7 +1105,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
     - H: float, width of the wheel (mm) - default 75
     - plot: bool, whether to plot ellipse or not
     '''
-    
+
     assert (depth is not None) or (string is not None), 'You need to provide either depth or string.'
     assert not (depth is not None) and (string is not None), 'You can only provide either depth or string - not both.'
     if depth is None:
@@ -1287,66 +1117,66 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
         h=r-depth
         string=2*np.sqrt(r**2-h**2)
     print(f'Border of mirror will be {round(depth, 1)}mm below the mouse, covering {round(string, 1)}mm laterally.')
-    
+
     # Distances parallel to major axis inside cylinder
     theta=theta*2*pi/360
     e1=h/np.cos(theta)
     E=np.sqrt(2*H**2)
     e2=E-e1
-    
+
     # Vertical distances
     dH=np.tan(theta)*(h+r)
-    
+
     # Ellipse axis
     a=r # minor axis
     b=np.sqrt(dH**2+(h+r)**2)-e1
     print(f'Ellipsis minor axis: {round(a, 1)}mm, major axis:{round(b, 1)}mm.')
-    
+
     # Distances parallel to minor axis inside cylinder
     y1=ellipsis_string(e1, a, b, axis='major')
     assert round(y1)==round(string/2)
     y2=ellipsis_string(e2, a, b, axis='major')
     print(f'Ellipsis strings: {round(2*y1, 1)}mm on one side ({round(e1, 1)}mm away from center), \
     {round(2*y2, 1)}mm on the other ({round(e2, 1)}mm away from center).')
-    
+
     # Plot ellipse to real-world scale
     if plot:
         figure_width = 2*b/10 # cm
         figure_height = 2*a/10 # cm
         left_right_margin = 0 # cm
         top_bottom_margin = 0 # cm
-        
+
         left   = left_right_margin / figure_width # Percentage from height
         bottom = top_bottom_margin / figure_height # Percentage from height
         width  = 1 - left*2
         height = 1 - bottom*2
         cm2inch = 1/2.54 # inch per cm
-        
+
         # specifying the width and the height of the box in inches
         fig = plt.figure(figsize=(figure_width*cm2inch,figure_height*cm2inch))
         ax = fig.add_axes((left, bottom, width, height))
-        
+
         # limits settings (important)
         plt.xlim(-(figure_width * width)/2, (figure_width * width)/2)
         plt.ylim(-(figure_height * height)/2, (figure_height * height)/2)
-        
+
         # Ticks settings
         ax.xaxis.set_major_locator(mpl.ticker.MultipleLocator(5))
         ax.xaxis.set_minor_locator(mpl.ticker.MultipleLocator(1))
         ax.yaxis.set_major_locator(mpl.ticker.MultipleLocator(5))
         ax.yaxis.set_minor_locator(mpl.ticker.MultipleLocator(1))
-        
+
         # Grid settings
         for spi in ['top', 'right', 'left', 'bottom']: ax.spines[spi].set_visible(False)
         ax.grid(color="gray", which="both", linestyle=':', linewidth=0.5)
-        
+
         # your Plot (consider above limits)
         ellipse = Ellipse((0, 0), 2*b/10, 2*a/10, angle=0, fill=False, ec='k', lw=2, ls='--')
         ax.add_artist(ellipse)
         ax.plot([-e1/10, -e1/10], [-y1/10, y1/10], c='k', lw=2, ls='--')
         ax.plot([e2/10, e2/10], [-y2/10, y2/10], c='k', lw=2, ls='--')
         ax.scatter([0],[0], c='k', lw=2, s=500, marker='+', zorder=100)
-        
+
         # save figure ( printing png file had better resolution, pdf was lighter and better on screen)
         if saveFig:
             saveDir=Path.home() if saveDir is None else Path(saveDir)
@@ -1357,36 +1187,138 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
 
 #%% archive
 
-def dat_to_dic(dp, variables='all'):
-    '''DEPRECATED loads matlab-exported np arrays...'''
+# def dat_to_dic(dp, variables='all'):
+#     '''DEPRECATED loads matlab-exported np arrays...'''
 
-    # Import variables from matlab-exported np arrays
-    npy_dp = dp+'/exported_syncdat_npy'
-    if not os.path.isdir(npy_dp):
-        print('WARNING triggers have not been exported in {}. Exitting now.'.format(npy_dp))
-        return
-    allVariables=['piezo_lick', 'real_reward', 'buzz_cue', 'ghost_reward', 'trial_on']
-    if type(variables)==list:
-            variables=np.array(variables)
-            areIn = np.isin(variables, allVariables)
-            if not np.all(areIn):
-                print('WARNING: {} is not in the list of accepted variables {}. Exiting now.'.format(variables[~areIn], allVariables))
-                return
-    else:
-        variables = allVariables
+#     # Import variables from matlab-exported np arrays
+#     npy_dp = dp+'/exported_syncdat_npy'
+#     if not os.path.isdir(npy_dp):
+#         print('WARNING triggers have not been exported in {}. Exitting now.'.format(npy_dp))
+#         return
+#     allVariables=['piezo_lick', 'real_reward', 'buzz_cue', 'ghost_reward', 'trial_on']
+#     if type(variables)==list:
+#             variables=np.array(variables)
+#             areIn = np.isin(variables, allVariables)
+#             if not np.all(areIn):
+#                 print('WARNING: {} is not in the list of accepted variables {}. Exiting now.'.format(variables[~areIn], allVariables))
+#                 return
+#     else:
+#         variables = allVariables
 
-    rawGLXVariables = {}
-    for v in variables:
-        fn=npy_dp+'/'+str(v)
-        if not os.path.isfile(fn+'_on.npy'):
-            print('WARNING triggers have not been exported to {} via MATLAB. Exitting now.'.format(npy_dp))
-            #return
-        rawGLXVariables[v+'_on']=np.load(fn+'_on.npy').flatten()
-        rawGLXVariables[v+'_off']=np.load(fn+'_off.npy').flatten()
+#     rawGLXVariables = {}
+#     for v in variables:
+#         fn=npy_dp+'/'+str(v)
+#         if not os.path.isfile(fn+'_on.npy'):
+#             print('WARNING triggers have not been exported to {} via MATLAB. Exitting now.'.format(npy_dp))
+#             #return
+#         rawGLXVariables[v+'_on']=np.load(fn+'_on.npy').flatten()
+#         rawGLXVariables[v+'_off']=np.load(fn+'_off.npy').flatten()
 
-    return rawGLXVariables
+#     return rawGLXVariables
 
-#%% Plot behavior quality characteristics
+# def mat_to_trialsdf(dp, f_behav=None, trial_on_i=2, reward_i=5, cue_i=4,
+#                     include_wheel_data=False, wheel_position_index=13, wheel_velocity_index=14, object_position_index=9):
+#     '''
+#     DEPRECATED only orks for neuropixels 3A recordings with trialON, reward and cue recorded directly on sync channel
+#     Loads the trials-related information from the matlab data structure outputted by Virmen.
+#     Parameters:
+#         - dp: string, datapath to Neuropixels binary file (preferably LFP, faster)
+#         - f_behav: string, path to the Virmen matlab structure
+#         - trial_on_i: neuropixels sync channel index of trial onsets
+#         - reward_i: neuropixels sync channel index of rewards onsets
+#         - cue_i: neuropixels sync channel index of auditory cue onsets
+#     Returns:
+#         - trials_df: pandas dataframe with Ntrials rows, and columns.
+#     '''
+#     dp=Path(dp)
+#     if f_behav is None:
+#         files=list_files(dp/'behavior', 'mat')
+#         assert len(files)>0, f"WARNING no files with extension 'mat' were found at {dp/'behavior'} - either add one there or explicitely declare a file path with f_behav parameter."
+#         assert len(files)==1, f"WARNING more than 1 file with extension 'mat' were found at '{dp/'behavior'}' - clean up your directory structure and try again."
+#         f_behav=dp/'behavior'/files[0]
+#         print(f'Behavioural data loaded from: {f_behav}')
+
+#     with h5py.File(f_behav, 'r') as f:
+#         trials_dic={}
+#         for col in ['trialnum', 'trialside', 'correct', 'reward', 'ghost']:
+#             index=f['datastruct']['paqdata']['behav']['trials'][col]
+#             trials_dic[col]=[]
+#             for i in range(len(index)):
+#                 val=f[index[i,0]][:][0]
+#                 try:
+#                     val=val[0]
+#                 except:
+#                     assert val==0, 'WARNING this thing {} was expected to be either a np array or 0 but is not - figure out what the h5py decoding generated.'.format(val)
+#                     val=np.nan# looks like '[]' in matlab
+#                 trials_dic[col].append(val)#[0,0] for i in range(len(index))]
+
+#     # Load Neuropixels sync channel, in seconds
+#     ons, ofs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples') # sync channels onsets and offsets
+#     npix_trialOns=ons[trial_on_i]
+#     npix_trialOfs=ofs[trial_on_i]
+#     npix_rewards=ons[reward_i]
+#     npix_tone_cues=ons[cue_i]
+
+#     # Make trials dataframe
+#     df=pd.DataFrame(data=trials_dic)
+
+#     # Add trial types
+#     df.insert(0, 'trial_type', ['wheel_turn' for i in range(len(df.index))])
+
+#     # 1 is left, -1 is right
+#     for tr in df.index:
+#         df.loc[tr, 'trialside'] = 'left' if (df.loc[tr, 'trialside']==1) else 'right'
+
+#     # Add trial onsets and offsets in neuropixels time frame
+#     assert len(npix_trialOns)==len(df.index)
+#     df['npix_trialOns']=npix_trialOns
+#     assert len(npix_trialOfs)==len(df.index)
+#     df['npix_trialOfs']=npix_trialOfs
+
+#     # Add wheel movement
+#     if include_wheel_data:
+#         df["object_position"] = np.nan;df["object_position"]=df["object_position"].astype(object)
+#         df["wheel_position"] = np.nan;df["wheel_position"]=df["wheel_position"].astype(object)
+#         df["wheel_velocity"] = np.nan;df["wheel_velocity"]=df["wheel_velocity"].astype(object)
+#         with h5py.File(f_behav, 'r') as f:
+#             for tr in df.index:
+#                 index=f['datastruct']['paqdata']['behav']['trials']['data']
+#                 obj=f[index[0,0]][:][object_position_index]
+#                 wheel_p=f[index[0,0]][:][wheel_position_index]
+#                 wheel_v=f[index[0,0]][:][wheel_velocity_index]
+#                 df.at[tr, 'object_position'] = obj
+#                 df.at[tr, 'wheel_position'] = wheel_p
+#                 df.at[tr, 'wheel_velocity'] = wheel_v
+#                 ##TODO check indices of actual wheel movements
+#                 # if npix_trialOns is not None:
+#                 #     df.at[tr, 'npix_movOns'] = get_weel_movement_onset(wheel_velocity=wheel_v, npix_trialOn=df.at[tr, 'npix_trialOns'], paq_fs=5000)
+
+#     # Append random rewards, cued or not, at the end of the dataframe
+#     rews=[]
+#     for tr in df.index:
+#         of=df.loc[tr, 'npix_trialOfs']
+#         rew_mask=(npix_rewards>of)&(npix_rewards<(of+1)) # happens about 400ms after trial offset
+#         if np.any(rew_mask):
+#             assert df.loc[tr, 'reward']==1, 'WARNING seems like a reward onset was found during a trial considered Incorrect...'
+#             rews.append(npix_rewards[rew_mask][0])
+#         else:
+#             rews.append(np.nan)
+#     df['npix_rewards']=rews
+
+#     # Now find random rewards
+#     if npix_tone_cues is not None:
+#         random_rewards=npix_rewards[~np.isin(npix_rewards, df['npix_rewards'])]
+#         for r in random_rewards:
+#             cue_mask=(npix_tone_cues>r-1)&(npix_tone_cues<r) # cues happen about 500ms before reward
+#             i=df.index[-1]+1
+#             if np.any(cue_mask):
+#                 df.loc[i, 'trial_type']='cued_reward'
+#                 df.loc[i, 'npix_rewards']=r
+#                 df.loc[i, 'npix_tone_cues']=npix_tone_cues[cue_mask]
+#             else:
+#                 df.loc[i, 'trial_type']='random_reward'
+#                 df.loc[i, 'npix_rewards']=r
+#     return df
 
 # def extract_licks(dp, source='PAQ'):
 #     if source=='PAQ':

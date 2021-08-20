@@ -19,9 +19,9 @@ Example usage:
 import numpy as np
 from pathlib import Path
 from npyx.utils import peakdetect
-from npyx.spk_wvf import wvf, wvf_dsmatch
+from npyx.spk_wvf import wvf, wvf_dsmatch, get_depthSort_peakChans
 from npyx.spk_t import trn_filtered
-from npyx.plot import plot_wvf
+from npyx.plot import plot_wvf, plot_ccg
 import matplotlib.pyplot as plt
 from scipy.stats import iqr, skew, norm
 from scipy.interpolate import interp1d
@@ -31,9 +31,13 @@ from sklearn.metrics import mean_squared_error
 from scipy import ndimage
 from psutil import virtual_memory as vmem
 
+import pandas as pd
+import json
 from npyx.io import chan_map, read_spikeglx_meta
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from npyx.corr import (ccg, StarkAbeles2009_ccg_significance, ccg_sig_stack, gen_sfc, scaled_acg)
+from npyx.gl import get_units
 #############################################
 # Waveform features
 
@@ -871,6 +875,35 @@ def chan_dist(chan, chanmap):
 #    breakpoint()
     return all_dist * sign_mask
 
+def in_distance_surface(dp, dist_limit=2000 ):
+        """
+
+        Return all units from a recording that have a peak channel that is within
+        a certain distance from the 'surface' of the brain. This is in order to
+        filter out neurons that are so deep as to be in the nuclei.
+        """
+
+        # get the peak channels for each unit sorted by channel location                
+        peak_chan_depth = get_depthSort_peakChans(dp, units = [], quality = 'good')
+
+        surface_chan = peak_chan_depth[0,1]
+
+        # get the chanmap to work with
+        chanmap = chan_map(dp)
+
+        # get the channel distances from the highest channel
+        # TODO check the orientation of the probe in chanmap and peak_chan_depth is same
+        chan_dist_from_top_unit = chan_dist(surface_chan, chanmap)
+
+        # filter for distances that are within 2mm, so 2000micrometer from the top unit
+        chan_in_bounds = chanmap[np.abs(chan_dist_from_top_unit) < 2000][:,0]
+
+        # get the units that are on channels within the 2mm boundary
+        select_chan_in_bound = peak_chan_depth[:,0][np.isin(peak_chan_depth[:,1], chan_in_bounds)]
+
+        return select_chan_in_bound
+
+
 def chan_spread(all_wav, chan_path, unit, n_chans = 20, chan_spread_dist = 25.6):
     """
     - take a 82*384 matrix
@@ -1476,4 +1509,413 @@ def get_pca_weights(all_acgs_matrix, n_components = 5, show = False, titl = 'WVF
         plt.title(f'{titl} first {n_components} PCs and the variance explained by each,\n overall explain {exp_var} of variance, {titl} vector len is {all_acgs_matrix.shape[1]}')
 
     return projected, pca2
+
+
+def gen_ss_cs(recs_fn, show = False):
+
+    # load JSON file with all recording info
+    with open(recs_fn) as json_handle:
+        recs = json.loads(json_handle.read())
+
+    chan_range=[0, 383]
+    #images_folder.mkdir(exist_ok=True)
+
+    # loop over all recordings
+
+    new_json = recs
+    for i, ds in list(recs.items()):
+        dp = ds['dp']
+
+        # dp = "/media/npyx/ssd2/ago/optotag/recordings/PkC/18-08-30_YC001_probe1"
+        # create the main folder for the images to be saved
+        ss_cs_folder = Path(ds['dp']+'/routinesMemory/ss_cs')
+        ss_cs_folder.mkdir(exist_ok=True, parents=True)
+
+        #%% Find CCGs with long pause (at least 5ms)
+        ctx_units=get_units(dp, quality='good', chan_range=chan_range).tolist()
+        cbin=0.5
+        cwin=100
+        pause_dur=5
+        n_consec_bins=int(pause_dur//cbin)
+        # Use the same 'name' keyword to ensure that ccg stack is saved to routines memory
+        ccg_sig_05_100, ccg_sig_u, sfc = ccg_sig_stack(dp, ctx_units, ctx_units, cbin=cbin, cwin=cwin, name='ctx-ctx',
+                          p_th=0.02, n_consec_bins=n_consec_bins, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', again=False, ret_features=True)
+
+        try:
+            sfc1 = gen_sfc(dp, corr_type='cs_pause', metric='amp_z', cbin=cbin, cwin=cwin, p_th=0.02, n_consec_bins=n_consec_bins,
+                              fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+                                        again=False, againCCG=False, units=ctx_units, name='ctx-ctx')[0]
+            df=pd.DataFrame(columns=['unit', 'ss', 'cs'])
+            for j in sfc1.index:
+                cs,ss = sfc1.loc[j,'uSrc':'uTrg'] if sfc1.loc[j,'t_ms']>0 else sfc1.loc[j,'uSrc':'uTrg'][::-1]
+                plot_ccg(dp, [cs, ss], 0.5, 100, normalize='Hertz', saveFig = True, as_grid=True, saveDir=ss_cs_folder)
+                #c=ccg(dp, [cs, ss], 0.5, 100, normalize='Counts')[0,1,:]
+                #StarkAbeles2009_ccg_significance(c, 0.5, 0.02, 10, -1, 10, True, True, True)
+                df=df.append({'unit':cs, 'ss':0, 'cs':1}, ignore_index=True)
+                df=df.append({'unit':ss, 'ss':1, 'cs':0}, ignore_index=True)
+
+                df.drop_duplicates(inplace=True)
+                df.sort_values(by=['unit'], inplace=True)
+                df=df.astype(int)
+
+                df.to_csv(Path(ss_cs_folder, 'SS-CS-table.csv'))
+                ss_list = np.unique(df.unit[df.ss==1].values)
+                cs_list = np.unique(df.unit[df.cs==1].values)
+                new_json[i]['ss'] = ss_list.tolist()
+                new_json[i]['cs'] = cs_list.tolist()
+    #        breakpoint()
+        except AssertionError: print(f"Recording {dp.split('/')[-1]} can't be processed")
+        except IndexError: print(f"Recording {dp.split('/')[-1]} can't be processed")
+
+    with open(recs_fn, 'w') as json_handle:
+        json.dump(new_json, json_handle, indent=2)
+
+
+def process_all(recs_fn, show = False, again = False):
+
+    """
+    Function for processing downloaded files and returning a pandas dataframe
+    as the output, with all the 'good units' processed with features
+    Input: pass a JSON file as argument, needs to have certain strucutre
+    returns: dataframe with all the features for all units
+
+    """
+
+    with open(recs_fn) as json_handle:
+        recs = json.loads(json_handle.read())
+
+    # directory for all files
+
+    # proc_data
+        #features
+        #acg
+        #wvf
+
+
+    all_units = []
+
+    all_feat = []
+    for i, ds in list(recs.items())[:]:
+        data_root = Path(ds['dp'])/'routinesMemory'
+        features_folder = data_root / 'features'
+        acg_folder = data_root / 'acg'
+        wvf_folder = data_root / 'wvf'
+
+        features_folder.mkdir(exist_ok = True)
+        acg_folder.mkdir(exist_ok = True)
+        wvf_folder.mkdir(exist_ok = True)
+        # loop over all datasets
+
+        # get all the good units
+        ds['dp'] = Path(ds['dp'])
+        good_units = get_units(ds['dp'], quality='good')
+
+        all_units.append(good_units)
+    #    good_units= ds['units']
+#        print(ds['units'])
+        spike_clusters= np.load(Path(ds['dp'], 'spike_clusters.npy'))
+
+        cell_type = str(ds['dp']).split('/')[-2]
+        rec_name = str(ds['dp']).split('/')[-1]
+        features_filename = rec_name + '_' + cell_type + '.csv'
+        features_file = features_folder / features_filename
+        rec_feat = []
+
+        if not features_file.is_file() or again:
+            # if the file doesn't yet exist, need to run it to create it
+            run_save_features = True
+        else:
+#           if the saved file exists, check if the number of lines in there
+#           is the same as the number of good_units
+
+            num_units_saved = pd.read_csv(features_file, delimiter=",", header = None).shape[0]
+            num_good_units = good_units.shape[0]
+            if num_units_saved == num_good_units:
+                run_save_features = False
+            else:
+                run_save_features = True
+
+        within_bounds = in_distance_surface(ds['dp'])
+
+        for unit in good_units:
+            acg_filename = rec_name + '_' + 'acg' + '_' +  '_' + str(unit) + '_' + cell_type + '.npy'
+            wvf_filename = rec_name + '_' + 'wvf' + '_' +  '_' + str(unit) + '_' + cell_type + '.npy'
+            mean_wvf_path = wvf_folder / wvf_filename
+            acg_path = acg_folder / acg_filename
+            in_bound = unit in within_bounds
+            in_bound = np.multiply(in_bound,1)
+#            print(unit)
+    #       get the features for the current unit
+            if run_save_features or not mean_wvf_path.is_file():
+                curr_feat, mean_wvf = temp_wvf_feat(ds['dp'], unit)
+                curr_feat[0].append(in_bound)
+                rec_feat.append(curr_feat[0])
+                np.save(mean_wvf_path, mean_wvf, allow_pickle = False)
+        #        breakpoint()
+        #       get the wvf shape for the current unit
+        #       by this point all the wvf have been wvf_dsmatched
+        #       meaning there is no need to be super precise whether to use fast or not
+        #       it will just be retrieved from memory
+        #       need to add condition to only run wvf_dsmatch if the file is not yet
+        #       in wvf_folder
+
+
+        #        if not mean_wvf_path.is_file():
+        #            np.save(mean_wvf_path, mean_wvf, allow_pickle = False)
+
+        #       get the scaled acg
+
+                sc_acg = scaled_acg(ds['dp'], unit)[0][0]
+
+                if not acg_path.is_file():
+                    np.save(acg_path, sc_acg , allow_pickle = False)
+
+
+            all_feat.append(rec_feat)
+
+        #   save the matrix with the features as a csv for each dataset
+            if run_save_features:
+                np.savetxt(features_file, rec_feat, delimiter = ', ', fmt='% s')
+
+    wvf_files = []
+    acg_files = []
+
+    for i, ds in list(recs.items())[:]:
+#        data_root = Path('/home/npyx/projects/optotag/proc_data')
+        data_root = Path(ds['dp'])/'routinesMemory'
+        features_folder = data_root / 'features'
+        acg_folder = data_root / 'acg'
+        wvf_folder = data_root / 'wvf'
+
+        # loop over all datasets
+
+        # get all the good units
+
+        cell_type = str(ds['dp']).split('/')[-2]
+        rec_name = str(ds['dp']).split('/')[-1]
+        features_filename = rec_name + '_' + cell_type + '.csv'
+        features_file = features_folder / features_filename
+
+        good_units = get_units(ds['dp'], quality='good')
+
+        for unit in good_units:
+            acg_filename = acg_folder / str(rec_name + '_' + 'acg' + '_' +  '_' + str(unit) + '_' + cell_type + '.npy')
+            wvf_filename = wvf_folder / str(rec_name + '_' + 'wvf' + '_' +  '_' + str(unit) + '_' + cell_type + '.npy')
+
+            if (wvf_filename).is_file():
+                wvf_files.append(wvf_filename)
+
+            if (acg_filename).is_file():
+                acg_files.append(acg_filename)
+
+    wvf_files = np.array(wvf_files)
+    acg_files = np.array(acg_files)
+
+    # load all the wvf files to matrix
+    load_wvf = []
+    for i in wvf_files:
+        load_wvf.append(np.load(i, allow_pickle = False))
+
+    all_wvfs = np.vstack(load_wvf)
+
+    # load all the acg files to matrix
+    load_acg = []
+    for i in acg_files:
+        load_acg.append(np.load(i, allow_pickle = False))
+
+    all_acgs = np.vstack(load_acg)
+
+    # find where either of the matrices are 0 or inf valued and filter these vectors
+    # from both 
+    zero_rows_acg = np.where(np.sum(all_acgs, axis = 1) ==0)[0].tolist()
+    zero_rows_wvf = np.where(np.sum(all_wvfs, axis = 1) ==0)[0].tolist()
+
+    inf_rows_acg = np.unique(np.where(np.isinf(all_acgs))[0]).tolist()
+    inf_rows_wvf = np.unique(np.where(np.isinf(all_wvfs))[0]).tolist()
+
+    nan_rows_acg = np.unique(np.where(np.isnan(all_acgs))[0]).tolist()
+    nan_rows_wvf = np.unique(np.where(np.isnan(all_wvfs))[0]).tolist()
+
+    # get the rows where either the wvf or the acg are zeros or inf values
+    excluded_rows = np.unique(np.hstack((zero_rows_acg, zero_rows_wvf, inf_rows_acg, inf_rows_wvf, nan_rows_wvf, nan_rows_acg))).astype(np.int32)
+
+    mask = np.ones(all_acgs.shape[0], np.bool)
+    mask[excluded_rows] = 0
+
+    masked_acgs = all_acgs[mask]
+    masked_wvfs = all_wvfs[mask]
+
+    masked_acg_files = acg_files[mask]
+    masked_wvf_files = wvf_files[mask]
+
+    # push all the processed wvf and acg through a PCA 
+    # and get the first few principal components
+
+    acg_projected, acg_pca = get_pca_weights(masked_acgs, show = show, titl = 'ACG')
+
+    wvf_projected, wvf_pca = get_pca_weights(masked_wvfs, show = show, titl = 'WVF')
+    # all shifted to -1100, don't look like wvf at all
+
+    # now that we have the pca of some of the projected pcas
+    # need to make a new vector that can be then merged back with the dataframe
+
+    ### MANUAL FILTERING here 
+    ### THERE ARE some clear outlier wvf visible in the pca space that I am removing
+    ### I checked these items being filtered out by hand and they can be thrown out
+
+    ### this will need to be reviewed after more data is added
+    ## also Ideally I want to find out why these wvf turn out so noisy
+
+    ### Also, should I not be looking at the ACG PCA space as well?
+    ### YES, TODO after more files are added
+
+    pca_filter_mask = np.zeros(wvf_projected.shape[0], dtype = 'bool')
+    pca_filter_mask[(wvf_projected[:,0]<5) & (wvf_projected[:,1] >-10)] = 1
+
+    masked_acgs = masked_acgs[pca_filter_mask]
+    masked_wvfs = masked_wvfs[pca_filter_mask]
+
+    masked_acg_files = masked_acg_files[pca_filter_mask]
+    masked_wvf_files = masked_wvf_files[pca_filter_mask]
+
+    # need to take all the saved features
+    # load them in in the order that the wvf_pca is
+    # add them to a ddataframe
+    # join the dataframe with the wvf and acg PCA
+    # remove the rows where the features, wvf or pca are 0
+    cols1 = ['file', 'unit', 'mfr', 'mifr', 'med_isi', 'mode_isi', 'prct5ISI', 'entropy','CV2_mean', 'CV2_median', 'CV', 'IR', 'Lv', 'LvR', 'LcV', 'SI', 'skw', 'neg voltage', 'neg time', 'pos voltage', 'pos time' , 'pos 10-90 time', 'neg 10-90 time', 'pos 50%', 'neg 50%', 'onset time', 'onset voltage', 'wvf duration', 'peak/trough ratio','recovery slope', 'repolarisation slope','chan spread', 'backprop', 'under2mm']
+
+    all_feat_df = pd.DataFrame()
+
+    for i, ds in list(recs.items())[:]:
+    #        data_root = Path('/home/npyx/projects/optotag/proc_data')
+        data_root = Path(ds['dp'])/'routinesMemory'
+        features_folder = data_root / 'features'
+        acg_folder = data_root / 'acg'
+        wvf_folder = data_root / 'wvf'
+
+    # loop over all datasets
+
+        # get all the good units
+
+
+        cell_type = str(ds['dp']).split('/')[-2]
+        rec_name = str(ds['dp']).split('/')[-1]
+        features_filename = rec_name + '_' + cell_type + '.csv'
+    #    print(features_filename)
+        features_file = features_folder / features_filename
+
+        curr_features= pd.read_csv(features_file,  delimiter = "," ,header = None)
+
+        all_feat_df = pd.concat([all_feat_df,curr_features])
+
+    all_feat_df = all_feat_df.set_index(np.arange(0,all_feat_df.shape[0], 1))
+    all_feat_df.columns = cols1
+    # append the wvf and acg vectors to this dataframe
+    # need to only append the PCA to the rows where the acg and wvf are not bad
+    # hence need to know where they are good, and then only append the pca of the good ones back
+
+    # create a matrix of zeros, then replace the rows where the pca is good by overlaying a mask
+
+    wvf_pca_zeros = np.zeros((mask.shape[0],wvf_projected.shape[1]))
+    wvf_pca_zeros[mask] = wvf_projected
+
+    acg_pca_zeros = np.zeros((mask.shape[0],acg_projected.shape[1]))
+    acg_pca_zeros[mask] = acg_projected
+
+    # join these two matrices to the all_feat_df matrix
+    # are these in the same order as that dataframe?
+    # yes they are now, after making sure the loading was ordered
+
+    # append matrix to dataframe
+    # create two new dataframes from it and append to original one
+
+    wvf_pca_df = pd.DataFrame(wvf_pca_zeros, columns = ['wvf_pca0', 'wvf_pca1', 'wvf_pca2', 'wvf_pca3', 'wvf_pca4'])
+    acg_pca_df = pd.DataFrame(acg_pca_zeros, columns = ['acg_pca0', 'acg_pca1', 'acg_pca2', 'acg_pca3', 'acg_pca4'])
+
+    #append acg and wvf df to the main df
+    # so finally we have a single df with the wvf, temporal, wvf pca and acg pca
+    all_feat_df = pd.concat([all_feat_df, wvf_pca_df, acg_pca_df], axis=1)
+
+    ct_dict = {0: 'PkC', 1: 'MLI', 2: 'GrC', 3: 'MFB', 4:'GoC'}
+    ct_dict2 = {'PkC':0, 'MLI':1, 'GrC':2, 'MFB':3, 'GoC':4}
+    ct_colors = {0: '#755baf' , 1:'#d63737' , 2:'#f1871b', 3: '#72b257', 4:'#6197a1', 5: '#ddd5d3'}
+
+    # need to add cell type data
+    # create new list of NaN values
+    # loop over all the files and if there are ones that 
+
+    cell_type_tagged = []
+
+    for i, ds in list(recs.items())[:]:
+#        data_root = Path('/home/npyx/projects/optotag/proc_data')
+        data_root = Path(ds['dp'])/'routinesMemory'
+        features_folder = data_root / 'features'
+        acg_folder = data_root / 'acg'
+        wvf_folder = data_root / 'wvf'
+
+        # loop over all datasets
+
+        # get all the good units
+
+        cell_type = str(ds['dp']).split('/')[-2]
+        rec_name = str(ds['dp']).split('/')[-1]
+        features_filename = rec_name + '_' + cell_type + '.csv'
+        features_file = features_folder / features_filename
+
+        good_units = get_units(ds['dp'], quality='good')
+
+        for i in good_units:
+            if i in ds['units']:
+#                cell_type_tagged.append(ct_dict2[ds['ct']])
+                cell_type_tagged.append(ds['ct'])
+            else:
+                cell_type_tagged.append(np.nan)
+
+    cell_type_tagged_df = pd.DataFrame(cell_type_tagged, columns = ['optaged'])
+
+    all_feat_df = pd.concat([all_feat_df, cell_type_tagged_df], axis=1)
+    return all_feat_df
+
+def add_ss_cs_labels(recs_fn):
+    """
+    Add the existing labels from JSON file to the df
+    Input: takes JSON file with keys for SS and CS categories
+    Returns: df with added categories for ss and cs labels in the 'optaged' column
+    """
+
+    # load JSON file with all recording info
+    with open(recs_fn) as json_handle:
+        recs = json.loads(json_handle.read())
+
+   # get the dataframe for all the recording features
+
+    features_df = process_all(recs_fn)
+
+    # look through the recs dictionary
+    # find the ss and cs units there
+    # add a corresponding label to the features_df.optaged
+
+
+    for i, ds in list(recs.items()):
+
+        if 'ss' in ds:
+            for unit in ds['ss']:
+               features_df.loc[(features_df['file'] == ds['dp']) & ( features_df['unit'] == unit), 'optaged' ] = 'ss'
+
+        if 'cs' in ds:
+            for unit in ds['cs']:
+                features_df.loc[(features_df['file'] == ds['dp']) & ( features_df['unit'] == unit), 'optaged' ] = 'cs'
+
+    return features_df
+
+
+def filter_df(dfram):
+    """
+    Return: dataframe with 0 valued rows for the wvf features and temporal features filtered out
+    """
+    all_conds = np.isclose(np.sum(dfram.iloc[:,-6:-1], axis = 1), 0) |  np.isclose(np.sum(dfram.iloc[:,-11:-6], axis=1), 0) |  np.isclose(np.sum(dfram.iloc[:,16:-12], axis = 1), 0) |  np.isclose(np.sum(dfram.iloc[:,2:17], axis =1), 0) |  np.array(dfram.iloc[:,:-1].isnull().any(axis=1)).flatten() | np.isclose(dfram.iloc[:,-12], 0)
+
+  return dfram[~all_conds]
+
 

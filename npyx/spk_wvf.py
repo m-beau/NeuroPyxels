@@ -658,7 +658,7 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
     return peak_chan
 
 
-def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, again=False):
+def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, again=False, prnt = False):
     '''
     Usage:
         Either feed in a list of units - the function will return their indices/channels sorted by depth in a n_units x 2 array,
@@ -704,7 +704,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
     dt=np.float64 if assert_multi(dp) else np.int64
     peak_chans=npa(zeros=(len(units),2),dtype=dt)
     for iu, u in enumerate(units):
-        print("Getting peak channel of unit {}...".format(u))
+        if prnt: print("Getting peak channel of unit {}...".format(u))
         peak_chans[iu,0] = u
         peak_chans[iu,1] = get_peak_chan(dp, u, use_template).astype(dt)
     if assert_multi(dp):

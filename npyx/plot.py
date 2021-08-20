@@ -112,6 +112,13 @@ def mpl_pickleload(fig_path):
     assert str(fig_path)[-4:]=='.pkl', 'WARNING provided figure file path does not end with .pkl!'
     return pkl.load(  open(fig_path,  'rb')  )
 
+def mpl_axi_axpos(nrows, ncols, i):
+    '''Converts matplotlib subplot index (as in 232 = 2x3 grid, 2nd subplot)
+       into (row,col) axes grid location (in this example 0,1)'''
+    ax_ids=np.arange(nrows*ncols).reshape((nrows,ncols))+1
+    pos=np.argwhere(ax_ids==i)[0]
+    assert any(pos), f'WARNING index {i} is too big given {nrows} rows and {ncols} columns!'
+    return pos
 
 def myround(x, base=5):
     return base * np.round(x/base)
@@ -122,10 +129,16 @@ def myceil(x, base=5):
 def myfloor(x, base=5):
     return base * np.floor(x/base)
 
+def ceil_power10(x):
+    return 10**np.ceil(np.log10(x))
+
+def n_decimals(x):
+    return len(str(x).split('.')[1])
+
 def get_bestticks_from_array(arr, step=None, light=False):
     span=arr[-1]-arr[0]
     if step is None:
-        upper10=10**np.ceil(np.log10(span))
+        upper10=ceil_power10(span)
         if span<=upper10/5:
             step=upper10*0.01
         elif span<=upper10/2:
@@ -135,6 +148,7 @@ def get_bestticks_from_array(arr, step=None, light=False):
     if light: step=2*step
     assert step<span, f'Step {step} is too large for array span {span}!'
     ticks=np.arange(myceil(arr[0],step),myfloor(arr[-1],step)+step,step)
+    ticks=np.round(ticks, n_decimals(step))
     if step==int(step):ticks=ticks.astype(int)
 
     return ticks
@@ -338,7 +352,7 @@ def get_cmap(cmap_str):
         return mpl.cm.get_cmap(cmap_str)
 
 def get_bounded_cmap(cmap_str, vmin, center, vmax, colorseq='linear'):
-    assert vmin<center<vmax, 'WARNING vmin >=center or center>=vmax!!'
+    assert vmin<=center<=vmax, 'WARNING vmin >center or center>vmax!!'
     cmap = get_cmap(cmap_str)
 
     vrange = max(vmax - center, center - vmin)
@@ -949,11 +963,12 @@ def psth_popsync_plot(trains, events, psthb=10, window=[-1000,1000],
     return psth_plt(x, y_p, y_p_var, window, events_toplot, events_color,
            title, color, figsize,
            saveDir, saveFig, saveData, _format,
-           zscore, bsl_subtract, bsl_window,
-           convolve, gsd, xticks, xticklabels, xlabel, ylabel, ax)
+           zscore, bsl_subtract,
+           convolve, xticks, xticklabels, xlabel, ylabel, None, False,
+           ax)
 
 def psth_plot(times, events, psthb=5, psthw=[-1000, 1000], remove_empty_trials=True, events_toplot=[0], events_color='r',
-           title='', color='darkgreen',
+           title='', color='darkgreen', legend_label=None, legend=False,
            saveDir='~/Downloads', saveFig=0, ret_data=0, _format='pdf',
            zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000], ylim=None,
            convolve=True, gsd=2, xticks=None, xticklabels=None, xlabel='Time (ms)', ylabel=None,
@@ -967,8 +982,9 @@ def psth_plot(times, events, psthb=5, psthw=[-1000, 1000], remove_empty_trials=T
     fig = psth_plt(x, y_p, y_p_var, psthw, events_toplot, events_color,
            title, color,
            saveDir, saveFig, _format,
-           zscore, bsl_subtract, bsl_window, ylim,
-           convolve, gsd, xticks, xticklabels, xlabel, ylabel,
+           zscore, bsl_subtract, ylim,
+           convolve, xticks, xticklabels,
+           xlabel, ylabel, legend_label, legend,
            ax, figsize, tight_layout, hspace, wspace)
 
     return (x,y,y_p,y_p_var) if ret_data else fig
@@ -976,8 +992,9 @@ def psth_plot(times, events, psthb=5, psthw=[-1000, 1000], remove_empty_trials=T
 def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
            title='', color='darkgreen',
            saveDir='~/Downloads', saveFig=0, _format='pdf',
-           zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000], ylim=None,
-           convolve=True, gsd=2, xticks=None, xticklabels=None, xlabel='Time (ms)', ylabel='IFR (Hz)',
+           zscore=False, bsl_subtract=False, ylim=None,
+           convolve=True, xticks=None, xticklabels=None,
+           xlabel='Time (ms)', ylabel='IFR (Hz)', legend_label=None, legend=False,
            ax=None, figsize=None, tight_layout=True, hspace=None, wspace=None):
 
     if ax is None:
@@ -986,11 +1003,15 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
         fig=ax.get_figure()
 
     areasteps=None if convolve else 'post'
+
     if zscore or bsl_subtract:
-        ax.fill_between(x, y_p-y_p_var, y_p+y_p_var, color=color, alpha=0.7, step=areasteps)
+        ax.fill_between(x, y_p-y_p_var, y_p+y_p_var,
+                        color=color, alpha=0.8, step=areasteps, label=legend_label)
     else:
         ax.fill_between(x, y_p-y_p_var, y_p+y_p_var, color=color, alpha=0.5, step=areasteps)
-        ax.fill_between(x, y_p*0, y_p, color=color, alpha=1, step=areasteps)
+        ax.fill_between(x, y_p*0, y_p,
+                        color=color, alpha=1, step=areasteps, label=legend_label)
+    if legend: ax.legend()
     if convolve:
         if zscore or bsl_subtract: ax.plot(x, y_p-y_p_var, color='black', lw=0.5)
         ax.plot(x, y_p+y_p_var, color='black', lw=0.5)
@@ -1011,8 +1032,8 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
     if bsl_subtract or zscore:
         ax.plot(xl,[0,0],lw=1,ls='--',c='black',zorder=-1)
         if zscore:
-            if yl[0]<-2: ax.plot(xl,[-2,-2],lw=1,ls='--',c='red',zorder=-1)
-            if yl[1]>2: ax.plot(xl,[2,2],lw=1,ls='--',c='red',zorder=-1)
+            if yl[0]<-2: ax.plot(xl,[-2,-2],lw=1,ls='--',c='black',zorder=-1)
+            if yl[1]>2: ax.plot(xl,[2,2],lw=1,ls='--',c='black',zorder=-1)
     ax.set_xlim(xl)
 
     if ylabel is None:
@@ -1025,7 +1046,7 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
      axlab_w='bold', axlab_s=20,
      ticklab_w='regular',ticklab_s=16, lw=1,
      title=title, title_w='bold', title_s=20,
-     hide_top_right=True, tight_layout=False, hspace=hspace, wspace=wspace)
+     hide_top_right=True, tight_layout=tight_layout, hspace=hspace, wspace=wspace)
 
     if saveFig:
         figname=title
@@ -1075,7 +1096,7 @@ def raster_plot(times, events, window=[-1000, 1000], events_toplot=[0], events_c
     if isinstance(color, str):
         if n_cells==1: color=[color]
         else: color=get_ncolors_cmap(palette, n_cells, plot=False)
-    else: assert len(color)==n_cells
+    else: assert len(color)==n_cells, 'WARNING the number of colors needs to match the number of cells provided!'
     subplots_ratio=[4*n_cells,n_cells]
 
     if show_psth:
@@ -1176,7 +1197,7 @@ def raster_plot(times, events, window=[-1000, 1000], events_toplot=[0], events_c
             xlabel_subplot=xlabel if ci==n_cells-1 else ''
             psth_plot(times[ci], events, psthb=psthb, psthw=window,
                       remove_empty_trials=remove_empty_trials, events_toplot=events_toplot, events_color=events_color,
-                       title=None, color=color[ci],
+                       title=None, color=color[ci], legend_label=None, legend=False,
                        saveDir=saveDir, saveFig=0, ret_data=0, _format='pdf',
                        zscore=zscore, bsl_subtract=bsl_subtract, bsl_window=bsl_window, ylim=ylim_psth,
                        convolve=convolve, gsd=gsd,
@@ -1191,7 +1212,7 @@ def raster_plot(times, events, window=[-1000, 1000], events_toplot=[0], events_c
 
 def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1000],
                  zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000], convolve=True, gsd=2,
-                 events_toplot=[0], events_col=None, trains_col_groups=None,
+                 events_toplot=[0], events_col=None, trains_col_groups=None, overlap_events=False,
                  title=None, saveFig=0, saveDir='~/Downloads', _format='pdf',
                  figh=None, figratio=None, transpose=False, ylim=None,
                  as_heatmap=False,  vmin=None, center=None, vmax=None, cmap_str=None):
@@ -1217,6 +1238,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
             - events_col: list of str/(r,g,b)/hex strings of len n_events, color of PSTHs (1 per event)
                           or str, matplotlib / crameri colormap | Default None
             - trains_col_groups: list of int of len n_trains, groups of units which should be colored alike | Default None
+            - overlap_events: whether to overlap PSTHs across events. If True, it is advised to also use events_col to distinguish events properly.
         Related to figure saving:
             - title: str, figure suptitle also used as filename if saveFig is True | Default None
             - saveFig: bool, whether to save figure as saveDir/title._format | Default 0
@@ -1257,27 +1279,44 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
 
     assert len(psthw)==2
     psthw=[psthw[0], psthw[1]+psthb]
-    (lw1, lw2) = (0.5, 1) if (zscore or bsl_subtract) else (0.5, 1)
-
-    if figh is None: figh=8
-    if figratio is None: figratio=1.2
-    (nrows, ncols) = (len(events), len(trains)) if not transpose else (len(trains), len(events))
-    ax_ids=np.arange(nrows*ncols).reshape((nrows,ncols))+1
-    figh=nrows*3
-    figw=ncols*3*figratio
-    figsize=(figw,figh)
 
     # Plot as 2D grid of PSTHs
     if not as_heatmap:
+        if figh is None: figh=8
+        if figratio is None: figratio=1.2
+        (nrows, ncols) = (len(events), len(trains)) if not transpose else (len(trains), len(events))
+        if overlap_events: (nrows, ncols) = (1,ncols) if not transpose else (nrows, 1)
+        figh=nrows*3
+        figw=ncols*3*figratio
+        figsize=(figw,figh)
+
+        # pre-generate figure axes
         fig = plt.figure(figsize=figsize)
+        ax_ids=np.arange(nrows*ncols).reshape((nrows,ncols))+1
+        axes=ax_ids.copy().astype(object)
+        for ei in range(len(events)):
+            if overlap_events and (ei != 0): continue
+            for ti in range(len(trains)):
+                if transpose:
+                    ax_id=ax_ids[ti,ei]
+                    axes[ti,ei]=fig.add_subplot(nrows, ncols, ax_id)
+                else:
+                    ax_id=ax_ids[ei,ti]
+                    axes[ei,ti]=fig.add_subplot(nrows, ncols, ax_id)
+
+        # plot
         for ei, (e, es, cf) in enumerate(zip(events, events_str, colorfamilies)):
             for ti, (t, ts) in enumerate(zip(trains, trains_str)):
+                if overlap_events: ei=0
                 ax_id=ax_ids[ei,ti] if not transpose else ax_ids[ti,ei]
-                ax_psth=fig.add_subplot(nrows, ncols, ax_id)
+                ax_psth=axes[ei,ti] if not transpose else axes[ti,ei]
+
+                legend_label=es if ((ax_id==ax_ids[-1,-1])&(overlap_events)) else None
 
                 xlab='Time (ms)' if ax_id in ax_ids[-1,:] else ''
                 ylab='IFR\n(zscore)' if zscore else r'$\Delta$ FR (Hz)' if bsl_subtract else 'IFR (Hz)'
-                (ttl_s, y_s) = (ts, es) if not transpose else (es, ts)
+                event_str = es if not overlap_events else ''
+                (ttl_s, y_s) = (ts, event_str) if not transpose else (event_str, ts)
                 ylab= f'{y_s}\n{ylab}' if ax_id in ax_ids[:,0] else ''
                 ttl=ttl_s if ax_id in ax_ids[0,:] else None
 
@@ -1285,13 +1324,15 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
 
                 psth_plot(t, e, psthb, psthw,
                           remove_empty_trials=True, events_toplot=events_toplot, events_color='k',
-                           title=ttl, color=tc,
+                           title=ttl, color=tc, legend_label=legend_label, legend=False,
                            saveDir=saveDir, saveFig=False, ret_data=False, _format=_format,
                            zscore=zscore, bsl_subtract=bsl_subtract, bsl_window=bsl_window, ylim=ylim,
                            convolve=convolve, gsd=gsd, xticks=None, xticklabels=None, xlabel=xlab, ylabel=ylab,
                            ax=ax_psth, figsize=None, tight_layout=False, hspace=0.5, wspace=0.5)
 
         fig.tight_layout()
+        if overlap_events: plt.legend()
+
         if saveFig:save_mpl_fig(fig, title, saveDir, _format)
         return fig
 
@@ -1722,8 +1763,8 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     minimum=im.min() if vmin is None else vmin
     maximum=im.max() if vmax is None else vmax
     rng=maximum-minimum
-    if vmin is None: vmin = minimum+0.1*rng
-    if vmax is None: vmax = maximum-0.1*rng
+    if vmin is None: vmin = minimum+0.1*rng if center is None else min(minimum+0.1*rng,center-0.01*rng)
+    if vmax is None: vmax = maximum-0.1*rng if center is None else max(maximum-0.1*rng, center+0.01*rng)
     if center is None: center=vmin+((vmax-vmin)/2)
     if cticks is not None: assert cticks[-1]<=vmax and cticks[0]>=vmin
 
@@ -1779,7 +1820,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     axpos=ax.get_position()
     cbaraxx0,cbaraxy0 = float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
     cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, .01, cmap_h])
-    if cticks is None: cticks=get_bestticks_from_array(np.arange(vmin,vmax), light=True)
+    if cticks is None: cticks=get_bestticks_from_array(np.arange(vmin,vmax+(vmax-vmin)/10,(vmax-vmin)/10), light=True)
     fig.colorbar(axim, cax=cbar_ax, ax=ax,
              orientation='vertical', label=clabel,
              extend=extend_cmap, ticks=cticks, use_gridspec=True)
@@ -1858,7 +1899,7 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
 
     sfc, sfcm, peakChs, sigstack, sigustack = gen_sfc(dp, corr_type, metric, cbin, cwin,
                                  p_th, n_consec_bins, fract_baseline, W_sd, test,
-                                 again, againCCG, drop_seq, units, name,
+                                 again, againCCG, drop_seq, None, None, units=units, name=name,
                                  use_template_for_peakchan=use_template_for_peakchan,
                                  subset_selection=subset_selection)
     gu = peakChs[:,0]

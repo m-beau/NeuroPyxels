@@ -586,19 +586,19 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
 def align_timeseries_interpol(timeseries, sync_signals, fs=None):
     '''
     Align a list of N timeseries in the frame of reference of the first timeserie.
-    
+
     Assumes that the drift is going to be linear, it is interpolated for times far from sync signals
     (sync_signal1 = a * sync_signal0 + b).
-    
+
     timeseries: list of np arrays (len N), timeseries to align. In samples to ensure accurate alignment
     sync_signals: list of np arrays (len N), sync signals respective to timeseries. In samples to ensure accurate alignment
     fs: float or list of floats (len N), sampling frequencies of time series.
         fs is optional (only to get drift and offset in seconds).
-    
+
     returns:
         - timeseries: list of np arrays (len N, in samples), timeries aligned in temporal reference frame of timeseries[0]
     '''
-    
+
     # Parameters formatting and checks
     assert len(timeseries)>=2
     assert len(sync_signals)==len(timeseries)
@@ -611,10 +611,10 @@ def align_timeseries_interpol(timeseries, sync_signals, fs=None):
     for tsi, ts in enumerate(sync_signals):
         assert np.all(ts.astype(int)==ts), 'Sync signals need to be integers, in samples acquired at fs sampling rate!'
         sync_signals[tsi]=ts.astype(int)
-    
+
     # Align
     master_sync=sync_signals[0]
-    
+
     for i, (ts, ss) in enumerate(zip(timeseries[1:], sync_signals[1:])):
         (a, b) = np.polyfit(ss, master_sync, 1)
         if fs is not None:
@@ -622,9 +622,9 @@ def align_timeseries_interpol(timeseries, sync_signals, fs=None):
             offset=round(b/fs[0],2)
             print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between ephys and paq files.\n')
         timeseries[i]=(a*ts+b).astype(int)
-    
+
     return timeseries
-    
+
 #%% Stolen from phy
 def _as_array(arr, dtype=None):
     """Convert an object to a numerical NumPy array.

@@ -1916,6 +1916,6 @@ def filter_df(dfram):
     """
     all_conds = np.isclose(np.sum(dfram.iloc[:,-6:-1], axis = 1), 0) |  np.isclose(np.sum(dfram.iloc[:,-11:-6], axis=1), 0) |  np.isclose(np.sum(dfram.iloc[:,16:-12], axis = 1), 0) |  np.isclose(np.sum(dfram.iloc[:,2:17], axis =1), 0) |  np.array(dfram.iloc[:,:-1].isnull().any(axis=1)).flatten() | np.isclose(dfram.iloc[:,-12], 0)
 
-  return dfram[~all_conds]
+    return dfram[~all_conds]
 
 

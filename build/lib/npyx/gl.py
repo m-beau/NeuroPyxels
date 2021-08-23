@@ -11,7 +11,6 @@ import os.path as op
 from pathlib import Path
 
 from npyx.utils import assert_float
-from npyx.io import read_spikeglx_meta
 
 import numpy as np
 import pandas as pd
@@ -131,4 +130,5 @@ def get_source_dp_u(dp, u):
         dp=ds_table['dp'][ds_i]
     return dp, u
 
+from npyx.io import read_spikeglx_meta
 from npyx.spk_wvf import get_depthSort_peakChans

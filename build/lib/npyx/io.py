@@ -20,6 +20,12 @@ from scipy import signal
 from npyx.utils import npa
 
 
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+import json
+
+
 #%% IO utilities
 
 def list_files(directory, extension, full_path=False):
@@ -820,4 +826,6 @@ def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
     return myrange
 
 
-from npyx.gl import get_rec_len, assert_multi, get_ds_table
+
+from npyx.gl import get_rec_len, assert_multi, get_ds_table, get_units
+#

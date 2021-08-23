@@ -17,8 +17,6 @@ import numpy as np
 from math import floor
 from scipy import signal
 
-from tkinter import filedialog as tkFileDialog
-
 from npyx.utils import npa
 
 
@@ -39,7 +37,7 @@ def read_spikeglx_meta(dp, subtype='ap'):
     Read spikeGLX metadata file.
     '''
     if assert_multi(dp):
-        dp=get_ds_table(dp)['dp'].values[0]
+        dp=get_ds_table(dp)['dp'][0]
         #print(f'Multidataset detected - spikeGLX metadata taken from 1st dataset ({dp}).')
     assert subtype in ['ap', 'lf']
     metafile=''
@@ -144,7 +142,7 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
             raise ValueError("dp argument is not provided - when channel map is \
                              atypical and probe_version is hence called 'local', \
                              the datapath needs to be provided to load the channel map.")
-        c_ind=np.load(op.join(dp, 'channel_map.npy'));cp=np.load(op.join(dp, 'channel_positions.npy'));
+        c_ind=np.load(op.join(dp, 'channel_map.npy'));cp=np.load(op.join(dp, 'channel_positions.npy'))
         cm=npa(np.hstack([c_ind.reshape(max(c_ind.shape),1), cp]), dtype=np.int32)
 
     if y_orig=='surface':
@@ -184,6 +182,12 @@ def get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='seconds'):
             plt.vlines(times,ichan,ichan+.8,linewidth = 0.5)
         plt.ylabel('Sync channel number'); plt.xlabel('time (s)')
     '''
+
+    if assert_multi(dp):
+        ds_table = get_ds_table(dp)
+        dp=get_ds_table(dp)['dp'][0]
+        print(f'Loading npix sync channel from a merged dataset - assuming temporal reference frame of dataset 0:\n{dp}')
+
     assert sourcefile in ['ap', 'lf']
     assert unit in ['seconds', 'samples']
     fname=''
@@ -412,7 +416,7 @@ def whitening_matrix_old(x, epsilon=1e-18):
     """
     assert x.ndim == 2
     x=x.T
-    nrows, ncols = x.shape
+    ncols = x.shape[1]
     x_cov = np.cov(x, rowvar=0) # get covariance matrix
     assert x_cov.shape == (ncols, ncols)
     d, v = np.linalg.eigh(x_cov) # covariance eigendecomposition (same as svd for positive-definite matrix)
@@ -550,7 +554,7 @@ def whiten_data(X, method='zca'):
 
 #%% paqIO file loading utilities
 
-def paq_read(file_path=None):
+def paq_read(file_path):
     """
     Read PAQ file (from PackIO) into python
     Lloyd Russell 2015
@@ -576,11 +580,11 @@ def paq_read(file_path=None):
     """
 
     # file load gui
-    if file_path is None:
-        root = Tkinter.Tk()
-        root.withdraw()
-        file_path = tkFileDialog.askopenfilename()
-        root.destroy()
+    # if file_path is None:
+    #     root = Tkinter.Tk()
+    #     root.withdraw()
+    #     file_path = tkFileDialog.askopenfilename()
+    #     root.destroy()
 
     # open file
     fid = open(file_path, 'rb')

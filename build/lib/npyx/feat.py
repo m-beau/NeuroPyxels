@@ -1434,11 +1434,11 @@ def wvf_feat(dp, units):
 #            ram_available = vmem().available
 #            if ram_needed < ram_available:
 #                # if there is enough ram to store all the spikes in memory, FAST
-#                mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(dp,unit, prnt=False, again=False,fast =True, save = True)
+#                mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(dp,unit, verbose=False, again=False,fast =True, save = True)
 #            else:
 #                # not enough RAM to store all spikes in memory, Slow
-#                mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(dp,unit, prnt=False, again=False,fast =False, save = True)
-            mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(dp,unit, prnt=False, again=False, save = True)
+#                mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(dp,unit, verbose=False, again=False,fast =False, save = True)
+            mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(dp,unit, verbose=False, again=False, save = True)
             curr_feat = waveform_features(extracted_waves.T,dp, max_chan, unit)
             curr_feat.insert(0, dp)
             all_ft_list.append(curr_feat)

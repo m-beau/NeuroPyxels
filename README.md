@@ -81,38 +81,84 @@ c = ccg(dp, [234,92], cbin=0.2, cwin=80)
 ### Plot correlograms and waveforms from unit u
 ```python
 # all plotting functions return matplotlib figures
-from npyx.plot import plot_wvf
+from npyx.plot import plot_wvf, get_peak_chan
 dp = 'path/to/dataset'
 u=234
-# plot waveform, 2.8ms around center, on 8 channels around peak channel,
-# with no single waveforms in the background (sample_lines)
-fig = plot_wvf(dp, u, Nchannels=8, t_waveforms=2.8, sample_lines=0)
+# plot waveform, 2.8ms around templates center, on 16 channels around peak channel
+# (the peak channel is found automatically, no need to worry about finding it)
+fig = plot_wvf(dp, u, Nchannels=16, t_waveforms=2.8)
+
+# But if you wished to get it, simply run
+peakchannel = get_peak_chan(dp, u)
 ```
+![](https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/wvf.png)
 
 ```python
 # plot ccg between 234 and 92
 fig = plot_ccg(dp, [u,92], cbin=0.2, cwin=80, as_grid=True)
 ```
-![ccg](images/ccg.png)
+![](https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ccg.png)
 
 ### Merge datasets acquired on two probes simultaneously
 ```python
 # The three recordings need to include the same sync channel.
-from npyx.merger import Merger
+from npyx.merger import merge_datasets
 dps = ['same_folder/lateralprobe_dataset',
        'same_folder/medialprobe_dataset',
        'same_folder/anteriorprobe_dataset']
 probenames = ['lateral','medial','anterior']
 dp_dict = {p:dp for p, dp in zip(dps, probenames)}
-merged = Merger(dp_dic)
-dp=merged.dp_merged
+dp_merged, datasets_table = merge_datasets(dp_dic)
+```
+<span style="color:DodgerBlue">--- Merged data (from 2 dataset(s)) will be saved here: /media/maxime/Npxl_data2/wheel_turning/19-04-16_DK152/merged_19-04-16_DK152_probe1_19-04-16_DK152_probe2.</span>
+
+<span style="color:DodgerBlue">--- Loading spike trains of 2 datasets...</span>
+sync channel extraction directory found: /media/maxime/Npxl_data2/wheel_turning/19-04-16_DK152/19-04-16_DK152_probe1/sync_chan
+sync channel onsets extracted from ap file found and loaded.
+sync channel onsets extracted from ap file found and loaded.
+sync channel onsets extracted from ap file found and loaded.
+sync channel onsets extracted from ap file found and loaded.
+sync channel onsets extracted from ap file found and loaded.
+Data found on sync channels:
+chan 2 (201 events).
+chan 4 (16 events).
+chan 5 (175 events).
+chan 6 (28447 events).
+chan 7 (93609 events).
+Which channel shall be used to synchronize probes? >>> 7
+sync channel extraction directory found: /media/maxime/Npxl_data2/wheel_turning/19-04-16_DK152/19-04-16_DK152_probe2/sync_chan
+sync channel onsets extracted from ap file found and loaded.
+sync channel onsets extracted from ap file found and loaded.
+sync channel onsets extracted from ap file found and loaded.
+sync channel onsets extracted from ap file found and loaded.
+sync channel onsets extracted from ap file found and loaded.
+Data found on sync channels:
+chan 2 (201 events).
+chan 4 (16 events).
+chan 5 (175 events).
+chan 6 (28194 events).
+chan 7 (93609 events).
+Which channel shall be used to synchronize probes? >>> 7
+
+<span style="color:DodgerBlue">--- Aligning spike trains of 2 datasets...</span>
+More than 50 sync signals found - for performance reasons, sub-sampling to 50 homogenoeously spaced sync signals to align data.
+50 sync events used for alignement - start-end drift of -3080.633ms
+
+<span style="color:DodgerBlue">--- Merged spike_times and spike_clusters saved at /media/maxime/Npxl_data2/wheel_turning/19-04-16_DK152/merged_19-04-16_DK152_probe1_19-04-16_DK152_probe2.</span>
+
+<span style="color:green">--> Merge successful! Use a float u.x in any npyx function to call unit u from dataset x:</span>
+- u.0 for dataset 19-04-16_DK152_probe1,
+- u.1 for dataset 19-04-16_DK152_probe2.
+
+```python
 # This will merge the 3 datasets (only relevant information, not the raw data) in a new folder at
-# same_folder/prophyler_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset
-# which can then be used as if it were a single dataset by all npyx functions.
-# The only difference is that units now need to be called as floats, of format unit_id.dataset_id.
-# lateralprobe, medial probe and anteriorprobe dataset_ids will be 0,1 and 2.
-t = trn(dp, 92.1) # get spikes of unit 92 in dataset 1 i.e. medialprobe
-fig=plot_ccg(dp,[10,0,92.1,cbin=0.2,cwin=80]) # compute CCG between 2 units across datasets
+# dp_merged: same_folder/merged_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset
+# where all npyx functions can smoothly run.
+# The only difference is that units now need to be called as floats,
+# of format u.x (u=unit id, x=dataset id [0-2]).
+# lateralprobe, medial probe and anteriorprobe x will be respectively 0,1 and 2.
+t = trn(dp_merged, 92.1) # get spikes of unit 92 in dataset 1 i.e. medialprobe
+fig=plot_ccg(dp_merged,[10.0, 92.1, cbin=0.2, cwin=80]) # compute CCG between 2 units across datasets
 ```
 
 There isn't any better doc atm - email [Maxime Beau](mailto:maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL at time of writing) if you have any questions!

@@ -553,8 +553,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s,
                         periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
                         whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
-                        ignore_ks_chanfilt = ignore_ks_chanfilt,
-                        use_old=False, loop=True, parallel=False, memorysafe=False)
+                        ignore_ks_chanfilt = ignore_ks_chanfilt)
     else:
         waveforms=wvf_dsmatch(dp, u, n_waveforms=n_waveforms,
                   t_waveforms=t_waveforms_s, periods=periods,
@@ -595,7 +594,6 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     elif type(sample_lines) in [int, float]:
         sample_lines=min(waveforms.shape[0],sample_lines, n_waveforms)
 
-    title = 'waveforms of {}'.format(u) if title=='' else title
     if isinstance(color, str):
         color=to_rgb(color)
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
@@ -683,7 +681,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
             ax[i_bottomleft].plot([0,0],[ylim1,ylim1+y_scale], c='k', lw=scalebar_w)
             ax[i_bottomleft].text(-0.05*xlimdiff, ylim1+y_scale*0.5, f'{y_scale} \u03bcV', weight='bold', size=18, va='center', ha='right')
 
-        if labels: fig.suptitle(t=title, x=0.5, y=0.92+0.02*(len(title.split('\n'))-1), size=18, weight='bold', va='top')
+        fig.suptitle(t=title, x=0.5, y=0.92+0.02*(len(title.split('\n'))-1), size=18, weight='bold', va='top')
 
     # Save figure
     if saveFig:

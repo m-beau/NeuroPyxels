@@ -7,13 +7,22 @@
 Dataset: Neuropixels dataset -> dp is phy directory (kilosort or spyking circus output)
 """
 import json
+import os
 import os.path as op
 from pathlib import Path
 
-from npyx.utils import assert_float
-
 import numpy as np
 import pandas as pd
+
+def get_npyx_memory(dp):
+    dprm = Path(dp,'npyxMemory')
+    old_dprm =Path(dp,'routinesMemory')
+    if old_dprm.exists():
+        print("Backward compatibility - renaming routinesMemory as npyxMemory.")
+        os.rename(str(old_dprm), str(dprm))
+    if not os.path.isdir(dprm): os.makedirs(dprm)
+
+    return dprm
 
 def get_datasets(ds_master, ds_paths_master, ds_behav_master=None):
     """
@@ -193,59 +202,7 @@ def get_units(dp, quality='all', chan_range=None, again=False):
 def get_good_units(dp):
     return get_units(dp, quality='good')
 
-### Below, utilities for dataset merger
-### (in particular used to merge simultaneously recorded datasets)
-
-def get_ds_table(dp_pro):
-    ds_table = pd.read_csv(Path(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
-    for dp in ds_table['dp']:
-        assert op.exists(dp), \
-            f"WARNING you have instanciated this merged dataset from paths of which one doesn't exist anymore:{dp}!"
-    return ds_table
-
-def get_dataset_id(u):
-    '''
-    Parameters:
-        - u: float, of format u.ds_i
-    Returns:
-        - u: int, unit index
-        - ds_i: int, dataset index
-    '''
-    assert assert_float(u), "Seems like the unit passed isn't a float - \
-        calling this function on a merged dataset is meaningless \
-        (cannot tell which dataset the unit belongs to!)."
-    return int(round(u%1*10)), int(u)
-
-def assert_same_dataset(U):
-    '''Asserts if all provided units belong to the same dataset.
-    '''
-    return all(get_dataset_id(U[0])[0] == get_dataset_id(u)[0] for u in U[1:])
-
-def assert_multi(dp):
-    return op.basename(dp)[:9]=='merger'
-
-def get_ds_ids(U):
-    return (U%1*10).round(0).astype(int)
-
-def get_dataset_ids(dp_pro):
-    '''
-    Parameters:
-        - dp_pro: str, path to merged dataset
-    Returns:
-        - dataset_ids: np array of shape (N_spikes,), indices of dataset of origin for all spikes
-    '''
-    assert assert_multi(dp_pro)
-    return get_ds_ids(get_units(dp_pro))
-
-def get_source_dp_u(dp, u):
-    '''If dp is a merged datapath, returns datapath from source dataset and unit as integer.
-       Else, returns dp and u as they are.
-    '''
-    if assert_multi(dp):
-        ds_i, u = get_dataset_id(u)
-        ds_table=get_ds_table(dp)
-        dp=ds_table['dp'][ds_i]
-    return dp, u
-
+# circular imports
 from npyx.io import read_spikeglx_meta
 from npyx.spk_wvf import get_depthSort_peakChans
+from npyx.merger import assert_multi, get_ds_table

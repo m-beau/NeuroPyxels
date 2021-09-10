@@ -17,10 +17,10 @@ from scipy.stats import iqr
 from scipy.optimize import curve_fit
 from scipy.stats import norm
 from npyx.utils import smooth, thresh_consec, npa, assert_int, assert_float
-from npyx.gl import get_units, assert_multi, get_dataset_id, get_ds_table
+from npyx.gl import get_units, get_npyx_memory
 from npyx.io import read_spikeglx_meta
 
-def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
+def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
     '''
     ********
     routine from routines_spikes
@@ -32,21 +32,21 @@ def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
     - ret (bool - default False): if True, train returned by the routine.
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
-    - subset_selection = 'all' or [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
+    - periods = 'all' or [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
     - again: boolean, if True recomputes data from source files without checking routines memory.
     '''
 
     assert unit in get_units(dp), 'WARNING unit {} not found in dataset {}!'.format(unit, dp)
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = Path(dp,'routinesMemory')
+    dprm = get_npyx_memory(dp)
+
     fn='ids{}.npy'.format(unit)
-    if not op.isdir(dprm): os.makedirs(dprm)
     if op.exists(Path(dprm,fn)) and not again:
-        if prnt: print("File {} found in routines memory.".format(fn))
+        if verbose: print("File {} found in routines memory.".format(fn))
         indices = np.asarray(np.load(Path(dprm,fn)), dtype='int64')
     # if not, compute it
     else:
-        if prnt: print(f"File {fn} not found in routines memory. Will be computed from source files.")
+        if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
         if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
         assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
         if assert_multi(dp):
@@ -68,13 +68,13 @@ def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
-    if subset_selection!='all': # else, eq to subset_selection=[(0, spike_samples[-1])] # in samples
-        try: subset_selection[0][0]
-        except: raise TypeError("ERROR subset_selection should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
+    if periods!='all': # else, eq to periods=[(0, spike_samples[-1])] # in samples
+        try: periods[0][0]
+        except: raise TypeError("ERROR periods should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
         fs=read_spikeglx_meta(dp)['sRateHz']
         train=trn(dp, unit, again=again)
         sec_bool=np.zeros(len(train), dtype=np.bool)
-        for section in subset_selection:
+        for section in periods:
             sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
         indices=indices[sec_bool]
 
@@ -82,7 +82,7 @@ def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
 
 
 
-def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enforced_rp=0):
+def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=0):
     '''
     ********
     routine from routines_spikes
@@ -94,22 +94,22 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
     - ret (bool - default False): if True, train returned by the routine.
     if False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
-    - subset_selection = 'all' or [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
+    - periods = 'all' or [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
     - again: boolean, if True recomputes data from source files without checking routines memory.
     - enforced_rp: enforced refractory period, in millisecond. 0 by default (only pure duplicates are removed)
     '''
 
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = Path(dp,'routinesMemory')
+    dprm = get_npyx_memory(dp)
+
     fn='trn{}_{}.npy'.format(unit, enforced_rp)
-    if not op.isdir(dprm): os.makedirs(dprm)
     if op.exists(Path(dprm,fn)) and not again:
-        if prnt: print("File {} found in routines memory.".format(fn))
+        if verbose: print("File {} found in routines memory.".format(fn))
         train = np.load(Path(dprm,fn))
 
     # if not, compute it
     else:
-        if prnt: print(f"File {fn} not found in routines memory. Will be computed from source files.")
+        if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
         if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
         assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
         if assert_multi(dp):
@@ -138,18 +138,18 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
-    if subset_selection!='all': # else, eq to subset_selection=[(0, spike_samples[-1])] (in samples)
-        try: subset_selection[0][0]
-        except: raise TypeError("ERROR subset_selection should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
+    if periods!='all': # else, eq to periods=[(0, spike_samples[-1])] (in samples)
+        try: periods[0][0]
+        except: raise TypeError("ERROR periods should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
         fs=read_spikeglx_meta(dp)['sRateHz']
         sec_bool=np.zeros(len(train), dtype=np.bool)
-        for section in subset_selection:
+        for section in periods:
             sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
         train=train[sec_bool]
 
     return train
 
-def isi(dp, unit, enforced_rp=0, sav=True, prnt=False, subset_selection='all', again=False):
+def isi(dp, unit, enforced_rp=0, sav=True, verbose=False, periods='all', again=False):
     '''
     ********
     routine from routines_spikes
@@ -162,7 +162,7 @@ def isi(dp, unit, enforced_rp=0, sav=True, prnt=False, subset_selection='all', a
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    t=trn(dp, unit, sav, prnt, subset_selection, again, enforced_rp)
+    t=trn(dp, unit, sav, verbose, periods, again, enforced_rp)
     return np.diff(t) if len(t)>1 else None
 
 
@@ -173,7 +173,28 @@ def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
     i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]/fs
     return np.round(1./np.mean(i),2)
 
-def mfr(dp=None, U=None, exclusion_quantile=0.005, enforced_rp=0, subset_selection='all', again=False, train=None, fs=None):
+def mfr(dp=None, U=None, exclusion_quantile=0.005, enforced_rp=0,
+        periods='all', again=False, train=None, fs=None):
+    '''
+    Computes the mean firing rate of a unit.
+
+    2 ways to use it:
+     - regular npyx mfr(dp, u) syntax - will grab the spike times and fs from files
+     - custom mfr(train=array, fs=sampling_frequency) - for any spike train
+
+    Parameters:
+        - dp: str, datapath
+        - U: int or list, unit or list of units
+        - exclusion_quantile: float, quantiles beyond which we exclude interspike intervals (very short or very long)
+        - enforced_rp: float, enforced refractory period - minimum time in ms separating consecutive spikes of the train - if sorther than that, the 1st spike of the couple is kept.
+        - periods: 'all' or [(t1,t2), ...] - periods in s to consider for calculation
+        - again=False
+        - train=None
+        - fs=None
+
+    Returns:
+        - mfr: float or np array, mean firing rates of unit(s) in Hz
+    '''
     if train is not None:
         assert fs is not None, 'you need to provide a sampling frequency!'
         train=np.asarray(train)
@@ -183,7 +204,7 @@ def mfr(dp=None, U=None, exclusion_quantile=0.005, enforced_rp=0, subset_selecti
     U=npa([U]).flatten()
     MFR=[]
     for u in U:
-        t=trn(dp, u, subset_selection=subset_selection, again=again, enforced_rp=enforced_rp)
+        t=trn(dp, u, periods=periods, again=again, enforced_rp=enforced_rp)
         fs=read_spikeglx_meta(dp)['sRateHz']
         MFR.append(mean_firing_rate(t, exclusion_quantile, fs))
 
@@ -217,7 +238,7 @@ def binarize(X, bin_size, fs, rec_len=None):
 
     return Xb
 
-def trnb(dp, u, b, subset_selection='all', again=False):
+def trnb(dp, u, b, periods='all', again=False):
     '''
     ********
     routine from routines_spikes
@@ -230,7 +251,7 @@ def trnb(dp, u, b, subset_selection='all', again=False):
     '''
     fs=read_spikeglx_meta(dp)['sRateHz']
     assert b>=1000/fs
-    t = trn(dp, u, enforced_rp=1, subset_selection=subset_selection, again=again)
+    t = trn(dp, u, enforced_rp=1, periods=periods, again=again)
     t_end = np.load(Path(dp,'spike_times.npy'))[-1,0]
     return binarize(t, b, fs, t_end)
 
@@ -249,8 +270,7 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
     sav=False
     if train is None:
         sav=True
-        dprm = Path(dp,'routinesMemory')
-        if not op.isdir(dprm): os.makedirs(dprm)
+        dprm = get_npyx_memory(dp)
         fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
         if op.exists(Path(dprm,fn)) and not again:
             return np.load(Path(dprm,fn))
@@ -286,7 +306,7 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=
         assert dp is not None
         assert len(trn(dp,u,0))==len(t), 'There seems to be a mismatch between the provided spike trains and the unit index.'
         fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
-        dprm = Path(dp,'routinesMemory')
+        dprm = get_npyx_memory(dp)
         if op.exists(Path(dprm,fn)) and not again:return np.load(Path(dprm,fn))
 
     assert 1<sd<10000
@@ -314,7 +334,7 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
         acg_chunk_size = 10, gauss_window_len = 3,
         gauss_chunk_size = 10, use_or_operator = False, violations_ms = 0.8,
         rpv_threshold = 0.05,  missing_spikes_threshold=5, again = False,
-        save = True, prnt = False):
+        save = True, verbose = False):
 
     """
     Apply a filter over the spike times in order to find time points with
@@ -364,13 +384,12 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
     assert acg_window_len >= 1, "ACG chunk size needs to be larger than 1 "
     assert gauss_window_len >= 1, "Gaussian chunk size needs to be larger than 1 "
 
-    dprm = Path(dp,'routinesMemory')
+    dprm = get_npyx_memory(dp)
 
     fn=f"trn_qual_{unit}_{str(acg_window_len)}_{str(acg_chunk_size)}_{str(gauss_window_len)}_{str(gauss_chunk_size)}_{str(violations_ms)}_{str(rpv_threshold)}_{str(missing_spikes_threshold)}.npy"
 
-    if not dprm.is_dir(): dprm.mkdir()
     if Path(dprm,fn).is_file() and (not again):
-        if prnt: print(f"File {fn} found in routines memory.")
+        if verbose: print(f"File {fn} found in routines memory.")
         good_start_end, acg_start_end, gauss_start_end = np.load(Path(dprm,fn), allow_pickle = True)
         return good_start_end.tolist(), acg_start_end.tolist(), gauss_start_end.tolist()
 
@@ -424,7 +443,7 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
 
     # Unit spikes during first 20 minutes
     if spike_clusters[spike_clusters == unit].shape[0] > spikes_threshold:
-        trn_samples_unit_20 = trn(dp, unit=unit,prnt=False, subset_selection=[(0, unit_size_s)], enforced_rp=0, again=True)
+        trn_samples_unit_20 = trn(dp, unit=unit,verbose=False, periods=[(0, unit_size_s)], enforced_rp=0, again=True)
         trn_ms_unit_20 = trn_samples_unit_20 * 1. / (fs * 1. / 1000)
         spikes_unit_20 = len(trn_ms_unit_20)
 
@@ -502,7 +521,7 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
                 amplitudes_chunk = amplitudes_unit_20[chunk_mask]
                 amplitudes_chunk = np.asarray(amplitudes_chunk, dtype='float64')
                 if amplitudes_chunk.shape[0] > 15:
-                        block_ACG = acg(dp, unit, c_bin, c_win, prnt = False,  subset_selection=[(chunk_start_time, chunk_end_time)])
+                        block_ACG = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[(chunk_start_time, chunk_end_time)])
                         x_block = np.linspace(-c_win * 1. / 2, c_win * 1. / 2, block_ACG.shape[0])
                         y_block = block_ACG.copy()
 #                        y_lim1_unit = 0
@@ -642,9 +661,9 @@ def get_consec_sections(seconds):
         return start_end
 
 
-def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False, use_consecutive = True, prnt = False, again = False, save = True):
+def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False, use_consecutive = True, verbose = False, again = False, save = True):
 
-    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes, acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size, use_or_operator, again=again, save = save, prnt =prnt)
+    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes, acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size, use_or_operator, again=again, save = save, verbose =verbose)
 
     """
     High level function for getting the spike ids for the spikes that passed
@@ -681,14 +700,14 @@ def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_
             consecutive_good_chunk = list(range(maxend-maxrun+1, maxend+1))
             consecutive_good_chunk_len = len(consecutive_good_chunk)
             if consecutive_good_chunk_len > consecutive_n_seconds:
-                all_trn = trn(dp, unit, prnt = False, subset_selection = [(consecutive_good_chunk[0], consecutive_good_chunk[-1]+1)])
+                all_trn = trn(dp, unit, verbose = False, periods = [(consecutive_good_chunk[0], consecutive_good_chunk[-1]+1)])
                 all_spikes_return = all_trn
                 # this is the output we need, the spikes that are in
                 # the 3 min period that is classified good
                 return all_spikes_return#, good_vals_acg, good_acg_sec
 
             else:
-                if prnt: print('No consecutive section passed the filters')
+                if verbose: print('No consecutive section passed the filters')
                 return np.array([0])
         else:
             # get all the ranges of spikes
@@ -698,7 +717,7 @@ def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_
                 range_group = list(map(int,range_group))
                 all_consecutive_ranges.append((range_group[0],range_group[-1]))
             for train_secs in all_consecutive_ranges:
-                curr_spikes = trn(dp, unit, prnt = False, subset_selection = [(train_secs[0], train_secs[1])])
+                curr_spikes = trn(dp, unit, verbose = False, periods = [(train_secs[0], train_secs[1])])
                 all_spikes.append(curr_spikes)
             all_spikes_return = np.hstack(all_spikes)
 
@@ -816,3 +835,4 @@ def estimate_bins(x, rule):
 
 
 from  npyx.corr import acg
+from npyx.merger import assert_multi, get_dataset_id, get_ds_table

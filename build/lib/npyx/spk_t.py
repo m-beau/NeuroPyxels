@@ -51,7 +51,7 @@ def ids(dp, unit, sav=True, prnt=False, subset_selection='all', again=False):
         assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
         if assert_multi(dp):
             ds_table = get_ds_table(dp)
-            if ds_table.shape[0]>1: # If several datasets in prophyler
+            if ds_table.shape[0]>1: # If merged dataset
                 spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
                 indices = np.nonzero(spike_clusters==unit)[0].ravel()
             else:
@@ -114,7 +114,7 @@ def trn(dp, unit, sav=True, prnt=False, subset_selection='all', again=False, enf
         assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
         if assert_multi(dp):
             ds_table = get_ds_table(dp)
-            if ds_table.shape[0]>1: # If several datasets in prophyler
+            if ds_table.shape[0]>1: # If merged dataset
                 spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
                 spike_samples = np.load(Path(dp,'spike_times.npy'), mmap_mode='r')
                 train = spike_samples[spike_clusters==unit].ravel()
@@ -327,7 +327,7 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
                 approximately Gaussian. If the time section of the recording
                 has too much of the Gaussian distribution cut off (>5%) the section
                 has to be discarded
-            - False positive filtering: check if there are not too many spikes 
+            - False positive filtering: check if there are not too many spikes
                 occuring in the the refractory period of the autocorrelogram.
                 If there are too many spikes in the ACG the section of the
                 recording will be discarded.
@@ -448,10 +448,10 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
             spike_times_unit_20 = spike_times_unit[unit_mask_20]
             amplitudes_unit_20 = amplitudes_unit[unit_mask_20]
             # now we have all the spikes in the first 20 min for the unit
-            # split the recording into 10 second chunks 
+            # split the recording into 10 second chunks
             # find the quality of each chunk
             #
-            # first look at the Gaussian filtering and the chunks made for this 
+            # first look at the Gaussian filtering and the chunks made for this
 
             for chunk_id in range(no_gauss_chunks):
                # find the spikes that happened in this period of time
@@ -511,7 +511,7 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
 
                         # Find refractory period violations
                         booleanCond = np.zeros(len(y_block), dtype=np.bool)
-                        # find periods where the 
+                        # find periods where the
                         booleanCond[(x_block >= -violations_ms) & (x_block <= violations_ms)] = True
                         violations = y_block[booleanCond]
                         violations_mean = np.mean(violations)
@@ -527,8 +527,8 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
                         if (rpv_ratio_acg <= rpv_threshold):
                             chunk_acg_qual[chunk_id] = [chunk_start_time, chunk_end_time, 1]
     # start at thi col
-    # have all the good chunks 
-    # find sequences where there are more than 3  
+    # have all the good chunks
+    # find sequences where there are more than 3
     # run nsliding window over values, when the sum gets to 3
     # drop the middle value
 
@@ -547,8 +547,8 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
 
         # input values to chunk_acg_qual and chunk_gauss_qual
         # this is needed bc I only have the values with positive results recorded
-        # I can also remove the following pieces of code, as the 
-        # arrays are already initiated at 0, and the size is correct 
+        # I can also remove the following pieces of code, as the
+        # arrays are already initiated at 0, and the size is correct
         # so the roll_sum summing will work
 
         chunk_gauss_qual  = np.array(chunk_gauss_qual)
@@ -579,11 +579,11 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
             good_vals_acg = np.where(np.all(roll_sum_acg, axis = 0))[0] +1
             good_vals_gauss = np.where(np.all(roll_sum_gauss, axis =0))[0] +1
 
-        # take the intersection of these two 'good' sets to 
+        # take the intersection of these two 'good' sets to
         # get where both filters were passed
         # get the times where each passed individually and look for intersections
         # get the seconds where each passed, look at the intersection of these two lists
-        # for both filters want a long list of second start times where 
+        # for both filters want a long list of second start times where
         # the filter was passed
 
         # get the good acg seconds
@@ -661,7 +661,7 @@ def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_
         all_spikes = []
 
 
-        # condition, if the number of consecutive chunks is 
+        # condition, if the number of consecutive chunks is
         # higehr than the 3min threshold, extract it
         # Otherwise leave the unit
 
@@ -731,7 +731,7 @@ def ampli_fit_gaussian_cut(x, n_bins):
     # this can return more than one value for the mode
     mode_seed = bins[np.where(num == max(num))]
     #mode_seed = bins[np.argmax(num)]
-    # find the bin width 
+    # find the bin width
     bin_steps = np.diff(bins[0:2])[0]
     #get the mean values of each bin
     x = bins[0:len(bins) - 1] + bin_steps / 2
@@ -750,7 +750,7 @@ def ampli_fit_gaussian_cut(x, n_bins):
     # concatenate the old number of bin elements with 0 for the new bins
     num = np.concatenate([zeros, num])
 
-    # if there is  more than one mode of the  distribution, mean them  
+    # if there is  more than one mode of the  distribution, mean them
     if len(mode_seed) > 1:
         mode_seed = np.mean(mode_seed)
 

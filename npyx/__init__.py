@@ -8,10 +8,11 @@ from .gl import *
 from .spk_t import *
 from .spk_wvf import *
 from .corr import *
+from .stats import *
 from .plot import *
 from .behav import *
 from .merger import *
-from .stats import *
+from .circuitProphyler import *
 
 __doc__="""
 
@@ -37,4 +38,4 @@ npyx submodules:
     npyx.stats
 """
 
-__version__ = '1.6.5'
+__version__ = '2.0'

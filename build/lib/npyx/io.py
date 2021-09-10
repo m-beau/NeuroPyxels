@@ -213,8 +213,9 @@ def get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='seconds'):
                     file_i = ale(file[-15])
                     onsets[file_i]=np.load(Path(sync_dp,file))/srate
                     offsets[file_i]=np.load(Path(sync_dp,file[:-13]+'f'+file[-12:]))/srate
-
-        return onsets, offsets
+        if any(onsets):
+            # else, might be that sync_dp is empty
+            return onsets, offsets
 
     # Tries to load pre-saved compressed binary
     if op.exists(sync_dp):
@@ -285,6 +286,7 @@ def get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='seconds'):
     onsets={ok:ov/srate for ok, ov in onsets.items()}
     offsets={ok:ov/srate for ok, ov in offsets.items()}
 
+    assert any(onsets), "WARNING no onsets found - something went wrong."
     return onsets,offsets
 
 

@@ -1,9 +1,17 @@
 # -*- coding: utf-8 -*-
 
-from . import utils, io, gl, spk_t, spk_wvf, corr, plot, ml, behav, circuitProphyler, stats
+from . import utils, io, gl, spk_t, spk_wvf, corr, plot, behav, merger, stats
 
-from .utils import npa, sign, thresh, smooth, zscore
-
+from .utils import *
+from .io import *
+from .gl import *
+from .spk_t import *
+from .spk_wvf import *
+from .corr import *
+from .plot import *
+from .behav import *
+from .merger import *
+from .stats import *
 
 __doc__="""
 

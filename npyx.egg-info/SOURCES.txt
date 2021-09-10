@@ -2,12 +2,11 @@ README.md
 setup.py
 npyx/__init__.py
 npyx/behav.py
-npyx/circuitProphyler.py
 npyx/corr.py
 npyx/feat.py
 npyx/gl.py
 npyx/io.py
-npyx/ml.py
+npyx/merger.py
 npyx/plot.py
 npyx/spk_t.py
 npyx/spk_wvf.py

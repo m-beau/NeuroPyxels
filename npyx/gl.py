@@ -199,7 +199,8 @@ def get_good_units(dp):
 def get_ds_table(dp_pro):
     ds_table = pd.read_csv(Path(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
     for dp in ds_table['dp']:
-        assert op.exists(dp), f"WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{dp}!"
+        assert op.exists(dp), \
+            f"WARNING you have instanciated this merged dataset from paths of which one doesn't exist anymore:{dp}!"
     return ds_table
 
 def get_dataset_id(u):
@@ -210,7 +211,9 @@ def get_dataset_id(u):
         - u: int, unit index
         - ds_i: int, dataset index
     '''
-    assert assert_float(u), "Seems like the argument passed isn't a float - calling this function is meaningless."
+    assert assert_float(u), "Seems like the unit passed isn't a float - \
+        calling this function on a merged dataset is meaningless \
+        (cannot tell which dataset the unit belongs to!)."
     return int(round(u%1*10)), int(u)
 
 def assert_same_dataset(U):

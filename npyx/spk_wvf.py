@@ -137,7 +137,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     fileSizeBytes=op.getsize(dat_path)
     assert meta['fileSizeBytes'] == fileSizeBytes,\
         f'''Mismatch between ap.meta and ap.bin file size (assumed encoding is {dtype} and Nchannels is {n_channels_dat})!!
-        Prob wrong meta file - just edit fileSizeBytes and be aware that something went wrong in your data management...'''
+        Prob wrong meta file - just edit fileSizeBytes in the .ap.meta file at {dp} (replace with {fileSizeBytes}) and be aware that something went wrong in your data management...'''
 
     # Select subset of spikes
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()

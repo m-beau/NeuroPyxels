@@ -15,6 +15,7 @@ Example usage:
 
 
 """
+import tqdm
 
 import numpy as np
 from pathlib import Path
@@ -73,7 +74,7 @@ def neg_peak_amp_time(waves, axes= 1):
 
 def cross_times(waves, axis = 1):
     """
-    find where the wvf 'crosses' 0 between the most negative and the next peak 
+    find where the wvf 'crosses' 0 between the most negative and the next peak
 
     """
     if len(waves.shape)==1:
@@ -401,10 +402,10 @@ def end_amp_time(waves, axis = 1):
     peak_t, peak_v = detect_peaks(waves)
     onset_v = peak_v[-1]*0.05
 
-    # now we find the last crossing of this value 
+    # now we find the last crossing of this value
     # get section after the last peak
     after_peak= waves[peak_t[-1]:]
-    # now we have list of crossings where 
+    # now we have list of crossings where
     crossings = np.where(np.diff(np.sign(after_peak-onset_v)))
 
     # if there are crossings, get the first of these
@@ -591,7 +592,7 @@ def pos_half_width(waves, axes = 1):
 
     neg_t, neg_v, pos_t, pos_v, flipped_order = peaks_order(waves)
 
-    # regradless of the order of the peaks, return the half width time for the 
+    # regradless of the order of the peaks, return the half width time for the
     # the positive peak
     perc_50 = 0.5 * pos_v
 
@@ -614,7 +615,7 @@ def pos_half_width(waves, axes = 1):
     return cross_start, cross_end,perc_50, cross_end - cross_start
 
 
-# old 
+# old
     # get the wvf peaks
 #    peak_t, peak_v = detect_peaks(waves)
 #
@@ -637,7 +638,7 @@ def pos_half_width(waves, axes = 1):
 #    # also need this in case there are other crossings that might happen at
 #    # other times of the recording
 #
-#    # depending on the orientation of the peaks, find the corresponding 
+#    # depending on the orientation of the peaks, find the corresponding
 #    # pos half-width
 #    start_interval = cross_times(waves)[0].astype(int)
 #    end_interval = end_amp_time(waves)[0]
@@ -883,7 +884,7 @@ def in_distance_surface(dp, dist_limit=2000 ):
         filter out neurons that are so deep as to be in the nuclei.
         """
 
-        # get the peak channels for each unit sorted by channel location                
+        # get the peak channels for each unit sorted by channel location
         peak_chan_depth = get_depthSort_peakChans(dp, units = [], quality = 'good')
 
         surface_chan = peak_chan_depth[0,1]
@@ -930,7 +931,7 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20, chan_spread_dist = 25.6)
 
     _,_, p2p = consecutive_peaks_amp(all_wav.T)
 
-    # search for the file that has the given peak chan 
+    # search for the file that has the given peak chan
     max_chan_path = list(Path(chan_path/'routinesMemory').glob(f'dsm_{unit}_peakchan*'))[0]
     max_chan = int(np.load(max_chan_path))
 
@@ -942,7 +943,7 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20, chan_spread_dist = 25.6)
 
     # I want a distribution of amplitudes with the x axis being distance
     # so sort the matrix so the first column is sorted
-    # plot the second column 
+    # plot the second column
     sort_dist = np.argsort(dists)
     sort_dist_p2p = np.vstack((dists[sort_dist], p2p[sort_dist])).T
 
@@ -1034,7 +1035,7 @@ def chan_plot(waves, peak_chan, n_chans=20):
     fig,ax  = plt.subplots(n_chans+1,2)
 
     for i in range(plot_waves.shape[0]):
-        # find where to have the plot depending on 
+        # find where to have the plot depending on
 
         y_axis = (i//2)%(plot_waves.shape[0]+1 )
         x_axis = i%2
@@ -1428,11 +1429,11 @@ def wvf_feat(dp, units):
         if len_unit_spks > 10_000:
 #           if there is enough ram then the process is much faster
 #           How much RAM is available and how much is needed
-#           number of spikes * number of channels per spike * number of datapoints per chan (including padding) 
+#           number of spikes * number of channels per spike * number of datapoints per chan (including padding)
 #            ram_needed =  len_unit_spks * 384 *182
 #            ram_available = vmem().available
 #            if ram_needed < ram_available:
-#                # if there is enough ram to store all the spikes in memory, FAST 
+#                # if there is enough ram to store all the spikes in memory, FAST
 #                mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(dp,unit, prnt=False, again=False,fast =True, save = True)
 #            else:
 #                # not enough RAM to store all spikes in memory, Slow
@@ -1596,6 +1597,7 @@ def process_all(recs_fn, show = False, again = False):
 
     all_feat = []
     for i, ds in list(recs.items())[:]:
+        print(f"/nProcessing dataset {ds['dp']}...")
         data_root = Path(ds['dp'])/'routinesMemory'
         features_folder = data_root / 'features'
         acg_folder = data_root / 'acg'
@@ -1637,7 +1639,10 @@ def process_all(recs_fn, show = False, again = False):
 
         within_bounds = in_distance_surface(ds['dp'])
 
+        print("Extracting waveform and temporal features...")
+        pbar = tqdm(total=len(good_units))
         for unit in good_units:
+            pbar.update(1)
             acg_filename = rec_name + '_' + 'acg' + '_' +  '_' + str(unit) + '_' + cell_type + '.npy'
             wvf_filename = rec_name + '_' + 'wvf' + '_' +  '_' + str(unit) + '_' + cell_type + '.npy'
             mean_wvf_path = wvf_folder / wvf_filename
@@ -1680,6 +1685,7 @@ def process_all(recs_fn, show = False, again = False):
     wvf_files = []
     acg_files = []
 
+    print("Computing PCA features across datasets...")
     for i, ds in list(recs.items())[:]:
 #        data_root = Path('/home/npyx/projects/optotag/proc_data')
         data_root = Path(ds['dp'])/'routinesMemory'
@@ -1726,7 +1732,7 @@ def process_all(recs_fn, show = False, again = False):
     all_acgs = np.vstack(load_acg)
 
     # find where either of the matrices are 0 or inf valued and filter these vectors
-    # from both 
+    # from both
     zero_rows_acg = np.where(np.sum(all_acgs, axis = 1) ==0)[0].tolist()
     zero_rows_wvf = np.where(np.sum(all_wvfs, axis = 1) ==0)[0].tolist()
 
@@ -1748,7 +1754,7 @@ def process_all(recs_fn, show = False, again = False):
     masked_acg_files = acg_files[mask]
     masked_wvf_files = wvf_files[mask]
 
-    # push all the processed wvf and acg through a PCA 
+    # push all the processed wvf and acg through a PCA
     # and get the first few principal components
 
     acg_projected, acg_pca = get_pca_weights(masked_acgs, show = show, titl = 'ACG')
@@ -1759,7 +1765,7 @@ def process_all(recs_fn, show = False, again = False):
     # now that we have the pca of some of the projected pcas
     # need to make a new vector that can be then merged back with the dataframe
 
-    ### MANUAL FILTERING here 
+    ### MANUAL FILTERING here
     ### THERE ARE some clear outlier wvf visible in the pca space that I am removing
     ### I checked these items being filtered out by hand and they can be thrown out
 
@@ -1783,7 +1789,11 @@ def process_all(recs_fn, show = False, again = False):
     # add them to a ddataframe
     # join the dataframe with the wvf and acg PCA
     # remove the rows where the features, wvf or pca are 0
-    cols1 = ['file', 'unit', 'mfr', 'mifr', 'med_isi', 'mode_isi', 'prct5ISI', 'entropy','CV2_mean', 'CV2_median', 'CV', 'IR', 'Lv', 'LvR', 'LcV', 'SI', 'skw', 'neg voltage', 'neg time', 'pos voltage', 'pos time' , 'pos 10-90 time', 'neg 10-90 time', 'pos 50%', 'neg 50%', 'onset time', 'onset voltage', 'wvf duration', 'peak/trough ratio','recovery slope', 'repolarisation slope','chan spread', 'backprop', 'under2mm']
+    cols1 = ['file', 'unit', 'mfr', 'mifr', 'med_isi', 'mode_isi', 'prct5ISI',
+             'entropy','CV2_mean', 'CV2_median', 'CV', 'IR', 'Lv', 'LvR', 'LcV', 'SI', 'skw',
+             'neg voltage', 'neg time', 'pos voltage', 'pos time' , 'pos 10-90 time', 'neg 10-90 time',
+             'pos 50%', 'neg 50%', 'onset time', 'onset voltage', 'wvf duration', 'peak/trough ratio','recovery slope',
+             'repolarisation slope','chan spread', 'backprop', 'under2mm']
 
     all_feat_df = pd.DataFrame()
 
@@ -1843,7 +1853,7 @@ def process_all(recs_fn, show = False, again = False):
 
     # need to add cell type data
     # create new list of NaN values
-    # loop over all the files and if there are ones that 
+    # loop over all the files and if there are ones that
 
     cell_type_tagged = []
 

@@ -24,10 +24,6 @@ from IPython.core.display import HTML,display
 
 mpl.rcParams['figure.dpi']=100
 
-import holoviews as hv
-import bokeh as bk
-import hvplot.pandas
-
 import seaborn as sns
 
 from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable
@@ -74,6 +70,8 @@ def mplshow(fig):
     fig.set_canvas(new_manager.canvas)
 
 def bkshow(bkfig, title=None, save=0, savePath='~/Downloads'):
+    import bokeh as bk
+
     if title is None: title=bkfig.__repr__()
     if save:bk.plotting.output_file(f'{title}.html')
     bk.plotting.show(bkfig)
@@ -92,6 +90,8 @@ def hvshow(hvobject, backend='matplotlib', return_mpl=True):
         - return_mpl: bool, returns a matplotlib figure
 
     '''
+    import holoviews as hv
+
     assert backend in ['bokeh', 'matplotlib']
     if backend=='matplotlib' or return_mpl:
         mplfig=hv.render(hvobject, backend='matplotlib')
@@ -1340,7 +1340,8 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
     if figratio is None: figratio=6
     if figh is None: figh = 2.5
     figw=figratio*figh/len(events)
-    fig = plt.figure(figsize=(figw,figh))
+    figsize=(figw,figh)
+    fig = plt.figure(figsize=figsize)
     nmaps=len(events) if not transpose else len(trains)
     grid = plt.GridSpec(nmaps, 1, wspace=0.2, hspace=0.3)
     (l1,ls1,l2,ls2)=(events, events_str, trains, trains_str)

@@ -6,7 +6,7 @@
 
 Dataset: Neuropixels dataset -> dp is phy directory (kilosort or spyking circus output)
 """
-import os
+import json
 import os.path as op
 from pathlib import Path
 
@@ -14,6 +14,121 @@ from npyx.utils import assert_float
 
 import numpy as np
 import pandas as pd
+
+def get_datasets(ds_master, ds_paths_master, ds_behav_master=None):
+    """
+    Function to load dictionnary of dataset paths and relevant units.
+
+    Below is a high level description of the 3 json file types used to generate your datasets dictionnary,
+    you can find a more detailed structure description in the Parameters section a bit further.
+
+    ------------------------------------------------------------------------------
+
+    **ds_master** contains information about the probe structure of your recording
+    as well as anything you wish to have readily accessible in your scripts
+    as key:value pairs.
+    A typical example is 'interesting_unit_type':[unit1, unit2],
+    but it could also be 'comment_on_behaviour':'great for 100 trials then got tired'.
+
+    In **ds_paths_master**, the paths must be following this structure:
+    pathToDataset1Root/datasetName/datasetName_probe1.
+    Every dataset in ds_master must also be in **ds_paths_master**
+    and vice versa (every dataset must have a path!).
+
+    **ds_behav_master** contains dictionnaries of anything, allowing you to flexibly
+    add any data you would like to have access to while doing your analysis.
+    For instance, {'running_wheel_diameter':20, 'ntrials':'143', 'mouse nickname':'mickey'}.
+    Every dataset in ds_behav_master must also be in ds_master ;
+    the inverse is not true (not every dataset has behavioural parameters).
+
+    ------------------------------------------------------------------------------
+
+    Parameters:
+
+        - ds_master: str, path to json file with following structure:
+            {
+            'dataset1_name':{
+                'probe1':{
+                    'key1':[unit1, unit2, unit3],
+                    'key2':'some_string',
+                    'key3':{some dict},
+                    ...
+                    }
+                'probe2': ... # eventually
+                }
+            'dataset2_name': ... # eventually
+            }
+
+        - ds_paths_master str, path to json file with following structure:
+            {
+            'dataset1_name':'path_to_dataset1_root',
+            'dataset2_name':'path_to_dataset2_root',
+            ...
+            }
+
+        - ds_behav_master str, path to json file with following structure:
+            {
+            'dataset1_name':{behaviour parameters, any keys/values},
+            'dataset2_name':{behaviour parameters, any keys/values},
+            ...
+            }
+
+    ------------------------------------------------------------------------------
+
+    Returns:
+
+        - DSs: dictionnary of datasets with the following structure:
+            {
+            'dataset1_name':{}
+                'dp':'path_to_dataset1_root_from_ds_paths_master/dataset1_name',
+
+                'behav_params':{behaviour parameters from ds_behav_master},
+
+                'probe1':{
+                    'dp':'path/to/probe/subdirectory' # contains recording and kilosort files of probe1
+                    'key1':[unit1, unit2, unit3],
+                    'key2':'some_string',
+                    'key3':{some dict},...
+                    }
+                'probe2': ... # eventually
+                }
+            'dataset2_name': ... # eventually
+            }
+    """
+    with open(ds_master) as f:
+        DSs = json.load(f)
+
+    with open(ds_paths_master) as f:
+        dp_dic = json.load(f)
+        for ds_name, dp in dp_dic.items():
+            dp=Path(dp)/f'{ds_name}'
+            DSs[ds_name]["dp"]=str(dp)
+            assert dp.exists(),\
+                f"""WARNING path {dp} does not seem to exist!
+                Edit path of {ds_name}:path in {ds_paths_master}."""
+            for prb in DSs[ds_name].keys():
+                if 'probe' in prb:
+                    dp_prb=dp/f'{ds_name}_{prb}'
+                    assert dp.exists(),\
+                        f"""WARNING path {dp_prb} does not seem to exist!
+                        Edit path of {ds_name}:path in {ds_paths_master}
+                        and check that all probes are in subdirectories."""
+                    DSs[ds_name][prb]["dp"]=str(dp_prb)
+
+    for ds_name, ds in DSs.items():
+        assert "dp" in ds.keys(), \
+            f"""WARNING dataset {ds_name} does not have a path!
+            Add it as a key:value pair in {ds_paths_master}."""
+
+    # Add behavioural parameters to the dict for relevant datasets,
+    # if any
+    if ds_behav_master is not None:
+        with open(ds_behav_master) as f:
+            behav_params_dic = json.load(f)
+            for ds_name, params in behav_params_dic.items():
+                DSs[ds_name]["behav_params"]=params
+
+    return DSs
 
 def get_rec_len(dp, unit='seconds'):
     assert unit in ['samples', 'seconds', 'milliseconds']
@@ -78,15 +193,15 @@ def get_units(dp, quality='all', chan_range=None, again=False):
 def get_good_units(dp):
     return get_units(dp, quality='good')
 
-### Below, utilities for circuit prophyler
+### Below, utilities for dataset merger
 ### (in particular used to merge simultaneously recorded datasets)
 
 def get_ds_table(dp_pro):
     ds_table = pd.read_csv(Path(dp_pro, 'datasets_table.csv'), index_col='dataset_i')
     for dp in ds_table['dp']:
-        assert op.exists(dp), f"WARNING you have instanciated this prophyler merged dataset from paths of which one doesn't exist anymore:{dp}!"
+        assert op.exists(dp), \
+            f"WARNING you have instanciated this merged dataset from paths of which one doesn't exist anymore:{dp}!"
     return ds_table
-
 
 def get_dataset_id(u):
     '''
@@ -96,7 +211,9 @@ def get_dataset_id(u):
         - u: int, unit index
         - ds_i: int, dataset index
     '''
-    assert assert_float(u), "Seems like the argument passed isn't a float - calling this function is meaningless."
+    assert assert_float(u), "Seems like the unit passed isn't a float - \
+        calling this function on a merged dataset is meaningless \
+        (cannot tell which dataset the unit belongs to!)."
     return int(round(u%1*10)), int(u)
 
 def assert_same_dataset(U):
@@ -105,7 +222,7 @@ def assert_same_dataset(U):
     return all(get_dataset_id(U[0])[0] == get_dataset_id(u)[0] for u in U[1:])
 
 def assert_multi(dp):
-    return op.basename(dp)[:9]=='prophyler'
+    return op.basename(dp)[:9]=='merger'
 
 def get_ds_ids(U):
     return (U%1*10).round(0).astype(int)
@@ -113,7 +230,7 @@ def get_ds_ids(U):
 def get_dataset_ids(dp_pro):
     '''
     Parameters:
-        - dp_pro: str, path to prophyler dataset
+        - dp_pro: str, path to merged dataset
     Returns:
         - dataset_ids: np array of shape (N_spikes,), indices of dataset of origin for all spikes
     '''
@@ -121,7 +238,7 @@ def get_dataset_ids(dp_pro):
     return get_ds_ids(get_units(dp_pro))
 
 def get_source_dp_u(dp, u):
-    '''If dp is a prophyler datapath, returns datapath from source dataset and unit as integer.
+    '''If dp is a merged datapath, returns datapath from source dataset and unit as integer.
        Else, returns dp and u as they are.
     '''
     if assert_multi(dp):

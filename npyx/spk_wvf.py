@@ -137,7 +137,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, subset_selection='regu
     fileSizeBytes=op.getsize(dat_path)
     assert meta['fileSizeBytes'] == fileSizeBytes,\
         f'''Mismatch between ap.meta and ap.bin file size (assumed encoding is {dtype} and Nchannels is {n_channels_dat})!!
-        Prob wrong meta file - just edit fileSizeBytes and be aware that something went wrong in your data management...'''
+        Prob wrong meta file - just edit fileSizeBytes in the .ap.meta file at {dp} (replace with {fileSizeBytes}) and be aware that something went wrong in your data management...'''
 
     # Select subset of spikes
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
@@ -260,7 +260,6 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
         raise ValueError('No support yet for passing multiple spike indices. Exiting.')
 
 
-    # dp, u = get_prophyler_source(dp, u)
     dprm = Path(dp,'routinesMemory')
 
     fn=f"dsm_{u}_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
@@ -352,16 +351,16 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
     # find the 10long vecotrs where teh peak channel is the most common one
     # sum up the values of these 10 loong blocks
 
-#    breakpoint() 
+#    breakpoint()
 
     # get the slices of tens where the peak channel was the overall most likley peak channel
     # take these waves and extract them again so they can be averaged together
 
     # count the frequncy of each channel to get which channels were the most active overall
 
-    # chans,count  = np.unique(peak_chan_split[:,0], return_counts = True) 
+    # chans,count  = np.unique(peak_chan_split[:,0], return_counts = True)
     all_chan_peaks = peak_chan_split_indices[:,1].astype(np.int32)
-#    chans,count  = np.unique(peak_chan_split_indices[:,1].astype(np.int32), return_counts = True) 
+#    chans,count  = np.unique(peak_chan_split_indices[:,1].astype(np.int32), return_counts = True)
     chans,count  = np.unique(all_chan_peaks, return_counts = True)
 
     more_than_100_chans = chans[count>chans_counts]
@@ -376,7 +375,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
     # Find the channel with the highest median from all channels
     median_common_chan =int(more_than_100_chans[np.argmax(median_chans)])
 
-#    median_common_chan = 123 
+#    median_common_chan = 123
 #    print('peak chan set at 123!')
     # So we have the channel that has the highest median of amplitudes.
     # Now we pick out the blocks of 10 spikes that were on this channel
@@ -475,7 +474,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
 
 
     return mean_shifted_waves, mean_shift_all, median_max_spike_ids, median_common_chan
-    
+
 
 def max_amp_consecutive_peaks_break(mean_waves: np.array) -> tuple:
 
@@ -719,6 +718,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
     return peak_chans # units, channels
 
 def get_peak_pos(dp, unit, use_template=False):
+    "Returns [x,y] relative position on the probe in um (y=0 at probe tip)."
     dp, unit = get_source_dp_u(dp, unit)
     peak_chan=get_peak_chan(dp, unit, use_template)
     pos = np.load(Path(dp,'channel_positions.npy'))

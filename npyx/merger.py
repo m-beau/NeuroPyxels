@@ -3,44 +3,36 @@
 2019-06-13
 @author: Maxime Beau, Neural Computations Lab, University College London
 
-WARNING - DO NOT TRY TO ACTUALLY STORE DATA IN THE DATASET OBJECT, THIS WAS THE FLAW OF XTRADATAMANAGER!
-INSTEAD, MEMORYMAP EVERYTHING IN THE ROUTINESMEMORY FOLDER
-THE DATASET AND SUBSEQUENT CLASSES SHOULD BE CONECPTUALLY NOTHING BUT
-1) WAYS TO INITIATE HIGH DATA PROCESSING
-2) SYMBOLIC LINKS TO THE PROCESSED DATA STORED ON THE MACHINE
-
-Circuit prophyler class: embeds a set of functions whose end goal is to represent a Neuropixels Dataset as a network
+Dataset merger class: represents a collection of Neuropixels Datasets (no theoretical upper limit on number of probes)
+as a networkx network
 with nodes being characterized as cell types
 and edges as putative connections.
-
-It is exploiting all the basic Neuropixels routines as well as the python module NetworkX.
 
 The way to use it is as follow:
 
 # initiation
-DPs = {'dataset name 1': path/to/dataset1,...} # dic listing the datasets paths
-pro = Prophyler(DPs['dataset name 1'])
+dp_dic = {'probe1': 'path/to/dataset1', 'probe2':'path/to/dataset2', ...}
+merged = Merger(dp_dic)
 
-# Connect the graph
-pro.connect_graph()
-
+# Connect the graph with putative monosynaptic connections
+merged.connect_graph()
 
 # Plot the graph
-pro.plot_graph()
+merged.plot_graph()
 
 # Get N of putative connections of a given node spotted on the graph
-pro.get_node_edges(node)
+merged.get_node_edges(node)
 
 # Only keep a set of relevant nodes or edges and plot it again
-pro.keep_edges(edges_list)
-pro.keep_nodes_list(nodes_list)
-pro.plot_graph()
+merged.keep_edges(edges_list)
+merged.keep_nodes_list(nodes_list)
+merged.plot_graph()
 
-# every graph operation of circuit prophyler can be performed on external networkx graphs
+# every graph operation of dataset merger can be performed on external networkx graphs
 # provided with the argument 'src_graph'
-g=pro.get_graph_copy(prophylerGraph='undigraph')
-pro.keep_nodes_list(nodes_list, src_graph=g) # g itself will be modified, not need to do g=...
-pro.plot_graph(graph_src=g)
+g=merged.get_graph_copy(mergerGraph='undigraph')
+merged.keep_nodes_list(nodes_list, src_graph=g) # g itself will be modified, not need to do g=...
+merged.plot_graph(graph_src=g)
 
 
 """
@@ -72,37 +64,65 @@ from npyx.corr import gen_sfc
 
 import networkx as nx
 
-class Prophyler:
+class Merger:
     '''
-    For single probe recording:
-    >>> dp = path/to/kilosort/output
-    >>> pro = Prophyler(dp)
+    Represents a collection of Neuropixels Datasets (no theoretical upper limit on number of probes)
+    as a networkx network, with nodes being characterized as cell types
+    and edges as putative connections.
 
-    Structure of pro: pro generated a networkx graph whose nodes correspond to the dataset units labeled as good.
+    Initially designed to explore graph properties of networks,
+    it is mainly used to simply merge datasets together and align data accross probes!
+
+    Any npyx function will run on a merged dataset just as on a regular dataset directory.
+
+    --------- Initialization -> simply merge datasets together ---------
+
+    Usage for single probe recording:
+    >>> dp = path/to/kilosort/output
+    >>> merged = Merger(dp)
+
+    Structure of merged: merged generated a networkx graph whose nodes correspond to the dataset units labeled as good.
     Bear in mind that the graph nodes are actual objects, instances of Unit(), making this structure more powerful
-    Because the relevant rtn methods can be integrated either in the Dataset class (connections related stuff) or the Units class (individual units related stuff)
+    Because relevant methods can be integrated either in the Dataset class (connections related stuff) or the Units class (individual units related stuff)
 
     If you want to access unit u:
-    >>> pro.units[u]
-    >>> pro.units[u].trn(): equivalent to npyx.spk_t.trn(dp,u)
+    >>> merged.units[u]
+    >>> merged.units[u].trn(): equivalent to npyx.spk_t.trn(dp,u)
 
     The units can also be accessed through the 'unit' attributes of the graph nodes:
-    >>> pro.graph.nodes[u]]['unit'].trn() returns the same thing as ds.units[u].trn()
+    >>> merged.graph.nodes[u]['unit'].trn() returns the same thing as ds.units[u].trn()
 
     For multi probes recordings:
     >>> dp_dic = {'name_probe_1':'path/to/kilosort/output', ...
             }
-    >>> multipro = Prophyler(dp_dic)
+    >>> merged = Merger(dp_dic)
 
-    multipro has the same structure as pro, but
-    - nested into dictionaries for dataset-specific items: pro.dp becomes multipro.dp['name_probe_1'], pro.units becomes multipro.units['name_probe_1'] etc
-    - still accessible directly for across-datasets items: pro.graph remains multipro.graph
+    Here merged has the same structure as for a single path, but
+    - nested into dictionaries for dataset-specific items: merged.dp becomes multimerged.dp['name_probe_1'], merged.units becomes multimerged.units['name_probe_1'] etc
+    - still accessible directly for across-datasets items: merged.graph remains multimerged.graph
 
-    The way it works is:
-        Thanks to the Unit class which takes in independently a given dataset and a given graph,
-        it is possible to instanciate the Units with their own datasets but the same graph.
+    --------- Use graph related utilities (experimental) ---------
 
-        The reference for the channel map is the
+    Connect the graph with putative monosynaptic connections
+    >>> merged.connect_graph()
+
+    Plot the graph
+    >>> merged.plot_graph()
+
+    Get N of putative connections of a given node spotted on the graph
+    >>> merged.get_node_edges(node)
+
+    Only keep a set of relevant nodes or edges and plot it again
+    >>> merged.keep_edges(edges_list)
+    >>> merged.keep_nodes_list(nodes_list)
+    >>> merged.plot_graph()
+
+    every graph operation of dataset merger can be performed on external networkx graphs
+    provided with the argument 'src_graph'
+    >>> g=merged.get_graph_copy(mergerGraph='undigraph')
+    >>> merged.keep_nodes_list(nodes_list, src_graph=g) # g itself will be modified, not need to do g=...
+    >>> merged.plot_graph(graph_src=g)
+
     '''
 
 
@@ -136,7 +156,7 @@ class Prophyler:
         self.ds_table.sort_values('dataset_i', axis=0, inplace=True)
         self.ds_table.set_index('dataset_i', inplace=True)
 
-        # Instanciate datasets and define the prophyler path, where the 'merged' data will be saved,
+        # Instanciate datasets and define the merger path, where the 'merged' data will be saved,
         # together with the dataset table, holding information about the datasets (indices, names, source paths etc)
         ds_names=''
         predirname=op.dirname(self.ds_table['dp'][0])
@@ -147,23 +167,27 @@ class Prophyler:
             ds_names+='_'+self.ds[ds_i].name
             if predirname!=op.dirname(dp):
                 print('WARNING: all your datasets are not stored in the same pre-directory - {} is picked anyway.'.format(predirname))
-        self.dp_pro= Path(predirname) / ('prophyler'+ds_names) #Path(predirname, 'prophyler'+ds_names)
+        self.dp_merged = Path(predirname) / ('merged'+ds_names) #Path(predirname, 'merger'+ds_names)
+        old_prophyler_path = Path(predirname) / ('prophyler'+ds_names)
+        if old_prophyler_path.exists():
+            # backward compatibility - rename path
+            os.rename(str(old_prophyler_path), str(self.dp_merged))
         self.name=ds_names
-        print('>>> Prophyler data (shared across {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_pro))
-        if not op.isdir(self.dp_pro):
-            os.mkdir(self.dp_pro)
+        print('>>> Merger data (shared across {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_merged))
+        if not op.isdir(self.dp_merged):
+            os.mkdir(self.dp_merged)
         else:
-            ds_table=pd.read_csv(Path(self.dp_pro, 'datasets_table.csv'), index_col='dataset_i') #pd.read_csv(Path(self.dp_pro, 'datasets_table.csv'), index_col='dataset_i')
+            ds_table=pd.read_csv(Path(self.dp_merged, 'datasets_table.csv'), index_col='dataset_i') #pd.read_csv(Path(self.dp_merged, 'datasets_table.csv'), index_col='dataset_i')
             for ds_i in ds_table.index:
                 try:
                     assert self.ds_table.loc[ds_i, 'probe']==ds_table.loc[ds_i, 'probe']
                 except:
-                    print('''WARNING you ran circuit prophyler on these {} datasets in the past \
+                    print('''WARNING you ran dataset merger on these {} datasets in the past \
                               but used the probe names {} for datasets {} ({} currently)!! Using new probe names. \
-                              If you wish to use the same probe names as before, re-instanciate prophyler with these.\
+                              If you wish to use the same probe names as before, re-instanciate merger with these.\
                               '''.format(len(self.ds_table.index), ds_table['probe'].tolist(), ds_table.index.tolist(), self.ds_table['probe'].tolist()))
             del ds_table
-        self.ds_table.to_csv(Path(self.dp_pro, 'datasets_table.csv')) # self.ds_table.to_csv(Path(self.dp_pro, 'datasets_table.csv'))
+        self.ds_table.to_csv(Path(self.dp_merged, 'datasets_table.csv')) # self.ds_table.to_csv(Path(self.dp_merged, 'datasets_table.csv'))
 
         # Load and save units qualities
         # + check whether datasets have been re-spike sorted if not first instanciation
@@ -173,7 +197,7 @@ class Prophyler:
             cl_grp = load_units_qualities(self.ds[ds_i].dp)
             cl_grp['cluster_id']=cl_grp['cluster_id']+1e-1*ds_i
             qualities=qualities.append(cl_grp, ignore_index=True)
-        qualities_dp=Path(self.dp_pro, 'cluster_group.tsv')
+        qualities_dp=Path(self.dp_merged, 'cluster_group.tsv')
         if op.exists(qualities_dp):
             qualities_old=pd.read_csv(qualities_dp, sep='	')
             # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
@@ -186,7 +210,7 @@ class Prophyler:
         # Only if merged_clusters_times does not exist already or does but re-spikesorting has been detected
         merge_fname_times='spike_times'
         merge_fname_clusters='spike_clusters'
-        if (not op.exists(Path(self.dp_pro, merge_fname_times+'.npy'))) or re_spksorted:
+        if (not op.exists(Path(self.dp_merged, merge_fname_times+'.npy'))) or re_spksorted:
             print(">>> Loading spike trains of {} datasets...".format(len(self.ds_table.index)))
             spike_times, spike_clusters, sync_signals = [], [], []
             for ds_i in self.ds_table.index:
@@ -201,7 +225,7 @@ class Prophyler:
             NspikesTotal=0
             for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
 
-            # If several datasets are fed to the prophyler, align their spike times.
+            # If several datasets are fed to the merger, align their spike times.
             # Merged dataset is saved as two arrays:
             # spike_times and spike_clusters, as in a regular dataset,
             # but where spike_clusters is a larger int (1 is unit 1 from dataset 0, 1,000,000,001 is unit 1 from dataset 1)
@@ -219,20 +243,20 @@ class Prophyler:
                 cum_Nspikes+=Nspikes
             merged_spike_clusters=merged_spike_clusters[np.argsort(merged_spike_times)]
             merged_spike_times=np.sort(merged_spike_times)
-            np.save(Path(self.dp_pro, merge_fname_clusters+'.npy'), merged_spike_clusters)
-            np.save(Path(self.dp_pro, merge_fname_times+'.npy'), merged_spike_times)
-            print(f'>>> {merge_fname_times} and {merge_fname_clusters} saved at {self.dp_pro}.')
+            np.save(Path(self.dp_merged, merge_fname_clusters+'.npy'), merged_spike_clusters)
+            np.save(Path(self.dp_merged, merge_fname_times+'.npy'), merged_spike_times)
+            print(f'>>> {merge_fname_times} and {merge_fname_clusters} saved at {self.dp_merged}.')
             del spike_times, spike_clusters, sync_signals, merged_spike_clusters, merged_spike_times
 
-            print(f'>>> {merge_fname_times} and {merge_fname_clusters} found at {self.dp_pro} and memory mapped at self.merged_spike_clusters and self.merged_spike_clusters.')
-            self.merged_spike_clusters=np.memmap(Path(self.dp_pro, merge_fname_clusters+'.npy'))
-            self.merged_spike_times=np.memmap(Path(self.dp_pro, merge_fname_times+'.npy'))
+            print(f'>>> {merge_fname_times} and {merge_fname_clusters} found at {self.dp_merged} and memory mapped at self.merged_spike_clusters and self.merged_spike_clusters.')
+            self.merged_spike_clusters=np.memmap(Path(self.dp_merged, merge_fname_clusters+'.npy'))
+            self.merged_spike_times=np.memmap(Path(self.dp_merged, merge_fname_times+'.npy'))
 
         # CREATE A KEYWORD IN CCG FUNCTION: MERGED_DATASET=TRUE OR FALSE - IF TRUE, HANDLES LOADED FILE DIFFERENTLY
 
         # Create a networkX graph whose nodes are Units()
         self.undigraph=nx.MultiGraph() # Undirected multigraph - directionality is given by uSrc and uTrg. Several peaks -> several edges -> multigraph.
-        self.dpnet=Path(self.dp_pro, 'network')
+        self.dpnet=Path(self.dp_merged, 'network')
         if not op.isdir(self.dpnet): os.mkdir(self.dpnet)
 
         self.peak_positions={}
@@ -247,26 +271,26 @@ class Prophyler:
                 self.units[unit.nodename]=unit
 
 
-    def get_graph(self, prophylerGraph='undigraph'):
-        assert prophylerGraph in ['undigraph', 'digraph']
-        if prophylerGraph=='undigraph':
+    def get_graph(self, mergerGraph='undigraph'):
+        assert mergerGraph in ['undigraph', 'digraph']
+        if mergerGraph=='undigraph':
             return self.undigraph
-        elif prophylerGraph=='digraph':
+        elif mergerGraph=='digraph':
             if 'digraph' not in dir(self): self.make_directed_graph()
             return self.digraph
         else:
             print("WARNING graph should be either 'undigraphundigraph=nx.MultiGraph()' to pick self.undigraph or 'digraph' to pick self.digaph. Aborting.")
             return
 
-    def get_graph_copy(self, prophylerGraph='undigraph'):
-        return self.get_graph(prophylerGraph).copy()
+    def get_graph_copy(self, mergerGraph='undigraph'):
+        return self.get_graph(mergerGraph).copy()
 
     def connect_graph(self, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3,
                       fract_baseline=4./5, W_sd=10, test='Poisson_Stark', again=False, againCCG=False, plotsfcm=False,
                       drop_seq=['sign', 'time', 'max_amplitude'], name=None, use_template_for_peakchan=True, subset_selection='all',
-                      prophylerGraph='undigraph', src_graph=None):
+                      mergerGraph='undigraph', src_graph=None):
 
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
 
         g.remove_edges_from(list(g.edges)) # reset
@@ -275,7 +299,7 @@ class Prophyler:
         if len(graphs)>0:
             while 1:
                 load_choice=input("""Saved graphs found in {}:{}. \
-                      Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(Path(self.dp_pro, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
+                      Dial a filename index to load it, or <sfc> to build it from the significant functional correlations table:""".format(Path(self.dp_merged, 'graph'), ["{}:{}".format(gi, g) for gi, g in enumerate(graphs)]))
                 try: # works if an int is inputed
                     load_choice=int(ale(load_choice))
                     g=self.import_graph(Path(self.dpnet, graphs[load_choice]))
@@ -297,7 +321,7 @@ class Prophyler:
 
         print("""Building graph connections from significant functional correlations table
               with cbin={}, cwin={}, p_th={}, n_consec_bins={}, fract_baseline={}, W_sd={}, test={}.""".format(cbin, cwin, p_th, n_consec_bins, fract_baseline, W_sd, test))
-        sfc, sfcm, peakChs, sigstack, sigustack = gen_sfc(self.dp_pro, corr_type, metric, cbin, cwin,
+        sfc, sfcm, peakChs, sigstack, sigustack = gen_sfc(self.dp_merged, corr_type, metric, cbin, cwin,
                                 p_th, n_consec_bins, fract_baseline, W_sd, test,
                                 again, againCCG, drop_seq,
                                 pre_chanrange=None, post_chanrange=None, units=None, name=name,
@@ -307,7 +331,7 @@ class Prophyler:
         g=self.map_sfc_on_g(g, self.sfc, criteria)
         self.make_directed_graph()
         if plotsfcm:
-            npyx.plot.plot_sfcm(self.dp_pro, corr_type, metric,
+            npyx.plot.plot_sfcm(self.dp_merged, corr_type, metric,
                                     cbin, cwin, p_th, n_consec_bins, fract_baseline, W_sd, test,
                                     depth_ticks=True, regions={}, reg_colors={}, again=again, againCCG=againCCG, drop_seq=drop_seq)
 
@@ -345,15 +369,15 @@ class Prophyler:
         # - if the edge a->b has t<-1ms: directed b->a, >1ms: directed a->b, -1ms<t<1ms: a->b AND b->a (use uSrc and uTrg to figure out who's a and b)
 
         if only_main_edges:
-            self.keep_edges(prophylerGraph='undigraph', src_graph=g, edges_types='main')
+            self.keep_edges(mergerGraph='undigraph', src_graph=g, edges_types='main')
         for edge in self.get_edges(frmt='list', src_graph=g):
-            uSrc=self.get_edge_attribute(edge, 'uSrc', prophylerGraph='undigraph', src_graph=src_graph)
-            uTrg=self.get_edge_attribute(edge, 'uTrg', prophylerGraph='undigraph', src_graph=src_graph)
-            t=self.get_edge_attribute(edge, 't', prophylerGraph='undigraph', src_graph=src_graph)
-            amp=self.get_edge_attribute(edge, 'amp', prophylerGraph='undigraph', src_graph=src_graph)
-            width=self.get_edge_attribute(edge, 'width', prophylerGraph='undigraph', src_graph=src_graph)
-            label=self.get_edge_attribute(edge, 'label', prophylerGraph='undigraph', src_graph=src_graph)
-            criteria=self.get_edge_attribute(edge, 'criteria', prophylerGraph='undigraph', src_graph=src_graph)
+            uSrc=self.get_edge_attribute(edge, 'uSrc', mergerGraph='undigraph', src_graph=src_graph)
+            uTrg=self.get_edge_attribute(edge, 'uTrg', mergerGraph='undigraph', src_graph=src_graph)
+            t=self.get_edge_attribute(edge, 't', mergerGraph='undigraph', src_graph=src_graph)
+            amp=self.get_edge_attribute(edge, 'amp', mergerGraph='undigraph', src_graph=src_graph)
+            width=self.get_edge_attribute(edge, 'width', mergerGraph='undigraph', src_graph=src_graph)
+            label=self.get_edge_attribute(edge, 'label', mergerGraph='undigraph', src_graph=src_graph)
+            criteria=self.get_edge_attribute(edge, 'criteria', mergerGraph='undigraph', src_graph=src_graph)
 
             # Just make all the edges directed
             if t>0: # if close to 0 bidirectional, if >1
@@ -371,8 +395,8 @@ class Prophyler:
             return digraph
 
 
-    def get_nodes(self, frmt='array', prophylerGraph='undigraph', src_graph=None):
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+    def get_nodes(self, frmt='array', mergerGraph='undigraph', src_graph=None):
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
 
         assert frmt in ['list', 'array', 'dict', 'dataframe']
@@ -391,8 +415,8 @@ class Prophyler:
 
         return nodes
 
-    def get_edges(self, frmt='array', keys=True, prophylerGraph='undigraph', src_graph=None):
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+    def get_edges(self, frmt='array', keys=True, mergerGraph='undigraph', src_graph=None):
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
 
         assert frmt in ['list', 'array', 'dict', 'dataframe']
@@ -411,52 +435,52 @@ class Prophyler:
                 edges=npa(edges)
         return edges
 
-    def get_node_attributes(self, n, prophylerGraph='undigraph', src_graph=None):
-        return self.get_nodes(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[n]
+    def get_node_attributes(self, n, mergerGraph='undigraph', src_graph=None):
+        return self.get_nodes(frmt='dict', mergerGraph=mergerGraph, src_graph=src_graph)[n]
 
-    def get_node_attribute(self, n, at, prophylerGraph='undigraph', src_graph=None):
+    def get_node_attribute(self, n, at, mergerGraph='undigraph', src_graph=None):
         assert at in ['unit', 'groundtruthCellType', 'classifiedCellType']
-        return self.get_node_attributes(n, prophylerGraph, src_graph)[at]
+        return self.get_node_attributes(n, mergerGraph, src_graph)[at]
 
-    def set_node_attribute(self, n, at, at_val, prophylerGraph='undigraph', src_graph=None):
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+    def set_node_attribute(self, n, at, at_val, mergerGraph='undigraph', src_graph=None):
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
 
         assert at in ['unit', 'groundtruthCellType', 'classifiedCellType']
         nx.set_node_attributes(g, {n:{at:at_val}})
 
-    def get_edge_keys(self, e, prophylerGraph='undigraph', src_graph=None):
+    def get_edge_keys(self, e, mergerGraph='undigraph', src_graph=None):
         assert len(e)==2
-        npe=self.get_edges(prophylerGraph=prophylerGraph, src_graph=src_graph)
+        npe=self.get_edges(mergerGraph=mergerGraph, src_graph=src_graph)
         keys=npe[((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))][:,2]
         return keys
 
-    def get_edge_attributes(self, e, prophylerGraph='undigraph', src_graph=None):
+    def get_edge_attributes(self, e, mergerGraph='undigraph', src_graph=None):
 
         assert len(e)==2 or len(e)==3
         e = tuple(e)
         if len(e)==3:
             try: # check that nodes are in the right order - multi directed graph
-                return self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[e]
+                return self.get_edges(frmt='dict', mergerGraph=mergerGraph, src_graph=src_graph)[e]
             except:
-                return self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],e[2])]
+                return self.get_edges(frmt='dict', mergerGraph=mergerGraph, src_graph=src_graph)[(e[1],e[0],e[2])]
         elif len(e)==2:
-            keys=self.get_edge_keys(e, prophylerGraph=prophylerGraph, src_graph=src_graph)
+            keys=self.get_edge_keys(e, mergerGraph=mergerGraph, src_graph=src_graph)
             edges={}
             for k in keys:
                 try: # check that nodes are in the right order - multi directed graph
-                    edges[k]=self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[0],e[1],k)]
+                    edges[k]=self.get_edges(frmt='dict', mergerGraph=mergerGraph, src_graph=src_graph)[(e[0],e[1],k)]
                 except:
-                    edges[k]=self.get_edges(frmt='dict', prophylerGraph=prophylerGraph, src_graph=src_graph)[(e[1],e[0],k)]
+                    edges[k]=self.get_edges(frmt='dict', mergerGraph=mergerGraph, src_graph=src_graph)[(e[1],e[0],k)]
             return edges
 
-    def get_edge_attribute(self, e, at, prophylerGraph='undigraph', src_graph=None):
+    def get_edge_attribute(self, e, at, mergerGraph='undigraph', src_graph=None):
 
         assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
-        return self.get_edge_attributes(e, prophylerGraph, src_graph)[at]
+        return self.get_edge_attributes(e, mergerGraph, src_graph)[at]
 
-    def set_edge_attribute(self, e, at, at_val, prophylerGraph='undigraph', src_graph=None):
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+    def set_edge_attribute(self, e, at, at_val, mergerGraph='undigraph', src_graph=None):
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
 
         assert at in ['uSrc','uTrg','amp','t','sign','width','label','criteria']
@@ -464,8 +488,8 @@ class Prophyler:
         e = tuple(e)
         nx.set_edge_attributes(g, {e:{at:at_val}})
 
-    def get_edges_with_attribute(self, at, at_val, logical='==', tolist=True, prophylerGraph='undigraph', src_graph=None):
-        edges=self.get_edges(frmt='dataframe', keys=True, prophylerGraph=prophylerGraph, src_graph=src_graph) # raws are attributes, columns indices
+    def get_edges_with_attribute(self, at, at_val, logical='==', tolist=True, mergerGraph='undigraph', src_graph=None):
+        edges=self.get_edges(frmt='dataframe', keys=True, mergerGraph=mergerGraph, src_graph=src_graph) # raws are attributes, columns indices
         assert at in edges.index
         ops={'==':operator.eq, '!=':operator.ne, '<':operator.lt, '<=':operator.le, '>':operator.gt, '>=':operator.ge}
         assert logical in ops.keys()
@@ -473,8 +497,8 @@ class Prophyler:
         return ewa.to_list() if tolist else ewa
 
 
-    def get_node_edges(self, u, prophylerGraph='undigraph', src_graph=None):
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+    def get_node_edges(self, u, mergerGraph='undigraph', src_graph=None):
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
         node_edges={}
         for dsiunt, e_unt in g[u].items():
@@ -483,7 +507,7 @@ class Prophyler:
 
         return node_edges
 
-    def keep_nodes_list(self, nodes_list, prophylerGraph='undigraph', src_graph=None):
+    def keep_nodes_list(self, nodes_list, mergerGraph='undigraph', src_graph=None):
         '''
         Remove edges not in edges_list if provided.
         edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
@@ -492,16 +516,16 @@ class Prophyler:
         if src_graph is provided, operations are performed on it and the resulting graph is returned.
         else, nothing is returned since operations are performed on self attribute undigraph or digraph.
         '''
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
 
         if len(nodes_list)==0:
             return g
-        npn=npa(self.get_nodes(prophylerGraph=prophylerGraph, src_graph=src_graph))
+        npn=npa(self.get_nodes(mergerGraph=mergerGraph, src_graph=src_graph))
         nodes_list_idx=npa([])
         for n in nodes_list:
             try:
-                #keys=self.get_edge_keys(e, prophylerGraph=prophylerGraph)
+                #keys=self.get_edge_keys(e, mergerGraph=mergerGraph)
                 #assert np.any((((npe[:,0]==e[0])&(npe[:,1]==e[1]))|((npe[:,0]==e[1])&(npe[:,1]==e[0]))))
                 nodes_list_idx=np.append(nodes_list_idx, np.nonzero(npn==n)[0])
             except:
@@ -515,7 +539,7 @@ class Prophyler:
         if src_graph is not None:
             return g
 
-    def keep_edges(self, edges_list=None, edges_types=None, operator='and', prophylerGraph='undigraph', src_graph=None, use_edge_key=True, t_asym=1):
+    def keep_edges(self, edges_list=None, edges_types=None, operator='and', mergerGraph='undigraph', src_graph=None, use_edge_key=True, t_asym=1):
         '''
         Remove edges not in edges_list if provided.
         edges_list can be a list of [(u1, u2),] 2elements tuples or [(u1,u2,key),] 3 elements tuples.
@@ -528,7 +552,7 @@ class Prophyler:
         IF IT IS A LIST OF THESE, THE OR OPERATOR WILL BE USED BETWEEN THEM (['-', 'main'] will return some positive ccgs!)
         If edges_list is not None, the edges_list is kept and edges_type argument is ignored.
         '''
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
         if edges_list is None and edges_types is None:
             print('WARNING you should not call keep_edges() without providing any edges_list or edges_type to keep. Aborting.')
@@ -539,10 +563,10 @@ class Prophyler:
             for et in edges_types: assert et in ['main', '-', '+', 'ci']
             assert type(edges_types) in [list, np.ndarray]
             # Use dfe to store edges that one wants to keep or not
-            dfe=self.get_edges(frmt='dataframe', prophylerGraph=prophylerGraph, src_graph=g)
-            npe=self.get_edges(prophylerGraph=prophylerGraph, src_graph=g)
+            dfe=self.get_edges(frmt='dataframe', mergerGraph=mergerGraph, src_graph=g)
+            npe=self.get_edges(mergerGraph=mergerGraph, src_graph=g)
             if not any(dfe):
-                print('WARNING prophyler.keep_edges function called but the provided graph does not seem to have any edges to work on! Use connect_graph first. Aborting.')
+                print('WARNING merger.keep_edges function called but the provided graph does not seem to have any edges to work on! Use connect_graph first. Aborting.')
                 return g
 
             # get amplitudes and times
@@ -593,7 +617,7 @@ class Prophyler:
             edges_list=dfe.index.tolist()
 
         if not any(edges_list):
-            print('WARNING prophyler.keep_edges function called but resulted in all edges being kept!')
+            print('WARNING merger.keep_edges function called but resulted in all edges being kept!')
             return g
 
         if use_edge_key and len(edges_list[0])!=3:
@@ -622,8 +646,8 @@ class Prophyler:
 
         return g
 
-    def label_nodes(self, prophylerGraph='undigraph', src_graph=None):
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+    def label_nodes(self, mergerGraph='undigraph', src_graph=None):
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
 
         for node in g.nodes:
@@ -635,15 +659,15 @@ class Prophyler:
                     break
 
             if src_graph is not None:
-                self.set_node_attribute(node, 'groundtruthCellType', label, prophylerGraph=prophylerGraph, src_graph=src_graph) # update graph
+                self.set_node_attribute(node, 'groundtruthCellType', label, mergerGraph=mergerGraph, src_graph=src_graph) # update graph
             else:
-                self.set_node_attribute(node, 'groundtruthCellType', label, prophylerGraph=prophylerGraph, src_graph=src_graph) # update graph
+                self.set_node_attribute(node, 'groundtruthCellType', label, mergerGraph=mergerGraph, src_graph=src_graph) # update graph
             dsi, idx = node.split('_')
             self.units[dsi][idx].groundtruthCellType=label # Update class
             print("Label of node {} was set to {}.\n".format(node, label))
 
-    def label_edges(self, prophylerGraph='undigraph', src_graph=None):
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+    def label_edges(self, mergerGraph='undigraph', src_graph=None):
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
 
         edges_types=['asym_inh', 'sym_inh', 'asym_exc', 'sym_exc', 'inh_exc', 'PC_CNC', 'CS_SS', 'oscill']
@@ -656,21 +680,21 @@ class Prophyler:
 
         n_edges_init=g.number_of_edges()
         for ei, edge in enumerate(list(g.edges)):
-            ea=self.get_edge_attributes(edge, prophylerGraph=prophylerGraph, src_graph=src_graph) # u1, u2, i unpacked
+            ea=self.get_edge_attributes(edge, mergerGraph=mergerGraph, src_graph=src_graph) # u1, u2, i unpacked
 
             ##TODO - plt ccg from shared directory
-            npyx.plot.plot_ccg(self.dp_pro, [ea['uSrc'],ea['uTrg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
+            npyx.plot.plot_ccg(self.dp_merged, [ea['uSrc'],ea['uTrg']], ea['criteria']['cbin'], ea['criteria']['cwin'])
 
             label=''
             while label=='': # if enter is hit
                 print(" \n\n || Edge {}/{} ({} deleted so far)...".format(ei, n_edges_init, n_edges_init-g.number_of_edges()))
                 print(" || {0}->{1} (multiedge {2}) sig. corr.: \x1b[1m\x1b[36m{3:.2f}\x1b[0msd high, \x1b[1m\x1b[36m{4:.2f}\x1b[0mms wide, @\x1b[1m\x1b[36m{5:.2f}\x1b[0mms".format(ea['uSrc'], ea['uTrg'], edge[2], ea['amp'], ea['width'], ea['t']))
-                print(" || Total edges of source unit: {}".format(self.get_node_edges(ea['uSrc'], prophylerGraph=prophylerGraph)))
+                print(" || Total edges of source unit: {}".format(self.get_node_edges(ea['uSrc'], mergerGraph=mergerGraph)))
                 label=input(" || Current label: {}. New label? ({},\n || <s> to skip, <del> to delete edge, <done> to exit):".format(self.get_edge_attribute(edge,'label'), ['<{}>:{}'.format(i,v) for i,v in enumerate(edges_types)]))
                 try: # Will only work if integer is inputted
                     label=ale(label)
                     label=edges_types[label]
-                    self.set_edge_attribute(edge, 'label', label, prophylerGraph=prophylerGraph, src_graph=src_graph) # if src_graph is None, nothing will be returned
+                    self.set_edge_attribute(edge, 'label', label, mergerGraph=mergerGraph, src_graph=src_graph) # if src_graph is None, nothing will be returned
                     print(" || Label of edge {} was set to {}.\n".format(edge, label))
                 except:
                     if label=='del':
@@ -678,7 +702,7 @@ class Prophyler:
                         print(" || Edge {} was deleted.".format(edge))
                         break
                     elif label=='s':
-                        self.set_edge_attribute(edge, 'label', 0, prophylerGraph=prophylerGraph, src_graph=src_graph) # status quo
+                        self.set_edge_attribute(edge, 'label', 0, mergerGraph=mergerGraph, src_graph=src_graph) # status quo
                         break
                     elif label=='':
                         print("Whoops, looks like you hit enter. You cannot leave unnamed edges. Try again.")
@@ -686,7 +710,7 @@ class Prophyler:
                         print(" || Done - exitting.")
                         break
                     else:
-                        self.set_edge_attribute(edge, 'label', label, prophylerGraph=prophylerGraph, src_graph=src_graph)
+                        self.set_edge_attribute(edge, 'label', label, mergerGraph=mergerGraph, src_graph=src_graph)
                         print(" || Label of edge {} was set to {}.\n".format(edge, label))
                         break
             if label=="done":
@@ -716,14 +740,14 @@ class Prophyler:
                 ow=input(" || Warning, name already taken - overwrite? <y>/<n>:")
                 if ow=='y':
                     print(" || Overwriting graph {}.".format(file))
-                    self.export_graph(name, frmt, ow=True, prophylerGraph=prophylerGraph, src_graph=src_graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
+                    self.export_graph(name, frmt, ow=True, mergerGraph=mergerGraph, src_graph=src_graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                     break
                 elif ow=='n':
                     print(' || Ok, pick another name.')
                     pass
             else:
                 print(" || Saving graph {}.".format(file))
-                self.export_graph(name, frmt, prophylerGraph=prophylerGraph, src_graph=src_graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
+                self.export_graph(name, frmt, mergerGraph=mergerGraph, src_graph=src_graph) # 'graph_' is always appended at the beginning of the file names. It allows to spot presaved graphs.
                 break
 
     ## TODO - remove self.peakchannels from drawing - handle datasets independently
@@ -733,7 +757,7 @@ class Prophyler:
                    edges_width=5, edge_vmin=-7, edge_vmax=7, arrowsize=25, arrowstyle='-|>',
                    ylim=[4000, 0], figsize=(9, 24), show_cmap=True,
                    _format='pdf', saveDir='~/Desktop', saveFig=False,
-                   prophylerGraph='undigraph', src_graph=None):
+                   mergerGraph='undigraph', src_graph=None):
         '''
         Plotting parameters:
             - edge_labels: bool, display labels on edges with edge info (amplitude, time...)
@@ -774,9 +798,9 @@ class Prophyler:
 
         Other parameters:
             - src_graph: graph to plot. | Default: None
-            - prophylerGraph: as usual, used when no src_graph is provided, pick between 'undigraph' or 'digraph' stored as a prophyler attribute.
+            - mergerGraph: as usual, used when no src_graph is provided, pick between 'undigraph' or 'digraph' stored as a merger attribute.
         '''
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
 
         g_plt=g.copy() # careful, do not create an alias but a copy or the original graph itself will be altered!
@@ -796,9 +820,9 @@ class Prophyler:
             else:
                 g_plt=self.keep_edges(edges_types=keep_edges_types, operator=keep_edges_types_operator, src_graph=g_plt, use_edge_key=True, t_asym=t_asym)
 
-        ew = [self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph) for e in g_plt.edges]
-        e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', prophylerGraph=prophylerGraph, src_graph=src_graph), 2))\
-                  +'@'+str(np.round(self.get_edge_attribute(e, 't', prophylerGraph=prophylerGraph, src_graph=src_graph), 1))+'ms' for e in g_plt.edges}
+        ew = [self.get_edge_attribute(e, 'amp', mergerGraph=mergerGraph, src_graph=src_graph) for e in g_plt.edges]
+        e_labels={e[0:2]:str(np.round(self.get_edge_attribute(e, 'amp', mergerGraph=mergerGraph, src_graph=src_graph), 2))\
+                  +'@'+str(np.round(self.get_edge_attribute(e, 't', mergerGraph=mergerGraph, src_graph=src_graph), 1))+'ms' for e in g_plt.edges}
 
         fig, ax = plt.subplots(figsize=figsize)
         if type(nodes_color) is dict:
@@ -811,14 +835,14 @@ class Prophyler:
             if node_labels:nlabs={}
             if type(nodes_color) is dict:nCols=[]
             for node in list(g_plt.nodes):
-                pct=self.get_node_attribute(node, 'groundtruthCellType', prophylerGraph=prophylerGraph, src_graph=src_graph)
+                pct=self.get_node_attribute(node, 'groundtruthCellType', mergerGraph=mergerGraph, src_graph=src_graph)
                 if type(nodes_color) is dict:
                     if pct in nodes_color.keys():
                         nCols.append(nodes_color[pct])
                     else:
                         nCols.append(nodes_color['other'])
                 if node_labels:
-                    cct=self.get_node_attribute(node, 'classifiedCellType', prophylerGraph=prophylerGraph, src_graph=src_graph)
+                    cct=self.get_node_attribute(node, 'classifiedCellType', mergerGraph=mergerGraph, src_graph=src_graph)
                     l="{}".format(node)
                     if pct!='':
                         l+="\nput:{}".format(pct)
@@ -867,7 +891,7 @@ class Prophyler:
 
         fig.tight_layout(rect=[0, 0.03, 0.9, 0.95])
         try:
-            criteria=self.get_edge_attribute(list(g_plt.edges)[0], 'criteria', prophylerGraph=prophylerGraph, src_graph=src_graph)
+            criteria=self.get_edge_attribute(list(g_plt.edges)[0], 'criteria', mergerGraph=mergerGraph, src_graph=src_graph)
             ax.set_title("Dataset:{}\n Significance criteria:\n{}test: {}-{}-{}-{}-{}-{}.".format(self.name,
                          criteria['test'], criteria['cbin'], criteria['cwin'], criteria['p_th'], criteria['n_consec_bins'], criteria['fract_baseline'], criteria['W_sd']), fontsize=14, fontweight='bold')
         except:
@@ -882,16 +906,16 @@ class Prophyler:
         return fig
 
 
-    def export_graph(self, name='', frmt='gpickle', ow=False, prophylerGraph='undigraph', src_graph=None):
+    def export_graph(self, name='', frmt='gpickle', ow=False, mergerGraph='undigraph', src_graph=None):
         '''
         name: any srting. If 't': will be graph_aaaa-mm-dd_hh:mm:ss
         frmt: any in ['edgelist', 'adjlist', 'gexf', 'gml'] (default gpickle)'''
-        g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
+        g=self.get_graph(mergerGraph) if src_graph is None else src_graph
         if g is None: return
 
         assert frmt in ['edgelist', 'adjlist', 'gexf', 'gml', 'gpickle']
-        file=Path(self.dpnet, prophylerGraph+'_'+name+'_'+op.basename(self.dp_pro)+'.'+frmt)
-        filePickle=Path(self.dpnet, prophylerGraph+'_'+name+'_'+op.basename(self.dp_pro)+'.gpickle')
+        file=Path(self.dpnet, mergerGraph+'_'+name+'_'+op.basename(self.dp_merged)+'.'+frmt)
+        filePickle=Path(self.dpnet, mergerGraph+'_'+name+'_'+op.basename(self.dp_merged)+'.gpickle')
 
         if op.isfile(filePickle) and not ow:
             print("File name {} already taken. Pick another name or run the function with ow=True to overwrite file.")
@@ -931,7 +955,7 @@ class Prophyler:
 
 # def map_sfc_on_graph(g, dp, cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
 #              metric='amp_z', again=False, againCCG=False, name=None, use_template_for_peakchan=True, subset_selection='all'):
-#     # If called in the context of CircuitProphyler, add the connection to the graph
+#     # If called in the context of CircuitMerger, add the connection to the graph
 #     sfc, sfcm, peakChs, sigstack, sigustack = gen_sfc(dp, cbin, cwin,
 #                                         p_th, n_consec_bins, sgn, fract_baseline, W_sd, test,
 #                                         metric, again, againCCG, drop_seq,

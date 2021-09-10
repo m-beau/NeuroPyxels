@@ -193,7 +193,7 @@ def get_units(dp, quality='all', chan_range=None, again=False):
 def get_good_units(dp):
     return get_units(dp, quality='good')
 
-### Below, utilities for circuit prophyler
+### Below, utilities for dataset merger
 ### (in particular used to merge simultaneously recorded datasets)
 
 def get_ds_table(dp_pro):
@@ -222,7 +222,7 @@ def assert_same_dataset(U):
     return all(get_dataset_id(U[0])[0] == get_dataset_id(u)[0] for u in U[1:])
 
 def assert_multi(dp):
-    return op.basename(dp)[:9]=='prophyler'
+    return op.basename(dp)[:9]=='merger'
 
 def get_ds_ids(U):
     return (U%1*10).round(0).astype(int)
@@ -230,7 +230,7 @@ def get_ds_ids(U):
 def get_dataset_ids(dp_pro):
     '''
     Parameters:
-        - dp_pro: str, path to prophyler dataset
+        - dp_pro: str, path to merged dataset
     Returns:
         - dataset_ids: np array of shape (N_spikes,), indices of dataset of origin for all spikes
     '''
@@ -238,7 +238,7 @@ def get_dataset_ids(dp_pro):
     return get_ds_ids(get_units(dp_pro))
 
 def get_source_dp_u(dp, u):
-    '''If dp is a prophyler datapath, returns datapath from source dataset and unit as integer.
+    '''If dp is a merged datapath, returns datapath from source dataset and unit as integer.
        Else, returns dp and u as they are.
     '''
     if assert_multi(dp):

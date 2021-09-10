@@ -260,7 +260,6 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
         raise ValueError('No support yet for passing multiple spike indices. Exiting.')
 
 
-    # dp, u = get_prophyler_source(dp, u)
     dprm = Path(dp,'routinesMemory')
 
     fn=f"dsm_{u}_{n_waveforms}-{t_waveforms}_{str(subset_selection)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"

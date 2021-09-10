@@ -92,14 +92,14 @@ fig = plot_ccg(dp, [u,92], cbin=0.2, cwin=80, as_grid=True)
 ### Merge datasets acquired on two probes simultaneously
 ```python
 # The three recordings need to include the same sync channel.
-from npyx.Prophyler import Prophyler
+from npyx.merger import Merger
 dps = ['same_folder/lateralprobe_dataset',
        'same_folder/medialprobe_dataset',
        'same_folder/anteriorprobe_dataset']
 probenames = ['lateral','medial','anterior']
 dp_dict = {p:dp for p, dp in zip(dps, probenames)}
-multipro = Prophyler(dp_dic)
-dp=multipro.dp_pro
+merged = Merger(dp_dic)
+dp=merged.dp_merged
 # This will merge the 3 datasets (only relevant information, not the raw data) in a new folder at
 # same_folder/prophyler_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset
 # which can then be used as if it were a single dataset by all npyx functions.

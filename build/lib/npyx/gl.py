@@ -24,10 +24,15 @@ def get_rec_len(dp, unit='seconds'):
         if unit=='milliseconds':t_end*=1e3
     return t_end
 
+def regenerate_cluster_groups(dp):
+    units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
+    qualities=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
+    return qualities
+
 def load_units_qualities(dp, again=False):
     f='cluster_group.tsv'
-    regenerate=False
-    if os.path.isfile(Path(dp, f)):
+    regenerate=False if not again else True
+    if Path(dp, f).exists():
         qualities = pd.read_csv(Path(dp, f),delimiter='\t')
         if 'group' not in qualities.columns:
             print('WARNING there does not seem to be any group column in cluster_group.tsv - kilosort >2 weirdness. Making a fresh file.')
@@ -35,21 +40,16 @@ def load_units_qualities(dp, again=False):
         else:
             if 'unsorted' not in qualities['group'].values:
                 regenerate=True
+        if regenerate:
+            qualities_new=regenerate_cluster_groups(dp)
+            missing_clusters_m=(~np.isin(qualities_new['cluster_id'], qualities['cluster_id']))
+            qualities_missing=qualities_new.loc[missing_clusters_m,:]
+            qualities=qualities.append(qualities_missing).sort_values('cluster_id')
+            qualities.to_csv(Path(dp, 'cluster_group.tsv'), sep='\t', index=False)
+
     else:
         print('cluster groups table not found in provided data path. Generated from spike_clusters.npy.')
-        regenerate=True
-
-    if regenerate:
-        units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
-        qualities=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
-        qualities.to_csv(Path(dp, 'cluster_group.tsv'), sep='\t', index=False)
-        return qualities
-
-    if again: # file was found if this line is reached
-        units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
-        new_unsorted_units=units[~np.isin(units, qualities['cluster_id'])]
-        qualities=qualities.append(pd.DataFrame({'cluster_id':new_unsorted_units, 'group':['unsorted']*len(new_unsorted_units)}), ignore_index=True)
-        qualities=qualities.sort_values('cluster_id')
+        qualities=regenerate_cluster_groups(dp)
         qualities.to_csv(Path(dp, 'cluster_group.tsv'), sep='\t', index=False)
 
     return qualities

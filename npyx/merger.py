@@ -171,9 +171,11 @@ class Merger:
         old_prophyler_path = Path(predirname) / ('prophyler'+ds_names)
         if old_prophyler_path.exists():
             # backward compatibility - rename path
+            print("Old prophyler detected - renamed according to merger convention.")
+            breakpoint()
             os.rename(str(old_prophyler_path), str(self.dp_merged))
         self.name=ds_names
-        print('>>> Merger data (shared across {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_merged))
+        print('>>> Merged data (from {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_merged))
         if not op.isdir(self.dp_merged):
             os.mkdir(self.dp_merged)
         else:

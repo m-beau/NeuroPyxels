@@ -87,7 +87,7 @@ fig = plot_wvf(dp, u, Nchannels=8, t_waveforms=2.8, sample_lines=0)
 # plot ccg between 234 and 92
 fig = plot_ccg(dp, [u,92], cbin=0.2, cwin=80, as_grid=True)
 ```
-[ccg](./images/ccg.png)
+[ccg](images/ccg.png)
 
 ### Merge datasets acquired on two probes simultaneously
 ```python

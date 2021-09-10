@@ -108,17 +108,20 @@ dps = ['same_folder/lateralprobe_dataset',
        'same_folder/anteriorprobe_dataset']
 probenames = ['lateral','medial','anterior']
 dp_dict = {p:dp for p, dp in zip(dps, probenames)}
+
+# This will merge the 3 datasets (only relevant information, not the raw data) in a new folder at
+# dp_merged: same_folder/merged_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset
+# where all npyx functions can smoothly run.
+# The only difference is that units now need to be called as floats,
+# of format u.x (u=unit id, x=dataset id [0-2]).
+# lateralprobe, medial probe and anteriorprobe x will be respectively 0,1 and 2.
 dp_merged, datasets_table = merge_datasets(dp_dic)
 ```
-<span style="color:DodgerBlue">--- Merged data (from 2 dataset(s)) will be saved here: /media/maxime/Npxl_data2/wheel_turning/19-04-16_DK152/merged_19-04-16_DK152_probe1_19-04-16_DK152_probe2.</span>
+<span style="color:DodgerBlue">--- Merged data (from 2 dataset(s)) will be saved here: /same_folder/merged_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset.</span>
 
 <span style="color:DodgerBlue">--- Loading spike trains of 2 datasets...</span>
-sync channel extraction directory found: /media/maxime/Npxl_data2/wheel_turning/19-04-16_DK152/19-04-16_DK152_probe1/sync_chan
-sync channel onsets extracted from ap file found and loaded.
-sync channel onsets extracted from ap file found and loaded.
-sync channel onsets extracted from ap file found and loaded.
-sync channel onsets extracted from ap file found and loaded.
-sync channel onsets extracted from ap file found and loaded.
+
+sync channel extraction directory found: /same_folder/lateralprobe_dataset/sync_chan
 Data found on sync channels:
 chan 2 (201 events).
 chan 4 (16 events).
@@ -126,12 +129,17 @@ chan 5 (175 events).
 chan 6 (28447 events).
 chan 7 (93609 events).
 Which channel shall be used to synchronize probes? >>> 7
-sync channel extraction directory found: /media/maxime/Npxl_data2/wheel_turning/19-04-16_DK152/19-04-16_DK152_probe2/sync_chan
-sync channel onsets extracted from ap file found and loaded.
-sync channel onsets extracted from ap file found and loaded.
-sync channel onsets extracted from ap file found and loaded.
-sync channel onsets extracted from ap file found and loaded.
-sync channel onsets extracted from ap file found and loaded.
+
+sync channel extraction directory found: /same_folder/medialprobe_dataset/sync_chan
+Data found on sync channels:
+chan 2 (201 events).
+chan 4 (16 events).
+chan 5 (175 events).
+chan 6 (28447 events).
+chan 7 (93609 events).
+Which channel shall be used to synchronize probes? >>> 7
+
+sync channel extraction directory found: /same_folder/anteriorprobe_dataset/sync_chan
 Data found on sync channels:
 chan 2 (201 events).
 chan 4 (16 events).
@@ -144,19 +152,14 @@ Which channel shall be used to synchronize probes? >>> 7
 More than 50 sync signals found - for performance reasons, sub-sampling to 50 homogenoeously spaced sync signals to align data.
 50 sync events used for alignement - start-end drift of -3080.633ms
 
-<span style="color:DodgerBlue">--- Merged spike_times and spike_clusters saved at /media/maxime/Npxl_data2/wheel_turning/19-04-16_DK152/merged_19-04-16_DK152_probe1_19-04-16_DK152_probe2.</span>
+<span style="color:DodgerBlue">--- Merged spike_times and spike_clusters saved at /same_folder/merged_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset.</span>
 
 <span style="color:green">--> Merge successful! Use a float u.x in any npyx function to call unit u from dataset x:</span>
-- u.0 for dataset 19-04-16_DK152_probe1,
-- u.1 for dataset 19-04-16_DK152_probe2.
+- u.0 for dataset lateralprobe_dataset,
+- u.1 for dataset medialprobe_dataset,
+- u.2 for dataset anteriorprobe_dataset.
 
 ```python
-# This will merge the 3 datasets (only relevant information, not the raw data) in a new folder at
-# dp_merged: same_folder/merged_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset
-# where all npyx functions can smoothly run.
-# The only difference is that units now need to be called as floats,
-# of format u.x (u=unit id, x=dataset id [0-2]).
-# lateralprobe, medial probe and anteriorprobe x will be respectively 0,1 and 2.
 t = trn(dp_merged, 92.1) # get spikes of unit 92 in dataset 1 i.e. medialprobe
 fig=plot_ccg(dp_merged,[10.0, 92.1, cbin=0.2, cwin=80]) # compute CCG between 2 units across datasets
 ```

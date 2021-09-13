@@ -284,9 +284,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                             wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                             save=save , verbose = verbose,  again=True, whiten = whiten,
                             hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                            nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-                            use_old=use_old, loop=False, parallel=parallel,
-                            memorysafe=memorysafe)
+                            nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True)
     raw_waves = raw_waves.reshape(peak_chan_split.shape[0], 10, 82, -1)
     mean_times = np.mean(raw_waves, axis = 1)
 
@@ -393,9 +391,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
                     wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                     save=save, verbose = verbose,  again=True, whiten = whiten,
                     hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                    nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-                    use_old=use_old, loop=False, parallel=parallel,
-                    memorysafe=memorysafe)
+                    nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True)
     raw_waves = raw_waves.reshape(median_max_spike_ids.shape[0],10, 82, no_chans )
     closest_waves_median_max = np.mean(raw_waves, axis = 1)[:,:,median_common_chan]
     all_closest_waves= np.mean(raw_waves, axis=1)
@@ -622,8 +618,9 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
     if use_template:
         waveforms=templates(dp, unit)
     else:
-        waveforms=wvf(dp, u=unit, n_waveforms=200, t_waveforms=82, periods='regular', spike_ids=None, again=again,
-                      use_old=False, loop=True, parallel=False, memorysafe=False, ignore_ks_chanfilt=True)
+        waveforms=wvf(dp, u=unit, n_waveforms=200, t_waveforms=82,
+        periods='regular', spike_ids=None, again=again,
+                      ignore_ks_chanfilt=True)
 
     peak_chan = get_pc(waveforms)
 

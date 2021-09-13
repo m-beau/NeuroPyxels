@@ -16,6 +16,7 @@ There isn't any better doc atm - post an issue if you have any question, or emai
   - [Compute auto/crosscorrelogram between 2 units](https://github.com/m-beau/NeuroPyxels#compute-autocrosscorrelogram-between-2-units)
   - [Plot waveforms and crosscorrelograms of unit u](https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u)
   - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
+  - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels/tree/m-beau#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
   - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
 - **[Installation](https://github.com/m-beau/NeuroPyxels#installation)**
 - **[Developer cheatsheet](https://github.com/m-beau/NeuroPyxels#developer-cheatsheet)**
@@ -134,6 +135,7 @@ plot_raw_units(dp, times=[0,0.130], units = units, channels = channels,
 ### Plot peri-stimulus time histograms across neurons and conditions
 
 ```python
+# Explore responses of 3 neurons to 4 categories of events:
 fs=30000 # Hz
 trains=[trn(dp,u)/fs for u in units] # make list of trains of 3 units
 trains_str=['' for u in units] # can give specific names to units here, would show on ht left of each row

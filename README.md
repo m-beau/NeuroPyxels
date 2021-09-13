@@ -137,10 +137,11 @@ plot_raw_units(dp, times=[0,0.130], units = units, channels = channels,
 ```python
 # Explore responses of 3 neurons to 4 categories of events:
 fs=30000 # Hz
+units=[1,2,3]
 trains=[trn(dp,u)/fs for u in units] # make list of trains of 3 units
-trains_str=['' for u in units] # can give specific names to units here, would show on ht left of each row
-events=[licking, sneezing, visual stimulus, auditory stimulus] # get events corresponding to 4 conditions
-trains_str=['' for e in events] # can give specific names to events here, would show on above each column
+trains_str=units # can give specific names to units here, show on the left of each row
+events=[licks, sneezes, visual_stimuli, auditory_stimuli] # get events corresponding to 4 conditions
+trains_str=['licking', 'sneezing', 'visual_stim', 'auditory_stim'] # can give specific names to events here, show above each column
 events_col='batlow' # colormap from which the event colors will be drawn
 fig=summary_psth(trains, trains_str, events, events_str, psthb=10, psthw=[-750,750],
                  zscore=0, bsl_subtract=False, bsl_window=[-3000,-750], convolve=True, gsd=2,
@@ -149,7 +150,7 @@ fig=summary_psth(trains, trains_str, events, events_str, psthb=10, psthw=[-750,7
                  figh=None, figratio=None, transpose=1,
                  as_heatmap=False,  vmin=None, center=None, vmax=None, cmap_str=None)
 ```
-<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/psth.png" width="400"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/psth.png" width="600"/>
 
 ### Merge datasets acquired on two probes simultaneously
 ```python

@@ -8,6 +8,18 @@ This package results from the needs of an experimentalist who could not stand MA
 
 There isn't any better doc atm - post an issue if you have any question, or email [Maxime Beau](maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com), channel #NeuroPyxels.
 
+- **[Documentation](https://github.com/m-beau/NeuroPyxels#documentation)**
+  - [Load synchronyzation channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
+  - [Get good units from dataset](https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset)
+  - [Load spike times from unit u](https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u)
+  - [Load waveforms from unit u](https://github.com/m-beau/NeuroPyxels#load-waveforms-from-unit-u)
+  - [Compute auto/crosscorrelogram between 2 units](https://github.com/m-beau/NeuroPyxels#compute-autocrosscorrelogram-between-2-units)
+  - [Plot waveforms and crosscorrelograms of unit u](https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u)
+  - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
+  - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
+- **[Installation](https://github.com/m-beau/NeuroPyxels#installation)**
+- **[Developer cheatsheet](https://github.com/m-beau/NeuroPyxels#developer-cheatsheet)**
+
 ## Documentation:
 Npyx works in harmony with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) and [Phy](https://phy.readthedocs.io/en/latest/).
 
@@ -52,9 +64,6 @@ from npyx.spk_wvf import get_peak_chan, wvf, templates
 # returns a random sample of 100 waveforms from unit 234, in uV, across 384 channels
 waveforms = wvf(dp, u) # return array of shape (n_waves, n_samples, n_channels)=(100, 82, 384) by default
 waveforms = wvf(dp, u, n_waveforms=1000, t_waveforms=90) # now 1000 random waveforms, 90 samples=3ms long
-waveforms = wvf(dp, u, periods=[(0,100),(300,400)]) # now all waveforms occurring between 0-100s and 300-400s
-u_ids = npyx.spk_t.ids(dp,u) # get ids of unit u: all spikes have a unique index in the dataset, which is their rank sorted by time (as in spike_times.npy)
-waveforms = wvf(dp, u, spike_ids=u_ids[:10]) # the 10 first waveforms of u
 
 # Get the unit peak channel (channel with the biggest amplitude)
 peak_chan = get_peak_chan(dp,u)
@@ -62,13 +71,21 @@ peak_chan = get_peak_chan(dp,u)
 w=waves[:,:,peak_chan]
 
 # Extract waveforms of spikes occurring between
-# 900 and 1000s in the recording, because that's when your mouse scratched its butt
+# 0-100s and 300-400s in the recording,
+# because that's when your mouse sneezed
+waveforms = wvf(dp, u, periods=[(0,100),(300,400)])
+
+# alternatively, longer but more flexible:
 fs=read_spikeglx_meta['sRateHz']
 t=trn(dp,u)/fs # convert in s
+# get ids of unit u: all spikes have a unique index in the dataset,
+# which is their rank sorted by time (as in spike_times.npy)
+u_ids = ids(dp,u)
 ids=ids(dp,u)[(t>900)&(t<1000)]
-waves = wvf(dp, u, spike_ids=ids)
+mask = (t<100)|((t>300)&(t<400))
+waves = wvf(dp, u, spike_ids=u_ids[mask])
 
-# If you want to load the templates instead (lighter)
+# If you want to load the templates instead (faster and does not require binary file):
 temp = templates(dp,u) # return array of shape (n_templates, 82, n_channels)
 ```
 
@@ -80,7 +97,7 @@ dp = 'path/to/dataset'
 c = ccg(dp, [234,92], cbin=0.2, cwin=80)
 ```
 
-### Plot correlograms and waveforms from unit u
+### Plot waveform and croccorrelogram of unit u
 ```python
 # all plotting functions return matplotlib figures
 from npyx.plot import plot_wvf, get_peak_chan
@@ -174,8 +191,13 @@ More than 50 sync signals found - for performance reasons, sub-sampling to 50 ho
 - u.0 for dataset lateralprobe_dataset,
 - u.1 for dataset medialprobe_dataset,
 - u.2 for dataset anteriorprobe_dataset.
+```
+<ins>Now any npyx function runs on the merged dataset!</ins>
+Under the hood, it will create a `merged_dataset_dataset1_dataset2/npyxMemory` folder to save any data computed across dataframes, but will use the original `dataset1/npyxMemory` folder to save data related to this dataset exclusively (e.g. waveforms). Hence, there is no redundancy: space and time are saved.
 
-
+This is also why <ins>it is primordial that you do not move your datatasets from their original paths after merging them</ins> - else, functions ran on merged_dataset1_dataset2 will not know where to go fetch the data! They refer to the paths in `merged_dataset_dataset1_dataset2/datasets_table.csv`. If you really need to, you can move your datasets but do not forget to edit this file accordingly.
+```python
+# These will work!
 t = trn(dp_merged, 92.1) # get spikes of unit 92 in dataset 1 i.e. medialprobe
 fig=plot_ccg(dp_merged,[10.0, 92.1, cbin=0.2, cwin=80]) # compute CCG between 2 units across datasets
 ```

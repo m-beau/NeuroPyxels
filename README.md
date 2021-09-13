@@ -131,6 +131,24 @@ plot_raw_units(dp, times=[0,0.130], units = units, channels = channels,
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/raw.png" width="400"/>
 
+### Plot peri-stimulus time histograms across neurons and conditions
+
+```python
+fs=30000 # Hz
+trains=[trn(dp,u)/fs for u in units] # make list of trains of 3 units
+trains_str=['' for u in units] # can give specific names to units here, would show on ht left of each row
+events=[licking, sneezing, visual stimulus, auditory stimulus] # get events corresponding to 4 conditions
+trains_str=['' for e in events] # can give specific names to events here, would show on above each column
+events_col='batlow' # colormap from which the event colors will be drawn
+fig=summary_psth(trains, trains_str, events, events_str, psthb=10, psthw=[-750,750],
+                 zscore=0, bsl_subtract=False, bsl_window=[-3000,-750], convolve=True, gsd=2,
+                 events_toplot=[0], events_col=events_col, trains_col_groups=trains_col_groups,
+                 title=None, saveFig=0, saveDir='~/Downloads', _format='pdf',
+                 figh=None, figratio=None, transpose=1,
+                 as_heatmap=False,  vmin=None, center=None, vmax=None, cmap_str=None)
+```
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/psth.png" width="400"/>
+
 ### Merge datasets acquired on two probes simultaneously
 ```python
 # The three recordings need to include the same sync channel.
@@ -220,7 +238,7 @@ Npyx supports Python 3.7+.
   python -c 'import npyx' # should not return any error
   # If it does, install any missing dependencies with pip (hopefully none!)
   ```
-  - from the remote repository (always up to date - still private at time of writing, pip is a prerelease)
+  - from the remote repository (always up to date)
   ```bash
   conda activate env_name
   pip install git+https://github.com/Npix-routines/NeuroPyxels@master
@@ -240,6 +258,10 @@ Npyx supports Python 3.7+.
     cd path/to/save_dir/NeuroPyxels
     git pull
     # And that's it, thanks to the egg link no need to reinstall the package!
+    # be careful though: this will break if you edited the package. If you wish to contribute, I advise you
+    # to either post issues and wait for me to fix your problem, or to get in touch with me and potentially
+    # create your own branch from where you will be able to gracefully merge your edits with the master branch
+    # after revision.
     ```
 <br/>
 

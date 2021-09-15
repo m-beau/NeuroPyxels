@@ -4,7 +4,7 @@
 
 NeuroPyxels (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. It features a suite of core utility functions for loading, processing and plotting Neuropixels data.
 
-This package results from the needs of an experimentalist who could not stand MATLAB, hence wrote himself a suite of functions to emotionally bear with doing neuroscience. There isn't any dedicated preprint available yet, so if you enjoy this package and use it for your research, please star [the github repo](https://github.com/m-beau/NeuroPyxels) (click on the top-right star button!) and cite [this paper](https://www.nature.com/articles/s41593-019-0381-8). Cheers!
+This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels data. If you enjoy this package and use it for your research, please star [the github repo](https://github.com/m-beau/NeuroPyxels) (click on the top-right star button!). Cheers!
 
 There isn't any better doc atm - post an issue if you have any question, or email [Maxime Beau](maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com), channel #NeuroPyxels.
 

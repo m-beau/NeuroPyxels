@@ -1,10 +1,11 @@
 # NeuroPyxels: loading, processing and plotting Neuropixels data in python
 
-[![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)
+[![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)  [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5509776.svg)](https://doi.org/10.5281/zenodo.5509776)
+
 
 NeuroPyxels (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. It features a suite of core utility functions for loading, processing and plotting Neuropixels data.
 
-This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels data. If you enjoy this package and use it for your research, please star [the github repo](https://github.com/m-beau/NeuroPyxels) (click on the top-right star button!). Cheers!
+This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels data. If you enjoy this package and use it for your research, please cite [the github repo](https://github.com/m-beau/NeuroPyxels) using its [DOI](https://doi.org/10.5281/zenodo.5509776) (simply use the cite button in the "About" section on the right) and star it (top-right star button). Cheers!
 
 There isn't any better doc atm - post an issue if you have any question, or email [Maxime Beau](maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com), channel #NeuroPyxels.
 

@@ -1,0 +1,20 @@
+cff-version: 1.0.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Beau
+    given-names: Maxime
+    orcid: https://orcid.org/0000-0002-8907-6612
+  - family-names: Lajko
+    given-names: Agoston
+  - family-names: Martínez
+    given-names: Gabriela
+  - family-names: Häusser
+    given-names: Michael
+    orcid: https://orcid.org/0000-0002-2673-8957
+  - family-names: Kostadinov
+    given-names: Dimitar
+    orcid: https://orcid.org/0000-0001-7548-2209
+title: "NeuroPyxels: loading, processing and plotting Neuropixels data in python"
+version: 2.0.4
+doi: 10.5281/zenodo.5509776
+date-released: 2021-09-15

@@ -8,13 +8,13 @@ Author-email: maximebeaujeanroch047@gmail.com
 License: UNKNOWN
 Description: # NeuroPyxels: loading, processing and plotting Neuropixels data in python
         
-        [![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)
+        [![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)  [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5509776.svg)](https://doi.org/10.5281/zenodo.5509776)
         
-        NeuroPyxels (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. It features a suite of core utility functions for loading, processing and plotting Neuropixels data.
         
-        This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels data. If you enjoy this package and use it for your research, please star [the github repo](https://github.com/m-beau/NeuroPyxels) (click on the top-right star button!). Cheers!
+        NeuroPyxels (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels: it features a suite of core utility functions for loading, processing and plotting Neuropixels data.
         
         There isn't any better doc atm - post an issue if you have any question, or email [Maxime Beau](maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com), channel #NeuroPyxels.
+        
         
         - **[Documentation](https://github.com/m-beau/NeuroPyxels#documentation)**
           - [Load synchronyzation channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
@@ -27,7 +27,9 @@ Description: # NeuroPyxels: loading, processing and plotting Neuropixels data in
           - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels/tree/m-beau#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
           - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
         - **[Installation](https://github.com/m-beau/NeuroPyxels#installation)**
+        - **[Acknowledgement](https://github.com/m-beau/NeuroPyxels#acknowledgement)**
         - **[Developer cheatsheet](https://github.com/m-beau/NeuroPyxels#developer-cheatsheet)**
+        
         
         ## Documentation:
         Npyx works in harmony with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) and [Phy](https://phy.readthedocs.io/en/latest/).
@@ -275,6 +277,15 @@ Description: # NeuroPyxels: loading, processing and plotting Neuropixels data in
             # after revision.
             ```
         <br/>
+        
+        ## Acknowledgement
+        
+        If you enjoy this package and use it for your research, you can:
+        -  cite [the github repo](https://github.com/m-beau/NeuroPyxels) using its [DOI](https://doi.org/10.5281/zenodo.5509776): Beau, M., Lajko, A., Martínez, G., Häusser, M., & Kostadinov, D. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. *Github*, https://doi.org/10.5281/zenodo.5509776
+        - star the github repo using the top-right star button.
+        
+        Cheers!
+        
         
         ## Developer cheatsheet
         

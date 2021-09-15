@@ -14,7 +14,7 @@ There isn't any better doc atm - post an issue if you have any question, or emai
   - [Load spike times from unit u](https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u)
   - [Load waveforms from unit u](https://github.com/m-beau/NeuroPyxels#load-waveforms-from-unit-u)
   - [Compute auto/crosscorrelogram between 2 units](https://github.com/m-beau/NeuroPyxels#compute-autocrosscorrelogram-between-2-units)
-  - [Plot waveforms and crosscorrelograms of unit u](https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u)
+  - [Plot waveform and crosscorrelograms of unit u](https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u)
   - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
   - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels/tree/m-beau#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
   - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
@@ -98,7 +98,7 @@ dp = 'path/to/dataset'
 c = ccg(dp, [234,92], cbin=0.2, cwin=80)
 ```
 
-### Plot waveform and croccorrelogram of unit u
+### Plot waveform and crosscorrelogram of unit u
 ```python
 # all plotting functions return matplotlib figures
 from npyx.plot import plot_wvf, get_peak_chan

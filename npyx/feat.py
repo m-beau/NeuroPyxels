@@ -15,7 +15,7 @@ Example usage:
 
 
 """
-import tqdm
+from tqdm import tqdm
 
 import numpy as np
 from pathlib import Path
@@ -38,7 +38,7 @@ from npyx.io import chan_map, read_spikeglx_meta
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from npyx.corr import (ccg, StarkAbeles2009_ccg_significance, ccg_sig_stack, gen_sfc, scaled_acg)
-from npyx.gl import get_units
+from npyx.gl import get_units, get_npyx_memory
 #############################################
 # Waveform features
 
@@ -791,7 +791,8 @@ def previous_peak(waves, chan_path, unit, n_chans = 20):
     # detect_peaks
     # find most negative peak
     # check if there is a peak before the most negative one
-    max_chan_path = list(Path(chan_path/'routinesMemory').glob(f'dsm_{unit}_peakchan*'))[0]
+    dpnm = get_npyx_memory(chan_path)
+    max_chan_path = list(dpnm.glob(f'dsm_{unit}_peakchan*'))[0]
     max_chan = int(np.load(max_chan_path))
    # waves = waves.T
     if max_chan <= n_chans - 1:
@@ -932,7 +933,8 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20, chan_spread_dist = 25.6)
     _,_, p2p = consecutive_peaks_amp(all_wav.T)
 
     # search for the file that has the given peak chan
-    max_chan_path = list(Path(chan_path/'routinesMemory').glob(f'dsm_{unit}_peakchan*'))[0]
+    dpnm = get_npyx_memory(chan_path)
+    max_chan_path = list(dpnm.glob(f'dsm_{unit}_peakchan*'))[0]
     max_chan = int(np.load(max_chan_path))
 
     chanmap = chan_map(chan_path)
@@ -1326,7 +1328,8 @@ def chan_spread_bp_plot(dp, unit, n_chans=20):
     Input: datapath and unit (drift and shift matched datasets for now)
     Returns: plot
     """
-    curr_fil = dp/'routinesMemory'/f'dsm_{unit}_all_waves_100-82_regular_False300-FalseNone-FalseNone.npy'
+    dpnm = get_npyx_memory(dp)
+    curr_fil = dpnm/f'dsm_{unit}_all_waves_100-82_regular_False300-FalseNone-FalseNone.npy'
     if curr_fil.is_file():
 
         if n_chans %2 !=0: n_chans +=1
@@ -1529,7 +1532,8 @@ def gen_ss_cs(recs_fn, show = False):
 
         # dp = "/media/npyx/ssd2/ago/optotag/recordings/PkC/18-08-30_YC001_probe1"
         # create the main folder for the images to be saved
-        ss_cs_folder = Path(ds['dp']+'/routinesMemory/ss_cs')
+        dpnm = get_npyx_memory(dp)
+        ss_cs_folder = dpnm / 'ss_cs'
         ss_cs_folder.mkdir(exist_ok=True, parents=True)
 
         #%% Find CCGs with long pause (at least 5ms)
@@ -1598,7 +1602,7 @@ def process_all(recs_fn, show = False, again = False):
     all_feat = []
     for i, ds in list(recs.items())[:]:
         print(f"/nProcessing dataset {ds['dp']}...")
-        data_root = Path(ds['dp'])/'routinesMemory'
+        data_root = get_npyx_memory(ds['dp'])
         features_folder = data_root / 'features'
         acg_folder = data_root / 'acg'
         wvf_folder = data_root / 'wvf'
@@ -1688,7 +1692,7 @@ def process_all(recs_fn, show = False, again = False):
     print("Computing PCA features across datasets...")
     for i, ds in list(recs.items())[:]:
 #        data_root = Path('/home/npyx/projects/optotag/proc_data')
-        data_root = Path(ds['dp'])/'routinesMemory'
+        data_root = get_npyx_memory(ds['dp'])
         features_folder = data_root / 'features'
         acg_folder = data_root / 'acg'
         wvf_folder = data_root / 'wvf'
@@ -1799,7 +1803,7 @@ def process_all(recs_fn, show = False, again = False):
 
     for i, ds in list(recs.items())[:]:
     #        data_root = Path('/home/npyx/projects/optotag/proc_data')
-        data_root = Path(ds['dp'])/'routinesMemory'
+        data_root = get_npyx_memory(ds['dp'])
         features_folder = data_root / 'features'
         acg_folder = data_root / 'acg'
         wvf_folder = data_root / 'wvf'
@@ -1859,7 +1863,7 @@ def process_all(recs_fn, show = False, again = False):
 
     for i, ds in list(recs.items())[:]:
 #        data_root = Path('/home/npyx/projects/optotag/proc_data')
-        data_root = Path(ds['dp'])/'routinesMemory'
+        data_root = get_npyx_memory(ds['dp'])
         features_folder = data_root / 'features'
         acg_folder = data_root / 'acg'
         wvf_folder = data_root / 'wvf'

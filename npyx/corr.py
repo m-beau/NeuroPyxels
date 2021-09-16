@@ -1082,7 +1082,7 @@ def get_cm(dp, units, cbin=0.2, cwin=100, b=5, corrEvaluator='CCG', periods='all
     units: units list of the same dataset
     b: bin of spike train if covar, corrcoeff or corrcoeff_MB is used as an evaluator, in milliseconds
     cbin, cwin: CCG bin and win, if CCG is used as correlation evaluator
-    corrEvaluator: metric used to evaluate correlation, in ['CCG', 'covar', 'corrcoeff_eleph', 'corrcoeff_MB']
+    corrEvaluator: metric used to evaluate correlation, in ['CCG', 'covar', 'corrcoeff_MB']
     periods: section of the Neuropixels recording used for evaluation of correlation.'''
 
     # Sanity checks

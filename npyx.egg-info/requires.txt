@@ -17,10 +17,7 @@ imutils
 python_utils
 h5py
 numba
-tk
 urllib3
 certifi
 idna
-elephant
-neo
 opencv-python

@@ -21,8 +21,7 @@ with open("README.md", "r") as readme_file:
 requirements=['ipython', 'numpy', 'scipy', 'pandas', 'matplotlib', 'seaborn',
       'six', 'vispy', 'statsmodels', 'progressbar2', 'cmcrameri',
       'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils', 'python_utils',
-      'h5py', 'numba', 'tk', 'urllib3', 'certifi', 'idna', 'elephant', 'neo',
-      'opencv-python']
+      'h5py', 'numba', 'urllib3', 'certifi', 'idna', 'opencv-python']
 
 setup(name='npyx',
       version=get_version("npyx/__init__.py"),

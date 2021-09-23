@@ -61,6 +61,8 @@ def merge_datasets(datapaths):
 
     Any npyx function will run on a merged dataset just as on a regular dataset directory.
 
+    If datasets have already been merged, will simply return the right datapath and dataset table.
+
     Parameters:
     - datapaths: dict of structure
         {'name_probe_1':'path/to/kilosort/output1',
@@ -73,7 +75,7 @@ def merge_datasets(datapaths):
 
     # Handle datapaths format
     val_e=ValueError('''
-    Datapath should be a dict of kilosort paths:
+    Datapath should be a dict of kilosort paths which exist:
     {'name_probe_1':'path/to/kilosort/output1', ...}''')
     if type(datapaths) is dict:
         for i, v in datapaths.items():
@@ -95,7 +97,7 @@ def merge_datasets(datapaths):
 
     n_datasets=len(ds_table.index)
     mess_prefix="\033[34;1m--- "
-    mess_suffix='\033[0m'
+    mess_suffix="\033[0m"
 
     # Instanciate datasets and define the merger path, where the 'merged' data will be saved,
     # together with the dataset table, holding information about the datasets (indices, names, source paths etc)
@@ -116,15 +118,13 @@ def merge_datasets(datapaths):
         os.mkdir(dp_merged)
     else:
         print(f'\n{mess_prefix}Merged dataset found at {dp_merged}.{mess_suffix}')
-        ds_table=pd.read_csv(Path(dp_merged, 'datasets_table.csv'), index_col='dataset_i')
+        ds_table_old=pd.read_csv(Path(dp_merged, 'datasets_table.csv'), index_col='dataset_i')
+        old_dataset_names = list(ds_table_old.loc[:, 'dataset_name'].values)
         for ds_i in ds_table.index:
-            try:
-                assert ds_table.loc[ds_i, 'probe']==ds_table.loc[ds_i, 'probe']
-            except:
-                print('''WARNING you ran dataset merger on these {} datasets in the past \
-                            but used the probe names {} for datasets {} ({} currently)!! Using new probe names. \
-                            If you wish to use the same probe names as before, re-instanciate merger with these.\
-                            '''.format(n_datasets, ds_table['probe'].tolist(), ds_table.index.tolist(), ds_table['probe'].tolist()))
+            assert ds_table.loc[ds_i, 'dataset_name'] in old_dataset_names,\
+            f'''WARNING you ran dataset merger on these {n_datasets} datasets in the past
+                but used the dataset names {old_dataset_names}!!'''
+
     ds_table.to_csv(Path(dp_merged, 'datasets_table.csv'))
 
     # Load and save units qualities
@@ -158,7 +158,11 @@ def merge_datasets(datapaths):
             if n_datasets>1: # sync signals only needed if alignment necessary
                 ons, offs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
                 syncchan=ask_syncchan(ons)
+                if syncchan=='q':
+                    print('Aborted. Returning Nones.')
+                    return None, None
                 sync_signals.append(ons[syncchan])
+        assert all(len(x) == len(sync_signals[0]) for x in sync_signals), 'WARNING different number of events on sync channels of both probes! Try again.'
         NspikesTotal=0
         for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
 
@@ -180,8 +184,12 @@ def merge_datasets(datapaths):
             cum_Nspikes+=Nspikes
         merged_spike_clusters=merged_spike_clusters[np.argsort(merged_spike_times)]
         merged_spike_times=np.sort(merged_spike_times)
-        np.save(Path(dp_merged, merge_fname_clusters+'.npy'), merged_spike_clusters)
-        np.save(Path(dp_merged, merge_fname_times+'.npy'), merged_spike_times)
+        np.save(dp_merged/(merge_fname_clusters+'.npy'), merged_spike_clusters)
+        np.save(dp_merged/(merge_fname_times+'.npy'), merged_spike_times)
+        sync_dir = dp_merged/'sync_chan'
+        sync_dir.mkdir(exist_ok=True)
+        sync_file = sync_dir/f"merged_ref_{ds_table.loc[0, 'dataset_name']}.ap_sync_on_samples.npy"
+        np.save(sync_file, sync_signals[0])
         print(f'\n{mess_prefix}Merged {merge_fname_times} and {merge_fname_clusters} saved at {dp_merged}.{mess_suffix}')
 
         success_message = '\n--> Merge successful! Use a float u.x in any npyx function to call unit u from dataset x:'
@@ -196,13 +204,16 @@ def ask_syncchan(ons):
     chan_len=''.join([f'chan {k} ({len(v)} events).\n' for k,v in ons.items()])
     syncchan=None
     while (syncchan is None):
-        syncchan=input(f'Data found on sync channels:\n{chan_len}Which channel shall be used to synchronize probes? >>> ')
+        syncchan=input(f'Data found on sync channels:\n{chan_len}Which channel shall be used to synchronize probes? (q to restart and pick other channel on previous probe) >>> ')
         try:
             syncchan=int(syncchan)
             if syncchan not in ons.keys():
                 print(f'!! You need to feed an integer amongst {list(ons.keys())}!')
                 syncchan=None
         except:
+            if syncchan=='q':
+                print('Aborting...')
+                return syncchan
             print('!! You need to feed an integer!')
             syncchan=None
         if syncchan is not None:

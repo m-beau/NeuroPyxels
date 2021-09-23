@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from scipy.interpolate import interp1d
-import progressbar as pgb
+from tqdm import tqdm
 
 from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \
@@ -508,34 +508,37 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
     #print('Computing ccg stack...\n'.format())
     bins=get_bins(cwin, cbin)
     if all_to_all:
-        pgbar=pgb.ProgressBar(maxval=len(U_src)*len(U_trg)).start()
         ustack=npa(zeros=(len(U_src), len(U_trg), 2)).astype(npa(U_src).dtype)
         stack=npa(zeros=(len(U_src), len(U_trg), len(bins))).astype(float)
         # Case where every CCG would be computed twice - gotta save time if you can
         if np.all(U_src==U_trg):
+            l=len(U_src)
+            pbar = tqdm(total=(l**2-l)//2, desc="Computing CCGs")
             for i1, u1 in enumerate(U_src):
                 for i2, u2 in enumerate(U_trg):
-                    #pgbar.update(i1*len(U_trg)+i2+1)
                     ustack[i1, i2, :]=[u1,u2]
                     if i1==i2:
+                        pbar.update(1)
                         stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, verbose=False, again=again, periods=periods).squeeze()
                     elif i2>i1:
+                        pbar.update(1)
                         stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, verbose=False, again=again, periods=periods)[0,1,:]
                         stack[i2, i1, :]=stack[i1, i2, ::-1]
         else:
+            pbar = tqdm(total=len(U_src)*len(U_trg), desc="Computing CCGs")
             for i1, u1 in enumerate(U_src):
                 for i2, u2 in enumerate(U_trg):
-                    pgbar.update(i1*len(U_trg)+i2+1)
+                    pbar.update(1)
                     ustack[i1, i2, :]=[u1,u2]
                     stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, verbose=False, again=again, periods=periods)[0,1,:]
     else:
-        assert len(U_src)==len(U_trg)
+        assert len(U_src)==len(U_trg), 'You need to feed in the same number N of source and target units to compute N ccgs!'
         assert not np.any(U_src==U_trg), 'Looks like you requested to compute a CCG between a unit and itself - check U_src and U_trg.'
-        pgbar=pgb.ProgressBar(maxval=len(U_src)).start()
         ustack=npa(zeros=(len(U_src), 2))
         stack=npa(zeros=(len(U_src), len(bins)))
+        pbar = tqdm(total=len(U_src))
         for i, (u1, u2) in enumerate(zip(U_src, U_trg)):
-            pgbar.update(i+1)
+            pbar.update(1)
             ustack[i, :]=[u1,u2]
             stack[i, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, verbose=False, again=again, periods=periods)[0,1,:]
 
@@ -1470,7 +1473,8 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_{}_features.csv'.format(\
                        signame, 'Counts', cbin, cwin, str(periods)[0:50].replace(' ', '').replace('\n',''), sgn, only_max))
 
-        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=again,
+        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts',
+                                        all_to_all=False, name=signame, again=again,
                                         periods=periods)
         if np.any(sigstack): # will be empty if the array exists but again=True
             if not ret_features:
@@ -1536,7 +1540,8 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'],
-            pre_chanrange=None, post_chanrange=None, units=None, name=None, use_template_for_peakchan=False,
+            pre_chanrange=None, post_chanrange=None, units=None,
+            name=None, use_template_for_peakchan=True,
             periods='all'):
     '''
     Function generating a functional correlation dataframe sfc (Nsig x 2+8 features) and matrix sfcm (Nunits x Nunits)
@@ -1545,7 +1550,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
 
     Parameters:
         - dp: string, datapath to manually curated kilosort output
-        - corr_type: string in ['main', 'synchrony', 'excitation', 'inhibition']
+        - corr_type: string, amongst ['main', 'synchrony', 'excitation', 'inhibition', 'cs_pause']
             - main: among all modulations, take the biggest one.
                     Positive mods will be plotted in the bottomleft corner, negatives ones in the other.
             - synchrony: among all positive modulations, take the one between -1 and 1ms
@@ -1558,8 +1563,8 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
                           Inhibitions will be plotted in the upper right corner, excitations in the other.
             - cs_pause: complex spike driven pauses in simple spike
                         = inhibitions between 0.5 and 15 ms, lasting at least 10ms, centered after 4ms
-        - metric: string, feature used to fill the sfc matrix | Default: amp_z
-        - again: bool, whether to reassess significance of ccg stack rather than loading from memory if already computed in the past.
+        - metric: string, feature used to fill the sfc matrix amongst
+            ['l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'] | Default: amp_z
         - cbin: float, correlogram bin size | Default 0.5
         - cwin: float, correlogram window size | Default 100
         - p_th: float, significance threshold in p value | Default 0.02
@@ -1567,15 +1572,16 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         - fract_baseline: float, fraction of the CCG used to compute the Ho mean and std if test='Normal_Kopelowitz'. | Default 4./5
         - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
         - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
+        - again: bool, whether to reassess significance of ccg stack rather than loading from memory if already computed in the past.
         - againCCG: bool, whether to recompute ccg stack rather than loading from memory if already computed in the past.
-        - drop_seq: list of str, sequence in which to filter connections
-        - pre_range: range of channels to which presynaptic units must belong
-        - post_range: range of channels to which postsynaptic units must belong
+        - drop_seq: list of str, sequence in which to filter connections (['sign', 'time', 'max_amplitude'] in any order)
+        - pre_chanrange: [int,int], range of channels to which presynaptic units must belong (e.g. [200,384])
+        - post_chanrange: [int,int], range of channels to which postsynaptic units must belong (e.g. [0,200])
         - units: list/array, units to consider to test correlations | Default: None (i.e. use all the good units)
         - name: string, name of the all-to-all ccg_stack corresponding to the above-provided units
                 MANDATORY if you provide a list of units. | Default: None
-        - cross_cont_proof: bool, ignore CCGs which look like a best guess of cross-contamination | Default: False
-                            (i.e. a big trough centered around 0 or 2 big symmetrical troughs)
+        - use_template_for_peakchan: bool, whether to use templates rather than raw data to find peak channel | Default: True
+        - periods: 'all' or [(float,float), (float,float), ...], list of time windows to consider to compute correlations
 
     Returns:
         - sfc: Pandas dataframe of NsignificantUnits x

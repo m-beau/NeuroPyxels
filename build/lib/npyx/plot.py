@@ -46,6 +46,12 @@ import networkx as nx
 #%% plotting utilities ##############################################################################################
 
 def save_mpl_fig(fig, figname, saveDir, _format):
+
+    # Fix matplotlib resolution and make text editable
+    mpl.rcParams['figure.dpi']=500
+    mpl.rcParams['pdf.fonttype']=42
+    mpl.rcParams['ps.fonttype']=42
+
     saveDir=op.expanduser(saveDir)
     saveDir=Path(saveDir)
     if not saveDir.exists():

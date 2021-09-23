@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pickle as pkl
+from tqdm import tqdm
 
 import numpy as np
 
@@ -21,8 +22,9 @@ from cmcrameri import cm as cmcr
 cmcr=cmcr.__dict__
 from IPython.core.display import HTML,display
 
-
 mpl.rcParams['figure.dpi']=100
+mpl.rcParams['pdf.fonttype'] = 42 # necessary to make the text editable
+mpl.rcParams['ps.fonttype'] = 42
 
 import seaborn as sns
 
@@ -1565,6 +1567,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
 
     if figsize is None: figsize=(4.5*l/2,4*l/2)
     fig = plt.figure(figsize=figsize)
+    pbar = tqdm(total=(l**2-l)//2+l, desc="Plotting CCGs")
     for row in range(l):
         for col in range(l):
             ax=fig.add_subplot(l, l, 1+row*l+col%l)
@@ -1572,6 +1575,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
             if row>col:
                 mplp(ax=ax, hide_axis=True)
                 continue
+            pbar.update(1)
             if (row==col):
                 color=phyColorsDic[row%6]
                 y=CCGs[row,col,:]
@@ -1820,11 +1824,13 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
           axlab_w='bold', axlab_s=14,
           ticklab_w='regular', ticklab_s=10, ticks_direction='out', lw=1,
           title=title, title_w='bold', title_s=14,
-          hide_top_right=False, hide_axis=False, tight_layout=tight_layout)
+          hide_top_right=False, hide_axis=False, tight_layout=False)
+
+    if tight_layout: fig.tight_layout(rect=[0,0,0.8,1])
 
     # Add colorbar, nicely formatted
     axpos=ax.get_position()
-    cbaraxx0,cbaraxy0 = float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
+    cbaraxx0,cbaraxy0 = float(axpos.x1+0.005), float(axpos.y0) #float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
     cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, .01, cmap_h])
     if cticks is None: cticks=get_bestticks_from_array(np.arange(vmin,vmax+(vmax-vmin)/10,(vmax-vmin)/10), light=True)
     fig.colorbar(axim, cax=cbar_ax, ax=ax,
@@ -1896,11 +1902,15 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
               regions={}, reg_colors={}, vminmax=[-7,7], figsize=(6,6),
               saveFig=False, saveDir=None, _format='pdf',
               again=False, againCCG=False, use_template_for_peakchan=False, periods='all'):
-    '''
-    Visually represents the connectivity datafrane outputted by 'gen_sfc'.
-    Each line/row is a good unit.
-    Each intersection is a square split in a varying amount of columns,
-    each column representing a positive or negatively significant peak collored accordingly to its size s.
+    f'''
+    Visually represents the connectivity matrix sfcm computed with npyx.corr.gen_sfc().
+    Each line/row is a unit, sorted by depth, and the colormap corresponds to the 'metric' parameter.
+
+    Parameters:
+        - all parameters of npyx.corr.gen_sfc():
+            {gen_sfc.__doc__}
+    Returns:
+        - fig: matplotlib figure
     '''
 
     sfc, sfcm, peakChs, sigstack, sigustack = gen_sfc(dp, corr_type, metric, cbin, cwin,

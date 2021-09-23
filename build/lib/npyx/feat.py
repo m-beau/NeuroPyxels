@@ -877,7 +877,7 @@ def chan_dist(chan, chanmap):
 #    breakpoint()
     return all_dist * sign_mask
 
-def in_distance_surface(dp, dist_limit=2000 ):
+def in_distance_surface(dp, dist_limit=2000):
         """
 
         Return all units from a recording that have a peak channel that is within
@@ -898,7 +898,7 @@ def in_distance_surface(dp, dist_limit=2000 ):
         chan_dist_from_top_unit = chan_dist(surface_chan, chanmap)
 
         # filter for distances that are within 2mm, so 2000micrometer from the top unit
-        chan_in_bounds = chanmap[np.abs(chan_dist_from_top_unit) < 2000][:,0]
+        chan_in_bounds = chanmap[np.abs(chan_dist_from_top_unit) < dist_limit][:,0]
 
         # get the units that are on channels within the 2mm boundary
         select_chan_in_bound = peak_chan_depth[:,0][np.isin(peak_chan_depth[:,1], chan_in_bounds)]

@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: npyx
-Version: 2.0.5
+Version: 2.0.6
 Summary: Python routines dealing with Neuropixels data.
 Home-page: https://github.com/Npix-routines/NeuroPyxels
 Author: Maxime Beau
@@ -11,7 +11,7 @@ Description: # NeuroPyxels: loading, processing and plotting Neuropixels data in
         [![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)  [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5509776.svg)](https://doi.org/10.5281/zenodo.5509776)
         
         
-        NeuroPyxels (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels: it features a suite of core utility functions for loading, processing and plotting Neuropixels data.
+        [NeuroPyxels](https://github.com/m-beau/NeuroPyxels) (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels: it features a suite of core utility functions for loading, processing and plotting Neuropixels data.
         
         There isn't any better doc atm - post an issue if you have any question, or email [Maxime Beau](maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com), channel #NeuroPyxels.
         
@@ -42,9 +42,11 @@ Description: # NeuroPyxels: loading, processing and plotting Neuropixels data in
         
         Importantly, **`dp`** can also be the path to a merged dataset, generated with `npyx.merge_datasets()` - <ins>every function will run as smoothly on merged datasets as on any regular dataset</ins>. See below for more details.
         
-        More precisely, every function requires the files `myrecording.ap.meta`, `spike_times.npy` and `spike_clusters.npy`. If you have started spike sorting, `cluter_groups.tsv` will also be required obviously (will be created filled with 'unsorted' groups if none is found). Then particular functions will require particular files: loading waveforms with `npyx.spk_wvf.wvf` or extracting your sync channel with `npyx.io.get_npix_sync` require the raw data `myrecording.ap.bin`, `npyx.spk_wvf.templates` the files `templates.npy` and `spike_templates.npy`, and so on. This allows you to only transfer the strictly necassary files for your use case from a machine to the next: for instance, if you only want to make behavioural analysis of spike trains but do not care about the waveforms, you can run `get_npix_sync` on a first machine (which will generate a `sync_chan` folder containing extracted onsets/offsets from the sync channel(s)), then excklusively transfer the `sync_chan` folder along with `spike_times.npy` and `spike_clusters.npy` (all very light files) on another computer and analyze your data there seemlessly.
+        More precisely, every function requires the files `myrecording.ap.meta`, `spike_times.npy` and `spike_clusters.npy`. If you have started spike sorting, `cluster_groups.tsv` will also be required obviously (will be created filled with 'unsorted' groups if none is found). Then particular functions will require particular files: loading waveforms with `npyx.spk_wvf.wvf` or extracting your sync channel with `npyx.io.get_npix_sync` require the raw data `myrecording.ap.bin`, `npyx.spk_wvf.templates` the files `templates.npy` and `spike_templates.npy`, and so on. This allows you to only transfer the strictly necassary files for your use case from a machine to the next: for instance, if you only want to make behavioural analysis of spike trains but do not care about the waveforms, you can run `get_npix_sync` on a first machine (which will generate a `sync_chan` folder containing extracted onsets/offsets from the sync channel(s)), then excklusively transfer the `sync_chan` folder along with `spike_times.npy` and `spike_clusters.npy` (all very light files) on another computer and analyze your data there seemlessly.
+        
         
         Example use cases are:
+        
         ### Load synchronization channel
         ```python
         from npyx.io import get_npix_sync
@@ -281,8 +283,8 @@ Description: # NeuroPyxels: loading, processing and plotting Neuropixels data in
         ## Acknowledgement
         
         If you enjoy this package and use it for your research, you can:
-        -  cite [the github repo](https://github.com/m-beau/NeuroPyxels) using its [DOI](https://doi.org/10.5281/zenodo.5509776): Beau, M., Lajko, A., Martínez, G., Häusser, M., & Kostadinov, D. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. *Github*, https://doi.org/10.5281/zenodo.5509776
-        - star the github repo using the top-right star button.
+        -  cite [this github repo](https://github.com/m-beau/NeuroPyxels) using its [DOI](https://doi.org/10.5281/zenodo.5509776): Beau, M., Lajko, A., Martínez, G., Häusser, M., & Kostadinov, D. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. *Github*, https://doi.org/10.5281/zenodo.5509776
+        - star this repo using the top-right star button.
         
         Cheers!
         

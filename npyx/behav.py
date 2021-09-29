@@ -92,7 +92,7 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
 
         # Process extra camera frames
         if vid_path is None:
-            vid_path=dp/(dp.name+'_video')
+            vid_path=dp.parent/'videos'
         videos=list_files(vid_path, 'avi', 1) if vid_path.exists() else []
 
         if not any(videos):
@@ -101,7 +101,8 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
             if cam_paqi_to_use is not None:
                 assert len(cam_paqi_to_use)==2
                 assert cam_paqi_to_use[0]>=0, 'cam_paqi_to_use[0] cannot be negative!'
-                assert cam_paqi_to_use[1]<=len(paqdic['CameraFrames'])-1, f"cam_paqi_to_use[0] cannot be higher than {len(paqdic['CameraFrames'])-1}!"
+                assert cam_paqi_to_use[1]<=len(paqdic['CameraFrames'])-1,\
+                    f"cam_paqi_to_use[0] cannot be higher than {len(paqdic['CameraFrames'])-1}!"
                 if cam_paqi_to_use[1]<0:cam_paqi_to_use[1]=len(paqdic['CameraFrames'])+cam_paqi_to_use[1]
                 ON=paqdic['CameraFrames_ON']
                 OFF=paqdic['CameraFrames_OFF']
@@ -111,12 +112,13 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
                 paqdic['CameraFrames_OFF_npix']=paqdic['CameraFrames_OFF_npix'][mof]
             frames_npix=paqdic['CameraFrames_ON_npix']/paqdic['npix_fs']
             nframes=[get_nframes(v) for v in videos]
-            print(f'{frames_npix.shape[0]} frames in paqIO file, {np.sum(nframes)} in video files.')
-            print(f'**{frames_npix.shape[0]-sum(nframes)}** unexpected camera triggers... \
-            ({sum(np.diff(frames_npix)<0.001)} below 1ms)')
-            print(f'(Videos nframes:{nframes}.)')
-            print(f'''There are **{sum(npa(nframes)!=60000)}** seemingly manually aborted videos -
-            check that the discrepancy matches.\nIf they do not, figure out why. There might be some trashed video triggers somewhere.''')
+            print(f'Videos nframes:{nframes} -> {np.sum(nframes)} frames in video files.')
+            print(f'{frames_npix.shape[0]} triggers in paqIO file')
+            print(f'PaqIO inter-trigger intervals below 1ms: {sum(np.diff(frames_npix)<0.001)}.')
+            print((f"\n**{sum(npa(nframes)!=60000)}** seemingly manually aborted videos and "
+                   f"\n**{frames_npix.shape[0]-sum(nframes)}** unexpected camera triggers."
+                   f"\nIf these numbers do not match, figure out why. "
+                    "There might be some trashed video triggers somewhere."))
 
             fi=0
             n_man_abort=0
@@ -138,7 +140,7 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
                     assert frames_npix[ii-1]-frames_npix[ii-2]<0.05
                     if not last:assert frames_npix[ii]-frames_npix[ii-1]>0.05
             frames_npix=(frames_npix[~np.isnan(frames_npix)]*paqdic['npix_fs']).astype(int)
-            print(f'Now the delta between expected/actual frames is **{frames_npix.shape[0]-sum(nframes)}**.')
+            print(f'After correction the delta between expected/actual frames is **{frames_npix.shape[0]-sum(nframes)}**.')
             paqdic['CameraFrames_ON_npix']=frames_npix
 
     # Process cues and rewards - only engaged events are considered!
@@ -189,7 +191,8 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
     # Process turning wheel events if turning wheel dataset
     if 'ROTreal' in paqdic.keys():
         print('Wheel turning dataset detected.')
-        wheel_turn_dic = get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=False,
+        wheel_turn_dic = get_wheelturn_df_dic(dp, paqdic,
+                        include_wheel_data=False, add_spont_licks=False,
                         wheel_gain=3, rew_zone=12.5, rew_frames=3, vr_rate=30,
                         wheel_diam=45, difficulty=2, ballistic_thresh=100,
                         plot=False, again=again)[1]
@@ -198,8 +201,10 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
 
     # Save behav dict
     if drop_raw:
-        undesired=['RECON', 'RECON_ON', 'RECON_OFF', 'GAMEON', 'GAMEON_ON', 'GAMEON_OFF', 'TRIALON', 'TRIALON_ON', 'TRIALON_OFF',
-                   'REW', 'CUE', 'VRframes', 'VRframes_ON', 'VRframes_OFF', 'GHOST_REW', 'ROT_A', 'ROT_B', 'CameraFrames', 'LICKS_Piezo']
+        undesired=['RECON', 'RECON_ON', 'RECON_OFF',
+                   'GAMEON', 'GAMEON_ON', 'GAMEON_OFF', 'TRIALON', 'TRIALON_ON', 'TRIALON_OFF',
+                   'REW', 'CUE', 'VRframes', 'VRframes_ON', 'VRframes_OFF', 'GHOST_REW',
+                   'ROT_A', 'ROT_B', 'CameraFrames', 'LICKS_Piezo']
         for k in undesired:
             if k in paqdic.keys():paqdic.pop(k)
         print(f'\nDropped: {undesired}.\n')
@@ -222,8 +227,10 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
     ## Load paq data and npix sync channel data
     if f_behav is None:
         files=list_files(behav_dir, 'paq')
-        assert len(files)>0, f"WARNING no files with extension 'paq' were found at {behav_dir} - either add one there or explicitely declare a file path with f_behav parameter."
-        assert len(files)==1, f"WARNING more than 1 file with extension 'paq' were found at '{behav_dir}' - clean up your directory or use f_behav argument and try again."
+        assert len(files)>0, (f"WARNING no files with extension 'paq' were found at {behav_dir}"
+                               " - either add one there or explicitely declare a file path with f_behav parameter.")
+        assert len(files)==1, (f"WARNING more than 1 file with extension 'paq' were found at '{behav_dir}' - "
+                                "clean up your directory or use f_behav argument and try again.")
         f_behav=behav_dir/files[0]
         print(f'Behavioural data loaded from: {f_behav}')
     paqdic=load_PAQdata(f_behav, variables='all', unit='samples', again=again_rawpaq)
@@ -433,7 +440,8 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
 
     ## Organize them in dataset, all in NEUROPIXELS time frame
     # i.e. (use above-aligned paqdic[f'{paqk}_npix'] as onsets)
-    fn=dp/f"behavior/trials_df-{include_wheel_data}-{add_spont_licks}-{difficulty}-{ballistic_thresh}.csv"
+    dp = Path(dp)
+    fn=dp.parent/f"behavior/trials_df-{include_wheel_data}-{add_spont_licks}-{difficulty}-{ballistic_thresh}.csv"
 
     ## Conversions and parameters processing
     paq_fs, npix_fs = paqdic['paq_fs'], paqdic['npix_fs']
@@ -750,9 +758,9 @@ def get_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
     return atb/(b*1e-3)
 
 def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
-                      convolve=False, gsd=1, method='gaussian',
-                      bsl_subtract=False, bsl_window=[-4000, 0],
-                      process_y=False):
+                            convolve=False, gsd=1, method='gaussian',
+                            bsl_subtract=False,
+                            process_y=False):
     # zscore or not
     assert zscoretype in ['within', 'across']
     if zscore or bsl_subtract: # use baseline of ifr far from stimulus
@@ -763,21 +771,21 @@ def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
                 y_mn = np.mean(np.mean(y_bsl, axis=0))
                 y_sd = np.std(np.mean(y_bsl, axis=0))
                 if y_sd==0 or np.isnan(y_sd): y_sd=1
-                if process_y: y =  (y-y_mn)/y_sd
                 y_p = (np.mean(y, axis=0)-y_mn)/y_sd
                 y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
+                if process_y: y =  (y-y_mn)/y_sd
             elif zscoretype=='across':
                 y_mn = np.mean(y_bsl.flatten())
                 y_sd = np.std(y_bsl.flatten())
                 if y_sd==0 or np.isnan(y_sd): y_sd=1
-                if process_y: y = (y-y_mn)/y_sd
                 y_p = (np.mean(y, axis=0)-y_mn)/y_sd
                 y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
+                if process_y: y = (y-y_mn)/y_sd
 
         elif bsl_subtract:
-            if process_y: y = y-y_mn
             y_p = np.mean(y, axis=0)-y_mn
             y_p_var= stats.sem(y, axis=0)
+            if process_y: y = y-y_mn
 
     else:
         y_p = np.mean(y, axis=0)
@@ -786,9 +794,9 @@ def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
     assert not np.any(np.isnan(y_p)), 'WARNING nans found in trials array!'
     # Convolve or not
     if convolve:
-        if process_y: y=smooth(y, method=method, sd=gsd)
         y_p = smooth(y_p, method=method, sd=gsd)
         y_p_var = smooth(y_p_var, method=method, sd=gsd)
+        if process_y: y=smooth(y, method=method, sd=gsd)
 
     if np.any(np.isnan(y_p_var)):
         y_p_var=np.ones(y_p.shape)
@@ -823,7 +831,8 @@ def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_tri
 
     # Window and bins translation
     x = np.arange(window[0], window[1], b)
-    y = get_ifr(times, events, b, window, remove_empty_trials)
+    y = get_ifr(times, events, b, window)
+    y_bsl = get_ifr(times, events, b, bsl_window)
     assert not np.any(np.isnan(y.ravel())), 'WARNING nans found in aligned ifr!!'
     if x.shape[0]>y.shape[1]:
         x=x[:-1]
@@ -840,15 +849,14 @@ def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_tri
         for triali, trial in enumerate(y):
             fr_dropped=thresh_consec(trial, m_fr*low_fr_th, sgn=-1, n_consec=consec_time, exclude_edges=True, only_max=False, ret_values=True)
             if len(fr_dropped)>0: y[triali,:]=np.nan
-        y=y[~np.isnan(y[:,0]),:]
+        drop_mask = np.isnan(y[:,0])
+        y=y[~drop_mask,:]
+        y_bsl=y_bsl[~drop_mask,:]
         if not np.any(y): y = np.zeros((1,x.shape[0]))
-
-    y_bsl = get_ifr(times, events, b, bsl_window, remove_empty_trials=True)
 
     y, y_p, y_p_var = process_2d_trials_array(y, y_bsl, zscore, zscoretype,
                       convolve, gsd, method,
-                      bsl_subtract, bsl_window,
-                      process_y)
+                      bsl_subtract, process_y)
 
     return x, y, y_p, y_p_var
 

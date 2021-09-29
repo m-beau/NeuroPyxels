@@ -141,7 +141,7 @@ def merge_datasets(datapaths):
         # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
         if not np.all(np.isin(qualities_old.loc[:, 'cluster_id'], qualities.loc[:, 'cluster_id'])):
             re_spksorted=True
-            print('New spike-sorting detected.')
+            print(f'\n{mess_prefix}New spike-sorting detected.{mess_suffix}')
     qualities.to_csv(qualities_dp, sep='	', index=False)
 
     # Merge spike times (or copy them if only 1 dataset)

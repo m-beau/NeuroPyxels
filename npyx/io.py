@@ -89,9 +89,9 @@ def read_spikeglx_meta(dp, subtype='ap'):
         if Vrange!=1.2e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (1.2*10^6). Might be normal!')
         bits_encoding=10
         ampFactor=ale(meta['~imroTbl'][1].split(' ')[3])
-        if ampFactor!=500: print(f'\u001b[31mHeads-up, the voltage amplification factor seems to be {ampFactor}, which is not the default (500). Might be normal!')
+        #if ampFactor!=500: print(f'\u001b[31mHeads-up, the voltage amplification factor seems to be {ampFactor}, which is not the default (500). Might be normal!')
     elif meta['probe_version'] in ['2.0_singleshank', '2.0_fourshanked']:
-        if Vrange!=1e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
+        #if Vrange!=1e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
         bits_encoding=14
         ampFactor=80
     meta['scale_factor']=(Vrange/2**bits_encoding/ampFactor)

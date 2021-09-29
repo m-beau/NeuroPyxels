@@ -36,8 +36,14 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None):
     **ds_master** contains information about the probe structure of your recording
     as well as anything you wish to have readily accessible in your scripts
     as key:value pairs.
-    A typical example is 'interesting_unit_type':[unit1, unit2],
-    but it could also be 'comment_on_behaviour':'great for 100 trials then got tired'.
+
+    You NEED to add 'probeX':{key:value, key:value...} to each dataset
+    in order to generate the right path blah/datasetY_probeX.
+
+    A typical example is
+    'datasetY':{'probeX':{'interesting_unit_type':[unit1, unit2]}},
+    but it could also be
+    'datasetY':{'probeX':{'comment_on_behaviour':'great for 100 trials then got tired'}}.
 
     In **ds_paths_master**, the paths must be following this structure:
     pathToDataset1Root/datasetName/datasetName_probe1.
@@ -105,29 +111,34 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None):
             }
     """
     with open(ds_master) as f:
+        print(f"\033[34;1m--- ds_master\033[0m read from {ds_master}.")
         DSs = json.load(f)
 
     with open(ds_paths_master) as f:
+        print(f"\033[34;1m--- ds_paths_master\033[0m read from {ds_paths_master}.")
         dp_dic = json.load(f)
         for ds_name, dp in dp_dic.items():
             dp=Path(dp)/f'{ds_name}'
+            if not dp.exists():
+                print(\
+                    f"\n\033[31;1mWARNING path {dp} does not seem to exist. Edit path of {ds_name}:path in \033[34;1mds_paths_master\033[31;1m.")
+                continue
+            assert ds_name in DSs.keys(),\
+                print(f"\n\033[31;1mWARNING dataset {ds_name} from \033[34;1mds_paths_master\033[31;1m isn't referenced in \033[34;1mds_master\033[31;1m.")
             DSs[ds_name]["dp"]=str(dp)
-            assert dp.exists(),\
-                f"""WARNING path {dp} does not seem to exist!
-                Edit path of {ds_name}:path in {ds_paths_master}."""
             for prb in DSs[ds_name].keys():
                 if 'probe' in prb:
                     dp_prb=dp/f'{ds_name}_{prb}'
-                    assert dp.exists(),\
-                        f"""WARNING path {dp_prb} does not seem to exist!
-                        Edit path of {ds_name}:path in {ds_paths_master}
-                        and check that all probes are in subdirectories."""
+                    if not dp.exists():
+                        print(f"\n\033[31;1mWARNING path {dp_prb} does not seem to exist! \
+                        Edit path of {ds_name}:path in \033[34;1mds_paths_master\033[31;1m \
+                        and check that all probes are in subdirectories.")
+                        continue
                     DSs[ds_name][prb]["dp"]=str(dp_prb)
 
     for ds_name, ds in DSs.items():
-        assert "dp" in ds.keys(), \
-            f"""WARNING dataset {ds_name} does not have a path!
-            Add it as a key:value pair in {ds_paths_master}."""
+        if "dp" not in ds.keys():
+            print(f"\n\033[31;1mWARNING dataset {ds_name} does not have a path! Add it as a key:value pair in \033[34;1mds_paths_master\033[31;1m.")
 
     # Add behavioural parameters to the dict for relevant datasets,
     # if any

@@ -146,8 +146,8 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, periods='regular', spi
             f.seek(t1, 0) # 0 for absolute file positioning
             wave=f.read(n_channels_dat*t_waveforms*item_size)
             wave=np.frombuffer(wave, dtype=dtype).reshape((t_waveforms,n_channels_dat))
-            wave = wave-np.median(wave, axis = 0)[np.newaxis,:]
-            waveforms[i,:,:] = wave[:,:-1]# get rid of sync channel
+            wave = wave-np.median(wave, axis = 0)[np.newaxis,:] # center the waveforms on 0
+            waveforms[i,:,:] = wave[:,:-1] # get rid of sync channel
 
     # Preprocess waveforms
     if hpfilt|med_sub|whiten:

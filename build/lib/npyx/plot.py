@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pickle as pkl
+from tqdm import tqdm
 
 import numpy as np
 
@@ -21,8 +22,9 @@ from cmcrameri import cm as cmcr
 cmcr=cmcr.__dict__
 from IPython.core.display import HTML,display
 
-
 mpl.rcParams['figure.dpi']=100
+mpl.rcParams['pdf.fonttype'] = 42 # necessary to make the text editable
+mpl.rcParams['ps.fonttype'] = 42
 
 import seaborn as sns
 
@@ -834,11 +836,11 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
         # fig.tight_layout()
 
         if saveFig:
-            saveDir=op.expanduser(saveDir)
             rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
             rcn=rcn+'_whitened' if whiten else rcn+'_raw'
             if title is not None: rcn=title
-            fig.savefig(Path(saveDir, '{}.{}'.format(rcn, _format)), format=_format, dpi=500, bbox_inches='tight')
+
+            save_mpl_fig(fig, rcn, saveDir, _format)
 
         return fig
 
@@ -1565,6 +1567,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
 
     if figsize is None: figsize=(4.5*l/2,4*l/2)
     fig = plt.figure(figsize=figsize)
+    pbar = tqdm(total=(l**2-l)//2+l, desc="Plotting CCGs")
     for row in range(l):
         for col in range(l):
             ax=fig.add_subplot(l, l, 1+row*l+col%l)
@@ -1572,6 +1575,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
             if row>col:
                 mplp(ax=ax, hide_axis=True)
                 continue
+            pbar.update(1)
             if (row==col):
                 color=phyColorsDic[row%6]
                 y=CCGs[row,col,:]
@@ -1620,9 +1624,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
         fig.suptitle(title, size=20, weight='bold')
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     if saveFig:
-        saveDir=op.expanduser(saveDir)
-        if not os.path.isdir(saveDir): os.mkdir(saveDir)
-        save_mpl_fig(fig, f"ccg{str(units).replace(' ', '')}-{cwin}_{cbin}", saveDir, _format)
+        save_mpl_fig(fig, f"ccg_{title}_{str(units).replace(' ', '')}-{cwin}_{cbin}", saveDir, _format)
 
     return fig
 
@@ -1820,11 +1822,13 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
           axlab_w='bold', axlab_s=14,
           ticklab_w='regular', ticklab_s=10, ticks_direction='out', lw=1,
           title=title, title_w='bold', title_s=14,
-          hide_top_right=False, hide_axis=False, tight_layout=tight_layout)
+          hide_top_right=False, hide_axis=False, tight_layout=False)
+
+    if tight_layout: fig.tight_layout(rect=[0,0,0.8,1])
 
     # Add colorbar, nicely formatted
     axpos=ax.get_position()
-    cbaraxx0,cbaraxy0 = float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
+    cbaraxx0,cbaraxy0 = float(axpos.x1+0.005), float(axpos.y0) #float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
     cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, .01, cmap_h])
     if cticks is None: cticks=get_bestticks_from_array(np.arange(vmin,vmax+(vmax-vmin)/10,(vmax-vmin)/10), light=True)
     fig.colorbar(axim, cax=cbar_ax, ax=ax,
@@ -1880,8 +1884,8 @@ def plot_cm(dp, units, cwin=100, cbin=0.2, b=5, corrEvaluator='CCG', vmax=5, vmi
 
     if saveFig:
         if saveDir is None: saveDir=dp
-        assert title is not None, 'You need to provide a title parameter to save the figure!'
-        fig.savefig(Path(saveDir,title,f'.{_format}'))
+        if title is None: title = None
+        save_mpl_fig(fig, title, saveDir, _format)
 
     if ret_cm:
         return cm, units, channels # depth-sorted
@@ -1896,11 +1900,15 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
               regions={}, reg_colors={}, vminmax=[-7,7], figsize=(6,6),
               saveFig=False, saveDir=None, _format='pdf',
               again=False, againCCG=False, use_template_for_peakchan=False, periods='all'):
-    '''
-    Visually represents the connectivity datafrane outputted by 'gen_sfc'.
-    Each line/row is a good unit.
-    Each intersection is a square split in a varying amount of columns,
-    each column representing a positive or negatively significant peak collored accordingly to its size s.
+    f'''
+    Visually represents the connectivity matrix sfcm computed with npyx.corr.gen_sfc().
+    Each line/row is a unit, sorted by depth, and the colormap corresponds to the 'metric' parameter.
+
+    Parameters:
+        - all parameters of npyx.corr.gen_sfc():
+            {gen_sfc.__doc__}
+    Returns:
+        - fig: matplotlib figure
     '''
 
     sfc, sfcm, peakChs, sigstack, sigustack = gen_sfc(dp, corr_type, metric, cbin, cwin,
@@ -1928,7 +1936,7 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         lab = 'unit.dataset@channel'
 
     mpl.rcParams['figure.dpi']=100
-    ttl='Significant functional correlation matrix\n{}\n{}-{}-{}-{}-{}\n({})'.format(op.basename(dp),test, p_th, n_consec_bins, fract_baseline, W_sd, corr_type)
+    ttl='{}\n{}-{}-{}-{}-{}\n({})'.format(op.basename(dp),test, p_th, n_consec_bins, fract_baseline, W_sd, corr_type)
     dataset_borders = list(np.nonzero(np.diff(get_ds_ids(peakChs[:,0])))[0]) if assert_multi(dp) else []
     fig=imshow_cbar(sfcm, origin='top', xevents_toplot=dataset_borders, yevents_toplot=dataset_borders, events_color=[0.5,0.5,0.5],events_lw=1,
                 xvalues=None, yvalues=None, xticks=tks, yticks=tks,
@@ -1986,113 +1994,12 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
 
     if saveFig:
         if saveDir is None: saveDir=dp
-        save_mpl_fig(fig, ttl.replace('\n', '_'), saveDir, _format)
+        ttl=ttl.replace('\n', '_')
+        if name is not None: ttl=ttl+'_'+name
+        save_mpl_fig(fig, ttl, saveDir, _format)
 
     return fig
 
-# def plot_sfcm_old(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
-#               p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-#               drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None,
-#               text=False, markers=False, ticks=True, depth_ticks=False,
-#               regions={}, reg_colors={}, vminmax=[-7,7], figsize=(7,7),
-#               saveFig=False, saveDir=None, again=False, againCCG=False, use_template_for_peakchan=False):
-#     '''
-#     Visually represents the connectivity datafrane outputted by 'gen_sfc'.
-#     Each line/row is a good unit.
-#     Each intersection is a square split in a varying amount of columns,
-#     each column representing a positive or negatively significant peak collored accordingly to its size s.
-#     '''
-
-#     sfc, sfcm, peakChs = gen_sfc(dp, corr_type, metric, cbin, cwin,
-#                                  p_th, n_consec_bins, fract_baseline, W_sd, test,
-#                                  again, againCCG, drop_seq, units, name,
-#                                  cross_cont_proof=False, use_template_for_peakchan=use_template_for_peakchan)
-
-#     gu = peakChs[:,0]
-#     ch = peakChs[:,1].astype(int)
-
-#     if corr_type=='synchrony':
-#         vminmax=[0,vminmax[1]]
-#     elif corr_type=='excitations':
-#         vminmax=[0,vminmax[1]]
-#     elif corr_type=='inhibitions':
-#         vminmax=[vminmax[0],0]
-
-#     fig = plt.figure(figsize=figsize)
-#     ax = fig.add_axes([0.15, 0.15, 0.7, 0.7])
-#     axpos=ax.get_position()
-#     cbar_ax = fig.add_axes([axpos.x0+axpos.width+0.01, axpos.y0, .02, .3])
-#     sns.heatmap(sfcm, yticklabels=True, xticklabels=True, cmap="RdBu_r", center=0, vmin=vminmax[0], vmax=vminmax[1],
-#                      cbar_kws={'label': 'Crosscorr. modulation (s.d.)'}, ax=ax, cbar_ax=cbar_ax)
-#     cbar_ax.yaxis.label.set_font_properties(matplotlib.font_manager.FontProperties(family='arial',weight='bold', size=12))
-#     cbar_ax.yaxis.label.set_rotation(90)
-#     cbar_ax.yaxis.label.set_va('top')
-#     cbar_ax.yaxis.labelpad=5
-#     cbar_ax.yaxis.set_ticklabels(cbar_ax.yaxis.get_ticklabels(), ha='center')
-#     cbar_ax.yaxis.set_tick_params(pad=11)
-#     set_ax_size(ax,*figsize)
-
-#     ax.plot(ax.get_xlim(), ax.get_ylim()[::-1], ls="--", c=[0.5,0.5,0.5], lw=1)
-#     ttl='Significant functional correlation matrix\n{}\n{}-{}-{}-{}-{}\n({})'.format(op.basename(dp),test, p_th, n_consec_bins, fract_baseline, W_sd, corr_type)
-#     ax.set_title(ttl, fontsize=16, fontweight='bold')
-
-#     if depth_ticks:
-#         labs=['{}'.format(3840-ch[i]*10) for i in range(len(gu)) if i%10==0]
-#         tks=[i for i in range(len(gu)) if i%10==0]
-#         ax.set_xticks(tks)
-#         ax.set_yticks(tks)
-#         ax.set_yticklabels(labs, fontsize=14, fontweight='bold', rotation=45)
-#         ax.set_xticklabels(labs, fontsize=14, fontweight='bold', rotation=45)
-#         ax.set_ylabel('Depth on probe (\u03BCm)', fontsize=16, fontweight='bold')
-#         ax.set_xlabel('Depth on probe (\u03BCm)', fontsize=16, fontweight='bold')
-#     else:
-#         labs=['{}@{}'.format(gu[i], ch[i]) for i in range(len(gu))]
-#         ax.set_yticklabels(labs, fontsize=12, fontweight='regular')
-#         ax.set_xticklabels(labs, fontsize=12, fontweight='regular')
-
-#     [ax.spines[sp].set_visible(True) for sp in ['left', 'bottom', 'top', 'right']]
-
-#     if not ticks:
-#         [tick.set_visible(False) for tick in ax.xaxis.get_major_ticks()]
-#         [tick.set_visible(False) for tick in ax.yaxis.get_major_ticks()]
-
-#     if any(regions):
-#         for region, rng in regions.items():
-#             rngi=[np.nonzero(abs(r-ch)==min(abs(r-ch)))[0][0] for r in rng[::-1]]
-#             for r in rngi:
-#                 ax.plot([r,r], [0,len(ch)], ls="-", c=[0.5,0.5,0.5], lw=1)
-#                 ax.plot([0,len(ch)], [r,r], ls="-", c=[0.5,0.5,0.5], lw=1)
-#             ax.plot(rngi,[len(ch),len(ch)], ls="-", c=reg_colors[region], lw=10, solid_capstyle='butt')
-#             ax.plot([0,0], rngi, ls="-", c=reg_colors[region], lw=10, solid_capstyle='butt')
-#             ax.text(x=2, y=rngi[0]+np.diff(rngi)/2, s=region, c=reg_colors[region], fontsize=18, fontweight='bold', rotation=90, va='center')
-
-#     if markers:
-#         for i in range(sfcm.shape[0]):
-#             for j in range(sfcm.shape[0]):
-#                 if i!=j:
-#                     ccgi=(gu[i]==sfc['uSrc'])&(gu[j]==sfc['uTrg'])
-#                     if np.any(ccgi):
-#                         pkT = sfc.loc[ccgi, 't_ms']
-#                         if pkT>0.5:
-#                             ax.scatter(j, i, marker='>', s=20, c="black")
-#                         elif pkT<-0.5:
-#                             ax.scatter(j, i, marker='<', s=20, c="black")
-#                         elif -0.5<=pkT and pkT<=0.5:
-#                             ax.scatter(j, i, marker='o', s=20, c="black")
-#     if text:
-#         for i in range(sfcm.shape[0]):
-#             for j in range(sfcm.shape[0]):
-#                 ccgi=(gu[i]==sfc['uSrc'])&(gu[j]==sfc['uTrg'])
-#                 if np.any(ccgi):
-#                     pkT = sfc.loc[ccgi, 't_ms']
-#                     if i!=j and (min(pkT)<=0 or max(pkT)>0):
-#                         ax.text(x=j, y=i, s=str(pkT), size=12)
-
-#     if saveFig:
-#         if saveDir is None: saveDir=dp
-#         fig.savefig(Path(saveDir,ttl.replace('\n', '_')+'.pdf'))
-
-#     return fig
 
 #%% Save matplotlib animations
 # https://towardsdatascience.com/how-to-create-animated-graphs-in-python-bb619cc2dec1

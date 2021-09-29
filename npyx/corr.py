@@ -15,8 +15,18 @@ warnings.simplefilter('ignore', category=RuntimeWarning)
 from numba import njit, prange
 from numba.typed import List
 from joblib import Parallel, delayed
+import concurrent
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
+
+def f(a,b):
+    return a+b
+
+args = [(1,1), (2,2), (3,3)]
+with concurrent.futures.ProcessPoolExecutor() as executor:
+    results = executor.map(f, *args)
+    for r in results:
+        print(r)
 
 import numpy as np
 import pandas as pd
@@ -1671,7 +1681,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         def drop_amp(sfc, afilt, corr_type):
             z_mask=np.zeros((sfc.shape[0])).astype('bool')
             dgp=sfc.groupby(['uSrc','uTrg'])
-            duplicates=npa(list(dgp.indices.values()))[(dgp.size()>1).values]
+            duplicates=npa(list(dgp.indices.values()), dtype=object)[(dgp.size()>1).values]
             for d in duplicates:
                 zz=sfc.loc[d, 'amp_z'].abs()
                 largest=zz.max()

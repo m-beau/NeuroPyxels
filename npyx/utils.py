@@ -108,16 +108,16 @@ def npa(arr=[], **kwargs):
         - ones: tuple. If provided, returns np.ones(ones)
         - empty: tuple. If provided, returns np.empty(empty)
         - dtype: numpy datatype. If provided, returns np.array(arr, dtype=dtype) .'''
+
+    dtype=kwargs['dtype'] if 'dtype' in kwargs.keys() else None
     if 'zeros' in kwargs.keys():
-        arr = np.zeros(kwargs['zeros'])
+        arr = np.zeros(kwargs['zeros'], dtype=dtype)
     elif 'ones' in kwargs.keys():
-        arr = np.ones(kwargs['ones'])
+        arr = np.ones(kwargs['ones'], dtype=dtype)
     elif 'empty' in kwargs.keys():
-        arr = np.empty(kwargs['empty'])
+        arr = np.empty(kwargs['empty'], dtype=dtype)
     else:
-        arr=np.array(arr)
-    if 'dtype' in kwargs.keys():
-        arr = np.array(arr, dtype=kwargs['dtype'])
+        arr=np.array(arr, dtype=dtype)
     return arr
 
 def isnumeric(x):

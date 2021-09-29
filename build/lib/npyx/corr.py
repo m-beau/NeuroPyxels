@@ -19,15 +19,6 @@ import concurrent
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
 
-def f(a,b):
-    return a+b
-
-args = [(1,1), (2,2), (3,3)]
-with concurrent.futures.ProcessPoolExecutor() as executor:
-    results = executor.map(f, *args)
-    for r in results:
-        print(r)
-
 import numpy as np
 import pandas as pd
 

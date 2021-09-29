@@ -168,7 +168,7 @@ def isi(dp, unit, enforced_rp=0, sav=True, verbose=False, periods='all', again=F
 
 def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
     i = np.diff(t) if len(t)>1 else None
-    if i is None: return
+    if i is None: return 0
     # Remove outlyers
     i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]/fs
     return np.round(1./np.mean(i),2)

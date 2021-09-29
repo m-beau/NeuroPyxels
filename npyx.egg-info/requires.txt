@@ -7,7 +7,6 @@ seaborn
 six
 vispy
 statsmodels
-progressbar2
 cmcrameri
 scikit-learn
 umap-learn

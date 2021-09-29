@@ -86,12 +86,12 @@ def read_spikeglx_meta(dp, subtype='ap'):
 
     Vrange=(meta['imAiRangeMax']-meta['imAiRangeMin'])*1e6
     if meta['probe_version'] in ['3A', '1.0_staggered', '1.0_aligned']:
-        assert Vrange==1.2e6
+        if Vrange!=1.2e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (1.2*10^6). Might be normal!')
         bits_encoding=10
         ampFactor=ale(meta['~imroTbl'][1].split(' ')[3])
-        assert ampFactor==500
+        if ampFactor!=500: print(f'\u001b[31mHeads-up, the voltage amplification factor seems to be {ampFactor}, which is not the default (500). Might be normal!')
     elif meta['probe_version'] in ['2.0_singleshank', '2.0_fourshanked']:
-        assert Vrange==1e6
+        if Vrange!=1e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
         bits_encoding=14
         ampFactor=80
     meta['scale_factor']=(Vrange/2**bits_encoding/ampFactor)
@@ -168,29 +168,21 @@ def unpackbits(x,num_bits = 16):
     return (x & to_and).astype(bool).astype(int).reshape(xshape + [num_bits])
 
 def get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='seconds'):
-    '''Unpacks neuropixels phase external input data
-    events = unpack_npix3a_sync(trigger_data_channel)
-        Inputs:
-            dp               : trigger data channel to unpack (pass the last channel of the memory mapped file)
-            output_binary (False) : outputs the unpacked signal
-            sourcefile            : whether to use .ap or .lf file (neuropixxels 1.0)
-            unit     ['seconds','samples'] : returns ons and ofs in either seconds or samples
-        Outputs
-            events        : dictionary of events. the keys are the channel number, the items the sample times of the events.
+    '''Unpacks neuropixels external input data, to align spikes to events.
+    Parameters:
+        - dp: str, datapath
+        - output_binary: bool, whether to output binary sync channel as 0/1s
+        - sourcefile: str, 'ap' or 'lf' (use high pass or low pass filtered - recommended to use ap)
+        - unit: str, 'seconds' or 'samples', units of returned onsets/offset times
 
-        Usage:
-    Load and get trigger times in seconds:
-        dp='path/to/binary'
-        onsets,offsets = unpack_npix_sync(dp);
-    Plot events:
-        plt.figure(figsize = [10,4])
-        for ichan,times in onsets.items():
-            plt.vlines(times,ichan,ichan+.8,linewidth = 0.5)
-        plt.ylabel('Sync channel number'); plt.xlabel('time (s)')
+    Returns:
+        Dictionnaries of length n_channels = number of channels where threshold crossings were found, [0-16]
+        - onsets: dict, {channel_i:np.array(onset1, onset2, ...), ...} in 'unit'
+        - offsets: dict, {channel_i:np.array(offset1, offset2, ...), ...} in 'unit'
+
     '''
 
     if assert_multi(dp):
-        ds_table = get_ds_table(dp)
         dp=get_ds_table(dp)['dp'][0]
         print(f'Loading npix sync channel from a merged dataset - assuming temporal reference frame of dataset 0:\n{dp}')
 
@@ -567,11 +559,12 @@ def paq_read(file_path):
     Read PAQ file (from PackIO) into python
     Lloyd Russell 2015
     See https://github.com/llerussell/paq2py
+
     Parameters
     ==========
     file_path : str, optional
-        full path to file to read in. if none is supplied a load file dialog
-        is opened, buggy on mac osx - Tk/matplotlib. Default: None.
+        full path to file to read in.
+
     Returns
     =======
     data : ndarray
@@ -587,18 +580,12 @@ def paq_read(file_path):
         the acquisition sample rate, in Hz
     """
 
-    # file load gui
-    # if file_path is None:
-    #     root = Tkinter.Tk()
-    #     root.withdraw()
-    #     file_path = tkFileDialog.askopenfilename()
-    #     root.destroy()
-
     # open file
     fid = open(file_path, 'rb')
 
     # get sample rate
     rate = int(np.fromfile(fid, dtype='>f', count=1))
+    assert rate!=0, 'WARNING something went wrong with the paq file, redownload it.'
 
     # get number of channels
     num_chans = int(np.fromfile(fid, dtype='>f', count=1))

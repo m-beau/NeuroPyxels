@@ -238,7 +238,7 @@ colors = get_ncolors_cmap('coolwarm', 10, plot=1)
 colors = get_ncolors_cmap('viridis', 10, plot=1)
 # in a jupyter notebook, will also plot he HTML colormap:
 ```
-<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/colormaps.png" width="400"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/colormaps.png" width="600"/>
 
 <br/>
 

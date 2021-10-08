@@ -39,3 +39,5 @@ npyx submodules:
 """
 
 __version__ = '2.0.8'
+
+print(f'npyx version {__version__} imported.')

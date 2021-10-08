@@ -49,7 +49,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import numpy as np
 import pandas as pd
 
-from npyx.utils import npa, align_timeseries, assert_float
+from npyx.utils import npa, align_timeseries_interpol, assert_float
 
 from npyx.io import get_npix_sync
 from npyx.gl import get_units, load_units_qualities
@@ -98,6 +98,9 @@ def merge_datasets(datapaths):
     n_datasets=len(ds_table.index)
     mess_prefix="\033[34;1m--- "
     mess_suffix="\033[0m"
+    if n_datasets==1:
+        print(f'{mess_prefix}Only one dataset provided - simply returning original path{mess_suffix}.')
+        return ds_table.loc[0,'dp'], ds_table
 
     # Instanciate datasets and define the merger path, where the 'merged' data will be saved,
     # together with the dataset table, holding information about the datasets (indices, names, source paths etc)
@@ -114,7 +117,7 @@ def merge_datasets(datapaths):
         print("Backward compatibility - prophyler renamed according to merger convention.")
         os.rename(str(old_prophyler_path), str(dp_merged))
     if not op.isdir(dp_merged):
-        print(f'\n{mess_prefix}Merged data (from {n_datasets} dataset(s)) will be saved here: {dp_merged}.{mess_suffix}')
+        print(f'\n{mess_prefix}Merged data (from {n_datasets} datasets) will be saved here: {dp_merged}.{mess_suffix}')
         os.mkdir(dp_merged)
     else:
         print(f'\n{mess_prefix}Merged dataset found at {dp_merged}.{mess_suffix}')
@@ -155,13 +158,12 @@ def merge_datasets(datapaths):
             dp=ds_table.loc[ds_i,'dp']
             spike_times.append(np.load(Path(dp, 'spike_times.npy')).flatten())
             spike_clusters.append(np.load(Path(dp, 'spike_clusters.npy')).flatten())
-            if n_datasets>1: # sync signals only needed if alignment necessary
-                ons, offs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
-                syncchan=ask_syncchan(ons)
-                if syncchan=='q':
-                    print('Aborted. Returning Nones.')
-                    return None, None
-                sync_signals.append(ons[syncchan])
+            ons, offs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
+            syncchan=ask_syncchan(ons)
+            if syncchan=='q':
+                print('Aborted. Returning Nones.')
+                return None, None
+            sync_signals.append(ons[syncchan])
         assert all(len(x) == len(sync_signals[0]) for x in sync_signals), 'WARNING different number of events on sync channels of both probes! Try again.'
         NspikesTotal=0
         for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
@@ -170,9 +172,8 @@ def merge_datasets(datapaths):
         # Merged dataset is saved as two arrays:
         # spike_times and spike_clusters, as in a regular dataset,
         # but where spike_clusters is a larger int (1 is unit 1 from dataset 0, 1,000,000,001 is unit 1 from dataset 1)
-        if n_datasets>1:
-            print(f"\n{mess_prefix}Aligning spike trains of {n_datasets} datasets...{mess_suffix}")
-            spike_times = align_timeseries(spike_times, sync_signals, 30000)
+        print(f"\n{mess_prefix}Aligning spike trains of {n_datasets} datasets (w/r to 1st dataset)...{mess_suffix}")
+        spike_times = align_timeseries_interpol(spike_times, sync_signals, 30000)
         # Now save the new array
         merged_spike_clusters=npa(zeros=(NspikesTotal), dtype=np.float64)
         merged_spike_times=npa(zeros=(NspikesTotal), dtype=np.uint64)

@@ -292,7 +292,8 @@ Older versions of numba did not feature the .core submodule. You probably run a 
   pip uninstall numba
   conda activate my_env
   pip uninstall numba
-  pip install numba```
+  pip install numba
+  ```
 
 <br/>
 

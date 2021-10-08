@@ -3,11 +3,10 @@ numpy
 scipy
 pandas
 matplotlib
-seaborn
 six
-vispy
 statsmodels
 cmcrameri
+tqdm
 scikit-learn
 umap-learn
 networkx

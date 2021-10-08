@@ -1,5 +1,17 @@
+.gitignore
+CITATION.cff
+LICENSE.md
 README.md
+Untitled.ipynb
+requirements_dev.txt
 setup.py
+.ipynb_checkpoints/Untitled-checkpoint.ipynb
+.vscode/settings.json
+images/ccg.png
+images/colormaps.png
+images/psth.png
+images/raw.png
+images/wvf.png
 npyx/__init__.py
 npyx/behav.py
 npyx/circuitProphyler.py

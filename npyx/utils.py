@@ -9,7 +9,6 @@ warnings.simplefilter('default', category=NumbaPendingDeprecationWarning)#'ignor
 
 from ast import literal_eval as ale
 import numpy as np
-import seaborn as sns
 import matplotlib.pyplot as plt
 
 from six import integer_types
@@ -33,19 +32,6 @@ phyColorsDic = {
     4:(84./255, 255./255, 28./255),
     5:(255./255,165./255,0./255),
     -1:(0., 0., 0.),
-    }
-
-seabornColorsDic = {
-    0:sns.color_palette()[0],
-    1:sns.color_palette()[1],
-    2:sns.color_palette()[2],
-    3:sns.color_palette()[3],
-    4:sns.color_palette()[4],
-    5:sns.color_palette()[5],
-    6:sns.color_palette()[6],
-    7:sns.color_palette()[7],
-    8:sns.color_palette()[8],
-    9:sns.color_palette()[9]
     }
 
 mpl_colors=plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -619,7 +605,7 @@ def align_timeseries_interpol(timeseries, sync_signals, fs=None):
         if fs is not None:
             drift=round(abs(a*fs[i]/fs[0]-1)*3600*1000,2)
             offset=round(b/fs[0],2)
-            print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between time series {i} and {i+1}.\n')
+            print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between time series 1 and {i+2}.\n')
         timeseries[i+1]=(a*ts+b).astype(int)
 
     return timeseries

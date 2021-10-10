@@ -5,12 +5,9 @@
 Behavior analysis tools.
 """
 
-import os
 import os.path as op; opj=op.join
 from pathlib import Path
 import pickle
-
-import h5py
 
 import numpy as np
 import scipy as sp
@@ -281,8 +278,8 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
                 paqdic[f'{paqk}_npix']=npix_ons[npix_paq[paqk]]
                 paqdic[f"{off_key}_npix"]=npix_ofs[npix_paq[paqk]] # same key for onsets and offsets
             else:
-                paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
-                paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
+                # paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
+                # paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
                 paqdic[f'{paqk}_npix']=(a*paqv+b).astype(int)
                 paqdic[f"{off_key}_npix"]=(a*paqdic[off_key]+b).astype(int)
 
@@ -982,8 +979,8 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     d=np.zeros((a.shape))
 
     # If only one channel was recorded, everything isn't lost.
-    a_mess=f'WARNING half max of rotary channel A is {ath} -> channel must be dead. Skipping rotary decoding.\n'
-    b_mess=f'WARNING half max of rotary channel B is {bth} -> channel must be dead. Skipping rotary decoding.\n'
+    a_mess=f'WARNING half max of rotary channel A is {round(ath, 3)} -> channel must be dead. Skipping rotary decoding.\n'
+    b_mess=f'WARNING half max of rotary channel B is {round(bth, 3)} -> channel must be dead. Skipping rotary decoding.\n'
     if (ath<0.2)&(bth<0.2):
         print(a_mess)
         print(b_mess)

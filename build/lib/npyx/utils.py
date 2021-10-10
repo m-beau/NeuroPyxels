@@ -508,7 +508,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     '''
     Usage 1: align >=2 time series in the same temporal reference frame with the same sampling frequency fs
         aligned_ts1, aligned_ts2, ... = align_timeseries([ts1,ts2,...], [sync1,sync2,...], fs)
-    Usage 2:  align >=1 time serie(s) to another temporal reference frame
+    Usage 2:  align 1 time serie to another temporal reference frame
         aligned_ts = align_timeseries([ts], [sync_ts, sync_other], [fs_ts, fs_other])
 
     Re-aligns in time series based on provided sync signals.
@@ -516,7 +516,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
       If Usage 1: THEY MUST BE IN THE SAME TIME REFERENCE FRAME
     - sync_signals: list of numpy arrays of synchronization time stamps,
       ordered with respect to timeseries
-      If Usage 2: THEY MUST ALSO BE IN THE SAME TIME REFERENCE FRAME
+      If Usage 1: THEY MUST ALSO BE IN THE SAME TIME REFERENCE FRAME
       - fs: int (usage 1) or list of 2 ints (usage 2), sampling frequencies of timeseries and respective sync_signals.
       - offset_policy: 'original' or 'zero', only for usage 1: whether to set timeseries[0] as 0 or as its original value after alignement.
       The FIRST sync_signal is used as a reference.
@@ -584,7 +584,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
 
 def align_timeseries_interpol(timeseries, sync_signals, fs=None):
     '''
-    Align a list of N timeseries in the frame of reference of the first timeserie.
+    Align a list of N timeseries in the temporal reference frame of the first timeserie.
 
     Assumes that the drift is going to be linear, it is interpolated for times far from sync signals
     (sync_signal1 = a * sync_signal0 + b).
@@ -612,15 +612,15 @@ def align_timeseries_interpol(timeseries, sync_signals, fs=None):
         sync_signals[tsi]=ts.astype(int)
 
     # Align
-    master_sync=sync_signals[0]
+    ref_sync=sync_signals[0]
 
     for i, (ts, ss) in enumerate(zip(timeseries[1:], sync_signals[1:])):
-        (a, b) = np.polyfit(ss, master_sync, 1)
+        (a, b) = np.polyfit(ss, ref_sync, 1)
         if fs is not None:
             drift=round(abs(a*fs[i]/fs[0]-1)*3600*1000,2)
             offset=round(b/fs[0],2)
-            print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between ephys and paq files.\n')
-        timeseries[i]=(a*ts+b).astype(int)
+            print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between time series {i} and {i+1}.\n')
+        timeseries[i+1]=(a*ts+b).astype(int)
 
     return timeseries
 

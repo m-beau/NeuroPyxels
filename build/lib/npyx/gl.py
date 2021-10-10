@@ -8,7 +8,6 @@ Dataset: Neuropixels dataset -> dp is phy directory (kilosort or spyking circus 
 """
 import json
 import os
-import os.path as op
 from pathlib import Path
 
 import numpy as np
@@ -19,7 +18,10 @@ def get_npyx_memory(dp):
     old_dprm =Path(dp,'routinesMemory')
     if old_dprm.exists():
         print("Backward compatibility - renaming routinesMemory as npyxMemory.")
-        os.rename(str(old_dprm), str(dprm))
+        try: # because of parallel proccessing, might have been renamed in the process!
+            os.rename(str(old_dprm), str(dprm))
+        except:
+            assert dprm.exists()
     if not os.path.isdir(dprm): os.makedirs(dprm)
 
     return dprm
@@ -129,10 +131,10 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None):
             for prb in DSs[ds_name].keys():
                 if 'probe' in prb:
                     dp_prb=dp/f'{ds_name}_{prb}'
-                    if not dp.exists():
-                        print(f"\n\033[31;1mWARNING path {dp_prb} does not seem to exist! \
-                        Edit path of {ds_name}:path in \033[34;1mds_paths_master\033[31;1m \
-                        and check that all probes are in subdirectories.")
+                    if not dp_prb.exists():
+                        print((f"\n\033[31;1mWARNING path {dp_prb} does not seem to exist! "
+                        f"Edit path of {ds_name}:path in \033[34;1mds_paths_master\033[31;1m "
+                        "and check that all probes are in subdirectories."))
                         continue
                     DSs[ds_name][prb]["dp"]=str(dp_prb)
 

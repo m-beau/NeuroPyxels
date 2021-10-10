@@ -24,7 +24,7 @@ There isn't any better doc atm - post an issue if you have any question, or emai
 
 
 ## Documentation:
-Npyx works in harmony with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) and [Phy](https://phy.readthedocs.io/en/latest/).
+Npyx works in harmony with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) and [OpenEphys](https://open-ephys.org/neuropixels) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) and [Phy](https://phy.readthedocs.io/en/latest/).
 
 <ins>Npyx is fast because it never computes the same thing twice</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at **kilosort_dataset/npyxMemory**, from where they are simply reloaded if called again. An important parameter controlling this behaviour is **`again`** (boolean), by default set to False: if True, the function will recompute the output rather than loading it from npyxMemory. This is important to be aware of this behaviour, as it can lead to mind boggling bugs. For instance, if you load the train of unit then re-spikesort your dataset, e.g. you split unit 56 in 504 and 505, the train of the old unit 56 will still exist at kilosort_dataset/npyxMemory and you will be able to load it even though the unit is gone!
 

@@ -585,16 +585,19 @@ def get_pc(waveforms):
 
 def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=True):
     '''
+    Returns index of peak channel, either according to the full probe channel map (0 through 383)
+                                   or according to the kilosort channel map (0 through N with N<=383)
+
     Parameters:
         - datapath, string
-        - unit, integer or string
+        - unit, integer or float (if merged dataset)
         - use_template: bool, whether to use templates instead of raw waveform to find peak channel.
         - again: whether to recompute the waveforms/templates
-        - ignore_ks_chanfilt: whether to return the absolute channel name
-                    rather than the relative channel index.
+        - ignore_ks_chanfilt: bool, whether to return the channel rank on the full probe
+                    rather than the channel rank on the kilosort cahnnel map (jumping some channels).
                     They will be the same if all channels are used for spike sorting.
                     E.g. if kilosort only used 380 channels (out of 384),
-                    the last channel absolutely named 383 has the relative index 379.
+                    the last channel, 383, has the relative index 379.
     Returns:
         - best_channel, integer indexing the channel
           where the unit averaged raw waveform (n=100 spanning the whole recording)
@@ -617,20 +620,20 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
     cm=chan_map(dp, probe_version='local')
     if use_template:
         waveforms=templates(dp, unit)
+        ks_peak_chan = get_pc(waveforms)
+        peak_chan = cm[:,0][ks_peak_chan]
     else:
         waveforms=wvf(dp, u=unit, n_waveforms=200, t_waveforms=82,
         periods='regular', spike_ids=None, again=again,
                       ignore_ks_chanfilt=True)
+        probe_peak_chan = get_pc(waveforms)
+        if ignore_ks_chanfilt: # absolute == relative channel index
+            peak_chan = probe_peak_chan
+        else: #
+            ks_peak_chan = np.nonzero(cm[:,0]==probe_peak_chan)
+            peak_chan = ks_peak_chan
 
-    peak_chan = get_pc(waveforms)
-
-    if use_template: # will always be in kilosort relative channel index
-        peak_chan=cm[:,0][peak_chan]
-
-    if not ignore_ks_chanfilt:
-        peak_chan=np.nonzero(cm[:,0]==peak_chan)
-
-    return peak_chan
+    return int(peak_chan)
 
 
 def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, again=False, verbose = False):
@@ -681,7 +684,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
     for iu, u in enumerate(units):
         if verbose: print("Getting peak channel of unit {}...".format(u))
         peak_chans[iu,0] = u
-        peak_chans[iu,1] = get_peak_chan(dp, u, use_template).astype(dt)
+        peak_chans[iu,1] = np.array([get_peak_chan(dp, u, use_template)]).astype(dt)
     if assert_multi(dp):
         depth_ids = np.lexsort((-peak_chans[:,1], get_ds_ids(peak_chans[:,0])))
     else:

@@ -89,9 +89,9 @@ def read_spikeglx_meta(dp, subtype='ap'):
         if Vrange!=1.2e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (1.2*10^6). Might be normal!')
         bits_encoding=10
         ampFactor=ale(meta['~imroTbl'][1].split(' ')[3])
-        if ampFactor!=500: print(f'\u001b[31mHeads-up, the voltage amplification factor seems to be {ampFactor}, which is not the default (500). Might be normal!')
+        #if ampFactor!=500: print(f'\u001b[31mHeads-up, the voltage amplification factor seems to be {ampFactor}, which is not the default (500). Might be normal!')
     elif meta['probe_version'] in ['2.0_singleshank', '2.0_fourshanked']:
-        if Vrange!=1e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
+        #if Vrange!=1e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
         bits_encoding=14
         ampFactor=80
     meta['scale_factor']=(Vrange/2**bits_encoding/ampFactor)
@@ -786,33 +786,33 @@ def _pad(arr, n, dir='right'):
         assert out.shape == shape
         return out
 
-def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
-    """Convert a slice to an array of integers."""
-    assert isinstance(myslice, slice)
-    # Find 'step'.
-    step = myslice.step if myslice.step is not None else step
-    if step is None:
-        step = 1
-    # Find 'start'.
-    start = myslice.start if myslice.start is not None else start
-    if start is None:
-        start = 0
-    # Find 'stop' as a function of length if 'stop' is unspecified.
-    stop = myslice.stop if myslice.stop is not None else stop
-    if length is not None:
-        stop_inferred = floor(start + step * length)
-        if stop is not None and stop < stop_inferred:
-            raise ValueError("'stop' ({stop}) and ".format(stop=stop) +
-                             "'length' ({length}) ".format(length=length) +
-                             "are not compatible.")
-        stop = stop_inferred
-    if stop is None and length is None:
-        raise ValueError("'stop' and 'length' cannot be both unspecified.")
-    myrange = np.arange(start, stop, step)
-    # Check the length if it was specified.
-    if length is not None:
-        assert len(myrange) == length
-    return myrange
+# def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
+#     """Convert a slice to an array of integers."""
+#     assert isinstance(myslice, slice)
+#     # Find 'step'.
+#     step = myslice.step if myslice.step is not None else step
+#     if step is None:
+#         step = 1
+#     # Find 'start'.
+#     start = myslice.start if myslice.start is not None else start
+#     if start is None:
+#         start = 0
+#     # Find 'stop' as a function of length if 'stop' is unspecified.
+#     stop = myslice.stop if myslice.stop is not None else stop
+#     if length is not None:
+#         stop_inferred = floor(start + step * length)
+#         if stop is not None and stop < stop_inferred:
+#             raise ValueError("'stop' ({stop}) and ".format(stop=stop) +
+#                              "'length' ({length}) ".format(length=length) +
+#                              "are not compatible.")
+#         stop = stop_inferred
+#     if stop is None and length is None:
+#         raise ValueError("'stop' and 'length' cannot be both unspecified.")
+#     myrange = np.arange(start, stop, step)
+#     # Check the length if it was specified.
+#     if length is not None:
+#         assert len(myrange) == length
+#     return myrange
 
 
 

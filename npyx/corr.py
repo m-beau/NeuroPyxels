@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from scipy.interpolate import interp1d
-from tqdm import tqdm_notebook as tqdm #from tqdm import tqdm
+from tqdm.notebook import tqdm #from tqdm import tqdm
 
 from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \

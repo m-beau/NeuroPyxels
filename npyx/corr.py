@@ -534,10 +534,10 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                     ustack[i1, i2, :]=[u1,u2]
                     if i1==i2:
                         ccg_ids.append([i1, u1, i2, u2])
-                        ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, again, None))
+                        ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 1, None))
                     elif i2>i1:
                         ccg_ids.append([i1, u1, i2, u2])
-                        ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, again, None))
+                        ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 1, None))
 
             ccg_results=Parallel(n_jobs=num_cores, backend="threading")(\
                 delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
@@ -553,7 +553,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                 for i2, u2 in enumerate(U_trg):
                     ustack[i1, i2, :]=[u1,u2]
                     ccg_ids.append([i1, u1, i2, u2])
-                    ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, again, None))
+                    ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 1, None))
 
             ccg_results=Parallel(n_jobs=num_cores, backend="threading")(\
                 delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
@@ -568,7 +568,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
         ccg_inputs, ccg_ids = [], []
         for i, (u1, u2) in enumerate(zip(U_src, U_trg)):
             ccg_ids.append([i, u1, u2])
-            ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, again, None))
+            ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 1, None))
 
         ccg_results=Parallel(n_jobs=num_cores, backend="threading")(\
             delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))

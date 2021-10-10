@@ -153,12 +153,13 @@ def merge_datasets(datapaths):
     merge_fname_clusters='spike_clusters'
     if (not op.exists(Path(dp_merged, merge_fname_times+'.npy'))) or re_spksorted:
         print(f"\n{mess_prefix}Loading spike trains of {n_datasets} datasets...{mess_suffix}")
+        # precompute all sync channels without prompting the user
+        onsets = [get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')[0] for dp in ds_table['dp']]
         spike_times, spike_clusters, sync_signals = [], [], []
-        for ds_i in ds_table.index:
-            dp=ds_table.loc[ds_i,'dp']
+        for ds_i, dp in enumerate(ds_table['dp']):
             spike_times.append(np.load(Path(dp, 'spike_times.npy')).flatten())
             spike_clusters.append(np.load(Path(dp, 'spike_clusters.npy')).flatten())
-            ons, offs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
+            ons = onsets[ds_i]
             syncchan=ask_syncchan(ons)
             if syncchan=='q':
                 print('Aborted. Returning Nones.')

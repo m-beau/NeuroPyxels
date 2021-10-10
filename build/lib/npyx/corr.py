@@ -15,7 +15,6 @@ warnings.simplefilter('ignore', category=RuntimeWarning)
 from numba import njit, prange
 from numba.typed import List
 from joblib import Parallel, delayed
-import concurrent
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
 
@@ -23,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from scipy.interpolate import interp1d
-from tqdm import tqdm
+from tqdm import tqdm_notebook as tqdm #from tqdm import tqdm
 
 from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \
@@ -39,7 +38,9 @@ import scipy.signal as sgnl
 from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
 
 def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=True, trains=None):
-    '''If provided, dic must be of the form {unit1:train1InSamples, unit2:...}'''
+    '''
+
+    - trains: dict, of the form {unit1:train1InSamples, unit2:...}'''
     trains_dic={}
     if trains is None:
         for iu, u in enumerate(U):
@@ -199,13 +200,14 @@ def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=
 
     return correlograms
 
-def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, verbose=True, periods='all', again=False, trains=None):
+def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
+       ret=True, sav=True, verbose=True, periods='all', again=False, trains=None):
     '''
     ********
-    routine from routines_spikes
     computes crosscorrelogram (1, window/bin_size) - int64, in Hertz
     ********
 
+    Parameters:
      - dp (string): DataPath to the Neuropixels dataset.
      - u (list of ints or str): list of units indices. If str, format has to be 'datasetIndex_unitIndex'.
      - win_size: size of binarized spike train bins, in milliseconds.
@@ -217,6 +219,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
       - ret (bool - default False): if True, train returned by the routine.
       If False, by definition of the routine, drawn to global namespace.
       - sav (bool - default True): if True, by definition of the routine, saves the file in dp.
+      - trains: list of trains fed to the function (the U can be any ints/floats, but it still needs)
 
       returns numpy array (Nunits, Nunits, win_size/bin_size)
 
@@ -235,6 +238,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     dp=dp1;del dp1
     sortedU=U_.copy()
     if trains is not None:
+        assert len(U)==len(trains), 'You must feed as many trains as units!'
+        assert isinstance(trains, list), 'trains must be a list!'
         if len(sortedU)>1:
             trains=[trains[isort] for isort in np.argsort(sortedU)]
     sortedU.sort()
@@ -251,7 +256,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     # if not, compute it
     else:
         if verbose: print("File {} not found in routines memory.".format(fn))
-        crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True, periods=periods, verbose=verbose, trains=trains)
+        crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True,
+                                                   periods=periods, verbose=verbose, trains=trains)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
         if crosscorrelograms.shape[0]<len(U): # no spikes were found in this period
             # Maybe if not any(crosscorrelograms.ravel()!=0):
@@ -461,6 +467,18 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
 
     return np.vstack(return_acgs), np.array(return_isi_mode), np_isi_hist_counts, np_isi_hist_range_clipped, np_cut_acg_unnormed
 
+def get_ccgstack_fullname(name=None, cbin=0.2, cwin=80,
+                          normalize='Counts', periods='all'):
+    norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
+    periods_str = str(periods)[0:50].replace(' ', '').replace('\n','')
+    fn=f"ccgstack_{name}_{norm}_{cbin}_{cwin}_{periods_str}"
+    fnu=fn+"_U"
+
+    fn+=".npy"
+    fnu+=".npy"
+
+    return fn, fnu
+
 
 def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all_to_all=False, name=None, sav=True, again=False, periods='all'):
     '''
@@ -490,10 +508,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
 
     Nu=len(U_src)+len(U_trg)
     if name is not None:
-        norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
-        fn='ccgstack_{}_{}_{}_{}_{}.npy'.format(name, norm, cbin, cwin, str(periods)[0:50].replace(' ', '').replace('\n',''))
-        fnu='ccgstack_{}_{}_{}_{}_{}_U.npy'.format(name, norm, cbin, cwin, str(periods)[0:50].replace(' ', '').replace('\n',''))
-
+        fn, fnu = get_ccgstack_fullname(name=name, cbin=cbin, cwin=cwin, normalize=normalize, periods=periods)
         if op.exists(dprm/fn) and not again:
             stack=np.load(dprm/fn)
             ustack=np.load(dprm/fnu)
@@ -506,42 +521,60 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
             if Nu==0: return npa([]),npa([])
 
     assert len(U_src)>0 and len(U_trg)>0, 'You need to provide at least one source and one target unit!'
-    #print('Computing ccg stack...\n'.format())
     bins=get_bins(cwin, cbin)
     if all_to_all:
         ustack=npa(zeros=(len(U_src), len(U_trg), 2)).astype(npa(U_src).dtype)
         stack=npa(zeros=(len(U_src), len(U_trg), len(bins))).astype(float)
-        # Case where every CCG would be computed twice - gotta save time if you can
+        # Case where every CCG would be computed twice - it is worth it to half the time
         if np.all(U_src==U_trg):
             l=len(U_src)
-            pbar = tqdm(total=(l**2-l)//2, desc="Computing CCGs")
+            ccg_inputs, ccg_ids = [], []
             for i1, u1 in enumerate(U_src):
                 for i2, u2 in enumerate(U_trg):
                     ustack[i1, i2, :]=[u1,u2]
                     if i1==i2:
-                        pbar.update(1)
-                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, verbose=False, again=again, periods=periods).squeeze()
+                        ccg_ids.append([i1, u1, i2, u2])
+                        ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, again, None))
                     elif i2>i1:
-                        pbar.update(1)
-                        stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, verbose=False, again=again, periods=periods)[0,1,:]
-                        stack[i2, i1, :]=stack[i1, i2, ::-1]
+                        ccg_ids.append([i1, u1, i2, u2])
+                        ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, again, None))
+
+            ccg_results=Parallel(n_jobs=num_cores, backend="threading")(\
+                delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
+            for ((i1, u1, i2, u2), CCG) in zip(ccg_ids,ccg_results):
+                if i1==i2:
+                    stack[i1, i2, :]=CCG.squeeze()
+                elif i2>i1:
+                    stack[i1, i2, :]=CCG[0,1,:]
+                    stack[i2, i1, :]=stack[i1, i2, ::-1]
         else:
-            pbar = tqdm(total=len(U_src)*len(U_trg), desc="Computing CCGs")
+            ccg_inputs, ccg_ids = [], []
             for i1, u1 in enumerate(U_src):
                 for i2, u2 in enumerate(U_trg):
-                    pbar.update(1)
                     ustack[i1, i2, :]=[u1,u2]
-                    stack[i1, i2, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, verbose=False, again=again, periods=periods)[0,1,:]
+                    ccg_ids.append([i1, u1, i2, u2])
+                    ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, again, None))
+
+            ccg_results=Parallel(n_jobs=num_cores, backend="threading")(\
+                delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
+            for ((i1, u1, i2, u2), CCG) in zip(ccg_ids,ccg_results):
+                stack[i1, i2, :]=CCG[0,1,:]
+
     else:
         assert len(U_src)==len(U_trg), 'You need to feed in the same number N of source and target units to compute N ccgs!'
         assert not np.any(U_src==U_trg), 'Looks like you requested to compute a CCG between a unit and itself - check U_src and U_trg.'
         ustack=npa(zeros=(len(U_src), 2))
         stack=npa(zeros=(len(U_src), len(bins)))
-        pbar = tqdm(total=len(U_src))
+        ccg_inputs, ccg_ids = [], []
         for i, (u1, u2) in enumerate(zip(U_src, U_trg)):
-            pbar.update(1)
+            ccg_ids.append([i, u1, u2])
+            ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, again, None))
+
+        ccg_results=Parallel(n_jobs=num_cores, backend="threading")(\
+            delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
+        for ((i, u1, u2), CCG) in zip(ccg_ids,ccg_results):
             ustack[i, :]=[u1,u2]
-            stack[i, :]=ccg(dp, [u1, u2], cbin, cwin, normalize=normalize, verbose=False, again=again, periods=periods)[0,1,:]
+            stack[i, :]=CCG[0,1,:]
 
     if sav and name is not None:
         np.save(dprm/fn, stack)
@@ -566,6 +599,637 @@ def get_ustack_i(U, ustack):
         mask=(ustack==np.tile([u[0], u[1]], ustack.shape[:-1]+(1,)))
         ii[i]=npa(np.nonzero(np.all(mask, axis=ustack.ndim-1))).flatten()
     return ii.astype(np.int64)
+
+#%% Assessment of significance of correlogram modulation
+
+def canUse_Nbins(a=0.05, w=100, b=0.2, n_bins=3):
+    '''Function to assess the number of expected triplets (3 consecutive bins) in a crosscorrelogram.
+    The confidence of the test used cannot exceed the returned value.
+    E.g. for 100 bins or 0.1ms and a
+    - a: alpha, confidence level
+    - w: correlogram window size, ms
+    - b: correlogram bin size, ms
+
+    See Kopelowitz, Lev et Cohen, 2014, JNeuro methods,
+    Quantification of pairwise neuronal interactions: going beyond the significance lines.'''
+    assert 0<a<1
+    assert n_bins in [2,3], "Can only handle 2 or 3 bins"
+    n=w/b
+    if n_bins==3: expected_triplets=a*(a*n-2)*(a*n-4)/(8*(n-1))
+    elif n_bins==2: expected_triplets=a*(a*n-2)*(a*n-2)/(4*(n-1))
+    if a>expected_triplets:
+        #print("You can use this test, of confidence {0} since the probability of encountering a triplet by chance is {1:.3f}.".format(a, expected_triplets))
+        return True
+    else:
+        print("You CANNOT use this test, of confidence {0} since the probability of encountering a triplet by chance is {1:.3f}.".format(a, expected_triplets))
+        return False
+
+def KopelowitzCohen2014_ccg_significance(CCG, cbin=0.2, cwin=100, p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5,
+                                         law='Normal', multi_comp=False, bin_wise=False, ret_values=True, only_max=True, plot=False):
+    '''Function to assess whether a correlogram is significant or not.
+    Parameters:
+    - a: alpha, confidence level
+    - w: correlogram window size, ms
+    - b: correlogram bin size, ms
+    Returns:
+    - True or False, whether the ccg is significantly modulated or not
+    See Kopelowitz, Lev et Cohen, 2014, JNeuro methods,
+    Quantification of pairwise neuronal interactions: going beyond the significance lines.
+    Test1: law='Poisson', alpha=0.05, n_consec_bins=1, bin_wise=True
+    Test2: law='Poisson', alpha=0.05, n_consec_bins=1
+    Test3: law='Normal',  alpha=0.01, n_consec_bins=1, multi_comp=True
+    Test4: law='Normal',  alpha=0.05, n_consec_bins=3                     <<<-- RECOMMENDED BY PAPER
+    Test5: law='Normal',  alpha=0.01, n_consec_bins=2
+    '''
+
+    assert law in ['Poisson', 'Normal']
+    assert 0<p_th<1, "p_th should be between 0 and 1!"
+    assert sgn in [-1,1]
+    assert n_consec_bins>=1 and round(n_consec_bins)==n_consec_bins
+
+    if n_consec_bins in [2,3]:
+        assert law=='Normal', "Using more than 1 bin is not handled when assuming a Poisson distribution."
+        assert canUse_Nbins(p_th, cwin, cbin, n_consec_bins)
+    if not bin_wise: # else: compute one CI for each bin
+        if law=='Poisson':
+            crosses=[] # Poisson not handled yet - how to end up with natural integers as ccg values? Spike counts? Can multiplie by random big number?
+        elif law=='Normal':
+            threshold=fractile_normal(1-p_th/2)*sgn
+            CCG=zscore(CCG, frac=fract_baseline) # Z-score
+            crosses=thresh_consec(CCG, threshold, sgn=sgn, n_consec=n_consec_bins, only_max=only_max)
+    else:
+        crosses=[] # bin_wise not handled yet
+
+    if plot:
+        fig=plot_pval_borders(CCG, p_th, dist='normal', gauss_baseline_fract=fract_baseline, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
+                          xlabel='Time (ms)', ylabel='crosscorrelation (z-score)', title='Test: Kopelowitz et al. 2014'.format(p_th))
+        return fig
+
+    if ret_values:
+        return crosses
+    return np.any(crosses)
+
+def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, sgn=-1):
+    '''
+    Predictor and p-values for CCG using convolution.
+
+    Parameters:
+        - CCG: 1D numpy array (a single CCG) or 2D (CCGs in columns). Has to be non-negative integers (counts)
+        - W: int, convolution window standard deviation (in samples). Has to be smaller than the CCG length.
+        - WINTYPE: string, window type -> 'gaussian' - with SD of W/2; has optimal statistical properties
+                                  'rect' - of W samples; equivalent to jittering one spike train by a rectangular window of width W
+                                  'triang' - of ~2W samples; equivalent to jittering both trains by a rectangular window of width W
+        - CALP: bool, if true compute p value based on a poisson ditribution with a continuity correction
+        - sgn: -1 or 1, whether to return small p-values for troughs or peaks
+     Returns:
+        - PVALS       p-values (bin-wise) for higher (if sgn is '+') or lower than (if '-') chance.
+                      If p-val<0.001 at a given point,
+        - PRED        predictor(expected values)
+
+    ADVICE                    for minimal run-time, collect multiple CCHs in
+                                  the columns of CCH and call this routine once
+
+    revisions
+    11-jan-12 added qvals for deficient counts. to get global significance
+              (including correction for multiple comparisons), check crossing of alpha
+              divided by the number of bins tested
+    17-aug-19 cleaned up
+    '''
+    ## Local functions
+    def local_firfilt(x, win):
+        '''
+        Zero-phase lag low-pass filtering of x's columns with the FIR W.
+        '''
+        C = len(win)
+        D = int(np.ceil( C / 2 ) - 1)
+        Y = sgnl.lfilter(win.astype(float), 1,
+                         np.vstack([np.flipud(x[:C, :]).astype(float), x.astype(float), np.flipud(x[-1-C+1:,:])]).astype(float),
+                         axis=0) # pad with reversed CCG edges at the beginning and the end to prevnt edge effects...
+        Y = Y[C+D:-C+D,:] #... then remove them
+        return Y
+
+    def local_gausskernel(sigmaX, N):
+        '''
+        1D Gaussian kernel K with N samples and SD sigmaX.
+        '''
+        x = np.arange(-(N-1)/ 2, ( N - 1 ) / 2 + 1)
+        K = 1/(2*np.pi*sigmaX )*np.exp(-(x**2/2/sigmaX**2));
+        return K
+
+    ## Preprocess arguments
+
+    assert sgn in [1,-1]
+
+    assert sum(CCG<0) <= 0, 'CCG seems to contain negative integers!'
+
+    if CCG.ndim==1: CCG=CCG.reshape((1, CCG.shape[0]))
+    m, n = CCG.shape
+    if m == 1:
+        CCG             = CCG.T
+        nsamps          = n
+    else:
+        nsamps          = m
+
+    winlist=['gauss', 'rect', 'triang']
+    assert W == round(W) and W >= 1, 'W must be non-negative integer!'
+    W=int(W)
+    assert WINTYPE in winlist, "WINTYPE should be either 'gauss', 'rect' or 'triang', not {}.".format(WINTYPE)
+    if HF is None: HF={'gauss':0.6, 'rect':0.42, 'triang':0.63}[WINTYPE]
+    assert 0<HF<1, 'HF should be between 0 and 1.'
+
+    ## Compute the convolution window
+    conv_wins = {
+            winlist[0]: {0: (local_gausskernel( W/2, 6 * W/2+1), W/2*3), # gaussian even W
+                         1: (local_gausskernel( W/2, 6 * W/2+2), W/2*3+0.5)}, # gaussian odd W
+            winlist[1]: {0: (np.ones((1, W+1)), W/2), # rect even W
+                         1: (np.ones((1, W)), np.ceil(W/2)-1)}, # rect odd W
+            winlist[2]:{0: (sgnl.triang(2*W+1), W), # triang even W
+                        1: (sgnl.triang(2*W-1), W-1)} # triang odd W
+            }
+    win, cidx = conv_wins[WINTYPE][W%2]
+
+    win[int(cidx)] = win[int(cidx)]*(1-HF)
+    win = win/sum(win)
+
+    assert nsamps >= ( 1.5 * len( win ) ),'CCG-W mismatch (W too large for CCG length: reduce W or elongate CCG)'
+
+    ## Compute a predictor by convolving the CCG with the window
+    pred = local_firfilt(CCG, win); # pred is convolved CCG
+
+    ## Compute p-value based on a Poisson ditribution with a continuity correction
+    if CALCP:
+        pvals = npa(zeros=CCG.shape)
+        for i, (c, p) in enumerate(zip(CCG.flatten(),pred.flatten())):
+            pvals[i] = 1 - cdf_poisson(c-1, p) - pdf_poisson(c, p)*0.5; # excess, deterministic
+    else:
+        pvals = np.nan
+
+    if sgn==-1: pvals = 1-pvals # deficient
+
+    return pred, pvals
+
+def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_values=True, plot=False, only_max=True):
+    '''
+    Parameters:
+        - CCG: numpy array, crosscorrelogram in Counts
+        - cbin: float, CCG bins value, in milliseconds. Used to convert W_sd (ms) in samples.
+        - pval_thresh: float [0-1], threshold of modulation, in pvalue (based on Poisson distribution with continuity correction)
+        - n_consec: int, number of consecutive
+        - sgn: 1 or -1, direction of threshold crossing, either positive (1) or negative (-1)
+        - W_sd: float, sd of convolution window, in millisecond
+          (this is the standard deviation of the gaussian used to compute the predictor = convolved CCG).
+          E.g. if looking for monosynaptic event, use 5 millisecond.
+        - ret_values: bool, returns values of CCG corresponding to threshold crosses if True, in Poisson standard deviations
+    '''
+
+    assert np.all(CCG==np.round(CCG)), 'CCG should be in counts -> integers!'
+    assert 0<p_th<1, "p_th should be between 0 and 1!"
+    assert n_consec>=1 and round(n_consec)==n_consec
+
+    W_sd=int(W_sd/cbin)
+    pred, pvals = StarkAbeles2009_ccg_sig(CCG, W=2*W_sd, WINTYPE='gauss', HF=None, CALCP=True, sgn=sgn)
+    pred, pvals = pred.flatten(), pvals.flatten()
+
+    if plot:
+        fig=plot_pval_borders(CCG, p_th, dist='poisson', Y_pred=pred, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
+                          xlabel='Time (ms)', ylabel='crosscorrelation (Counts)', title='Test: Stark et al. 2009'.format(p_th))
+        return fig
+
+    if ret_values:
+        sig_pvals=thresh_consec(pvals, p_th/2, sgn=-1, n_consec=n_consec, only_max=only_max)
+        poisson_zscore=(CCG-pred)/np.sqrt(pred)
+        for sp in sig_pvals: sp[1,:]=poisson_zscore[sp[0,:].astype(np.int)]
+        return sig_pvals
+
+    comp = (pvals<=p_th/2)
+    return any_n_consec(comp, n_consec, where=False)
+
+
+def get_cross_features(cross, cbin, cwin):
+    '''Returns features of a correlogram modulation as defined in Kopelowitz et al. 2014.
+    Parameters:
+        - cross: 2d array, with cross[0] being the indices and cross[1] the values of a CCG significant modulation.
+        - cbin: ccg bin size (ms)
+        - cwin: ccg window size (ms)
+    Returns:
+        - a tuple of 8 features below:
+        l_ms:  the left edge in ms,
+        r_ms:  the right edge in ms,
+        amp_z: the amplitude in z-score units (standard deviations from predictor depending of the distribution used),
+        t_ms:  the time of the highest peak/deepest trough,
+        and the ones below as defined in KopelowitzCohen2014:
+            n_triplets:    the number of triplets of consecutive bins beyond the significance threshold (depends on bin size),
+            n_bincrossing: the number of consecutive bins beyond the significance threshold (depends on bin size),
+            bin_heights:   the mean amp_z across all significant bins,
+            entropy:       see KopelowitzCohen2014
+    '''
+    nbins=cwin/cbin+1
+    # for positive crosses, l_ind is the index of the first bin above threshold;
+    # r_ind is the index of the first bin below threshold.
+    l_ind, r_ind = cross[0,0], cross[0,-1]+1
+    l_ms, r_ms = (l_ind-(nbins-1)*1./2)*cbin, (r_ind-(nbins-1)*1./2)*cbin
+    amp_z=max(np.abs(cross[1,:]))*sign(cross[1,0])
+    t_ind=cross[0,:][cross[1,:]==amp_z][0] # If there are 2 equal maxima, the 1st one is picked
+    t_ms=(t_ind-(nbins-1)*1./2)*cbin
+    n_triplets=cross.shape[1]//3
+    n_bincrossing=cross.shape[1]
+    bin_heights=np.mean(cross[1,:])
+    # Assuming that the sides of the correlogram have a normal distribution,
+    # the Z-scored crosscorrelogram with the mean and std of the correlogram sides
+    # should have a normal distribution if not modulated.
+    # Hence the Ho PDF of the Z-scored correlogram is the N(0,1) distribution.
+    # So the probability of a bin height is pdf_normal(np.abs(bin_height), m=0, s=1).
+    pi=pdf_normal(np.abs(cross[1,:]), m=0, s=1)
+    entropy=-np.mean(np.log(pi))
+    if np.inf in [entropy]:entropy=0
+
+    return (l_ms, r_ms, amp_z, t_ms, n_triplets, n_bincrossing, bin_heights, entropy)
+
+def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', ret_features=True, only_max=True):
+    '''
+    Parameters:
+        - CCG: 1d array,
+        - cbin: float, CCG bin size (ms)
+        - cwin: float, CCG window size (ms)
+        - p_th: float, significance threshold in pvalues
+        - n_consec_bins: int, number of bins beyond significance threshold,
+        - sgn: -1, 0 or 1, sign of the modulation (negative, either or positive).
+               WARNING if sgn=0 and only_max=True, only the largest modulation will be returned in absolute value
+               so there can be different results for sgn=-1 (or 1) and 0!
+        - fract_baseline: float, fraction of the CCG used to compute the Ho mean and std if test='Normal_Kopelowitz'. | Default 4./5
+        - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
+        - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
+        - ret_features: bool, whether to return or not the features tuples instead of the crosses indices and values.
+        - only_max: bool, whether to return only the largest significant modulation of the correlogram (there can be several!)
+
+        Returns:
+            if ret_features==False:
+                - crosses: list of 2xNbins 2d arrays [indices, values] where 'indices' are the ccg indices of the significant modulation and 'values' the respective ccg values,
+                           in units of standard deviations from predictor (based on normal or poisson distribution)
+            else:
+                - features: list of tuples (1 per modulation) containing the features (see get_cross_features() doc)
+        '''
+
+    assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
+    assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
+
+    crosses=[]
+    if test=='Normal_Kopelowitz':
+        if sgn==0 or sgn==1:
+            crosses+=KopelowitzCohen2014_ccg_significance(CCG, cbin, cwin, p_th, n_consec_bins, 1, fract_baseline, ret_values=True, only_max=False)
+        if sgn==0 or sgn==-1:
+            crosses+=KopelowitzCohen2014_ccg_significance(CCG, cbin, cwin, p_th, n_consec_bins, -1, fract_baseline, ret_values=True, only_max=False)
+    elif test=='Poisson_Stark':
+        if sgn==0 or sgn==1:
+            crosses+=StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec_bins, 1, W_sd, ret_values=True, only_max=False)
+        if sgn==0 or sgn==-1:
+            crosses+=StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec_bins, -1, W_sd, ret_values=True, only_max=False)
+
+    if only_max and len(crosses)>0:
+        cross=crosses[0]
+        for c in crosses[1:]:
+            if max(abs(c[1,:]))>max(abs(cross[1,:])): cross = c
+        crosses=[cross]
+        assert len(crosses)==1
+
+    if not ret_features: return crosses
+
+    # Compute and return crosses features
+    return [get_cross_features(cross, cbin, cwin) for cross in crosses]
+
+
+def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
+                  p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+                  again=False, againCCG=False, ret_features=False, only_max=True, periods='all'):
+    '''
+    Parameters:
+        - dp: string, datapath to manually curated kilosort output
+        - U_src: list/array of source units of the correlograms to consider for significance assessment
+        - U_trg: list/array of target units of the correlograms to consider for significance assessment
+        - cbin: float, CCG bin size (ms)
+        - cwin: float, CCG window size (ms)
+        - name: name of the ccg stack to consider for significance assessment. HAS to be provided to be able to save and reload the ccg stack in the future.
+        - p_th: float, significance threshold in pvalues
+        - n_consec_bins: int, number of bins beyond significance threshold,
+        - sgn: -1, 0 or 1, sign of the modulation (negative, either or positive).
+               WARNING if sgn=0 and only_max=True, only the largest modulation will be returned in absolute value
+               so there can be different results for sgn=-1 (or 1) and 0!
+        - fract_baseline: float, fraction of the CCG used to compute the Ho mean and std if test='Normal_Kopelowitz'. | Default 4./5
+        - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
+        - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
+        - again: bool, whether to reassess significance of ccg stack rather than loading from memory if already computed in the past.
+        - againCCG: bool, whether to recompute ccg stack rather than loading from memory if already computed in the past.
+        - ret_features: bool, whether to return or not the features dataframe instead of the crosses indices and values.
+
+        Returns:
+            if ret_features==False:
+                - sigstack: np array, ccg stack containing the significant ccgs, of shape NsignificantUnits x cwin//cbin+1
+                - sigustack: np array, matching unit pairs for each significant ccg, of shape NsignificantUnits
+            else:
+                - sigstack: see above.
+                - sigustack: see above.
+                - features: dataframe of NsignificantUnits x
+                            ['uSrc'', uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
+                            (see __doc__ of get_ccg_sig() for features description)
+        '''
+    assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
+    assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
+
+    feat_columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms',
+                  'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
+
+    # Directly load sig stack if was already computed
+    if name is not None:
+        # in signame, only parameters not fed to ccg_stack
+        # (as others will already be added to the saved file name by ccg_stack)
+        signame=name+'-{}-{}-{}-{}-{}'.format(test, p_th, n_consec_bins, fract_baseline, W_sd)
+
+        dprm = get_npyx_memory(dp)
+
+        feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_{}_features.csv'.format(\
+                       signame, 'Counts', cbin, cwin, str(periods)[0:50].replace(' ', '').replace('\n',''), sgn, only_max))
+
+        # tries to load the significangt ccgs stack
+        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts',
+                                        all_to_all=False, name=signame, again=again,
+                                        periods=periods)
+        if np.any(sigstack): # will be empty if the array exists but again=True
+            if not ret_features:
+                return sigstack, sigustack
+            if op.exists(feat_path):
+                features=pd.read_csv(feat_path)
+                return sigstack, sigustack, features
+            features=pd.DataFrame(columns=feat_columns)
+            for i,c in enumerate(tqdm(sigstack, desc=f'Computing features of significant CCGs overs {num_cores} cores')):
+                pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn,
+                                fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
+                for p in pks:
+                    features=features.append(dict(zip(features.columns,np.append(sigustack[i, :], p))), ignore_index=True)
+            features.to_csv(feat_path, index=False)
+            return sigstack, sigustack, features
+
+    assert any(U_src)&any(U_trg)
+    if ret_features: features=pd.DataFrame(columns=feat_columns)
+
+    stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG,
+                              periods=periods)
+    same_src_trg=np.all(U_src==U_trg) if len(U_src)==len(U_trg) else False
+    inco=False
+    if same_src_trg:
+        if len(np.unique(ustack))!=len(np.unique(U_src)): inco=True
+        else:
+            if not np.all(np.unique(ustack)==np.unique(U_src)): inco=True
+    if inco:
+        print(f'Incoherence detected between loaded ccg_stack ({len(np.unique(ustack))} units) \
+              and expected ccg_stack ({len(U_src)} units) - recomputing as if againCCG were True...')
+        stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=True,
+                                  periods=periods)
+
+    ccgsig_ids = []
+    ccgsig_args = []
+    for i in range(stack.shape[0]):
+        for j in range(stack.shape[1]):
+            if same_src_trg and i<=j: continue
+            CCG=stack[i, j, :]
+            ccgsig_ids.append((i,j))
+            ccgsig_args.append((CCG, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features, only_max))
+
+    ccgsig_results = Parallel(n_jobs=num_cores, backend="threading")(\
+        delayed(get_ccg_sig)(*ccgsig_args[i]) for i in tqdm(range(len(ccgsig_args)),
+        desc=f'Looking for significant CCGs overs {num_cores} cores'))
+
+    sigustack=[]
+    sigstack=[]
+    for ((i,j), pks) in zip(ccgsig_ids, ccgsig_results):
+        if np.any(pks):
+            sigustack.append(ustack[i, j, :])
+            sigstack.append(stack[i, j, :])
+            if ret_features:
+                for p in pks:
+                    features=features.append(dict(zip(features.columns,np.append(ustack[i, j, :], p))), ignore_index=True)
+
+    if np.any(sigustack):
+        sigustack=npa(sigustack)
+        sigstack=npa(sigstack)
+        fn, fnu = get_ccgstack_fullname(name=signame, cbin=cbin, cwin=cwin, normalize='Counts', periods=periods)
+        np.save(dprm/fn, sigstack)
+        np.save(dprm/fnu, sigustack)
+        # print('Reloading only significant CCGs...')
+        # sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True,
+        #                                 periods=periods)
+    else:
+        bins=get_bins(cwin, cbin)
+        sigstack, sigustack = npa(zeros=(0, len(bins))), sigustack
+
+    if ret_features:
+        if name is not None:
+            features.to_csv(feat_path, index=False)
+        return sigstack, sigustack, features
+
+    return sigstack, sigustack
+
+def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
+            p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+            again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'],
+            pre_chanrange=None, post_chanrange=None, units=None,
+            name=None, use_template_for_peakchan=True,
+            periods='all'):
+    '''
+    Function generating a functional correlation dataframe sfc (Nsig x 2+8 features) and matrix sfcm (Nunits x Nunits)
+    from a sorted Kilosort output at 'dp' containing 'N' good units
+    with cdf(i,j) a list of ('l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy') tuples
+
+    Parameters:
+        - dp: string, datapath to manually curated kilosort output
+        - corr_type: string, amongst ['main', 'synchrony', 'excitation', 'inhibition', 'cs_pause']
+            - main: among all modulations, take the biggest one.
+                    Positive mods will be plotted in the bottomleft corner, negatives ones in the other.
+            - synchrony: among all positive modulations, take the one between -1 and 1ms
+                         Mods will be plotted symmetrically in both corners.
+            - excitations: among all positive modulations, take the one between 1 and 2.5ms
+                          Mods a->b will be plotted in the upper right corner, b->a in the other, if chan(a)>chan(b)
+            - inhibitions: among all negative modulations, take the one between 1 and 2.5ms
+                          Mods a->b will be plotted in the upper right corner, b->a in the other, if chan(a)>chan(b)
+            - connections: among all modulations, take the one between 1 and 2.5ms
+                          Inhibitions will be plotted in the upper right corner, excitations in the other.
+            - cs_pause: complex spike driven pauses in simple spike
+                        = inhibitions between 0.5 and 15 ms, lasting at least 10ms, centered after 4ms
+        - metric: string, feature used to fill the sfc matrix amongst
+            ['l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'] | Default: amp_z
+        - cbin: float, correlogram bin size | Default 0.5
+        - cwin: float, correlogram window size | Default 100
+        - p_th: float, significance threshold in p value | Default 0.02
+        - n_consec_bins: int, number of bins beyons significance threshold required | Default 3
+        - fract_baseline: float, fraction of the CCG used to compute the Ho mean and std if test='Normal_Kopelowitz'. | Default 4./5
+        - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
+        - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
+        - again: bool, whether to reassess significance of ccg stack rather than loading from memory if already computed in the past.
+        - againCCG: bool, whether to recompute ccg stack rather than loading from memory if already computed in the past.
+        - drop_seq: list of str, sequence in which to filter connections (['sign', 'time', 'max_amplitude'] in any order)
+        - pre_chanrange: [int,int], range of channels to which presynaptic units must belong (e.g. [200,384])
+        - post_chanrange: [int,int], range of channels to which postsynaptic units must belong (e.g. [0,200])
+        - units: list/array, units to consider to test correlations | Default: None (i.e. use all the good units)
+        - name: string, name of the all-to-all ccg_stack corresponding to the above-provided units
+                MANDATORY if you provide a list of units. | Default: None
+        - use_template_for_peakchan: bool, whether to use templates rather than raw data to find peak channel | Default: True
+        - periods: 'all' or [(float,float), (float,float), ...], list of time windows to consider to compute correlations
+
+    Returns:
+        - sfc: Pandas dataframe of NsignificantUnits x
+               ['uSrc'', uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
+               (see __doc__ of get_ccg_sig() for features description)
+        - sfcm: np array, Nunits x Nunit with 0 if no significant correlation and metric if significant correlation.
+    '''
+    assert corr_type in ['all', 'main', 'synchrony', 'excitations', 'inhibitions', 'connections', 'cs_pause']
+    # filter for main modulation irrespectively of sign
+    sgn=0
+    only_max=False
+    if corr_type=='all':
+        tfilt=[]
+        sfilt=[]
+    elif corr_type=='main':
+        tfilt=[]
+        sfilt=[]
+        only_max=True
+    elif corr_type=='synchrony':
+        tfilt=[[-1,1]]
+        sfilt=1
+    elif corr_type=='excitations':
+        tfilt=[[-2.5,-1],[1,2.5]]
+        sfilt=1
+    elif corr_type=='inhibitions':
+        tfilt=[[-2.5,-1],[1,2.5]]
+        sfilt=-1
+    elif corr_type=='connections':
+        tfilt=[[-2.5,-1],[1,2.5]]
+        sfilt=[]
+    elif corr_type=='cs_pause':
+        tfilt=[[-15,-4],[4,15]] # not time of extremum but time of pause center
+        sfilt=-1
+        n_consec_bins=int(5//cbin)
+    # Get depth-sorted units and sig ccg stack
+    if units is not None:
+        assert np.all(np.isin(units, get_units(dp))), 'Some of the provided units are not found in this dataset.'
+        assert name is not None, 'You MUST provide a custom name for the provided list of units to ensure that your results can be saved.'
+        peakChs = get_depthSort_peakChans(dp, units=units, use_template=use_template_for_peakchan)
+        gu = peakChs[:,0]
+    if name is not None:
+        if units is None:
+            print('You provided a name without any units - this will only work\
+            if this name has been used in the past to generate a ccg_stack, with units provided.')
+            gu=[]
+    else:
+        name='good-all_to_all'
+        peakChs = get_depthSort_peakChans(dp, quality='good', use_template=use_template_for_peakchan)
+        gu = peakChs[:,0]
+
+    sigstack, sigustack, sfc = ccg_sig_stack(dp, gu, gu, cbin, cwin, name,
+                  p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True, only_max=only_max,
+                  periods=periods)
+
+    # If filtering of connections wishes to be done at a later stage, simply return
+    if corr_type=='all': return sfc, np.zeros((len(gu),len(gu))), peakChs
+
+    # Else, proceed to filtering of connection types
+
+    # Get rid of false positive connections due to cross-contamination
+
+    if corr_type!='main': # then only_max is always False
+        # Filter out based on sign
+        def drop_sign(sfc, sfilt, corr_type):
+            s=sfc['amp_z'].values
+            s_mask=np.zeros((sfc.shape[0])).astype('bool')
+            if np.any(sfilt):
+                s_mask=(sign(s)!=sfilt)
+            sfc.drop(index=sfc.index[np.isin(sfc.index, sfc.index[s_mask])], inplace=True)
+            sfc.reset_index(inplace=True, drop=True)
+            return sfc
+
+        # Filter out based on time
+        def drop_time(sfc, tfilt, corr_type):
+            # for complex spike pauses: use time of trough center, not minimum
+            t=(sfc.l_ms+(sfc.r_ms-sfc.l_ms)/2).values if corr_type=='cs_pause' else sfc['t_ms'].values
+            t_mask=np.zeros((sfc.shape[0])).astype('bool')
+            if np.any(tfilt):
+                for tm in tfilt:
+                    t_mask=t_mask|(t>=tm[0])&(t<=tm[1])
+                t_mask=~t_mask
+            sfc.drop(index=sfc.index[np.isin(sfc.index, sfc.index[t_mask])], inplace=True)
+            sfc.reset_index(inplace=True, drop=True)
+            return sfc
+
+        # Filter out based on max amplitude
+        def drop_amp(sfc, afilt, corr_type):
+            z_mask=np.zeros((sfc.shape[0])).astype('bool')
+            dgp=sfc.groupby(['uSrc','uTrg'])
+            duplicates=npa(list(dgp.indices.values()), dtype=object)[(dgp.size()>1).values]
+            for d in duplicates:
+                zz=sfc.loc[d, 'amp_z'].abs()
+                largest=zz.max()
+                z_mask=z_mask|np.isin(sfc.index,d[zz!=largest])
+            sfc.drop(index=sfc.index[np.isin(sfc.index, sfc.index[z_mask])], inplace=True)
+            sfc.reset_index(inplace=True, drop=True)
+            return sfc
+
+        # Drop stuff
+        drop_dic={'sign':drop_sign,'time':drop_time,'max_amplitude':drop_amp,
+                  'signfilt':sfilt, 'timefilt':tfilt, 'max_amplitudefilt':None}
+        for drop in drop_seq:
+            sfc=drop_dic[drop](sfc, drop_dic[drop+'filt'], corr_type)
+
+    if (pre_chanrange is not None)|(post_chanrange is not None):
+        peakChs = get_depthSort_peakChans(dp, use_template=use_template_for_peakchan)
+        if pre_chanrange is not None:
+            pre_units=sfc.uSrc[sfc.t_ms>=0].append(sfc.uTrg[sfc.t_ms<0]).sort_index().values
+            peak_m=(peakChs[:,1]>pre_chanrange[0])&(peakChs[:,1]<pre_chanrange[1])
+            range_m=np.isin(pre_units,peakChs[peak_m,0])
+            sfc.drop(index=sfc.index[~range_m], inplace=True)
+            sfc.reset_index(inplace=True, drop=True)
+        if post_chanrange is not None:
+            post_units=sfc.uSrc[sfc.t_ms<0].append(sfc.uTrg[sfc.t_ms>=0]).sort_index().values
+            peak_m=(peakChs[:,1]>post_chanrange[0])&(peakChs[:,1]<post_chanrange[1])
+            range_m=np.isin(post_units,peakChs[peak_m,0])
+            sfc.drop(index=sfc.index[~range_m], inplace=True)
+            sfc.reset_index(inplace=True, drop=True)
+
+    sfcm = np.zeros((len(gu),len(gu)))
+    for i in sfc.index:
+        u1,u2=sfc.loc[i,'uSrc':'uTrg']
+        ui1,ui2=np.nonzero(gu==u1)[0][0], np.nonzero(gu==u2)[0][0] # ORDER OF gu MATTERS
+        v=sfc.loc[i, metric]
+        # If showing all main modulations or all connections,
+        # plotting inhibitions top right corner and excitations bottom left corner
+        if corr_type in ['main', 'connections']:
+            i1,i2 = (ui1,ui2) if ui1<ui2 else (ui2,ui1)
+            if sign(v)==-1:
+                sfcm[i1,i2]=v
+            else:
+                sfcm[i2,i1]=v
+        # If plotting synchrony, which is symmetrical,
+        # plotting symmetrically
+        elif corr_type=='synchrony':
+            sfcm[ui1,ui2]=sfcm[ui2,ui1]=v
+
+        # If plotting inhibitions xor excitations,
+        # plotting u1-> u2 in top right corner
+        # u2 -> u1 in bottom left corner
+        elif corr_type in ['excitations', 'inhibitions']:
+            t=sfc.loc[i, 't_ms']
+            tmask1=(t>=tfilt[1][0])&(t<=tfilt[1][1])
+            tmask2=(t>=tfilt[0][0])&(t<=tfilt[0][1])
+            if np.any(tmask1):
+                sfcm[ui1,ui2]=v[tmask1]
+            elif np.any(tmask2):
+                sfcm[ui2,ui1]=v[tmask2]
+
+    if not np.any(sigstack):
+        return sfc, sfcm, peakChs, sigstack, sigustack
+
+    filter_m = np.isin(sigustack[:,0], sfc.loc[:,'uSrc'].values)&np.isin(sigustack[:,1], sfc.loc[:,'uTrg'].values)
+    sigstack=sigstack[filter_m]
+    sigustack=sigustack[filter_m]
+
+    return sfc, sfcm, peakChs, sigstack, sigustack
 
 #%% Cross spike intervals distribution (is to ISI what CCG is to ACG)
 
@@ -1124,623 +1788,6 @@ def get_cm(dp, units, cbin=0.2, cwin=100, b=5, corrEvaluator='CCG', periods='all
         cm = pearson_corr(trnbM)
 
     return cm
-
-#%% Assessment of significance of correlogram modulation
-
-def canUse_Nbins(a=0.05, w=100, b=0.2, n_bins=3):
-    '''Function to assess the number of expected triplets (3 consecutive bins) in a crosscorrelogram.
-    The confidence of the test used cannot exceed the returned value.
-    E.g. for 100 bins or 0.1ms and a
-    - a: alpha, confidence level
-    - w: correlogram window size, ms
-    - b: correlogram bin size, ms
-
-    See Kopelowitz, Lev et Cohen, 2014, JNeuro methods,
-    Quantification of pairwise neuronal interactions: going beyond the significance lines.'''
-    assert 0<a<1
-    assert n_bins in [2,3], "Can only handle 2 or 3 bins"
-    n=w/b
-    if n_bins==3: expected_triplets=a*(a*n-2)*(a*n-4)/(8*(n-1))
-    elif n_bins==2: expected_triplets=a*(a*n-2)*(a*n-2)/(4*(n-1))
-    if a>expected_triplets:
-        #print("You can use this test, of confidence {0} since the probability of encountering a triplet by chance is {1:.3f}.".format(a, expected_triplets))
-        return True
-    else:
-        print("You CANNOT use this test, of confidence {0} since the probability of encountering a triplet by chance is {1:.3f}.".format(a, expected_triplets))
-        return False
-
-def KopelowitzCohen2014_ccg_significance(CCG, cbin=0.2, cwin=100, p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5,
-                                         law='Normal', multi_comp=False, bin_wise=False, ret_values=True, only_max=True, plot=False):
-    '''Function to assess whether a correlogram is significant or not.
-    Parameters:
-    - a: alpha, confidence level
-    - w: correlogram window size, ms
-    - b: correlogram bin size, ms
-    Returns:
-    - True or False, whether the ccg is significantly modulated or not
-    See Kopelowitz, Lev et Cohen, 2014, JNeuro methods,
-    Quantification of pairwise neuronal interactions: going beyond the significance lines.
-    Test1: law='Poisson', alpha=0.05, n_consec_bins=1, bin_wise=True
-    Test2: law='Poisson', alpha=0.05, n_consec_bins=1
-    Test3: law='Normal',  alpha=0.01, n_consec_bins=1, multi_comp=True
-    Test4: law='Normal',  alpha=0.05, n_consec_bins=3                     <<<-- RECOMMENDED BY PAPER
-    Test5: law='Normal',  alpha=0.01, n_consec_bins=2
-    '''
-
-    assert law in ['Poisson', 'Normal']
-    assert 0<p_th<1, "p_th should be between 0 and 1!"
-    assert sgn in [-1,1]
-    assert n_consec_bins>=1 and round(n_consec_bins)==n_consec_bins
-
-    if n_consec_bins in [2,3]:
-        assert law=='Normal', "Using more than 1 bin is not handled when assuming a Poisson distribution."
-        assert canUse_Nbins(p_th, cwin, cbin, n_consec_bins)
-    if not bin_wise: # else: compute one CI for each bin
-        if law=='Poisson':
-            crosses=[] # Poisson not handled yet - how to end up with natural integers as ccg values? Spike counts? Can multiplie by random big number?
-        elif law=='Normal':
-            threshold=fractile_normal(1-p_th/2)*sgn
-            CCG=zscore(CCG, frac=fract_baseline) # Z-score
-            crosses=thresh_consec(CCG, threshold, sgn=sgn, n_consec=n_consec_bins, only_max=only_max)
-    else:
-        crosses=[] # bin_wise not handled yet
-
-    if plot:
-        fig=plot_pval_borders(CCG, p_th, dist='normal', gauss_baseline_fract=fract_baseline, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
-                          xlabel='Time (ms)', ylabel='crosscorrelation (z-score)', title='Test: Kopelowitz et al. 2014'.format(p_th))
-        return fig
-
-    if ret_values:
-        return crosses
-    return np.any(crosses)
-
-def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, sgn=-1):
-    '''
-    Predictor and p-values for CCG using convolution.
-
-    Parameters:
-        - CCG: 1D numpy array (a single CCG) or 2D (CCGs in columns). Has to be non-negative integers (counts)
-        - W: int, convolution window standard deviation (in samples). Has to be smaller than the CCG length.
-        - WINTYPE: string, window type -> 'gaussian' - with SD of W/2; has optimal statistical properties
-                                  'rect' - of W samples; equivalent to jittering one spike train by a rectangular window of width W
-                                  'triang' - of ~2W samples; equivalent to jittering both trains by a rectangular window of width W
-        - CALP: bool, if true compute p value based on a poisson ditribution with a continuity correction
-        - sgn: -1 or 1, whether to return small p-values for troughs or peaks
-     Returns:
-        - PVALS       p-values (bin-wise) for higher (if sgn is '+') or lower than (if '-') chance.
-                      If p-val<0.001 at a given point,
-        - PRED        predictor(expected values)
-
-    ADVICE                    for minimal run-time, collect multiple CCHs in
-                                  the columns of CCH and call this routine once
-
-    revisions
-    11-jan-12 added qvals for deficient counts. to get global significance
-              (including correction for multiple comparisons), check crossing of alpha
-              divided by the number of bins tested
-    17-aug-19 cleaned up
-    '''
-    ## Local functions
-    def local_firfilt(x, win):
-        '''
-        Zero-phase lag low-pass filtering of x's columns with the FIR W.
-        '''
-        C = len(win)
-        D = int(np.ceil( C / 2 ) - 1)
-        Y = sgnl.lfilter(win.astype(float), 1,
-                         np.vstack([np.flipud(x[:C, :]).astype(float), x.astype(float), np.flipud(x[-1-C+1:,:])]).astype(float),
-                         axis=0) # pad with reversed CCG edges at the beginning and the end to prevnt edge effects...
-        Y = Y[C+D:-C+D,:] #... then remove them
-        return Y
-
-    def local_gausskernel(sigmaX, N):
-        '''
-        1D Gaussian kernel K with N samples and SD sigmaX.
-        '''
-        x = np.arange(-(N-1)/ 2, ( N - 1 ) / 2 + 1)
-        K = 1/(2*np.pi*sigmaX )*np.exp(-(x**2/2/sigmaX**2));
-        return K
-
-    ## Preprocess arguments
-
-    assert sgn in [1,-1]
-
-    assert sum(CCG<0) <= 0, 'CCG seems to contain negative integers!'
-
-    if CCG.ndim==1: CCG=CCG.reshape((1, CCG.shape[0]))
-    m, n = CCG.shape
-    if m == 1:
-        CCG             = CCG.T
-        nsamps          = n
-    else:
-        nsamps          = m
-
-    winlist=['gauss', 'rect', 'triang']
-    assert W == round(W) and W >= 1, 'W must be non-negative integer!'
-    W=int(W)
-    assert WINTYPE in winlist, "WINTYPE should be either 'gauss', 'rect' or 'triang', not {}.".format(WINTYPE)
-    if HF is None: HF={'gauss':0.6, 'rect':0.42, 'triang':0.63}[WINTYPE]
-    assert 0<HF<1, 'HF should be between 0 and 1.'
-
-    ## Compute the convolution window
-    conv_wins = {
-            winlist[0]: {0: (local_gausskernel( W/2, 6 * W/2+1), W/2*3), # gaussian even W
-                         1: (local_gausskernel( W/2, 6 * W/2+2), W/2*3+0.5)}, # gaussian odd W
-            winlist[1]: {0: (np.ones((1, W+1)), W/2), # rect even W
-                         1: (np.ones((1, W)), np.ceil(W/2)-1)}, # rect odd W
-            winlist[2]:{0: (sgnl.triang(2*W+1), W), # triang even W
-                        1: (sgnl.triang(2*W-1), W-1)} # triang odd W
-            }
-    win, cidx = conv_wins[WINTYPE][W%2]
-
-    win[int(cidx)] = win[int(cidx)]*(1-HF)
-    win = win/sum(win)
-
-    assert nsamps >= ( 1.5 * len( win ) ),'CCG-W mismatch (W too large for CCG length: reduce W or elongate CCG)'
-
-    ## Compute a predictor by convolving the CCG with the window
-    pred = local_firfilt(CCG, win); # pred is convolved CCG
-
-    ## Compute p-value based on a Poisson ditribution with a continuity correction
-    if CALCP:
-        pvals = npa(zeros=CCG.shape)
-        for i, (c, p) in enumerate(zip(CCG.flatten(),pred.flatten())):
-            pvals[i] = 1 - cdf_poisson(c-1, p) - pdf_poisson(c, p)*0.5; # excess, deterministic
-    else:
-        pvals = np.nan
-
-    if sgn==-1: pvals = 1-pvals # deficient
-
-    return pred, pvals
-
-def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_values=True, plot=False, only_max=True):
-    '''
-    Parameters:
-        - CCG: numpy array, crosscorrelogram in Counts
-        - cbin: float, CCG bins value, in milliseconds. Used to convert W_sd (ms) in samples.
-        - pval_thresh: float [0-1], threshold of modulation, in pvalue (based on Poisson distribution with continuity correction)
-        - n_consec: int, number of consecutive
-        - sgn: 1 or -1, direction of threshold crossing, either positive (1) or negative (-1)
-        - W_sd: float, sd of convolution window, in millisecond
-          (this is the standard deviation of the gaussian used to compute the predictor = convolved CCG).
-          E.g. if looking for monosynaptic event, use 5 millisecond.
-        - ret_values: bool, returns values of CCG corresponding to threshold crosses if True, in Poisson standard deviations
-    '''
-
-    assert np.all(CCG==np.round(CCG)), 'CCG should be in counts -> integers!'
-    assert 0<p_th<1, "p_th should be between 0 and 1!"
-    assert n_consec>=1 and round(n_consec)==n_consec
-
-    W_sd=int(W_sd/cbin)
-    pred, pvals = StarkAbeles2009_ccg_sig(CCG, W=2*W_sd, WINTYPE='gauss', HF=None, CALCP=True, sgn=sgn)
-    pred, pvals = pred.flatten(), pvals.flatten()
-
-    if plot:
-        fig=plot_pval_borders(CCG, p_th, dist='poisson', Y_pred=pred, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
-                          xlabel='Time (ms)', ylabel='crosscorrelation (Counts)', title='Test: Stark et al. 2009'.format(p_th))
-        return fig
-
-    if ret_values:
-        sig_pvals=thresh_consec(pvals, p_th/2, sgn=-1, n_consec=n_consec, only_max=only_max)
-        poisson_zscore=(CCG-pred)/np.sqrt(pred)
-        for sp in sig_pvals: sp[1,:]=poisson_zscore[sp[0,:].astype(np.int)]
-        return sig_pvals
-
-    comp = (pvals<=p_th/2)
-    return any_n_consec(comp, n_consec, where=False)
-
-
-def get_cross_features(cross, cbin, cwin):
-    '''Returns features of a correlogram modulation as defined in Kopelowitz et al. 2014.
-    Parameters:
-        - cross: 2d array, with cross[0] being the indices and cross[1] the values of a CCG significant modulation.
-        - cbin: ccg bin size (ms)
-        - cwin: ccg window size (ms)
-    Returns:
-        - a tuple of 8 features below:
-        l_ms:  the left edge in ms,
-        r_ms:  the right edge in ms,
-        amp_z: the amplitude in z-score units (standard deviations from predictor depending of the distribution used),
-        t_ms:  the time of the highest peak/deepest trough,
-        and the ones below as defined in KopelowitzCohen2014:
-            n_triplets:    the number of triplets of consecutive bins beyond the significance threshold (depends on bin size),
-            n_bincrossing: the number of consecutive bins beyond the significance threshold (depends on bin size),
-            bin_heights:   the mean amp_z across all significant bins,
-            entropy:       see KopelowitzCohen2014
-    '''
-    nbins=cwin/cbin+1
-    # for positive crosses, l_ind is the index of the first bin above threshold;
-    # r_ind is the index of the first bin below threshold.
-    l_ind, r_ind = cross[0,0], cross[0,-1]+1
-    l_ms, r_ms = (l_ind-(nbins-1)*1./2)*cbin, (r_ind-(nbins-1)*1./2)*cbin
-    amp_z=max(np.abs(cross[1,:]))*sign(cross[1,0])
-    t_ind=cross[0,:][cross[1,:]==amp_z][0] # If there are 2 equal maxima, the 1st one is picked
-    t_ms=(t_ind-(nbins-1)*1./2)*cbin
-    n_triplets=cross.shape[1]//3
-    n_bincrossing=cross.shape[1]
-    bin_heights=np.mean(cross[1,:])
-    # Assuming that the sides of the correlogram have a normal distribution,
-    # the Z-scored crosscorrelogram with the mean and std of the correlogram sides
-    # should have a normal distribution if not modulated.
-    # Hence the Ho PDF of the Z-scored correlogram is the N(0,1) distribution.
-    # So the probability of a bin height is pdf_normal(np.abs(bin_height), m=0, s=1).
-    pi=pdf_normal(np.abs(cross[1,:]), m=0, s=1)
-    entropy=-np.mean(np.log(pi))
-    if np.inf in [entropy]:entropy=0
-
-    return (l_ms, r_ms, amp_z, t_ms, n_triplets, n_bincrossing, bin_heights, entropy)
-
-def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', ret_features=True, only_max=True):
-    '''
-    Parameters:
-        - CCG: 1d array,
-        - cbin: float, CCG bin size (ms)
-        - cwin: float, CCG window size (ms)
-        - p_th: float, significance threshold in pvalues
-        - n_consec_bins: int, number of bins beyond significance threshold,
-        - sgn: -1, 0 or 1, sign of the modulation (negative, either or positive).
-               WARNING if sgn=0 and only_max=True, only the largest modulation will be returned in absolute value
-               so there can be different results for sgn=-1 (or 1) and 0!
-        - fract_baseline: float, fraction of the CCG used to compute the Ho mean and std if test='Normal_Kopelowitz'. | Default 4./5
-        - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
-        - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
-        - ret_features: bool, whether to return or not the features tuples instead of the crosses indices and values.
-        - only_max: bool, whether to return only the largest significant modulation of the correlogram (there can be several!)
-
-        Returns:
-            if ret_features==False:
-                - crosses: list of 2xNbins 2d arrays [indices, values] where 'indices' are the ccg indices of the significant modulation and 'values' the respective ccg values,
-                           in units of standard deviations from predictor (based on normal or poisson distribution)
-            else:
-                - features: list of tuples (1 per modulation) containing the features (see get_cross_features() doc)
-        '''
-
-    assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
-    assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
-
-    crosses=[]
-    if test=='Normal_Kopelowitz':
-        if sgn==0 or sgn==1:
-            crosses+=KopelowitzCohen2014_ccg_significance(CCG, cbin, cwin, p_th, n_consec_bins, 1, fract_baseline, ret_values=True, only_max=False)
-        if sgn==0 or sgn==-1:
-            crosses+=KopelowitzCohen2014_ccg_significance(CCG, cbin, cwin, p_th, n_consec_bins, -1, fract_baseline, ret_values=True, only_max=False)
-    elif test=='Poisson_Stark':
-        if sgn==0 or sgn==1:
-            crosses+=StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec_bins, 1, W_sd, ret_values=True, only_max=False)
-        if sgn==0 or sgn==-1:
-            crosses+=StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec_bins, -1, W_sd, ret_values=True, only_max=False)
-
-    if only_max and len(crosses)>0:
-        cross=crosses[0]
-        for c in crosses[1:]:
-            if max(abs(c[1,:]))>max(abs(cross[1,:])): cross = c
-        crosses=[cross]
-        assert len(crosses)==1
-
-    if not ret_features: return crosses
-
-    # Compute and return crosses features
-    return [get_cross_features(cross, cbin, cwin) for cross in crosses]
-
-
-def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
-                  p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-                  again=False, againCCG=False, ret_features=False, only_max=True, periods='all'):
-    '''
-    Parameters:
-        - dp: string, datapath to manually curated kilosort output
-        - U_src: list/array of source units of the correlograms to consider for significance assessment
-        - U_trg: list/array of target units of the correlograms to consider for significance assessment
-        - cbin: float, CCG bin size (ms)
-        - cwin: float, CCG window size (ms)
-        - name: name of the ccg stack to consider for significance assessment. HAS to be provided to be able to save and reload the ccg stack in the future.
-        - p_th: float, significance threshold in pvalues
-        - n_consec_bins: int, number of bins beyond significance threshold,
-        - sgn: -1, 0 or 1, sign of the modulation (negative, either or positive).
-               WARNING if sgn=0 and only_max=True, only the largest modulation will be returned in absolute value
-               so there can be different results for sgn=-1 (or 1) and 0!
-        - fract_baseline: float, fraction of the CCG used to compute the Ho mean and std if test='Normal_Kopelowitz'. | Default 4./5
-        - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
-        - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
-        - again: bool, whether to reassess significance of ccg stack rather than loading from memory if already computed in the past.
-        - againCCG: bool, whether to recompute ccg stack rather than loading from memory if already computed in the past.
-        - ret_features: bool, whether to return or not the features dataframe instead of the crosses indices and values.
-
-        Returns:
-            if ret_features==False:
-                - sigstack: np array, ccg stack containing the significant ccgs, of shape NsignificantUnits x cwin//cbin+1
-                - sigustack: np array, matching unit pairs for each significant ccg, of shape NsignificantUnits
-            else:
-                - sigstack: see above.
-                - sigustack: see above.
-                - features: dataframe of NsignificantUnits x
-                            ['uSrc'', uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
-                            (see __doc__ of get_ccg_sig() for features description)
-        '''
-    assert test in ['Normal_Kopelowitz', 'Poisson_Stark']
-    assert sgn in [0,1,-1], "sgn should be either 0, 1 or -1!"
-
-    feat_columns=['uSrc', 'uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms',
-                  'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
-
-    # Directly load sig stack if was already computed
-    if name is not None:
-        # in signame, only parameters not fed to ccg_stack
-        # (as others will already be added to the saved file name by ccg_stack)
-        signame=name+'-{}-{}-{}-{}-{}'.format(test, p_th, n_consec_bins, fract_baseline, W_sd)
-
-        dprm = get_npyx_memory(dp)
-
-        feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_{}_features.csv'.format(\
-                       signame, 'Counts', cbin, cwin, str(periods)[0:50].replace(' ', '').replace('\n',''), sgn, only_max))
-
-        sigstack, sigustack = ccg_stack(dp, [], [], cbin, cwin, normalize='Counts',
-                                        all_to_all=False, name=signame, again=again,
-                                        periods=periods)
-        if np.any(sigstack): # will be empty if the array exists but again=True
-            if not ret_features:
-                return sigstack, sigustack
-            if op.exists(feat_path):
-                features=pd.read_csv(feat_path)
-                return sigstack, sigustack, features
-            features=pd.DataFrame(columns=feat_columns)
-            for i,c in enumerate(sigstack):
-                pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn,
-                                fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
-                for p in pks:
-                    features=features.append(dict(zip(features.columns,np.append(sigustack[i, :], p))), ignore_index=True)
-            features.to_csv(feat_path, index=False)
-            return sigstack, sigustack, features
-
-    assert any(U_src)&any(U_trg)
-    ptdic={1:'peak', -1:'trough'}
-    sigustack=[]
-    if ret_features: features=pd.DataFrame(columns=feat_columns)
-
-    stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=againCCG,
-                              periods=periods)
-    same_src_trg=np.all(U_src==U_trg) if len(U_src)==len(U_trg) else False
-    inco=False
-    if same_src_trg:
-        if len(np.unique(ustack))!=len(np.unique(U_src)): inco=True
-        else:
-            if not np.all(np.unique(ustack)==np.unique(U_src)): inco=True
-    if inco:
-        print(f'Incoherence detected between loaded ccg_stack ({len(np.unique(ustack))} units) \
-              and expected ccg_stack ({len(U_src)} units) - recomputing as if againCCG were True...')
-        stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=True,
-                                  periods=periods)
-
-    for i in range(stack.shape[0]):
-        for j in range(stack.shape[1]):
-            if same_src_trg and i<=j: continue
-            CCG=stack[i, j, :]
-            pks=get_ccg_sig(CCG, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
-            if np.any(pks):
-                sg=sign(pks[0][2]) if ret_features else sign(pks[0][1][0])
-                print('Significant {}: {}->{}'.format(ptdic[sg], *ustack[i, j, :]))
-                sigustack.append(ustack[i, j, :])
-                if ret_features:
-                    for p in pks:
-                        features=features.append(dict(zip(features.columns,np.append(ustack[i, j, :], p))), ignore_index=True)
-
-    sigustack=npa(sigustack)
-    if np.any(sigustack):
-        sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True,
-                                        periods=periods)
-    else:
-        bins=get_bins(cwin, cbin)
-        sigstack, sigustack = npa(zeros=(0, len(bins))), sigustack
-
-    if ret_features:
-        if name is not None:
-            features.to_csv(feat_path, index=False)
-        return sigstack, sigustack, features
-    return sigstack, sigustack
-
-def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
-            p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-            again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'],
-            pre_chanrange=None, post_chanrange=None, units=None,
-            name=None, use_template_for_peakchan=True,
-            periods='all'):
-    '''
-    Function generating a functional correlation dataframe sfc (Nsig x 2+8 features) and matrix sfcm (Nunits x Nunits)
-    from a sorted Kilosort output at 'dp' containing 'N' good units
-    with cdf(i,j) a list of ('l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy') tuples
-
-    Parameters:
-        - dp: string, datapath to manually curated kilosort output
-        - corr_type: string, amongst ['main', 'synchrony', 'excitation', 'inhibition', 'cs_pause']
-            - main: among all modulations, take the biggest one.
-                    Positive mods will be plotted in the bottomleft corner, negatives ones in the other.
-            - synchrony: among all positive modulations, take the one between -1 and 1ms
-                         Mods will be plotted symmetrically in both corners.
-            - excitations: among all positive modulations, take the one between 1 and 2.5ms
-                          Mods a->b will be plotted in the upper right corner, b->a in the other, if chan(a)>chan(b)
-            - inhibitions: among all negative modulations, take the one between 1 and 2.5ms
-                          Mods a->b will be plotted in the upper right corner, b->a in the other, if chan(a)>chan(b)
-            - connections: among all modulations, take the one between 1 and 2.5ms
-                          Inhibitions will be plotted in the upper right corner, excitations in the other.
-            - cs_pause: complex spike driven pauses in simple spike
-                        = inhibitions between 0.5 and 15 ms, lasting at least 10ms, centered after 4ms
-        - metric: string, feature used to fill the sfc matrix amongst
-            ['l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy'] | Default: amp_z
-        - cbin: float, correlogram bin size | Default 0.5
-        - cwin: float, correlogram window size | Default 100
-        - p_th: float, significance threshold in p value | Default 0.02
-        - n_consec_bins: int, number of bins beyons significance threshold required | Default 3
-        - fract_baseline: float, fraction of the CCG used to compute the Ho mean and std if test='Normal_Kopelowitz'. | Default 4./5
-        - W_sd: float, size of the hollow gaussian window used to compute the correlogram predictor if test='Poisson_Stark' in ms | Default 10
-        - test: 'Normal_Kopelowitz' or 'Poisson_Stark', test to use to assess significance | Default Poisson_Stark
-        - again: bool, whether to reassess significance of ccg stack rather than loading from memory if already computed in the past.
-        - againCCG: bool, whether to recompute ccg stack rather than loading from memory if already computed in the past.
-        - drop_seq: list of str, sequence in which to filter connections (['sign', 'time', 'max_amplitude'] in any order)
-        - pre_chanrange: [int,int], range of channels to which presynaptic units must belong (e.g. [200,384])
-        - post_chanrange: [int,int], range of channels to which postsynaptic units must belong (e.g. [0,200])
-        - units: list/array, units to consider to test correlations | Default: None (i.e. use all the good units)
-        - name: string, name of the all-to-all ccg_stack corresponding to the above-provided units
-                MANDATORY if you provide a list of units. | Default: None
-        - use_template_for_peakchan: bool, whether to use templates rather than raw data to find peak channel | Default: True
-        - periods: 'all' or [(float,float), (float,float), ...], list of time windows to consider to compute correlations
-
-    Returns:
-        - sfc: Pandas dataframe of NsignificantUnits x
-               ['uSrc'', uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
-               (see __doc__ of get_ccg_sig() for features description)
-        - sfcm: np array, Nunits x Nunit with 0 if no significant correlation and metric if significant correlation.
-    '''
-    assert corr_type in ['all', 'main', 'synchrony', 'excitations', 'inhibitions', 'connections', 'cs_pause']
-    # filter for main modulation irrespectively of sign
-    sgn=0
-    only_max=False
-    if corr_type=='all':
-        tfilt=[]
-        sfilt=[]
-    elif corr_type=='main':
-        tfilt=[]
-        sfilt=[]
-        only_max=True
-    elif corr_type=='synchrony':
-        tfilt=[[-1,1]]
-        sfilt=1
-    elif corr_type=='excitations':
-        tfilt=[[-2.5,-1],[1,2.5]]
-        sfilt=1
-    elif corr_type=='inhibitions':
-        tfilt=[[-2.5,-1],[1,2.5]]
-        sfilt=-1
-    elif corr_type=='connections':
-        tfilt=[[-2.5,-1],[1,2.5]]
-        sfilt=[]
-    elif corr_type=='cs_pause':
-        tfilt=[[-15,-4],[4,15]] # not time of extremum but time of pause center
-        sfilt=-1
-        n_consec_bins=int(5//cbin)
-    # Get depth-sorted units and sig ccg stack
-    if units is not None:
-        assert np.all(np.isin(units, get_units(dp))), 'Some of the provided units are not found in this dataset.'
-        assert name is not None, 'You MUST provide a custom name for the provided list of units to ensure that your results can be saved.'
-        peakChs = get_depthSort_peakChans(dp, units=units, use_template=use_template_for_peakchan)
-        gu = peakChs[:,0]
-    if name is not None:
-        if units is None:
-            print('You provided a name without any units - this will only work\
-            if this name has been used in the past to generate a ccg_stack, with units provided.')
-            gu=[]
-    else:
-        name='good-all_to_all'
-        peakChs = get_depthSort_peakChans(dp, quality='good', use_template=use_template_for_peakchan)
-        gu = peakChs[:,0]
-
-    sigstack, sigustack, sfc = ccg_sig_stack(dp, gu, gu, cbin, cwin, name,
-                  p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True, only_max=only_max,
-                  periods=periods)
-
-    # If filtering of connections wishes to be done at a later stage, simply return
-    if corr_type=='all': return sfc, np.zeros((len(gu),len(gu))), peakChs
-
-    # Else, proceed to filtering of connection types
-
-    # Get rid of false positive connections due to cross-contamination
-
-    if corr_type!='main': # then only_max is always False
-        # Filter out based on sign
-        def drop_sign(sfc, sfilt, corr_type):
-            s=sfc['amp_z'].values
-            s_mask=np.zeros((sfc.shape[0])).astype('bool')
-            if np.any(sfilt):
-                s_mask=(sign(s)!=sfilt)
-            sfc.drop(index=sfc.index[np.isin(sfc.index, sfc.index[s_mask])], inplace=True)
-            sfc.reset_index(inplace=True, drop=True)
-            return sfc
-
-        # Filter out based on time
-        def drop_time(sfc, tfilt, corr_type):
-            # for complex spike pauses: use time of trough center, not minimum
-            t=(sfc.l_ms+(sfc.r_ms-sfc.l_ms)/2).values if corr_type=='cs_pause' else sfc['t_ms'].values
-            t_mask=np.zeros((sfc.shape[0])).astype('bool')
-            if np.any(tfilt):
-                for tm in tfilt:
-                    t_mask=t_mask|(t>=tm[0])&(t<=tm[1])
-                t_mask=~t_mask
-            sfc.drop(index=sfc.index[np.isin(sfc.index, sfc.index[t_mask])], inplace=True)
-            sfc.reset_index(inplace=True, drop=True)
-            return sfc
-
-        # Filter out based on max amplitude
-        def drop_amp(sfc, afilt, corr_type):
-            z_mask=np.zeros((sfc.shape[0])).astype('bool')
-            dgp=sfc.groupby(['uSrc','uTrg'])
-            duplicates=npa(list(dgp.indices.values()), dtype=object)[(dgp.size()>1).values]
-            for d in duplicates:
-                zz=sfc.loc[d, 'amp_z'].abs()
-                largest=zz.max()
-                z_mask=z_mask|np.isin(sfc.index,d[zz!=largest])
-            sfc.drop(index=sfc.index[np.isin(sfc.index, sfc.index[z_mask])], inplace=True)
-            sfc.reset_index(inplace=True, drop=True)
-            return sfc
-
-        # Drop stuff
-        drop_dic={'sign':drop_sign,'time':drop_time,'max_amplitude':drop_amp,
-                  'signfilt':sfilt, 'timefilt':tfilt, 'max_amplitudefilt':None}
-        for drop in drop_seq:
-            sfc=drop_dic[drop](sfc, drop_dic[drop+'filt'], corr_type)
-
-    if (pre_chanrange is not None)|(post_chanrange is not None):
-        peakChs = get_depthSort_peakChans(dp, use_template=use_template_for_peakchan)
-        if pre_chanrange is not None:
-            pre_units=sfc.uSrc[sfc.t_ms>=0].append(sfc.uTrg[sfc.t_ms<0]).sort_index().values
-            peak_m=(peakChs[:,1]>pre_chanrange[0])&(peakChs[:,1]<pre_chanrange[1])
-            range_m=np.isin(pre_units,peakChs[peak_m,0])
-            sfc.drop(index=sfc.index[~range_m], inplace=True)
-            sfc.reset_index(inplace=True, drop=True)
-        if post_chanrange is not None:
-            post_units=sfc.uSrc[sfc.t_ms<0].append(sfc.uTrg[sfc.t_ms>=0]).sort_index().values
-            peak_m=(peakChs[:,1]>post_chanrange[0])&(peakChs[:,1]<post_chanrange[1])
-            range_m=np.isin(post_units,peakChs[peak_m,0])
-            sfc.drop(index=sfc.index[~range_m], inplace=True)
-            sfc.reset_index(inplace=True, drop=True)
-
-    sfcm = np.zeros((len(gu),len(gu)))
-    for i in sfc.index:
-        u1,u2=sfc.loc[i,'uSrc':'uTrg']
-        ui1,ui2=np.nonzero(gu==u1)[0][0], np.nonzero(gu==u2)[0][0] # ORDER OF gu MATTERS
-        v=sfc.loc[i, metric]
-        # If showing all main modulations or all connections,
-        # plotting inhibitions top right corner and excitations bottom left corner
-        if corr_type in ['main', 'connections']:
-            i1,i2 = (ui1,ui2) if ui1<ui2 else (ui2,ui1)
-            if sign(v)==-1:
-                sfcm[i1,i2]=v
-            else:
-                sfcm[i2,i1]=v
-        # If plotting synchrony, which is symmetrical,
-        # plotting symmetrically
-        elif corr_type=='synchrony':
-            sfcm[ui1,ui2]=sfcm[ui2,ui1]=v
-
-        # If plotting inhibitions xor excitations,
-        # plotting u1-> u2 in top right corner
-        # u2 -> u1 in bottom left corner
-        elif corr_type in ['excitations', 'inhibitions']:
-            t=sfc.loc[i, 't_ms']
-            tmask1=(t>=tfilt[1][0])&(t<=tfilt[1][1])
-            tmask2=(t>=tfilt[0][0])&(t<=tfilt[0][1])
-            if np.any(tmask1):
-                sfcm[ui1,ui2]=v[tmask1]
-            elif np.any(tmask2):
-                sfcm[ui2,ui1]=v[tmask2]
-
-    if not np.any(sigstack):
-        return sfc, sfcm, peakChs, sigstack, sigustack
-
-    filter_m = np.isin(sigustack[:,0], sfc.loc[:,'uSrc'].values)&np.isin(sigustack[:,1], sfc.loc[:,'uTrg'].values)
-    sigstack=sigstack[filter_m]
-    sigustack=sigustack[filter_m]
-
-    return sfc, sfcm, peakChs, sigstack, sigustack
-
 
 #%% Work in progress
 

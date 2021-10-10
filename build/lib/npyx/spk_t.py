@@ -252,7 +252,7 @@ def trnb(dp, u, b, periods='all', again=False):
     fs=read_spikeglx_meta(dp)['sRateHz']
     assert b>=1000/fs
     t = trn(dp, u, enforced_rp=1, periods=periods, again=again)
-    t_end = np.load(Path(dp,'spike_times.npy'))[-1,0]
+    t_end = np.load(Path(dp,'spike_times.npy'), mmap_mode='r').ravel()[-1]
     return binarize(t, b, fs, t_end)
 
 def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs=None, t_end=None):
@@ -276,7 +276,7 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
             return np.load(Path(dprm,fn))
         t = trn(dp, u, enforced_rp=1, again=again)
         fs=read_spikeglx_meta(dp)['sRateHz']
-        t_end = np.load(Path(dp,'spike_times.npy'))[-1,0]
+        t_end = np.load(Path(dp,'spike_times.npy'), mmap_mode='r').ravel()[-1]
     else:
         assert fs is not None, "You need to provide the sampling rate of the provided train!"
         assert t_end is not None, "You need to provide the end time 't_end' of recorded train that you provide!"
@@ -307,7 +307,8 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=
         assert len(trn(dp,u,0))==len(t), 'There seems to be a mismatch between the provided spike trains and the unit index.'
         fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
         dprm = get_npyx_memory(dp)
-        if op.exists(Path(dprm,fn)) and not again:return np.load(Path(dprm,fn))
+        if op.exists(Path(dprm,fn)) and not again:
+            return np.load(Path(dprm,fn))
 
     assert 1<sd<10000
     assert 0<=th<1
@@ -390,7 +391,7 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
 
     if Path(dprm,fn).is_file() and (not again):
         if verbose: print(f"File {fn} found in routines memory.")
-        good_start_end, acg_start_end, gauss_start_end = np.load(Path(dprm,fn), allow_pickle = True)
+        good_start_end, acg_start_end, gauss_start_end = np.load(Path(dprm,fn))
         return good_start_end.tolist(), acg_start_end.tolist(), gauss_start_end.tolist()
 
     unit_size_s = first_n_minutes * 60

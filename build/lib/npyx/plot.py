@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 import pickle as pkl
-from tqdm import tqdm
+from tqdm import tqdm_notebook as tqdm #from tqdm import tqdm
 
 import numpy as np
 
@@ -25,8 +25,6 @@ from IPython.core.display import HTML,display
 mpl.rcParams['figure.dpi']=100
 mpl.rcParams['pdf.fonttype'] = 42 # necessary to make the text editable
 mpl.rcParams['ps.fonttype'] = 42
-
-import seaborn as sns
 
 from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable
 from npyx.stats import fractile_normal, fractile_poisson
@@ -1652,6 +1650,14 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
              title=None, show_ttl=True, color=-1, CCG=None, saveData=False,
              ylim=[0,0], ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False,
              use_template=True):
+    """
+    Parameters:
+    - as_grid: also plot units autocorrelograms along the diagonal (only relevant when plotting 2 units)
+    - use_template: whether to use the template files to find the peak channel
+
+    Returns:
+    - fig: matplotlib figure object
+    """
     assert assert_iterable(units)
     units=list(units)
     _, _idx=np.unique(units, return_index=True)

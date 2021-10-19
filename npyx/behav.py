@@ -278,8 +278,8 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
                 paqdic[f'{paqk}_npix']=npix_ons[npix_paq[paqk]]
                 paqdic[f"{off_key}_npix"]=npix_ofs[npix_paq[paqk]] # same key for onsets and offsets
             else:
-                # paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
-                # paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
+                paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
+                paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
                 paqdic[f'{paqk}_npix']=(a*paqv+b).astype(int)
                 paqdic[f"{off_key}_npix"]=(a*paqdic[off_key]+b).astype(int)
 

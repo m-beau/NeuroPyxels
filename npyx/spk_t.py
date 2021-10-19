@@ -4,7 +4,9 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 import os
-import os.path as op; opj=op.join
+import os.path as op
+
+from six import b; opj=op.join
 from pathlib import Path, PosixPath
 from ast import literal_eval as ale
 
@@ -19,6 +21,7 @@ from scipy.stats import norm
 from npyx.utils import smooth, thresh_consec, npa, assert_int, assert_float
 from npyx.gl import get_units, get_npyx_memory
 from npyx.io import read_spikeglx_meta
+
 
 def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
     '''
@@ -102,13 +105,14 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     # Search if the variable is already saved in dp/routinesMemory
     dprm = get_npyx_memory(dp)
 
-    fn='trn{}_{}.npy'.format(unit, enforced_rp)
-    if op.exists(Path(dprm,fn)) and not again:
+    fn=f'trn{unit}_{enforced_rp}.npy'
+    if (dprm/fn).exists() and not again:
         if verbose: print("File {} found in routines memory.".format(fn))
-        train = np.load(Path(dprm,fn))
+        try: train = np.load(dprm/fn) # handling of weird allow_picke=True error
+        except: pass
 
     # if not, compute it
-    else:
+    if 'train' not in locals(): # handling of weird allow_picke=True error
         if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
         if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
         assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
@@ -134,7 +138,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
         # Save it
         if sav:
-            np.save(Path(dprm,fn), train)
+            np.save(dprm/fn, train)
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.

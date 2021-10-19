@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+
 def get_npyx_memory(dp):
     dprm = Path(dp,'npyxMemory')
     old_dprm =Path(dp,'routinesMemory')
@@ -161,16 +162,37 @@ def get_rec_len(dp, unit='seconds'):
         if unit=='milliseconds':t_end*=1e3
     return t_end
 
-def regenerate_cluster_groups(dp):
+def detect_new_spikesorting(dp):
+    '''
+    Detects whether a dataset has been respikesorted
+    based on spike_clusters.npy and cluster_group.tsv time stamps.
+    Parameters:
+        - dp: str, path to original sorted dataset (not a merged dataset)
+    Returns:
+        - spikesorted: bool, True or False if new spike sorting detected or not.
+    '''
+    dp=Path(dp)
+    assert 'merged' not in str(dp), 'this function should be ran on an original sorted dataset, not on a merged dataset.'
+    last_spikesort = os.path.getmtime(dp/'spike_clusters.npy')
+    last_tsv_update = os.path.getmtime(dp/'cluster_group.tsv')
+    spikesorted = (last_tsv_update==last_spikesort)
+    if spikesorted: print('\n\033[34;1m--- New spike-sorting detected.')
+    return spikesorted
+
+def generate_cluster_groups(dp):
     units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
     qualities=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
     return qualities
 
 def load_units_qualities(dp, again=False):
     f='cluster_group.tsv'
-    regenerate=False if not again else True
-    if Path(dp, f).exists():
-        qualities = pd.read_csv(Path(dp, f),delimiter='\t')
+    quality_dp = Path(dp, f)
+    if quality_dp.exists():
+        qualities = pd.read_csv(quality_dp,delimiter='\t')
+        re_spikesorted = detect_new_spikesorting(dp)
+        regenerate=True if (again or re_spikesorted) else False
+        assert 'cluster_id' in qualities.columns,\
+            f"WARNING the tsv file {quality_dp} should have a column called 'cluster_id'!"
         if 'group' not in qualities.columns:
             print('WARNING there does not seem to be any group column in cluster_group.tsv - kilosort >2 weirdness. Making a fresh file.')
             regenerate=True
@@ -178,27 +200,41 @@ def load_units_qualities(dp, again=False):
             if 'unsorted' not in qualities['group'].values:
                 regenerate=True
         if regenerate:
-            qualities_new=regenerate_cluster_groups(dp)
-            missing_clusters_m=(~np.isin(qualities_new['cluster_id'], qualities['cluster_id']))
-            qualities_missing=qualities_new.loc[missing_clusters_m,:]
-            qualities=qualities.append(qualities_missing).sort_values('cluster_id')
-            qualities.to_csv(Path(dp, 'cluster_group.tsv'), sep='\t', index=False)
+            qualities_new=generate_cluster_groups(dp)
 
+            sorted_clusters     = qualities.loc[qualities['group']!='unsorted', :]
+            unsorted_clusters_m = ~np.isin(qualities_new['cluster_id'],sorted_clusters['cluster_id'])
+            unsorted_clusters   = qualities_new.loc[unsorted_clusters_m,:]
+
+            qualities=unsorted_clusters.append(sorted_clusters).sort_values('cluster_id')
+            qualities.to_csv(quality_dp, sep='\t', index=False)
     else:
         print('cluster groups table not found in provided data path. Generated from spike_clusters.npy.')
-        qualities=regenerate_cluster_groups(dp)
-        qualities.to_csv(Path(dp, 'cluster_group.tsv'), sep='\t', index=False)
+        qualities=generate_cluster_groups(dp)
+        qualities.to_csv(quality_dp, sep='\t', index=False)
 
     return qualities
 
 def get_units(dp, quality='all', chan_range=None, again=False):
+
     assert quality in ['all', 'good', 'mua', 'noise']
 
-    cl_grp = load_units_qualities(dp, again=again)
+    if assert_multi(dp):
+        ds_table = get_ds_table(dp)
+        qualities=pd.DataFrame(columns=['cluster_id', 'group'])
+        for ds_i in ds_table.index:
+            dpp=ds_table.loc[ds_i, 'dp']
+            re_spikesorted = detect_new_spikesorting(dpp)
+            qual = load_units_qualities(dpp, again=again)
+            qual['cluster_id']=qual['cluster_id']+1e-1*ds_i
+            qualities=qualities.append(qual, ignore_index=True)
+        qualities_dp=Path(dp, 'cluster_group.tsv')
+        qualities.to_csv(qualities_dp, sep='	', index=False)
+        assert not re_spikesorted, 'WARNING new spike sorting in one of the source datasets of this merged dataset - you need to run merger again!'
+    else:
+        qualities = load_units_qualities(dp, again=again)
 
-    units=[]
-    if assert_multi(dp): get_ds_table(dp)
-    units=cl_grp.loc[cl_grp['group']==quality,'cluster_id'].values if quality!='all' else cl_grp['cluster_id'].values
+    units=qualities.loc[qualities['group']==quality,'cluster_id'].values if quality!='all' else qualities['cluster_id'].values
 
     if chan_range is None:
         return units

@@ -251,10 +251,13 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
     fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(periods)[0:50].replace(' ', '').replace('\n',''))
     if os.path.exists(Path(dprm,fn)) and not again and trains is None:
         if verbose: print("File {} found in routines memory.".format(fn))
-        crosscorrelograms = np.load(Path(dprm,fn))
-        crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
+        try:  # handling of weird allow_picke=True error
+            crosscorrelograms = np.load(Path(dprm,fn))
+            crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
+        except: pass
+
     # if not, compute it
-    else:
+    if 'crosscorrelograms' not in locals(): # handling of weird allow_picke=True error
         if verbose: print("File {} not found in routines memory.".format(fn))
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True,
                                                    periods=periods, verbose=verbose, trains=trains)
@@ -534,12 +537,12 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                     ustack[i1, i2, :]=[u1,u2]
                     if i1==i2:
                         ccg_ids.append([i1, u1, i2, u2])
-                        ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 1, None))
+                        ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 0, None))
                     elif i2>i1:
                         ccg_ids.append([i1, u1, i2, u2])
-                        ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 1, None))
+                        ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 0, None))
 
-            ccg_results=Parallel(n_jobs=num_cores, backend="threading")(\
+            ccg_results=Parallel(n_jobs=num_cores)(\
                 delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
             for ((i1, u1, i2, u2), CCG) in zip(ccg_ids,ccg_results):
                 if i1==i2:
@@ -553,9 +556,9 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                 for i2, u2 in enumerate(U_trg):
                     ustack[i1, i2, :]=[u1,u2]
                     ccg_ids.append([i1, u1, i2, u2])
-                    ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 1, None))
+                    ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 0, None))
 
-            ccg_results=Parallel(n_jobs=num_cores, backend="threading")(\
+            ccg_results=Parallel(n_jobs=num_cores)(\
                 delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
             for ((i1, u1, i2, u2), CCG) in zip(ccg_ids,ccg_results):
                 stack[i1, i2, :]=CCG[0,1,:]
@@ -568,9 +571,9 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
         ccg_inputs, ccg_ids = [], []
         for i, (u1, u2) in enumerate(zip(U_src, U_trg)):
             ccg_ids.append([i, u1, u2])
-            ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 1, None))
+            ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 0, None))
 
-        ccg_results=Parallel(n_jobs=num_cores, backend="threading")(\
+        ccg_results=Parallel(n_jobs=num_cores)(\
             delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
         for ((i, u1, u2), CCG) in zip(ccg_ids,ccg_results):
             ustack[i, :]=[u1,u2]
@@ -980,8 +983,8 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         else:
             if not np.all(np.unique(ustack)==np.unique(U_src)): inco=True
     if inco:
-        print(f'Incoherence detected between loaded ccg_stack ({len(np.unique(ustack))} units) \
-              and expected ccg_stack ({len(U_src)} units) - recomputing as if againCCG were True...')
+        print((f'Incoherence detected between loaded ccg_stack ({len(np.unique(ustack))} units) '
+              f'and expected ccg_stack ({len(U_src)} units) - recomputing as if againCCG were True...'))
         stack, ustack = ccg_stack(dp, U_src, U_trg, cbin, cwin, normalize='Counts', all_to_all=True, name=name, again=True,
                                   periods=periods)
 
@@ -994,7 +997,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
             ccgsig_ids.append((i,j))
             ccgsig_args.append((CCG, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features, only_max))
 
-    ccgsig_results = Parallel(n_jobs=num_cores, backend="threading")(\
+    ccgsig_results = Parallel(n_jobs=num_cores)(\
         delayed(get_ccg_sig)(*ccgsig_args[i]) for i in tqdm(range(len(ccgsig_args)),
         desc=f'Looking for significant CCGs overs {num_cores} cores'))
 
@@ -1195,6 +1198,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     sfcm = np.zeros((len(gu),len(gu)))
     for i in sfc.index:
         u1,u2=sfc.loc[i,'uSrc':'uTrg']
+        assert (u1 in gu) and (u2 in gu), f'WARNING units {u1},{u2} from precomputed sfc not found in dataset units - must be respikesorted. Re-run with again=True.'
         ui1,ui2=np.nonzero(gu==u1)[0][0], np.nonzero(gu==u2)[0][0] # ORDER OF gu MATTERS
         v=sfc.loc[i, metric]
         # If showing all main modulations or all connections,
@@ -1516,7 +1520,7 @@ def get_cisi_parprocess(spk1, spk2, direction=0, verbose=True):
 
     n=chunks.shape[0]
     inputs=[(i, chunk) for i, chunk in enumerate(chunks)]
-    results=Parallel(n_jobs=num_cores, backend="threading")(delayed(par_process)(inp[0], inp[1], spk2, n, direction) for inp in inputs)
+    results=Parallel(n_jobs=num_cores)(delayed(par_process)(inp[0], inp[1], spk2, n, direction) for inp in inputs)
 
     return np.concatenate(results).ravel()
 

@@ -226,7 +226,7 @@ def mplp(fig=None, ax=None, figsize=None,
         ax.set_yticks(yticks)
     else: ax.set_yticks(yticks)
 
-    # Tick labels
+    # Tick labels and x/y limits
     fig.canvas.draw() # To force setting of ticklabels
     if xtickslabels is None:
         if any(ax.get_xticklabels()):
@@ -1395,7 +1395,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True,
             _format='pdf', periods='all', labels=True, std_lines=True, title=None, color=-1,
-            saveData=False, ylim1=0, ylim2=0, normalize='Hertz', ccg_mn=None, ccg_std=None,
+            saveData=False, ylim=None, normalize='Hertz', ccg_mn=None, ccg_std=None,
             figsize=(4.5,4), show_hz=False):
     '''Plots acg and saves it given the acg array.
     unit: int.
@@ -1413,19 +1413,17 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     fig, ax = plt.subplots(figsize=(10,8))
     x=np.linspace(-cwin*1./2, cwin*1./2, CCG.shape[0])
     assert x.shape==CCG.shape
-    if ylim1==0 and ylim2==0:
+    if ylim is None:
         if normalize in ['Hertz','Counts']:
-            ylim1=0
-            yl=max(CCG); ylim2=int(yl)+5-(yl%5);
+            yl=max(CCG)
+            ylim=[0,int(yl)+5-(yl%5)]
         elif normalize=='Pearson':
-            ylim1=0
-            yl=max(CCG); ylim2=yl+0.01-(yl%0.01);
+            yl=max(CCG)
+            ylim=[0, yl+0.01-(yl%0.01)]
         elif normalize=='zscore':
-            yl1=min(CCG);yl2=max(CCG)
-            ylim1=yl1-0.5+(abs(yl1)%0.5);ylim2=yl2+0.5-(yl2%0.5)
-            ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
-            ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
-    ax.set_ylim([ylim1, ylim2])
+            yl=np.max(np.abs(CCG))
+            ylim=[-yl, yl]
+    ax.set_ylim(ylim)
 
     if ccg_mn is not None and ccg_std is not None and show_hz:
         ax2 = ax.twinx()
@@ -1433,13 +1431,13 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels(ax2ticks, fontsize=20)
-        ax2.set_ylim([ylim1, ylim2])
+        ax2.set_ylim(ylim)
 
     if normalize in ['Hertz', 'Pearson', 'Counts']:
         y=CCG.copy()
     elif normalize in ['zscore']:
-        y=CCG.copy()+abs(ylim1)
-    ax.bar(x=x, height=y, width=cbin, color=color, edgecolor=color, bottom=ylim1) # Potentially: set bottom=0 for zscore
+        y=CCG.copy()+abs(ylim[0])
+    ax.bar(x=x, height=y, width=cbin, color=color, edgecolor=color, bottom=ylim[0]) # Potentially: set bottom=0 for zscore
 
     ax.plot([0,0], ax.get_ylim(), ls="--", c=[0.5,0.5,0.5], lw=1, zorder=1000)
     if labels:
@@ -1557,29 +1555,89 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
 
 
 def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downloads',
-                     saveFig=False, verbose=False, _format='pdf', figsize=None, periods='all',
-                     labels=True, show_ttl=True, title=None, std_lines=False, ylim1=0, ylim2=0, normalize='zscore'):
-    bChs=npa(bChs).astype(int)
-    l=len(units)
-    x=np.arange(-cwin/2, cwin/2+cbin, cbin)
+                     saveFig=False, _format='pdf', figsize=None,
+                     labels=True, show_ttl=True, title=None,
+                     ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore'):
 
+    ## Instanciate figure and format x axis/channels
+    l=len(units)
     if figsize is None: figsize=(4.5*l/2,4*l/2)
     fig = plt.figure(figsize=figsize)
-    pbar = tqdm(total=(l**2-l)//2+l, desc="Plotting CCGs")
+
+    x=np.arange(-cwin/2, cwin/2+cbin, cbin)
+    bChs=npa(bChs).astype(int)
+
+    ## precompute y limits (in case of y_sharing)
+    ylims=[]
+    acg_mask = npa([]).astype(bool)
     for row in range(l):
         for col in range(l):
-            ax=fig.add_subplot(l, l, 1+row*l+col%l)
             if normalize!='mixte':normalize1=normalize
+            if row>col: continue
+            ylim=None
+            on_acg = (row==col)
+            if on_acg:
+                acg_mask=np.append(acg_mask,[True])
+                y=CCGs[row,col,:]
+                if normalize=='mixte': normalize1='Hertz'
+                if ylim_acg is not None: ylim=ylim_acg
+            else:
+                acg_mask=np.append(acg_mask,[False])
+                if normalize=='mixte':
+                    y=zscore(CCGs[row,col,:], 4./5)
+                    normalize1='zscore'
+                else:
+                    y=CCGs[row,col,:]
+                if ylim_ccg is not None: ylim=ylim_ccg
+
+            if ylim is None:
+                margin = abs(np.max(y)-np.min(y))*0.01
+                ylim = [np.min(y)-margin, np.max(y)+margin]
+            if normalize1 in ['Hertz','Pearson','Counts']:
+                ylims.append([0, ylim[1]])
+            elif normalize1=='zscore':
+                ylmax=max(np.abs(ylim))
+                ylims.append([-ylmax, ylmax])
+
+    ylims=npa(ylims)
+    if share_y:
+        if normalize=='mixte':
+            ylims_ccg = ylims[~acg_mask]
+            ylims_acg = ylims[acg_mask]
+            yl_max_ccg = np.max(ylims_ccg[:,1])
+            yl_max_acg = np.max(ylims_acg[:,1])
+            ylims[acg_mask,1] = yl_max_acg
+            ylims[~acg_mask,0] = -yl_max_ccg
+            ylims[~acg_mask,1] = yl_max_ccg
+        else:
+            yl_max = np.max(ylims[:,1])
+            if normalize in ['Hertz','Pearson']:
+                ylims[~acg_mask,0] = -yl_max
+                ylims[~acg_mask,1] = yl_max
+            else:
+                ylims[acg_mask,1] = yl_max
+
+    ## Actually generate subplots, plot and frame
+    pbar = tqdm(total=(l**2-l)//2+l, desc="Plotting CCGs")
+    i=0
+    for row in range(l):
+        for col in range(l):
+            # create subplot
+            ax=fig.add_subplot(l, l, 1+row*l+col%l)
             if row>col:
                 mplp(ax=ax, hide_axis=True)
                 continue
-            pbar.update(1)
-            if (row==col):
+
+            # Process y data and pick color
+            if normalize!='mixte':normalize1=normalize
+            on_acg = (row==col)
+            if on_acg:
+                acg_mask=np.append(acg_mask,[True])
                 color=phyColorsDic[row%6]
                 y=CCGs[row,col,:]
-                if normalize=='mixte':
-                    normalize1='Hertz'
+                if normalize=='mixte': normalize1='Hertz'
             else:
+                acg_mask=np.append(acg_mask,[False])
                 color=phyColorsDic[-1]
                 if normalize=='mixte':
                     y=zscore(CCGs[row,col,:], 4./5)
@@ -1587,36 +1645,30 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 else:
                     y=CCGs[row,col,:]
 
+            # plotting
             ax.plot(x, y, color=color, alpha=0)
-            ax.set_xlim([-cwin*1./2, cwin*1./2])
-
             if normalize1 in ['Hertz','Pearson','Counts']:
-                ax.set_ylim([0, ax.get_ylim()[1]])
-                ax.fill_between(x, np.zeros(len(x)), y, color=color)
+                ax.fill_between(x, x*0, y, color=color)
             elif normalize1=='zscore':
-                ylmax=max(np.abs(ax.get_ylim()))
-                ax.set_ylim([-ylmax, ylmax])
-                ax.fill_between(x, -ylmax*np.ones(len(x)), y, color=color)
+                ax.fill_between(x, ylims[i][0]*np.ones(len(x)), y, color=color)
 
+            # plot framing
             if labels:
-                if row==col==0:
-                    ax.set_ylabel("Crosscorr. ({})".format(normalize), size=12)
-                if col==l-1 and row==l-1:
-                    ax.set_xlabel('Time (ms)', size=12)
-
-                if any(bChs):
-                    ttl="{}@{}>{}@{}".format(units[row], bChs[row], units[col], bChs[col])
-                else:
-                    ttl="{}>{}".format(units[row], units[col])
+                ylabel = f"Crosscorr. ({normalize})" if row==col==0 else None
+                xlabel = 'Time (ms)' if (col==l-1 and row==l-1) else None
+                ttl=f"{units[row]}@{bChs[row]}>{units[col]}@{bChs[col]}" if any(bChs) else f"{units[row]}>{units[col]}"
             else:
-                ttl=None
+                ttl, xlabel, ylabel = None, None, None
             if not show_ttl: ttl=None
 
-            mplp(ax=ax, figsize=figsize, lw=1,
-                 title=ttl, title_s=8, title_w='regular',
-                 axlab_s=12, axlab_w='regular',
-                 ticklab_s=12, ticklab_w='regular',
-                 tight_layout=False)
+            mplp(ax=ax, figsize=figsize, ylim=ylims[i], xlim=[-cwin*1./2, cwin*1./2],
+                lw=1, title=ttl, ylabel=ylabel, xlabel=xlabel,
+                title_s=8, title_w='regular',
+                axlab_s=12, axlab_w='regular',
+                ticklab_s=12, ticklab_w='regular',
+                tight_layout=False)
+            i+=1
+            pbar.update(1)
 
     if title is not None:
         fig.suptitle(title, size=20, weight='bold')
@@ -1648,7 +1700,8 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloads', saveFig=False, verbose=False,
              _format='pdf', figsize=None,periods='all', labels=True, std_lines=True,
              title=None, show_ttl=True, color=-1, CCG=None, saveData=False,
-             ylim=[0,0], ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False,
+             ylim_acg=None, ylim_ccg=None, share_y=0,
+             ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False,
              use_template=True):
     """
     Parameters:
@@ -1666,7 +1719,6 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
     if normalize=='mixte' and len(units)==2 and not as_grid: normalize='zscore'
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
-    ylim1, ylim2 = ylim[0], ylim[1]
 
     if CCG is None:
         normalize1 = normalize if normalize!='mixte' else 'Hertz'
@@ -1682,11 +1734,12 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
 
         if figsize is None: figsize=(4.5,4)
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format, periods=periods,
-                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2,
+                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim=ylim_ccg,
                       normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std, figsize=figsize)
     else:
-        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, saveDir, saveFig, verbose, _format, figsize, periods=periods,
-                               labels=labels, show_ttl=show_ttl,title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
+        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, saveDir, saveFig, _format, figsize,
+                               labels=labels, show_ttl=show_ttl,title=title,
+                               ylim_acg=ylim_acg, ylim_ccg=ylim_ccg, share_y=share_y, normalize=normalize)
 
     return fig
 

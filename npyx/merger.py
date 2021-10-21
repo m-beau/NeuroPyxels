@@ -203,10 +203,14 @@ def merge_datasets(datapaths):
     return dp_merged, ds_table
 
 def ask_syncchan(ons):
-    chan_len=''.join([f'chan {k} ({len(v)} events).\n' for k,v in ons.items()])
+    chan_len=''.join([f'chan {k} ({len(v)} events).' for k,v in ons.items()])
+    print(f'Data found on sync channels:\n{chan_len}')
+    if len(ons)==1:
+        print('Only one sync channel with data -> using it to synchronize probes.\n')
+        return list(ons.keys())[0]
     syncchan=None
     while (syncchan is None):
-        syncchan=input(f'Data found on sync channels:\n{chan_len}Which channel shall be used to synchronize probes? (q to restart and pick other channel on previous probe) >>> ')
+        syncchan=input('Which channel shall be used to synchronize probes? (q to restart and pick other channel on previous probe) >>> ')
         try:
             syncchan=int(syncchan)
             if syncchan not in ons.keys():

@@ -89,7 +89,7 @@ def merge_datasets(datapaths):
     ds_table=pd.DataFrame(columns=['dataset_name', 'dp', 'probe'])
     for i, (prb, dp) in enumerate(datapaths.items()):
         ds_table.loc[i, 'dataset_name']=op.basename(dp)
-        ds_table.loc[i, 'dp']=dp
+        ds_table.loc[i, 'dp']=str(dp)
         ds_table.loc[i, 'probe']=prb
     ds_table.insert(0, 'dataset_i', ds_table['dataset_name'].argsort()) # sort table by dataset_name alphabetically
     ds_table.sort_values('dataset_i', axis=0, inplace=True)
@@ -230,6 +230,7 @@ def ask_syncchan(ons):
 
 
 def get_ds_table(dp):
+    dp = Path(dp)
     ds_table = pd.read_csv(Path(dp, 'datasets_table.csv'), index_col='dataset_i')
     for dp in ds_table['dp']:
         assert op.exists(dp), \
@@ -278,4 +279,6 @@ def get_source_dp_u(dp, u):
         ds_i, u = get_dataset_id(u)
         ds_table=get_ds_table(dp)
         dp=ds_table['dp'][ds_i]
+
+    dp = Path(dp)
     return dp, u

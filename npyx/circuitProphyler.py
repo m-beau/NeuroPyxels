@@ -19,7 +19,7 @@ import pandas as pd
 import npyx
 from npyx.utils import npa, sign
 
-from npyx.io import read_spikeglx_meta, chan_map
+from npyx.io import read_metadata, chan_map
 from npyx.spk_wvf import get_depthSort_peakChans, get_peak_chan
 from npyx.corr import gen_sfc
 from npyx.merger import assert_multi, get_ds_table
@@ -870,7 +870,7 @@ class Dataset:
                     'path/to/kilosort/output1'.''')
 
         self.dp = Path(datapath)
-        self.meta=read_spikeglx_meta(self.dp)
+        self.meta=read_metadata(self.dp)
         self.probe_version=self.meta['probe_version']
         self.ds_i=dataset_index
         self.name=self.dp.name if dataset_name is None else dataset_name
@@ -878,7 +878,7 @@ class Dataset:
         self.params={}; params=imp.load_source('params', Path(self.dp,'params.py').absolute().as_posix())
         for p in dir(params):
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
-        self.fs=self.meta['sRateHz']
+        self.fs=self.meta['sampling_rate']
         self.endTime=self.meta['fileTimeSecs']
         self.chan_map=chan_map(self.dp, y_orig='surface')
         sk_output_cm=chan_map(self.dp, y_orig='surface', probe_version='local')

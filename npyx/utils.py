@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import os
+from pathlib import Path
+
 from numba import jit, njit, prange
 from numba.typed import List
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
@@ -122,6 +125,41 @@ def sign(x):
 
 def minus_is_1(x):
     return abs(1-1*x)*1./2
+
+def read_pyfile(filepath, ignored_chars=[" ", "'", "\"", "\n", "\r"]):
+    '''
+    Reads .py file and returns contents as dictionnary.
+
+    Assumes that file only has "variable=value" pairs, no fucntions etc
+
+    - filepath: str, path to file
+    - ignored_chars: list of characters to remove (only trailing and leading)
+    '''
+    filepath = Path(filepath)
+    assert filepath.exists(), f'{filepath} not found!'
+
+    params={}
+    with open(filepath) as f:
+        for ln in f.readlines():
+            assert '=' in ln, 'WARNING read_pyfile only works for list of variable=value lines!'
+            tmp = ln.split('=')
+            for i, string in enumerate(tmp):
+                string=string.strip("".join(ignored_chars))
+                tmp[i]=string
+            k, val = tmp[0], tmp[1]
+            try: val = ale(val)
+            except: pass
+            params[k]=val
+
+    return params
+
+def list_files(directory, extension, full_path=False):
+    directory=str(directory)
+    files = [f for f in os.listdir(directory) if f.endswith('.' + extension)]
+    files.sort()
+    if full_path:
+        return [Path('/'.join([directory,f])) for f in files]
+    return files
 
 def any_n_consec(X, n_consec, where=False):
     '''

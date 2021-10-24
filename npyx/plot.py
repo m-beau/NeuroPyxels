@@ -29,7 +29,7 @@ mpl.rcParams['ps.fonttype'] = 42
 from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable
 from npyx.stats import fractile_normal, fractile_poisson
 
-from npyx.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
+from npyx.io import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map
 from npyx.gl import get_units
 from npyx.merger import assert_multi, get_ds_ids
 from npyx.spk_wvf import get_depthSort_peakChans, wvf, wvf_dsmatch, get_peak_chan, templates
@@ -545,7 +545,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
 
     # Get metadata
     saveDir=op.expanduser(saveDir)
-    fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+    fs=read_metadata(dp)['highpass']['sampling_rate']
     pv=None if ignore_ks_chanfilt else 'local'
     cm=chan_map(dp, y_orig='tip', probe_version=pv)
 
@@ -697,7 +697,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
 
     return fig
 
-def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), subtype='ap',
+def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), filt_key='highpass',
              offset=450, color='multi', lw=1, bg_alpha=0.8,
              title=None, _format='pdf',  saveDir='~/Downloads', saveData=0, saveFig=0, figsize=(20,8),
              whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
@@ -735,25 +735,25 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
 
     '''
     pyqtgraph=0
-    meta=read_spikeglx_meta(dp, subtype)
-    fs = int(meta['sRateHz'])
+    assert filt_key in ['highpass', 'lowpass']
+    fs = read_metadata(dp)[filt_key]['sampling_rate']
     assert assert_iterable(events)
     # Get data
     if ext_data is None:
         channels=assert_chan_in_dataset(dp, channels)
         if times is not None:
             assert alignement_events is None, 'You can either provide a window of 2 times or a list of alignement_events + a single window to compute an average, but not both!'
-            rc = extract_rawChunk(dp, times, channels, subtype, saveData, 1, whiten, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten)
+            rc = extract_rawChunk(dp, times, channels, filt_key, saveData, 1, whiten, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten)
         if alignement_events is not None:
             assert window is not None
             window[1]=window[1]+1*1000/fs # to make actual window[1] tick visible
             assert times is None, 'You can either provide a window of 2 times or a list of alignement_events + a single window to compute an average, but not both!'
             assert len(alignement_events)>1
-            rc = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, subtype, saveData,
+            rc = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, filt_key, saveData,
                                   whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
             for e in alignement_events[1:]:
                 times=e+npa(window)/1e3
-                rc+=extract_rawChunk(dp, times, channels, subtype, saveData,
+                rc+=extract_rawChunk(dp, times, channels, filt_key, saveData,
                                      whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
             rc/=len(alignement_events)
     else:
@@ -876,7 +876,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
 
 
     fig=plot_raw(dp, times, None, None, channels,
-             subtype='ap', offset=450, saveDir=saveDir, saveData=saveData, saveFig=0,
+             filt_key='highpass', offset=450, saveDir=saveDir, saveData=saveData, saveFig=0,
              _format=_format, color=bg_color,
              whiten=whiten, nRangeWhiten=nRangeWhiten, med_sub=med_sub, nRangeMedSub=nRangeMedSub, hpfilt=hpfilt, hpfiltf=hpfiltf, ignore_ks_chanfilt=ignore_ks_chanfilt,
              show_allyticks=show_allyticks, yticks_jump=yticks_jump, events=events, set0atEvent=set0atEvent, figsize=figsize,
@@ -885,7 +885,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
     if not pyqtgraph: ax=fig.get_axes()[0]
     assert assert_iterable(units)
     assert len(units)>=1
-    fs=read_spikeglx_meta(dp, 'ap')['sRateHz']
+    fs=read_metadata(dp)['highpass']['sampling_rate']
     spk_w1 = spk_window // 2
     spk_w2 = spk_window - spk_w1
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
@@ -2216,7 +2216,7 @@ def plot_filtered_times(dp, unit, first_n_minutes=20, consecutive_n_seconds = 18
     gauss_sec = np.hstack((gauss_sec))
 
     # Parameters
-    fs = read_spikeglx_meta(dp, 'ap')['sRateHz']
+    fs = read_metadata(dp)['highpass']['sampling_rate']
 
     samples_fr = unit_size_s * fs
     spike_clusters = np.load(dp/'spike_clusters.npy')

@@ -15,7 +15,7 @@ import numpy as np
 from math import ceil
 
 from npyx.utils import npa, split, n_largest_samples
-from npyx.io import _pad, read_spikeglx_meta, chan_map, whitening, bandpass_filter, apply_filter, med_substract
+from npyx.io import _pad, read_metadata, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 from npyx.gl import get_units, get_npyx_memory
 
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, periods='regular',
@@ -60,6 +60,7 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, periods='regular',
                                     where n_channels is defined by the channel map if ignore_ks_chanfilt is False.
 
     '''
+    dp = Path(dp)
 
     if spike_ids is not None:
         if u is not None and verbose: print('WARNING you provided both u and spike_ids! u is ignored.')
@@ -102,23 +103,24 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, periods='regular', spi
     f"{wvf.__doc__}"
 
     # Extract and process metadata
-    dat_path=None
-    for f in os.listdir(dp):
-        if f.endswith(".ap.bin"):
-            dat_path=Path(dp, f)
-            if verbose: print(f'Loading waveforms from {dat_path}.')
-    assert dat_path is not None, f'No binary file (*.ap.bin) found in folder {dp}!!'
+    dp = Path(dp)
+    meta = read_metadata(dp)
+    assert meta['highpass']['binary_relative_path']!='not_found',\
+        f'No binary file (./*.ap.bin or ./continuous/Neuropix-PXI-100.0/*.dat) found in folder {dp}!!'
+    dat_path = dp/meta['highpass']['binary_relative_path']
 
-    meta=read_spikeglx_meta(dp, subtype='ap')
-    dtype=np.dtype('int16')
-    n_channels_dat=int(meta['nSavedChans'])
-    n_channels_rec = n_channels_dat-1
-    sample_rate=meta['sRateHz']
+    dp_source = get_source_dp_u(dp, u)[0]
+    meta=read_metadata(dp_source)
+    dtype=np.dtype(meta['highpass']['datatype'])
+    n_channels_dat=meta['highpass']['n_channels_binaryfile']
+    n_channels_rec = n_channels_dat-1 if meta['acquisition_software']=='SpikeGLX' else n_channels_dat
+    sample_rate=meta['highpass']['sampling_rate']
     item_size = dtype.itemsize
-    fileSizeBytes=op.getsize(dat_path)
-    assert meta['fileSizeBytes'] == fileSizeBytes,\
-        f'''Mismatch between ap.meta and ap.bin file size (assumed encoding is {dtype} and Nchannels is {n_channels_dat})!!
-        Prob wrong meta file - just edit fileSizeBytes in the .ap.meta file at {dp} (replace with {fileSizeBytes}) and be aware that something went wrong in your data management...'''
+    fileSizeBytes=meta['highpass']['binary_byte_size']
+    if meta['acquisition_software']=='SpikeGLX':
+        assert meta['highpass']['fileSizeBytes'] == fileSizeBytes,\
+            f'''Mismatch between ap.meta and ap.bin file size (assumed encoding is {str(dtype)} and Nchannels is {n_channels_dat})!!
+            Prob wrong meta file - just edit fileSizeBytes in the .ap.meta file at {dp} (replace with {fileSizeBytes}) and be aware that something went wrong in your data management...'''
 
     # Select subset of spikes
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
@@ -147,7 +149,8 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, periods='regular', spi
             wave=f.read(n_channels_dat*t_waveforms*item_size)
             wave=np.frombuffer(wave, dtype=dtype).reshape((t_waveforms,n_channels_dat))
             wave = wave-np.median(wave, axis = 0)[np.newaxis,:] # center the waveforms on 0
-            waveforms[i,:,:] = wave[:,:-1] # get rid of sync channel
+            # get rid of sync channel
+            waveforms[i,:,:] = wave[:,:-1] if meta['acquisition_software']=='SpikeGLX' else wave
 
     # Preprocess waveforms
     if hpfilt|med_sub|whiten:
@@ -167,7 +170,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, periods='regular', spi
         waveforms=waveforms[:,:,channel_ids_ks] # only AFTER processing, filter out channels
 
     # Correct voltage scaling
-    waveforms*=read_spikeglx_meta(dp, 'ap')['scale_factor']
+    waveforms*=meta['bit_uV_conv_factor']
 
     return  waveforms.astype(np.float32)
 
@@ -236,6 +239,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
         waveform:            numpy array of shape (t_waveforms)
 
     """
+
+    dp = Path(dp)
 
     if spike_ids is not None:
         raise ValueError('No support yet for passing multiple spike indices. Exiting.')
@@ -606,6 +611,7 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
           WARNING: this value is ABSOLUTE ON THE PROBE SHANK BY DEFAULT. If you wish the relative channel index
           taking into account channels ignored by kilosort, set ignore_ks_chanfilt to False.
     '''
+    dp = Path(dp)
     dp, unit = get_source_dp_u(dp, unit)
 
     strdic={True:'templates', False:'raw-waveforms'}
@@ -649,6 +655,8 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
         - best_channels, numpy array of shape (n_units, 2).
           Column 1: unit indices, column 2: respective peak channel indices.
     '''
+
+    dp = Path(dp)
     save=False # can only turn True if no (i.e. all) units are fed
     strdic={True:'templates', False:'raw-waveforms'}
 

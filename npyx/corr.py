@@ -28,7 +28,7 @@ from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \
                     assert_int, assert_float, assert_iterable, smooth
 
-from npyx.io import read_spikeglx_meta
+from npyx.io import read_metadata
 from npyx.gl import get_units, get_npyx_memory
 from npyx.spk_t import trn, trnb, binarize, firing_periods,\
                         isi, mfr, train_quality
@@ -1736,7 +1736,7 @@ def fraction_pop_sync(dp, u1, U, sync_win=2, b=1, sd=1000, th=0.02, again=False,
     if t1 is None:
         t1=trn(dp, u1, enforced_rp=0)
         trains=[trn(dp, u2, enforced_rp=0) for u2 in U]
-        fs=read_spikeglx_meta(dp)['sRateHz']
+        fs=read_metadata(dp)['highpass']['sampling_rate']
         t_end = np.load(Path(dp,'spike_times.npy')).ravel()[-1]
 
         return frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, again=again, dp=dp, U=U)

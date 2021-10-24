@@ -24,7 +24,7 @@ There isn't any better doc atm - post an issue if you have any question, or emai
 
 
 ## Documentation:
-Npyx works in harmony with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) and [OpenEphys](https://open-ephys.org/neuropixels) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) and [Phy](https://phy.readthedocs.io/en/latest/).
+Npyx works in harmony with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) and [OpenEphys](https://open-ephys.org/neuropixels) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) or [SpyKING CIRCUS](https://spyking-circus.readthedocs.io/en/latest/) and [Phy](https://phy.readthedocs.io/en/latest/). Any dataset you can run phy on can also be analyzed with npyx, in essence.
 
 <ins>Npyx is fast because it never computes the same thing twice</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at **kilosort_dataset/npyxMemory**, from where they are simply reloaded if called again. An important parameter controlling this behaviour is **`again`** (boolean), by default set to False: if True, the function will recompute the output rather than loading it from npyxMemory. This is important to be aware of this behaviour, as it can lead to mind boggling bugs. For instance, if you load the train of unit then re-spikesort your dataset, e.g. you split unit 56 in 504 and 505, the train of the old unit 56 will still exist at kilosort_dataset/npyxMemory and you will be able to load it even though the unit is gone!
 
@@ -32,21 +32,75 @@ Most npyx functions take at least one input: **`dp`**, which is the path to your
 
 Other typical parameters are: **`verbose`** (whether to print a bunch of informative messages, useful when debugging), **`saveFig`** (boolean) and **`saveDir`** (whether to save the figure in saveDir for plotting functions).
 
-Importantly, **`dp`** can also be the path to a merged dataset, generated with `npyx.merge_datasets()` - <ins>every function will run as smoothly on merged datasets as on any regular dataset</ins>. See below for more details.
+Importantly, **`dp`** can also be the path to a **merged dataset**, generated with `npyx.merge_datasets()` - <ins>every function will run as smoothly on merged datasets as on any regular dataset</ins>. See below for more details.
 
-More precisely, every function requires the files `myrecording.ap.meta`, `spike_times.npy` and `spike_clusters.npy`. If you have started spike sorting, `cluster_groups.tsv` will also be required obviously (will be created filled with 'unsorted' groups if none is found). Then particular functions will require particular files: loading waveforms with `npyx.spk_wvf.wvf` or extracting your sync channel with `npyx.io.get_npix_sync` require the raw data `myrecording.ap.bin`, `npyx.spk_wvf.templates` the files `templates.npy` and `spike_templates.npy`, and so on. This allows you to only transfer the strictly necassary files for your use case from a machine to the next: for instance, if you only want to make behavioural analysis of spike trains but do not care about the waveforms, you can run `get_npix_sync` on a first machine (which will generate a `sync_chan` folder containing extracted onsets/offsets from the sync channel(s)), then exclusively transfer the `sync_chan` folder along with `spike_times.npy` and `spike_clusters.npy` (all very light files) on another computer and analyze your data there seemlessly.
+More precisely, every function requires the files `myrecording.ap.meta`/`myrecording.oebin` (metadata from SpikeGLX/OpenEphys) and `params.py`, `spike_times.npy` and `spike_clusters.npy`. If you have started spike sorting, `cluster_groups.tsv` will also be required obviously (will be created filled with 'unsorted' groups if none is found). Then particular functions will require particular files: loading waveforms with `npyx.spk_wvf.wvf` or extracting your sync channel with `npyx.io.get_npix_sync` require the raw data `myrecording.ap.bin``myrecording.dat`, `npyx.spk_wvf.templates` the files `templates.npy` and `spike_templates.npy`, and so on. This allows you to only transfer the strictly necassary files for your use case from a machine to the next: for instance, if you only want to make behavioural analysis of spike trains but do not care about the waveforms, you can run `get_npix_sync` on a first machine (which will generate a `sync_chan` folder containing extracted onsets/offsets from the sync channel(s)), then exclusively transfer the `sync_chan` folder along with `spike_times.npy` and `spike_clusters.npy` (all very light files) on another computer and analyze your data there seemlessly.
+
+### Directory structure
+
+The **`dp`** parameter of all npyx functions must be the **absolute path to `myrecording`** below.
+
+For SpikeGLX recordings:
+```
+myrecording/
+  myrecording.ap.meta
+  params.py
+  spike_times.npy
+  spike_clusters.npy
+  cluster_groups.tsv # optional, if manually curated with phy
+  myrecording.ap.bin # optional, if wanna plot waveforms
+
+  # other kilosort/spyking circus outputs here
+```
+For Open-Ephys recordings:
+```
+myrecording/
+  myrecording.oebin
+  params.py
+  spike_times.npy
+  spike_clusters.npy
+  cluster_groups.tsv # if manually curated with phy
+
+  # other kilosort/spyking circus outputs here
+
+  ./continuous/
+    /Neuropix-PXI-100.0/
+      continuous.dat # optional, if wanna plot waveforms
+    /Neuropix-PXI-100.1/
+      continuous.dat # optional, if want to plot LFP with plot_raw
+
+  ./events/
+    Neuropix-PXI-100.0/
+      TTL_1/
+        timestamps.npy # optional, if need to get synchronyzation channel to load with get_npix_sync e.g. to merge datasets
+```
 
 
 Example use cases are:
 
+### Load recording metadata
+
+```python
+from npyx import *
+
+dp = 'datapath/to/myrecording'
+
+# load contents of .lf.meta and .ap.meta or .oebin files as python dictionnary.
+# The metadata of the high and lowpass filtered files are in meta['highpass'] and meta['lowpass']
+# Quite handy to get probe version, sampling frequency, recording length etc
+meta = read_metadata(dp)
+
+```
+
 ### Load synchronization channel
 ```python
-from npyx.io import get_npix_sync
-dp = 'datapath/to/kilosort_dataset'
+from npyx.io import get_npix_sync # star import is sufficient, but I like explicit imports!
+
+# If SpikeGLX: slow the first time, then super fast
 onsets, offsets = get_npix_sync(dp)
 # onsets/offsets are dictionnaries
-# whose keys are ids of sync channel where signal was detected,
-# and values the times of up (onsets) or down (offsets) threshold crosses in seconds.
+# keys: ids of sync channel where a TTL was detected,
+# values: times of up (onsets) or down (offsets) threshold crosses, in seconds.
 ```
 ### Get good units from dataset
 ```python
@@ -81,7 +135,7 @@ w=waves[:,:,peak_chan]
 waveforms = wvf(dp, u, periods=[(0,100),(300,400)])
 
 # alternatively, longer but more flexible:
-fs=read_spikeglx_meta['sRateHz']
+fs=meta['highpass']['sampling_rate']
 t=trn(dp,u)/fs # convert in s
 # get ids of unit u: all spikes have a unique index in the dataset,
 # which is their rank sorted by time (as in spike_times.npy)
@@ -96,17 +150,28 @@ temp = templates(dp,u) # return array of shape (n_templates, 82, n_channels)
 
 ### Compute auto/crosscorrelogram between 2 units
 ```python
-from npyx.corr import ccg
-dp = 'path/to/dataset'
+from npyx.corr import ccg, ccg_stack
+
 # returns ccg between 234 and 92 with a binsize of 0.2 and a window of 80
 c = ccg(dp, [234,92], cbin=0.2, cwin=80)
+
+# Only using spikes from the first and third minutes of recording
+c = ccg(dp, [234,92], cbin=0.2, cwin=80, periods=[(0,60), (120,180)])
+
+# better, compute a big stack of crosscorrelograms with a given name
+# The first time, CCGs will be computed in parallel using all the available CPU cores
+# and it will be saved in the background and, reloadable instantaneously in the future
+source_units = [1,2,3,4,5]
+target_units = [6,7,8,9,10]
+c_stack = ccg_stack(dp, source_units, target_units, 0.2, 80, name='my_relevant_ccg_stack')
+c_stack = ccg_stack(dp, name='my_relevant_ccg_stack') # will work to reaload in the future
 ```
 
 ### Plot waveform and crosscorrelogram of unit u
 ```python
 # all plotting functions return matplotlib figures
 from npyx.plot import plot_wvf, get_peak_chan
-dp = 'path/to/dataset'
+
 u=234
 # plot waveform, 2.8ms around templates center, on 16 channels around peak channel
 # (the peak channel is found automatically, no need to worry about finding it)
@@ -119,6 +184,7 @@ peakchannel = get_peak_chan(dp, u)
 
 ```python
 # plot ccg between 234 and 92
+# as_grid also plot the autocorrelograms
 fig = plot_ccg(dp, [u,92], cbin=0.2, cwin=80, as_grid=True)
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ccg.png" width="400"/>

@@ -154,13 +154,13 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None):
     return DSs
 
 def get_rec_len(dp, unit='seconds'):
-    assert unit in ['samples', 'seconds', 'milliseconds']
-    fs=read_spikeglx_meta(dp)['sRateHz']
-    t_end=np.load(Path(dp,'spike_times.npy')).ravel()[-1]
-    if unit in ['seconds', 'milliseconds']:
-        t_end/=fs
-        if unit=='milliseconds':t_end*=1e3
-    return t_end
+    ' returns recording length in seconds or samples'
+    assert unit in ['samples', 'seconds']
+    meta = read_metadata(dp)
+    rec_length=meta['recording_length_seconds']
+    if unit=='samples':
+        rec_length=int(rec_length*meta['sampling_rate'])
+    return rec_length
 
 def detect_new_spikesorting(dp):
     '''
@@ -195,7 +195,7 @@ def load_units_qualities(dp, again=False):
             f"WARNING the tsv file {quality_dp} should have a column called 'cluster_id'!"
         if 'group' not in qualities.columns:
             print('WARNING there does not seem to be any group column in cluster_group.tsv - kilosort >2 weirdness. Making a fresh file.')
-            regenerate=True
+            qualities=generate_cluster_groups(dp)
         else:
             if 'unsorted' not in qualities['group'].values:
                 regenerate=True
@@ -252,6 +252,6 @@ def get_good_units(dp):
     return get_units(dp, quality='good')
 
 # circular imports
-from npyx.io import read_spikeglx_meta
+from npyx.io import read_metadata
 from npyx.spk_wvf import get_depthSort_peakChans
 from npyx.merger import assert_multi, get_ds_table

@@ -4,7 +4,9 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 import os
-import os.path as op; opj=op.join
+import os.path as op
+
+from six import b; opj=op.join
 from pathlib import Path, PosixPath
 from ast import literal_eval as ale
 
@@ -18,7 +20,8 @@ from scipy.optimize import curve_fit
 from scipy.stats import norm
 from npyx.utils import smooth, thresh_consec, npa, assert_int, assert_float
 from npyx.gl import get_units, get_npyx_memory
-from npyx.io import read_spikeglx_meta
+from npyx.io import read_metadata
+
 
 def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
     '''
@@ -36,6 +39,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
     - again: boolean, if True recomputes data from source files without checking routines memory.
     '''
 
+    dp = Path(dp)
     assert unit in get_units(dp), 'WARNING unit {} not found in dataset {}!'.format(unit, dp)
     # Search if the variable is already saved in dp/routinesMemory
     dprm = get_npyx_memory(dp)
@@ -49,29 +53,31 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
         if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
         if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
         assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
-        if assert_multi(dp):
-            ds_table = get_ds_table(dp)
-            if ds_table.shape[0]>1: # If merged dataset
-                spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
-                indices = np.nonzero(spike_clusters==unit)[0].ravel()
-            else:
-                ds_i, unt = get_dataset_id(unit)
-                spike_clusters = np.load(Path(ds_table.loc['dp'][ds_i],"spike_clusters.npy"), mmap_mode='r')
-                indices = np.nonzero(spike_clusters==unt)[0].ravel()
-        else:
-            spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
-            indices = np.nonzero(spike_clusters==unit)[0].ravel()
+        # if assert_multi(dp):
+        #     ds_table = get_ds_table(dp)
+        #     if ds_table.shape[0]>1: # If merged dataset
+        #         spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
+        #         indices = np.nonzero(spike_clusters==unit)[0].ravel()
+        #     else:
+        #         ds_i, unt = get_dataset_id(unit)
+        #         spike_clusters = np.load(Path(ds_table.loc['dp'][ds_i],"spike_clusters.npy"), mmap_mode='r')
+        #         indices = np.nonzero(spike_clusters==unt)[0].ravel()
+        # else:
+
+        spike_clusters = np.load(dp/"spike_clusters.npy", mmap_mode='r')
+        indices = np.nonzero(spike_clusters==unit)[0].ravel()
 
         # Save it
         if sav:
-            np.save(Path(dprm,fn), indices)
+            np.save(dprm/fn, indices)
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
     if periods!='all': # else, eq to periods=[(0, spike_samples[-1])] # in samples
         try: periods[0][0]
         except: raise TypeError("ERROR periods should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
-        fs=read_spikeglx_meta(dp)['sRateHz']
+        dp_source = get_source_dp_u(dp, unit)[0]
+        fs=read_metadata(dp_source)["highpass"]['sampling_rate']
         train=trn(dp, unit, again=again)
         sec_bool=np.zeros(len(train), dtype=np.bool)
         for section in periods:
@@ -101,47 +107,48 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
     # Search if the variable is already saved in dp/routinesMemory
     dprm = get_npyx_memory(dp)
+    dp_source = get_source_dp_u(dp, unit)[0]
+    fs=read_metadata(dp_source)['highpass']['sampling_rate']
 
-    fn='trn{}_{}.npy'.format(unit, enforced_rp)
-    if op.exists(Path(dprm,fn)) and not again:
+    fn=f'trn{unit}_{enforced_rp}.npy'
+    if (dprm/fn).exists() and not again:
         if verbose: print("File {} found in routines memory.".format(fn))
-        train = np.load(Path(dprm,fn))
+        try: train = np.load(dprm/fn) # handling of weird allow_picke=True error
+        except: pass
 
     # if not, compute it
-    else:
+    if 'train' not in locals(): # handling of weird allow_picke=True error when using joblib multiprocessing
         if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
         if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
         assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
-        if assert_multi(dp):
-            ds_table = get_ds_table(dp)
-            if ds_table.shape[0]>1: # If merged dataset
-                spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
-                spike_samples = np.load(Path(dp,'spike_times.npy'), mmap_mode='r')
-                train = spike_samples[spike_clusters==unit].ravel()
-            else:
-                ds_i, unt = get_dataset_id(unit)
-                spike_clusters = np.load(Path(ds_table['dp'][ds_i],"spike_clusters.npy"), mmap_mode='r')
-                spike_samples = np.load(Path(ds_table['dp'][ds_i],'spike_times.npy'), mmap_mode='r')
-                train = spike_samples[spike_clusters==unt].ravel()
-        else:
-            spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
-            spike_samples = np.load(Path(dp,'spike_times.npy'), mmap_mode='r')
-            train = spike_samples[spike_clusters==unit].ravel()
+        # if assert_multi(dp):
+        #     ds_table = get_ds_table(dp)
+        #     if ds_table.shape[0]>1: # If merged dataset
+        #         spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
+        #         spike_samples = np.load(Path(dp,'spike_times.npy'), mmap_mode='r')
+        #         train = spike_samples[spike_clusters==unit].ravel()
+        #     else:
+        #         ds_i, unt = get_dataset_id(unit)
+        #         spike_clusters = np.load(Path(ds_table['dp'][ds_i],"spike_clusters.npy"), mmap_mode='r')
+        #         spike_samples = np.load(Path(ds_table['dp'][ds_i],'spike_times.npy'), mmap_mode='r')
+        #         train = spike_samples[spike_clusters==unt].ravel()
+        # else:
+        spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
+        spike_samples = np.load(Path(dp,'spike_times.npy'), mmap_mode='r')
+        train = spike_samples[spike_clusters==unit].ravel()
 
         # Filter out spike duplicates (spikes following an ISI shorter than enforced_rp)
-        fs=read_spikeglx_meta(dp)['sRateHz']
         train=train[np.append(True, np.diff(train)>=enforced_rp*fs/1000)]
 
         # Save it
         if sav:
-            np.save(Path(dprm,fn), train)
+            np.save(dprm/fn, train)
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
     if periods!='all': # else, eq to periods=[(0, spike_samples[-1])] (in samples)
         try: periods[0][0]
         except: raise TypeError("ERROR periods should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
-        fs=read_spikeglx_meta(dp)['sRateHz']
         sec_bool=np.zeros(len(train), dtype=np.bool)
         for section in periods:
             sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
@@ -205,7 +212,8 @@ def mfr(dp=None, U=None, exclusion_quantile=0.005, enforced_rp=0,
     MFR=[]
     for u in U:
         t=trn(dp, u, periods=periods, again=again, enforced_rp=enforced_rp)
-        fs=read_spikeglx_meta(dp)['sRateHz']
+        dp_source = get_source_dp_u(dp, u)[0]
+        fs=read_metadata(dp_source)['highpass']['sampling_rate']
         MFR.append(mean_firing_rate(t, exclusion_quantile, fs))
 
     return MFR[0] if len(U)==1 else npa(MFR)
@@ -249,7 +257,8 @@ def trnb(dp, u, b, periods='all', again=False):
     - u (int): unit index
     - bin_size: size of binarized spike train bins, in milliseconds.
     '''
-    fs=read_spikeglx_meta(dp)['sRateHz']
+    dp_source = get_source_dp_u(dp, u)[0]
+    fs=read_metadata(dp_source)['highpass']['sampling_rate']
     assert b>=1000/fs
     t = trn(dp, u, enforced_rp=1, periods=periods, again=again)
     t_end = np.load(Path(dp,'spike_times.npy'), mmap_mode='r').ravel()[-1]
@@ -275,7 +284,8 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
         if op.exists(Path(dprm,fn)) and not again:
             return np.load(Path(dprm,fn))
         t = trn(dp, u, enforced_rp=1, again=again)
-        fs=read_spikeglx_meta(dp)['sRateHz']
+        dp_source = get_source_dp_u(dp, u)[0]
+        fs=read_metadata(dp_source)['highpass']['sampling_rate']
         t_end = np.load(Path(dp,'spike_times.npy'), mmap_mode='r').ravel()[-1]
     else:
         assert fs is not None, "You need to provide the sampling rate of the provided train!"
@@ -836,4 +846,4 @@ def estimate_bins(x, rule):
 
 
 from  npyx.corr import acg
-from npyx.merger import assert_multi, get_dataset_id, get_ds_table
+from npyx.merger import assert_multi, get_dataset_id, get_ds_table, get_source_dp_u

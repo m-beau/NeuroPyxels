@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import os
+from pathlib import Path
+
 from numba import jit, njit, prange
 from numba.typed import List
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
@@ -9,7 +12,6 @@ warnings.simplefilter('default', category=NumbaPendingDeprecationWarning)#'ignor
 
 from ast import literal_eval as ale
 import numpy as np
-import seaborn as sns
 import matplotlib.pyplot as plt
 
 from six import integer_types
@@ -33,19 +35,6 @@ phyColorsDic = {
     4:(84./255, 255./255, 28./255),
     5:(255./255,165./255,0./255),
     -1:(0., 0., 0.),
-    }
-
-seabornColorsDic = {
-    0:sns.color_palette()[0],
-    1:sns.color_palette()[1],
-    2:sns.color_palette()[2],
-    3:sns.color_palette()[3],
-    4:sns.color_palette()[4],
-    5:sns.color_palette()[5],
-    6:sns.color_palette()[6],
-    7:sns.color_palette()[7],
-    8:sns.color_palette()[8],
-    9:sns.color_palette()[9]
     }
 
 mpl_colors=plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -136,6 +125,41 @@ def sign(x):
 
 def minus_is_1(x):
     return abs(1-1*x)*1./2
+
+def read_pyfile(filepath, ignored_chars=[" ", "'", "\"", "\n", "\r"]):
+    '''
+    Reads .py file and returns contents as dictionnary.
+
+    Assumes that file only has "variable=value" pairs, no fucntions etc
+
+    - filepath: str, path to file
+    - ignored_chars: list of characters to remove (only trailing and leading)
+    '''
+    filepath = Path(filepath)
+    assert filepath.exists(), f'{filepath} not found!'
+
+    params={}
+    with open(filepath) as f:
+        for ln in f.readlines():
+            assert '=' in ln, 'WARNING read_pyfile only works for list of variable=value lines!'
+            tmp = ln.split('=')
+            for i, string in enumerate(tmp):
+                string=string.strip("".join(ignored_chars))
+                tmp[i]=string
+            k, val = tmp[0], tmp[1]
+            try: val = ale(val)
+            except: pass
+            params[k]=val
+
+    return params
+
+def list_files(directory, extension, full_path=False):
+    directory=str(directory)
+    files = [f for f in os.listdir(directory) if f.endswith('.' + extension)]
+    files.sort()
+    if full_path:
+        return [Path('/'.join([directory,f])) for f in files]
+    return files
 
 def any_n_consec(X, n_consec, where=False):
     '''
@@ -619,7 +643,7 @@ def align_timeseries_interpol(timeseries, sync_signals, fs=None):
         if fs is not None:
             drift=round(abs(a*fs[i]/fs[0]-1)*3600*1000,2)
             offset=round(b/fs[0],2)
-            print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between time series {i} and {i+1}.\n')
+            print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between time series 1 and {i+2}.\n')
         timeseries[i+1]=(a*ts+b).astype(int)
 
     return timeseries

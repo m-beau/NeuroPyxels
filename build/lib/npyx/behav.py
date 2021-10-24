@@ -23,7 +23,7 @@ import cv2
 
 from npyx.utils import npa, thresh, thresh_consec, smooth, sign, align_timeseries, assert_int
 
-from npyx.io import read_spikeglx_meta, get_npix_sync, paq_read, list_files
+from npyx.io import read_metadata, get_npix_sync, paq_read, list_files
 from npyx.spk_t import mean_firing_rate
 from npyx.corr import crosscorr_cyrille, frac_pop_sync
 
@@ -53,7 +53,7 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
 
     paqdic=npix_aligned_paq(dp,f_behav=f_behav, again=again_align, again_rawpaq=again_rawpaq)
     paq_fs=paqdic['paq_fs']
-    npix_fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+    npix_fs=read_metadata(dp)['highpass']['sampling_rate']
 
     # Preprocessing of extracted behavioural data (only lick onsets so far)
     licks_on=paqdic['LICKS_Piezo_ON_npix'].copy()
@@ -233,7 +233,7 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
     paqdic=load_PAQdata(f_behav, variables='all', unit='samples', again=again_rawpaq)
     paq_fs=paqdic['paq_fs']
     npix_ons, npix_ofs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
-    npix_fs = read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+    npix_fs = read_metadata(dp)['highpass']['sampling_rate']
     paqdic['npix_fs']=npix_fs
 
     ## Match Paq data to npix data - convert paq onsets/offsets to npix time frame (or directly use it if available)
@@ -278,8 +278,8 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
                 paqdic[f'{paqk}_npix']=npix_ons[npix_paq[paqk]]
                 paqdic[f"{off_key}_npix"]=npix_ofs[npix_paq[paqk]] # same key for onsets and offsets
             else:
-                # paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
-                # paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
+                paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
+                paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
                 paqdic[f'{paqk}_npix']=(a*paqv+b).astype(int)
                 paqdic[f"{off_key}_npix"]=(a*paqdic[off_key]+b).astype(int)
 

@@ -63,13 +63,13 @@ myrecording/
 
   # other kilosort/spyking circus outputs here
 
-  ./continuous/
-    /Neuropix-PXI-100.0/
+  continuous/
+    Neuropix-PXI-100.0/
       continuous.dat # optional, if wanna plot waveforms
-    /Neuropix-PXI-100.1/
+    Neuropix-PXI-100.1/
       continuous.dat # optional, if want to plot LFP with plot_raw
 
-  ./events/
+  events/
     Neuropix-PXI-100.0/
       TTL_1/
         timestamps.npy # optional, if need to get synchronyzation channel to load with get_npix_sync e.g. to merge datasets

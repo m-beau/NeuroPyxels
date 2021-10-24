@@ -34,7 +34,7 @@ from psutil import virtual_memory as vmem
 
 import pandas as pd
 import json
-from npyx.io import chan_map, read_spikeglx_meta
+from npyx.io import chan_map, read_metadata
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from npyx.corr import (ccg, StarkAbeles2009_ccg_significance, ccg_sig_stack, gen_sfc, scaled_acg)
@@ -966,7 +966,7 @@ def chan_spread(all_wav, chan_path, unit, n_chans = 20, chan_spread_dist = 25.6)
     # on the probe version being used
 
     # get the probe version
-    probe_v = read_spikeglx_meta(chan_path)['probe_version']
+    probe_v = read_metadata(chan_path)['probe_version']
     if probe_v in ['3A', '1.0_staggered']:
         chan_spread_dist = 25.61249695
 

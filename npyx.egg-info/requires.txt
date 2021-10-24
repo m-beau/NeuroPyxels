@@ -7,6 +7,8 @@ six
 statsmodels
 cmcrameri
 tqdm
+joblib
+ipywidgets
 scikit-learn
 umap-learn
 networkx

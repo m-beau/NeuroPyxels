@@ -37,7 +37,7 @@ from npyx.merger import get_source_dp_u, assert_same_dataset, assert_multi
 import scipy.signal as sgnl
 from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
 
-def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=True, trains=None):
+def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=True, trains=None, enforced_rp=0):
     '''
 
     - trains: dict, of the form {unit1:train1InSamples, unit2:...}'''
@@ -45,7 +45,7 @@ def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=True, trains=
     if trains is None:
         for iu, u in enumerate(U):
             # Even lists of strings can be dealt with as integers by being replaced by their indices
-            trains_dic[iu]=trn(dp, u, sav=True, periods=periods, verbose=verbose) # trains in samples
+            trains_dic[iu]=trn(dp, u, sav=True, periods=periods, verbose=verbose, enforced_rp=enforced_rp) # trains in samples
     else:
         assert len(trains)>1
         assert type(trains) in [list, np.ndarray]
@@ -74,7 +74,8 @@ def make_matrix_2xNevents(dic):
 
     return m
 
-def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True, periods='all', verbose=False, trains=None):
+def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
+                           periods='all', verbose=False, trains=None, enforced_rp=0):
     '''Returns the crosscorrelation function of two spike trains.
        - dp: (string): DataPath to the Neuropixels dataset.
        - win_size (float): window size, in milliseconds
@@ -87,7 +88,7 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
     #### Get clusters and times
     U=list(U)
 
-    spike_times, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, periods=periods, verbose=verbose, trains=trains)
+    spike_times, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, periods=periods, verbose=verbose, trains=trains, enforced_rp=enforced_rp)
 
     return crosscorr_cyrille(spike_times, spike_clusters, win_size, bin_size, fs, symmetrize)
 
@@ -201,7 +202,8 @@ def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=
     return correlograms
 
 def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
-       ret=True, sav=True, verbose=True, periods='all', again=False, trains=None):
+       ret=True, sav=True, verbose=True, periods='all', again=False,
+       trains=None, enforced_rp=0):
     '''
     ********
     computes crosscorrelogram (1, window/bin_size) - int64, in Hertz
@@ -248,7 +250,12 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
     # Search if the variable is already saved in dp/routinesMemory
     dprm = get_npyx_memory(dp)
 
-    fn='ccg{}_{}_{}_{}({}).npy'.format(str(sortedU).replace(" ", ""), str(bin_size), str(int(win_size)), normalize, str(periods)[0:50].replace(' ', '').replace('\n',''))
+    ep_str='' if enforced_rp==0 else str(enforced_rp)
+    fn='ccg{}_{}_{}_{}({}){}.npy'.format(
+        str(sortedU).replace(" ", ""), bin_size,
+        int(win_size), normalize,
+        str(periods)[0:50].replace(' ', '').replace('\n',''),
+        ep_str)
     if os.path.exists(Path(dprm,fn)) and not again and trains is None:
         if verbose: print("File {} found in routines memory.".format(fn))
         try:  # handling of weird allow_picke=True error
@@ -260,7 +267,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
     if 'crosscorrelograms' not in locals(): # handling of weird allow_picke=True error
         if verbose: print("File {} not found in routines memory.".format(fn))
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True,
-                                                   periods=periods, verbose=verbose, trains=trains)
+                                                   periods=periods, verbose=verbose, trains=trains, enforced_rp=enforced_rp)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
         if crosscorrelograms.shape[0]<len(U): # no spikes were found in this period
             # Maybe if not any(crosscorrelograms.ravel()!=0):

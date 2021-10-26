@@ -232,7 +232,7 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
         print(f'Behavioural data loaded from: {f_behav}')
     paqdic=load_PAQdata(f_behav, variables='all', unit='samples', again=again_rawpaq)
     paq_fs=paqdic['paq_fs']
-    npix_ons, npix_ofs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
+    npix_ons, npix_ofs = get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='samples')
     npix_fs = read_metadata(dp)['highpass']['sampling_rate']
     paqdic['npix_fs']=npix_fs
 

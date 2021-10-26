@@ -38,6 +38,6 @@ npyx submodules:
     npyx.stats
 """
 
-__version__ = '2.1.0'
+__version__ = '2.1.1'
 
 print(f'npyx version {__version__} imported.')

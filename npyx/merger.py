@@ -52,7 +52,7 @@ import pandas as pd
 from npyx.utils import npa, align_timeseries_interpol, assert_float
 
 from npyx.io import get_npix_sync
-from npyx.gl import get_units, load_units_qualities
+from npyx.gl import get_units, load_merged_units_qualities, detect_new_spikesorting, save_qualities
 
 
 def merge_datasets(datapaths):
@@ -132,29 +132,18 @@ def merge_datasets(datapaths):
 
     # Load and save units qualities
     # + check whether datasets have been re-spike sorted if not first instanciation
-    re_spksorted=False
-    qualities=pd.DataFrame(columns=['cluster_id', 'group'])
-    for ds_i in ds_table.index:
-        cl_grp = load_units_qualities(ds_table.loc[ds_i, 'dp'])
-        cl_grp['cluster_id']=cl_grp['cluster_id']+1e-1*ds_i
-        qualities=qualities.append(cl_grp, ignore_index=True)
-    qualities_dp=Path(dp_merged, 'cluster_group.tsv')
-    if op.exists(qualities_dp):
-        qualities_old=pd.read_csv(qualities_dp, sep='	')
-        # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
-        if not np.all(np.isin(qualities_old.loc[:, 'cluster_id'], qualities.loc[:, 'cluster_id'])):
-            re_spksorted=True
-            print(f'\n{mess_prefix}New spike-sorting detected.{mess_suffix}')
-    qualities.to_csv(qualities_dp, sep='	', index=False)
+    qualities = load_merged_units_qualities(dp_merged, ds_table)
+    re_spikesorted=detect_new_spikesorting(dp_merged, True, qualities)
+    save_qualities(dp_merged, qualities)
 
     # Merge spike times (or copy them if only 1 dataset)
     # Only if merged_clusters_times does not exist already or does but re-spikesorting has been detected
     merge_fname_times='spike_times'
     merge_fname_clusters='spike_clusters'
-    if (not op.exists(Path(dp_merged, merge_fname_times+'.npy'))) or re_spksorted:
+    if (not op.exists(Path(dp_merged, merge_fname_times+'.npy'))) or re_spikesorted:
         print(f"\n{mess_prefix}Loading spike trains of {n_datasets} datasets...{mess_suffix}")
         # precompute all sync channels without prompting the user
-        onsets = [get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')[0] for dp in ds_table['dp']]
+        onsets = [get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='samples')[0] for dp in ds_table['dp']]
         spike_times, spike_clusters, sync_signals = [], [], []
         for ds_i, dp in enumerate(ds_table['dp']):
             spike_times.append(np.load(Path(dp, 'spike_times.npy')).flatten())

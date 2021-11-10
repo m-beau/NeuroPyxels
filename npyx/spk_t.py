@@ -138,6 +138,8 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
         train = spike_samples[spike_clusters==unit].ravel()
 
         # Filter out spike duplicates (spikes following an ISI shorter than enforced_rp)
+        # by default, only pure duplicates (yeah they happen!!)
+        assert len(train)!=0, 'unit {unit} not found in spike_clusters.npy - probably a merger bug.'
         train=train[np.append(True, np.diff(train)>=enforced_rp*fs/1000)]
 
         # Save it
@@ -172,6 +174,20 @@ def isi(dp, unit, enforced_rp=0, sav=True, verbose=False, periods='all', again=F
     t=trn(dp, unit, sav, verbose, periods, again, enforced_rp)
     return np.diff(t) if len(t)>1 else None
 
+def inst_cv2(t):
+    '''
+    Parameters:
+        - t: (nspikes,) np array, spike times in any unit
+
+    Returns:
+        - cv2: (nspikes-2,) array, instantaneous cv2
+    '''
+
+    isint = np.diff(t)
+
+    cv2 = 2 * np.abs(isint[1:] - isint[:-1]) / (isint[1:] + isint[:-1])
+
+    return cv2
 
 def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
     i = np.diff(t) if len(t)>1 else None

@@ -55,7 +55,7 @@ from npyx.io import get_npix_sync
 from npyx.gl import get_units, load_merged_units_qualities, detect_new_spikesorting, save_qualities
 
 
-def merge_datasets(datapaths):
+def merge_datasets(datapaths, again=False):
     '''
     Merges datasets together and aligns data accross probes, modelling drift as a affine function.
 
@@ -67,6 +67,7 @@ def merge_datasets(datapaths):
     - datapaths: dict of structure
         {'name_probe_1':'path/to/kilosort/output1',
          'name_probe_2':'path/to/kilosort/output2', ...}
+    - again: bool, whether to force re-merge the datasets (even if a previous merge is found).
 
     Returns:
         - dp_merged: str, path to merged dataset
@@ -99,7 +100,7 @@ def merge_datasets(datapaths):
     mess_prefix="\033[34;1m--- "
     mess_suffix="\033[0m"
     if n_datasets==1:
-        print(f'{mess_prefix}Only one dataset provided - simply returning original path{mess_suffix}.')
+        print(f'{mess_prefix}Only one dataset provided - simply returning its path.{mess_suffix}.')
         return ds_table.loc[0,'dp'], ds_table
 
     # Instanciate datasets and define the merger path, where the 'merged' data will be saved,
@@ -140,7 +141,7 @@ def merge_datasets(datapaths):
     # Only if merged_clusters_times does not exist already or does but re-spikesorting has been detected
     merge_fname_times='spike_times'
     merge_fname_clusters='spike_clusters'
-    if (not op.exists(Path(dp_merged, merge_fname_times+'.npy'))) or re_spikesorted:
+    if (not op.exists(Path(dp_merged, merge_fname_times+'.npy'))) or re_spikesorted or again:
         print(f"\n{mess_prefix}Loading spike trains of {n_datasets} datasets...{mess_suffix}")
         # precompute all sync channels without prompting the user
         onsets = [get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='samples')[0] for dp in ds_table['dp']]
@@ -219,8 +220,9 @@ def ask_syncchan(ons):
 
 
 def get_ds_table(dp):
+    assert assert_multi(dp), 'Cannot be ran on a non merged dataset.'
     dp = Path(dp)
-    ds_table = pd.read_csv(Path(dp, 'datasets_table.csv'), index_col='dataset_i')
+    ds_table = pd.read_csv(dp/'datasets_table.csv', index_col='dataset_i')
     for dp in ds_table['dp']:
         assert op.exists(dp), \
             f"WARNING you have instanciated this merged dataset from paths of which at least one doesn't exist anymore:{dp}!"

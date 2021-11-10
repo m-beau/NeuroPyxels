@@ -621,7 +621,7 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
         if op.exists(Path(dp, f)):
             peak_chans=np.load(Path(dp, f))
             if unit in peak_chans[:,0]:
-                return peak_chans[peak_chans[:,0]==unit, 1]
+                return int(peak_chans[peak_chans[:,0]==unit, 1])
 
     cm=chan_map(dp, probe_version='local')
     if use_template:

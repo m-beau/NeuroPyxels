@@ -483,6 +483,7 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, verbose=
     Returns:
         samples: array or list of samples
     '''
+
     arr=np.asarray(arr)
     assert n_samples!=0 or sample_size!=0, 'You need to specify either a sample number or size!'
     assert 0<=overlap<1, 'overlap needs to be between 0 and 1, 1 excluded (samples would all be the same)!'
@@ -500,6 +501,8 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, verbose=
     # step=1 for maximum overlap (every sample would be the first sample for step = 0);
     # step=s for 0 overlap; overlap is
     s=sample_size
+    if len(arr)<s: # no split necessary
+        return make_2D_array([list(arr)])
     step = s-round(s*overlap)
     real_o=round((s-step)/s, 2)
     if overlap!=real_o and verbose: print('Real overlap: ', round(real_o, 2))

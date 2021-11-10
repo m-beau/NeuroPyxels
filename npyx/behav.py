@@ -21,11 +21,12 @@ from numpy import pi, cos, sin
 
 import cv2
 
-from npyx.utils import npa, thresh, thresh_consec, smooth, sign, align_timeseries, assert_int
+from npyx.utils import npa, thresh, thresh_consec, smooth, sign, align_timeseries, assert_int, get_bins
 
 from npyx.io import read_metadata, get_npix_sync, paq_read, list_files
 from npyx.spk_t import mean_firing_rate
 from npyx.corr import crosscorr_cyrille, frac_pop_sync
+from npyx.merger import assert_multi, get_ds_table
 
 #%% Generate trials dataframe from either paqIO file or matlab datastructure
 
@@ -53,7 +54,11 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
 
     paqdic=npix_aligned_paq(dp,f_behav=f_behav, again=again_align, again_rawpaq=again_rawpaq)
     paq_fs=paqdic['paq_fs']
-    npix_fs=read_metadata(dp)['highpass']['sampling_rate']
+    if assert_multi(dp):
+        dp_source=get_ds_table(dp)['dp'][0]
+        npix_fs=read_metadata(dp_source)['highpass']['sampling_rate']
+    else:
+        npix_fs=read_metadata(dp)['highpass']['sampling_rate']
 
     # Preprocessing of extracted behavioural data (only lick onsets so far)
     licks_on=paqdic['LICKS_Piezo_ON_npix'].copy()
@@ -233,7 +238,10 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
     paqdic=load_PAQdata(f_behav, variables='all', unit='samples', again=again_rawpaq)
     paq_fs=paqdic['paq_fs']
     npix_ons, npix_ofs = get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='samples')
-    npix_fs = read_metadata(dp)['highpass']['sampling_rate']
+    if assert_multi(dp):
+        dp_source=get_ds_table(dp)['dp'][0]
+    else: dp_source=dp
+    npix_fs = read_metadata(dp_source)['highpass']['sampling_rate']
     paqdic['npix_fs']=npix_fs
 
     ## Match Paq data to npix data - convert paq onsets/offsets to npix time frame (or directly use it if available)
@@ -623,6 +631,50 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
     return df, wheel_turn_dic
 
 #%% Alignement, binning and processing of time series
+
+def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remove_empty_trials=False):
+    '''
+    Parameters:
+        - events: list/array in seconds, events to align timestamps to
+        - variable_t: list/array in seconds, timestamps to align around events.
+        - variable: list/array, variable to bin around event.
+        - bin: float, binarized train bin in millisecond
+        - window: [w1, w2], where w1 and w2 are in milliseconds.
+        - remove_empty_trials: boolean, remove from the output trials where there were no timestamps around event. | Default: True
+    Returns:
+        - aligned_t: dictionnaries where each key is an event in absolute time and value the times aligned to this event within window.
+        - binned_variable: a len(events) x window/b matrix where the variable has been binned, in variable units.
+    '''
+
+
+    events, variable_t, variable = npa(events), npa(variable_t), npa(variable)
+    assert np.any(events), 'You provided an empty array of events!'
+    assert variable_t.ndim==1
+    assert len(variable_t)==len(variable)
+    sort_i = np.argsort(variable_t)
+    variable_t = variable_t[sort_i]
+    variable = variable[sort_i]
+    window_s=[window[0]/1000, window[1]/1000]
+
+    aligned_t = {}
+    tbins=np.arange(window[0], window[1]+b, b)
+    binned_variable = np.zeros((len(events), len(tbins)-1)).astype(float)
+    for i, e in enumerate(events):
+        ts = variable_t-e # ts: t shifted
+        ts_m = (ts>=window_s[0])&(ts<=window_s[1])
+        ts_win = ts[ts_m] # tsc: ts in widnow
+        variable_win = variable[ts_m]
+        if np.any(ts_win) or not remove_empty_trials:
+            aligned_t[e]=ts_win.tolist()
+            tscb = np.histogram(ts_win*1000, bins=tbins, weights=variable_win)[0] # tscb: tsc binned
+            binned_variable[i,:] = tscb
+        else:
+            binned_variable[i,:] = np.nan
+    binned_variable=binned_variable[~np.isnan(binned_variable).any(axis=1)]
+
+    if not np.any(binned_variable): binned_variable = np.zeros((len(events), len(tbins)-1))
+
+    return aligned_t, binned_variable
 
 def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
     '''

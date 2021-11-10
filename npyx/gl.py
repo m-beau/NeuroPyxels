@@ -187,7 +187,7 @@ def detect_new_spikesorting(dp, print_message=True, qualities=None):
         spikesorted = (last_tsv_update==last_spikesort)
 
     else:
-        qualities_old=pd.read_csv(dp/'cluster_group.tsv', sep='	')
+        qualities_old=pd.read_csv(dp/'cluster_group.tsv', delim_whitespace=True)
         old_clusters = qualities_old.loc[:, 'cluster_id']
         new_clusters = qualities.loc[:, 'cluster_id']
         if not np.all(np.isin(old_clusters,new_clusters)): spikesorted = True
@@ -196,6 +196,10 @@ def detect_new_spikesorting(dp, print_message=True, qualities=None):
         print('\n\033[34;1m--- New spike-sorting detected.')
 
     return spikesorted
+
+def save_qualities(dp, qualities):
+    dp = Path(dp)
+    qualities.to_csv(dp/'cluster_group.tsv', sep='\t', index=False)
 
 def generate_units_qualities(dp):
     units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
@@ -214,13 +218,13 @@ def load_units_qualities(dp, again=False):
         - qualities: panda dataframe, dataset units qualities
     '''
     f='cluster_group.tsv'
-    quality_dp = Path(dp, f)
-    if quality_dp.exists():
-        qualities = pd.read_csv(quality_dp,delimiter='\t')
+    dp=Path(dp)
+    if (dp/f).exists():
+        qualities = pd.read_csv(dp/f, delim_whitespace=True)
         re_spikesorted = detect_new_spikesorting(dp)
         regenerate=True if (again or re_spikesorted) else False
         assert 'cluster_id' in qualities.columns,\
-            f"WARNING the tsv file {quality_dp} should have a column called 'cluster_id'!"
+            f"WARNING the tsv file {str(dp/f)} should have a column called 'cluster_id'!"
         if 'group' not in qualities.columns:
             print('WARNING there does not seem to be any group column in cluster_group.tsv - kilosort >2 weirdness. Making a fresh file.')
             qualities=generate_units_qualities(dp)
@@ -235,11 +239,11 @@ def load_units_qualities(dp, again=False):
             unsorted_clusters   = qualities_new.loc[unsorted_clusters_m,:]
 
             qualities=unsorted_clusters.append(sorted_clusters).sort_values('cluster_id')
-            qualities.to_csv(quality_dp, sep='\t', index=False)
+            save_qualities(dp, qualities)
     else:
         print('cluster groups table not found in provided data path. Generated from spike_clusters.npy.')
         qualities=generate_units_qualities(dp)
-        qualities.to_csv(quality_dp, sep='\t', index=False)
+        save_qualities(dp, qualities)
 
     return qualities
 
@@ -271,18 +275,17 @@ def load_merged_units_qualities(dp_merged, ds_table=None):
 
     return qualities
 
-def save_qualities(dp, qualities):
-    dp = Path(dp)
-    qualities.to_csv(dp/'cluster_group.tsv', sep='	', index=False)
-
-
 def get_units(dp, quality='all', chan_range=None, again=False):
 
     assert quality in ['all', 'good', 'mua', 'noise']
 
     if assert_multi(dp):
         qualities = load_merged_units_qualities(dp)
-        re_spikesorted = detect_new_spikesorting(dp, qualities=qualities)
+        try:
+            re_spikesorted = detect_new_spikesorting(dp, qualities=qualities)
+        except:
+            re_spikesorted = False # weird inability to load clutsr_group.tsv with pandas while using joblib
+
         assert not re_spikesorted,\
             (f'It seems that a source dataset of {dp} has been re-spikesorted!! '
               'you need to run merge_datasets(dp_dic) again before being able to call get_units().')

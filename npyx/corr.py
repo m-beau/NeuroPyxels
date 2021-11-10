@@ -3,7 +3,6 @@
 2018-07-20
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
-
 import os
 import os.path as op; opj=op.join
 from pathlib import Path
@@ -37,7 +36,7 @@ from npyx.merger import get_source_dp_u, assert_same_dataset, assert_multi
 import scipy.signal as sgnl
 from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
 
-def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=True, trains=None, enforced_rp=0):
+def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=False, trains=None, enforced_rp=0):
     '''
 
     - trains: dict, of the form {unit1:train1InSamples, unit2:...}'''
@@ -202,7 +201,7 @@ def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=
     return correlograms
 
 def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
-       ret=True, sav=True, verbose=True, periods='all', again=False,
+       ret=True, sav=True, verbose=False, periods='all', again=False,
        trains=None, enforced_rp=0):
     '''
     ********
@@ -231,6 +230,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
     # Preformat
     U=list(U)
+    assert np.all(np.isin(U, get_units(dp))), f'Units {npa(U)[~np.isin(U, get_units(dp))]} not found in dataset!'
     assert len(U)>=2
     if U[0]==U[1]: U=[U[0]] # Handling autocorrelograms
     same_ds=assert_same_dataset(U) if assert_multi(dp) else False
@@ -305,7 +305,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
     return sortedC
 
-def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, verbose=True, periods='all', again=False):
+def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, verbose=False, periods='all', again=False):
     '''
     dp,
     u,
@@ -317,7 +317,7 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
     normalize1=True,
     ret=True,
     sav=True,
-    verbose=True'''
+    verbose=False'''
     u = u[0] if type(u)==list else u
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
     '''
@@ -1076,7 +1076,9 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         - again: bool, whether to reassess significance of ccg stack rather than loading from memory if already computed in the past.
         - againCCG: bool, whether to recompute ccg stack rather than loading from memory if already computed in the past.
         - drop_seq: list of str, sequence in which to filter connections (['sign', 'time', 'max_amplitude'] in any order)
-        - pre_chanrange: [int,int], range of channels to which presynaptic units must belong (e.g. [200,384])
+        - pre_chanrange: [int,int], range of channels to which presynaptic units must belong (e.g. [200,384]).
+                         The sfc of all units (ot thoses provided with 'units') is first computed,
+                         thn only connections whose presynaptic partner is within pre_chanrange are kept.
         - post_chanrange: [int,int], range of channels to which postsynaptic units must belong (e.g. [0,200])
         - units: list/array, units to consider to test correlations | Default: None (i.e. use all the good units)
         - name: string, name of the all-to-all ccg_stack corresponding to the above-provided units
@@ -1345,7 +1347,7 @@ def cisi_numba(spk1, spk2, available_memory):
 #         i_init=i_init[~mshift]
 #     return t_12, nxt_12, count
 
-def get_cisi1(spk1, spk2, direction=0, verbose=True):
+def get_cisi1(spk1, spk2, direction=0, verbose=False):
     '''
     Computes cross spike intervals i.e time differences between
     every spike of spk1 and the following/preceeding spike of spk2.
@@ -1420,7 +1422,7 @@ def get_cisi1(spk1, spk2, direction=0, verbose=True):
 
     return cisi
 
-def get_cisi(spk1, spk2, direction=0, verbose=True):
+def get_cisi(spk1, spk2, direction=0, verbose=False):
     '''
     Computes cross spike intervals i.e time differences between
     every spike of spk1 and the following/preceeding spike of spk2.
@@ -1497,7 +1499,7 @@ def par_process(i, chunk, spk2, n, direction):
         d=np.abs(d)
     return np.nanmin(d, axis=1)
 
-def get_cisi_parprocess(spk1, spk2, direction=0, verbose=True):
+def get_cisi_parprocess(spk1, spk2, direction=0, verbose=False):
     '''
     Computes cross spike intervals i.e time differences between
     every spike of spk1 and the following/preceeding spike of spk2.
@@ -1743,7 +1745,8 @@ def fraction_pop_sync(dp, u1, U, sync_win=2, b=1, sd=1000, th=0.02, again=False,
     if t1 is None:
         t1=trn(dp, u1, enforced_rp=0)
         trains=[trn(dp, u2, enforced_rp=0) for u2 in U]
-        fs=read_metadata(dp)['highpass']['sampling_rate']
+        dp_source = get_source_dp_u(dp, u1)[0]
+        fs=read_metadata(dp_source)['highpass']['sampling_rate']
         t_end = np.load(Path(dp,'spike_times.npy')).ravel()[-1]
 
         return frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, again=again, dp=dp, U=U)
@@ -1954,7 +1957,7 @@ def spike_time_tiling_coefficient(spiketrain_1, spiketrain_2, L, dt, dp):
 
 #%% Power spectrum of autocorrelograms
 
-def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=30000, ret=True, sav=True, verbose=True):
+def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=30000, ret=True, sav=True, verbose=False):
     '''
     ********
     routine from routines_spikes

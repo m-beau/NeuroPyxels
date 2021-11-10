@@ -1702,7 +1702,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
              title=None, show_ttl=True, color=-1, CCG=None, saveData=False,
              ylim_acg=None, ylim_ccg=None, share_y=0,
              ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False,
-             use_template=True):
+             use_template=True, enforced_rp=0):
     """
     Parameters:
     - as_grid: also plot units autocorrelograms along the diagonal (only relevant when plotting 2 units)
@@ -1722,7 +1722,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
 
     if CCG is None:
         normalize1 = normalize if normalize!='mixte' else 'Hertz'
-        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, verbose=verbose, periods=periods, again=again, trains=trains)
+        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, verbose=verbose, periods=periods, again=again, trains=trains, enforced_rp=enforced_rp)
     assert CCG is not None
 
     if CCG.shape[0]==2 and not as_grid:

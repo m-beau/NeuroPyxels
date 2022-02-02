@@ -5,12 +5,9 @@
 Behavior analysis tools.
 """
 
-import os
 import os.path as op; opj=op.join
 from pathlib import Path
 import pickle
-
-import h5py
 
 import numpy as np
 import scipy as sp
@@ -24,11 +21,12 @@ from numpy import pi, cos, sin
 
 import cv2
 
-from npyx.utils import npa, thresh, thresh_consec, smooth, sign, align_timeseries, assert_int
+from npyx.utils import npa, thresh, thresh_consec, smooth, sign, align_timeseries, assert_int, get_bins
 
-from npyx.io import read_spikeglx_meta, get_npix_sync, paq_read, list_files
+from npyx.io import read_metadata, get_npix_sync, paq_read, list_files
 from npyx.spk_t import mean_firing_rate
 from npyx.corr import crosscorr_cyrille, frac_pop_sync
+from npyx.merger import assert_multi, get_ds_table
 
 #%% Generate trials dataframe from either paqIO file or matlab datastructure
 
@@ -38,22 +36,29 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
     '''
     Remove artefactual licking, processes rotary encoder and wheel turn trials.
     - dp: str, path of kilosort dataset.
-    - f_behav: str, paqIO behavioural file.
+    - f_behav: str, paqIO behavioural file. If None, assumed to be at ../behavior relative to dp.
     - again: bool, whether to recompute paqdic from paq file.
     - plot: bool, whether to load plots regarding licking preprocessing to ensure all goes well.
     - drop_raw: drop raw paqIO data for digital channels (huge memory saver)
+    - cam_paqi_to_use: [int, int], indices of first and last camera frames to consider for urnning analysis
     '''
 
     ## Try to load presaved df
     dp=Path(dp)
-    fn=dp/'behavior'/'paq_dic_proc.pkl'
+    fn=dp.parent/'behavior'/f'paq_dic_proc_lickth{lick_ili_th}_raw{drop_raw}.pkl'
     if again_rawpaq: again_align=True
     if again_align: again=True
-    if fn.exists() and not again: return pickle.load(open(str(fn),"rb"))
+    if fn.exists() and not again:
+        print(f'Behavioural data found at {fn}.')
+        return pickle.load(open(str(fn),"rb"))
 
     paqdic=npix_aligned_paq(dp,f_behav=f_behav, again=again_align, again_rawpaq=again_rawpaq)
     paq_fs=paqdic['paq_fs']
-    npix_fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+    if assert_multi(dp):
+        dp_source=get_ds_table(dp)['dp'][0]
+        npix_fs=read_metadata(dp_source)['highpass']['sampling_rate']
+    else:
+        npix_fs=read_metadata(dp)['highpass']['sampling_rate']
 
     # Preprocessing of extracted behavioural data (only lick onsets so far)
     licks_on=paqdic['LICKS_Piezo_ON_npix'].copy()
@@ -89,7 +94,7 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
 
         # Process extra camera frames
         if vid_path is None:
-            vid_path=dp/(dp.name+'_video')
+            vid_path=dp.parent/'videos'
         videos=list_files(vid_path, 'avi', 1) if vid_path.exists() else []
 
         if not any(videos):
@@ -97,8 +102,9 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
         else:
             if cam_paqi_to_use is not None:
                 assert len(cam_paqi_to_use)==2
-                assert cam_paqi_to_use[0]>=0
-                assert cam_paqi_to_use[1]<=len(paqdic['CameraFrames'])-1
+                assert cam_paqi_to_use[0]>=0, 'cam_paqi_to_use[0] cannot be negative!'
+                assert cam_paqi_to_use[1]<=len(paqdic['CameraFrames'])-1,\
+                    f"cam_paqi_to_use[0] cannot be higher than {len(paqdic['CameraFrames'])-1}!"
                 if cam_paqi_to_use[1]<0:cam_paqi_to_use[1]=len(paqdic['CameraFrames'])+cam_paqi_to_use[1]
                 ON=paqdic['CameraFrames_ON']
                 OFF=paqdic['CameraFrames_OFF']
@@ -108,12 +114,13 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
                 paqdic['CameraFrames_OFF_npix']=paqdic['CameraFrames_OFF_npix'][mof]
             frames_npix=paqdic['CameraFrames_ON_npix']/paqdic['npix_fs']
             nframes=[get_nframes(v) for v in videos]
-            print(f'{frames_npix.shape[0]} frames in paqIO file, {np.sum(nframes)} in video files.')
-            print(f'**{frames_npix.shape[0]-sum(nframes)}** unexpected camera triggers... \
-            ({sum(np.diff(frames_npix)<0.001)} below 1ms)')
-            print(f'(Videos nframes:{nframes}.)')
-            print(f'''There are **{sum(npa(nframes)!=60000)}** seemingly manually aborted videos -
-            check that the discrepancy matches.\nIf they do not, figure out why. There might be some trashed video triggers somewhere.''')
+            print(f'Videos nframes:{nframes} -> {np.sum(nframes)} frames in video files.')
+            print(f'{frames_npix.shape[0]} triggers in paqIO file')
+            print(f'PaqIO inter-trigger intervals below 1ms: {sum(np.diff(frames_npix)<0.001)}.')
+            print((f"\n**{sum(npa(nframes)!=60000)}** seemingly manually aborted videos and "
+                   f"\n**{frames_npix.shape[0]-sum(nframes)}** unexpected camera triggers."
+                   f"\nIf these numbers do not match, figure out why. "
+                    "There might be some trashed video triggers somewhere."))
 
             fi=0
             n_man_abort=0
@@ -135,7 +142,7 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
                     assert frames_npix[ii-1]-frames_npix[ii-2]<0.05
                     if not last:assert frames_npix[ii]-frames_npix[ii-1]>0.05
             frames_npix=(frames_npix[~np.isnan(frames_npix)]*paqdic['npix_fs']).astype(int)
-            print(f'Now the delta between expected/actual frames is **{frames_npix.shape[0]-sum(nframes)}**.')
+            print(f'After correction the delta between expected/actual frames is **{frames_npix.shape[0]-sum(nframes)}**.')
             paqdic['CameraFrames_ON_npix']=frames_npix
 
     # Process cues and rewards - only engaged events are considered!
@@ -186,17 +193,20 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
     # Process turning wheel events if turning wheel dataset
     if 'ROTreal' in paqdic.keys():
         print('Wheel turning dataset detected.')
-        wheel_turn_dic = get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=False,
+        wheel_turn_dic = get_wheelturn_df_dic(dp, paqdic,
+                        include_wheel_data=False, add_spont_licks=False,
                         wheel_gain=3, rew_zone=12.5, rew_frames=3, vr_rate=30,
                         wheel_diam=45, difficulty=2, ballistic_thresh=100,
-                        plot=False, again=False)[1]
+                        plot=False, again=again)[1]
         # merge giving priority to rr, cr_c and cr_r from wheel_turn_dic
         paqdic={**paqdic,**wheel_turn_dic}
 
     # Save behav dict
     if drop_raw:
-        undesired=['RECON', 'RECON_ON', 'RECON_OFF', 'GAMEON', 'GAMEON_ON', 'GAMEON_OFF', 'TRIALON', 'TRIALON_ON', 'TRIALON_OFF',
-                   'REW', 'CUE', 'VRframes', 'VRframes_ON', 'VRframes_OFF', 'GHOST_REW', 'ROT_A', 'ROT_B', 'CameraFrames', 'LICKS_Piezo']
+        undesired=['RECON', 'RECON_ON', 'RECON_OFF',
+                   'GAMEON', 'GAMEON_ON', 'GAMEON_OFF', 'TRIALON', 'TRIALON_ON', 'TRIALON_OFF',
+                   'REW', 'CUE', 'VRframes', 'VRframes_ON', 'VRframes_OFF', 'GHOST_REW',
+                   'ROT_A', 'ROT_B', 'CameraFrames', 'LICKS_Piezo']
         for k in undesired:
             if k in paqdic.keys():paqdic.pop(k)
         print(f'\nDropped: {undesired}.\n')
@@ -209,21 +219,29 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
     '''
     if again_rawpaq: again=True
     dp=Path(dp)
-    if not (dp/'behavior').exists(): (dp/'behavior').mkdir()
-    fn=dp/'behavior'/'paq_dic.pkl'
+
+    behav_dir = dp.parent/'behavior'
+    fn=behav_dir/'paq_dic.pkl'
+    if fn.exists() and not again:
+        print(f'Paq aligned data found at {fn}.')
+        return pickle.load(open(str(fn),"rb"))
+
     ## Load paq data and npix sync channel data
     if f_behav is None:
-        if fn.exists() and not again: return pickle.load(open(str(fn),"rb"))
-
-        files=list_files(dp/'behavior', 'paq')
-        assert len(files)>0, f"WARNING no files with extension 'paq' were found at {dp/'behavior'} - either add one there or explicitely declare a file path with f_behav parameter."
-        assert len(files)==1, f"WARNING more than 1 file with extension 'paq' were found at '{dp/'behavior'}' - clean up your directory structure and try again."
-        f_behav=dp/'behavior'/files[0]
+        files=list_files(behav_dir, 'paq')
+        assert len(files)>0, (f"WARNING no files with extension 'paq' were found at {behav_dir}"
+                               " - either add one there or explicitely declare a file path with f_behav parameter.")
+        assert len(files)==1, (f"WARNING more than 1 file with extension 'paq' were found at '{behav_dir}' - "
+                                "clean up your directory or use f_behav argument and try again.")
+        f_behav=behav_dir/files[0]
         print(f'Behavioural data loaded from: {f_behav}')
     paqdic=load_PAQdata(f_behav, variables='all', unit='samples', again=again_rawpaq)
     paq_fs=paqdic['paq_fs']
-    npix_ons, npix_ofs = get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='samples')
-    npix_fs = read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+    npix_ons, npix_ofs = get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='samples')
+    if assert_multi(dp):
+        dp_source=get_ds_table(dp)['dp'][0]
+    else: dp_source=dp
+    npix_fs = read_metadata(dp_source)['highpass']['sampling_rate']
     paqdic['npix_fs']=npix_fs
 
     ## Match Paq data to npix data - convert paq onsets/offsets to npix time frame (or directly use it if available)
@@ -366,6 +384,7 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
     Parameters:
         - dp: str, path to neuropixels data directory (behavioural data is in dp/behavior)
         - paqdic: paqIO dictionnary, with data cleaned up
+          including 'ROT' (wheel pos in degrees, 0 is center), 'ROTreal' (object pos in degrees, 0 is center)
 
         - include_wheel_data: bool, whether to add memory-heavy object position (in degrees) and wheel position (in mm) to the dataframe,
                               sampled at paqIO sampling rate, and related metrics (movement onset in relative paqIO units etc)
@@ -421,15 +440,27 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
 
           > 'c_r: reward onset for correct trials
           > 'i_of: trial offsets for correct trials (timeout)
+          > all other keys in paqdic
     '''
 
     ## Organize them in dataset, all in NEUROPIXELS time frame
     # i.e. (use above-aligned paqdic[f'{paqk}_npix'] as onsets)
-    fn=dp/f"behavior/trials_df-{include_wheel_data}-{add_spont_licks}-{difficulty}-{ballistic_thresh}.csv"
+    dp = Path(dp)
+    fn=dp.parent/f"behavior/trials_df-{include_wheel_data}-{add_spont_licks}-{difficulty}-{ballistic_thresh}.csv"
+
+    ## Conversions and parameters processing
+    paq_fs, npix_fs = paqdic['paq_fs'], paqdic['npix_fs']
+    # ROTreal is object displacement in degrees
+    # ROT is wheel displacement in degrees
+    wheel_turn_dic={}
+    wheel_turn_dic['vr_fs']=vr_rate
+    wheel_turn_dic['wheel_position_mm']=paqdic['ROTreal']*(np.pi*wheel_diam)/360/wheel_gain
+    wheel_turn_dic['wheel_speed_cm/s']=np.diff(wheel_turn_dic['wheel_position_mm'])*vr_rate/10 # mm to cm/s
+
     if Path(fn).exists() and not again:
         df = pd.read_csv(fn)
     else:
-        paq_fs, npix_fs = paqdic['paq_fs'], paqdic['npix_fs']
+        ## Make and fill trials dataframe
         df=pd.DataFrame(columns=['trial_type', 'trialnum', 'trialside', 'trial_onset', 'object_onset',
                                 'movement_onset', 'movement_offset', 'movement_duration', 'ballistic', 'correct', 'trial_offset',
                                 'reward_onset', 'cue_onset', 'ghost_onset', 'lick_onsets'])
@@ -452,6 +483,7 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
         pad=4
         assert difficulty in [2,3]
         for tr in df.index:
+            print(f'  Wheel steering trial {tr}/{len(df.index)}...')
             npixon=paqdic['TRIALON_ON_npix'][tr]
             npixof=paqdic['TRIALON_OFF_npix'][tr]
             paqon=int(paqdic['TRIALON_ON'][tr])
@@ -462,8 +494,8 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
             ob_on_paq=thresh(ob_on_vel, 0.5, 1)[0]+1 # add 1 because velocity is thresholded
             start_side=sign(paqdic['ROT'][paqon+ob_on_paq+1]) # 1 or -1
             # wheel and object positions are clipped between -4s before trial onset and 4s after trial offset
-            opos=paqdic['ROT'][i1:i2] # in degrees
-            wpos=paqdic['ROTreal'][i1:i2]*(np.pi*wheel_diam)/360/wheel_gain # in mm, back-calculate wheel pos from object pos
+            opos=paqdic['ROT'][i1:i2] # wheel pos in degrees
+            wpos=wheel_turn_dic['wheel_position_mm'][i1:i2] # in mm
             wpos_mvt=paqdic['ROTreal'][paqon+ob_on_paq:paqoff]
             wvel=np.diff(wpos)
             wvel_mvt=wvel[int(pad*paq_fs+ob_on_paq):-int(pad*paq_fs)]
@@ -577,8 +609,8 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
     mask_incorrect=(df['correct']==0)
     mask_rr=(df['trial_type']=='random_reward')
     mask_cr=(df['trial_type']=='cued_reward')
-    events_dic=\
-    {'olc_on':  df.loc[mask_left&mask_correct, 'object_onset'].values.astype(float),
+    wheel_turn_dic={**wheel_turn_dic,
+    **{'olc_on':  df.loc[mask_left&mask_correct, 'object_onset'].values.astype(float),
      'oli_on':  df.loc[mask_left&mask_incorrect, 'object_onset'].values.astype(float),
      'orc_on':  df.loc[mask_right&mask_correct, 'object_onset'].values.astype(float),
      'ori_on':  df.loc[mask_right&mask_incorrect, 'object_onset'].values.astype(float),
@@ -594,12 +626,55 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
     # random/cued rewards are now handled in get_behav_dic
     'rr':    df.loc[mask_rr, 'reward_onset'].values.astype(float),
     'cr_c':    df.loc[mask_cr, 'cue_onset'].values.astype(float),
-    'cr_r':    df.loc[mask_cr, 'reward_onset'].values.astype(float)}
+    'cr_r':    df.loc[mask_cr, 'reward_onset'].values.astype(float)}}
 
-
-    return df, events_dic
+    return df, wheel_turn_dic
 
 #%% Alignement, binning and processing of time series
+
+def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remove_empty_trials=False):
+    '''
+    Parameters:
+        - events: list/array in seconds, events to align timestamps to
+        - variable_t: list/array in seconds, timestamps to align around events.
+        - variable: list/array, variable to bin around event.
+        - bin: float, binarized train bin in millisecond
+        - window: [w1, w2], where w1 and w2 are in milliseconds.
+        - remove_empty_trials: boolean, remove from the output trials where there were no timestamps around event. | Default: True
+    Returns:
+        - aligned_t: dictionnaries where each key is an event in absolute time and value the times aligned to this event within window.
+        - binned_variable: a len(events) x window/b matrix where the variable has been binned, in variable units.
+    '''
+
+
+    events, variable_t, variable = npa(events), npa(variable_t), npa(variable)
+    assert np.any(events), 'You provided an empty array of events!'
+    assert variable_t.ndim==1
+    assert len(variable_t)==len(variable)
+    sort_i = np.argsort(variable_t)
+    variable_t = variable_t[sort_i]
+    variable = variable[sort_i]
+    window_s=[window[0]/1000, window[1]/1000]
+
+    aligned_t = {}
+    tbins=np.arange(window[0], window[1]+b, b)
+    binned_variable = np.zeros((len(events), len(tbins)-1)).astype(float)
+    for i, e in enumerate(events):
+        ts = variable_t-e # ts: t shifted
+        ts_m = (ts>=window_s[0])&(ts<=window_s[1])
+        ts_win = ts[ts_m] # tsc: ts in widnow
+        variable_win = variable[ts_m]
+        if np.any(ts_win) or not remove_empty_trials:
+            aligned_t[e]=ts_win.tolist()
+            tscb = np.histogram(ts_win*1000, bins=tbins, weights=variable_win)[0] # tscb: tsc binned
+            binned_variable[i,:] = tscb
+        else:
+            binned_variable[i,:] = np.nan
+    binned_variable=binned_variable[~np.isnan(binned_variable).any(axis=1)]
+
+    if not np.any(binned_variable): binned_variable = np.zeros((len(events), len(tbins)-1))
+
+    return aligned_t, binned_variable
 
 def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
     '''
@@ -732,9 +807,9 @@ def get_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
     return atb/(b*1e-3)
 
 def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
-                      convolve=False, gsd=1, method='gaussian',
-                      bsl_subtract=False, bsl_window=[-4000, 0],
-                      process_y=False):
+                            convolve=False, gsd=1, method='gaussian',
+                            bsl_subtract=False,
+                            process_y=False):
     # zscore or not
     assert zscoretype in ['within', 'across']
     if zscore or bsl_subtract: # use baseline of ifr far from stimulus
@@ -745,21 +820,21 @@ def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
                 y_mn = np.mean(np.mean(y_bsl, axis=0))
                 y_sd = np.std(np.mean(y_bsl, axis=0))
                 if y_sd==0 or np.isnan(y_sd): y_sd=1
-                if process_y: y =  (y-y_mn)/y_sd
                 y_p = (np.mean(y, axis=0)-y_mn)/y_sd
                 y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
+                if process_y: y =  (y-y_mn)/y_sd
             elif zscoretype=='across':
                 y_mn = np.mean(y_bsl.flatten())
                 y_sd = np.std(y_bsl.flatten())
                 if y_sd==0 or np.isnan(y_sd): y_sd=1
-                if process_y: y = (y-y_mn)/y_sd
                 y_p = (np.mean(y, axis=0)-y_mn)/y_sd
                 y_p_var = stats.sem((y-y_mn)/y_sd, axis=0) # variability across trials in zscore values??
+                if process_y: y = (y-y_mn)/y_sd
 
         elif bsl_subtract:
-            if process_y: y = y-y_mn
             y_p = np.mean(y, axis=0)-y_mn
             y_p_var= stats.sem(y, axis=0)
+            if process_y: y = y-y_mn
 
     else:
         y_p = np.mean(y, axis=0)
@@ -768,9 +843,9 @@ def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
     assert not np.any(np.isnan(y_p)), 'WARNING nans found in trials array!'
     # Convolve or not
     if convolve:
-        if process_y: y=smooth(y, method=method, sd=gsd)
         y_p = smooth(y_p, method=method, sd=gsd)
         y_p_var = smooth(y_p_var, method=method, sd=gsd)
+        if process_y: y=smooth(y, method=method, sd=gsd)
 
     if np.any(np.isnan(y_p_var)):
         y_p_var=np.ones(y_p.shape)
@@ -805,7 +880,8 @@ def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_tri
 
     # Window and bins translation
     x = np.arange(window[0], window[1], b)
-    y = get_ifr(times, events, b, window, remove_empty_trials)
+    y = get_ifr(times, events, b, window)
+    y_bsl = get_ifr(times, events, b, bsl_window)
     assert not np.any(np.isnan(y.ravel())), 'WARNING nans found in aligned ifr!!'
     if x.shape[0]>y.shape[1]:
         x=x[:-1]
@@ -822,15 +898,14 @@ def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_tri
         for triali, trial in enumerate(y):
             fr_dropped=thresh_consec(trial, m_fr*low_fr_th, sgn=-1, n_consec=consec_time, exclude_edges=True, only_max=False, ret_values=True)
             if len(fr_dropped)>0: y[triali,:]=np.nan
-        y=y[~np.isnan(y[:,0]),:]
+        drop_mask = np.isnan(y[:,0])
+        y=y[~drop_mask,:]
+        y_bsl=y_bsl[~drop_mask,:]
         if not np.any(y): y = np.zeros((1,x.shape[0]))
-
-    y_bsl = get_ifr(times, events, b, bsl_window, remove_empty_trials=True)
 
     y, y_p, y_p_var = process_2d_trials_array(y, y_bsl, zscore, zscoretype,
                       convolve, gsd, method,
-                      bsl_subtract, bsl_window,
-                      process_y)
+                      bsl_subtract, process_y)
 
     return x, y, y_p, y_p_var
 
@@ -956,8 +1031,8 @@ def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     d=np.zeros((a.shape))
 
     # If only one channel was recorded, everything isn't lost.
-    a_mess=f'WARNING half max of rotary channel A is {ath} -> channel must be dead. Skipping rotary decoding.\n'
-    b_mess=f'WARNING half max of rotary channel B is {bth} -> channel must be dead. Skipping rotary decoding.\n'
+    a_mess=f'WARNING half max of rotary channel A is {round(ath, 3)} -> channel must be dead. Skipping rotary decoding.\n'
+    b_mess=f'WARNING half max of rotary channel B is {round(bth, 3)} -> channel must be dead. Skipping rotary decoding.\n'
     if (ath<0.2)&(bth<0.2):
         print(a_mess)
         print(b_mess)

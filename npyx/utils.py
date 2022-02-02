@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import os
+from pathlib import Path
+
 from numba import jit, njit, prange
 from numba.typed import List
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
@@ -9,7 +12,6 @@ warnings.simplefilter('default', category=NumbaPendingDeprecationWarning)#'ignor
 
 from ast import literal_eval as ale
 import numpy as np
-import seaborn as sns
 import matplotlib.pyplot as plt
 
 from six import integer_types
@@ -33,19 +35,6 @@ phyColorsDic = {
     4:(84./255, 255./255, 28./255),
     5:(255./255,165./255,0./255),
     -1:(0., 0., 0.),
-    }
-
-seabornColorsDic = {
-    0:sns.color_palette()[0],
-    1:sns.color_palette()[1],
-    2:sns.color_palette()[2],
-    3:sns.color_palette()[3],
-    4:sns.color_palette()[4],
-    5:sns.color_palette()[5],
-    6:sns.color_palette()[6],
-    7:sns.color_palette()[7],
-    8:sns.color_palette()[8],
-    9:sns.color_palette()[9]
     }
 
 mpl_colors=plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -108,16 +97,16 @@ def npa(arr=[], **kwargs):
         - ones: tuple. If provided, returns np.ones(ones)
         - empty: tuple. If provided, returns np.empty(empty)
         - dtype: numpy datatype. If provided, returns np.array(arr, dtype=dtype) .'''
+
+    dtype=kwargs['dtype'] if 'dtype' in kwargs.keys() else None
     if 'zeros' in kwargs.keys():
-        arr = np.zeros(kwargs['zeros'])
+        arr = np.zeros(kwargs['zeros'], dtype=dtype)
     elif 'ones' in kwargs.keys():
-        arr = np.ones(kwargs['ones'])
+        arr = np.ones(kwargs['ones'], dtype=dtype)
     elif 'empty' in kwargs.keys():
-        arr = np.empty(kwargs['empty'])
+        arr = np.empty(kwargs['empty'], dtype=dtype)
     else:
-        arr=np.array(arr)
-    if 'dtype' in kwargs.keys():
-        arr = np.array(arr, dtype=kwargs['dtype'])
+        arr=np.array(arr, dtype=dtype)
     return arr
 
 def isnumeric(x):
@@ -136,6 +125,41 @@ def sign(x):
 
 def minus_is_1(x):
     return abs(1-1*x)*1./2
+
+def read_pyfile(filepath, ignored_chars=[" ", "'", "\"", "\n", "\r"]):
+    '''
+    Reads .py file and returns contents as dictionnary.
+
+    Assumes that file only has "variable=value" pairs, no fucntions etc
+
+    - filepath: str, path to file
+    - ignored_chars: list of characters to remove (only trailing and leading)
+    '''
+    filepath = Path(filepath)
+    assert filepath.exists(), f'{filepath} not found!'
+
+    params={}
+    with open(filepath) as f:
+        for ln in f.readlines():
+            assert '=' in ln, 'WARNING read_pyfile only works for list of variable=value lines!'
+            tmp = ln.split('=')
+            for i, string in enumerate(tmp):
+                string=string.strip("".join(ignored_chars))
+                tmp[i]=string
+            k, val = tmp[0], tmp[1]
+            try: val = ale(val)
+            except: pass
+            params[k]=val
+
+    return params
+
+def list_files(directory, extension, full_path=False):
+    directory=str(directory)
+    files = [f for f in os.listdir(directory) if f.endswith('.' + extension)]
+    files.sort()
+    if full_path:
+        return [Path('/'.join([directory,f])) for f in files]
+    return files
 
 def any_n_consec(X, n_consec, where=False):
     '''
@@ -447,7 +471,7 @@ def make_2D_array(arr_lis, accept_heterogeneous=False):
     return arr
 
 @njit(cache=True)
-def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, prnt=True):
+def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, verbose=True):
     '''
     Parameters:
         - arr: array to split into EITHER n_samples OR samples of size sample_size.
@@ -459,6 +483,7 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, prnt=Tru
     Returns:
         samples: array or list of samples
     '''
+
     arr=np.asarray(arr)
     assert n_samples!=0 or sample_size!=0, 'You need to specify either a sample number or size!'
     assert 0<=overlap<1, 'overlap needs to be between 0 and 1, 1 excluded (samples would all be the same)!'
@@ -476,9 +501,11 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, prnt=Tru
     # step=1 for maximum overlap (every sample would be the first sample for step = 0);
     # step=s for 0 overlap; overlap is
     s=sample_size
+    if len(arr)<s: # no split necessary
+        return make_2D_array([list(arr)])
     step = s-round(s*overlap)
     real_o=round((s-step)/s, 2)
-    if overlap!=real_o and prnt: print('Real overlap: ', round(real_o, 2))
+    if overlap!=real_o and verbose: print('Real overlap: ', round(real_o, 2))
     samples = List([arr[i : i + s] for i in range(0, len(arr), step)])
 
     # always return last sample if len matches
@@ -508,7 +535,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     '''
     Usage 1: align >=2 time series in the same temporal reference frame with the same sampling frequency fs
         aligned_ts1, aligned_ts2, ... = align_timeseries([ts1,ts2,...], [sync1,sync2,...], fs)
-    Usage 2:  align >=1 time serie(s) to another temporal reference frame
+    Usage 2:  align 1 time serie to another temporal reference frame
         aligned_ts = align_timeseries([ts], [sync_ts, sync_other], [fs_ts, fs_other])
 
     Re-aligns in time series based on provided sync signals.
@@ -516,7 +543,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
       If Usage 1: THEY MUST BE IN THE SAME TIME REFERENCE FRAME
     - sync_signals: list of numpy arrays of synchronization time stamps,
       ordered with respect to timeseries
-      If Usage 2: THEY MUST ALSO BE IN THE SAME TIME REFERENCE FRAME
+      If Usage 1: THEY MUST ALSO BE IN THE SAME TIME REFERENCE FRAME
       - fs: int (usage 1) or list of 2 ints (usage 2), sampling frequencies of timeseries and respective sync_signals.
       - offset_policy: 'original' or 'zero', only for usage 1: whether to set timeseries[0] as 0 or as its original value after alignement.
       The FIRST sync_signal is used as a reference.
@@ -564,8 +591,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
 
     Nevents, totDft, avDft, stdDft = len(sync_signals[0]), (sync_signals[1]-sync_signals[0])[-1], np.mean(np.diff(sync_signals[1]-sync_signals[0])), np.std(np.diff(sync_signals[1]-sync_signals[0]))
     totDft, avDft, stdDft = totDft*1000/fs_master, avDft*1000/fs_master, stdDft*1000/fs_master
-    print("{} sync events used for alignement - start-end drift of {}ms, \
-          av. drift between consec. sync events of {}+/-{}ms.".format(Nevents, round(totDft,4), round(avDft,4), round(stdDft,4)))
+    print("{} sync events used for alignement - start-end drift of {}ms".format(Nevents, round(totDft,3)))
 
     for dataset_i in range(len(timeseries)):
         if dataset_i==0: continue #first dataset is reference so left untouched
@@ -585,7 +611,7 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
 
 def align_timeseries_interpol(timeseries, sync_signals, fs=None):
     '''
-    Align a list of N timeseries in the frame of reference of the first timeserie.
+    Align a list of N timeseries in the temporal reference frame of the first timeserie.
 
     Assumes that the drift is going to be linear, it is interpolated for times far from sync signals
     (sync_signal1 = a * sync_signal0 + b).
@@ -613,15 +639,15 @@ def align_timeseries_interpol(timeseries, sync_signals, fs=None):
         sync_signals[tsi]=ts.astype(int)
 
     # Align
-    master_sync=sync_signals[0]
+    ref_sync=sync_signals[0]
 
     for i, (ts, ss) in enumerate(zip(timeseries[1:], sync_signals[1:])):
-        (a, b) = np.polyfit(ss, master_sync, 1)
+        (a, b) = np.polyfit(ss, ref_sync, 1)
         if fs is not None:
             drift=round(abs(a*fs[i]/fs[0]-1)*3600*1000,2)
             offset=round(b/fs[0],2)
-            print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between ephys and paq files.\n')
-        timeseries[i]=(a*ts+b).astype(int)
+            print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between time series 1 and {i+2}.\n')
+        timeseries[i+1]=(a*ts+b).astype(int)
 
     return timeseries
 
@@ -1545,63 +1571,3 @@ def zero_crossings_sine_fit(y_axis, x_axis, fit_window = None, smooth_window = 1
 
 
     return true_crossings
-
-
-
-
-def _test_zero():
-    _max, _min = peakdetect_zero_crossing(y,x)
-def _test():
-    _max, _min = peakdetect(y,x, delta=0.30)
-
-
-def _test_graph():
-    i = 10000
-    x = np.linspace(0,3.7*pi,i)
-    y = (0.3*np.sin(x) + np.sin(1.3 * x) + 0.9 * np.sin(4.2 * x) + 0.06 *
-    np.random.randn(i))
-    y *= -1
-    x = range(i)
-
-    _max, _min = peakdetect(y,x,750, 0.30)
-    xm = [p[0] for p in _max]
-    ym = [p[1] for p in _max]
-    xn = [p[0] for p in _min]
-    yn = [p[1] for p in _min]
-
-    plot = pylab.plot(x,y)
-    pylab.hold(True)
-    pylab.plot(xm, ym, "r+")
-    pylab.plot(xn, yn, "g+")
-
-    _max, _min = peak_det_bad.peakdetect(y, 0.7, x)
-    xm = [p[0] for p in _max]
-    ym = [p[1] for p in _max]
-    xn = [p[0] for p in _min]
-    yn = [p[1] for p in _min]
-    pylab.plot(xm, ym, "y*")
-    pylab.plot(xn, yn, "k*")
-    pylab.show()
-
-def _test_graph_cross(window = 11):
-    i = 10000
-    x = np.linspace(0,8.7*pi,i)
-    y = (2*np.sin(x) + 0.006 *
-    np.random.randn(i))
-    y *= -1
-    pylab.plot(x,y)
-    #pylab.show()
-
-
-    crossings = zero_crossings_sine_fit(y,x, smooth_window = window)
-    y_cross = [0] * len(crossings)
-
-
-    plot = pylab.plot(x,y)
-    pylab.hold(True)
-    pylab.plot(crossings, y_cross, "b+")
-    pylab.show()
-
-def _is_array_like(arr):
-    return isinstance(arr, (list, np.ndarray))
-

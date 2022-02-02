@@ -3,12 +3,12 @@ numpy
 scipy
 pandas
 matplotlib
-seaborn
 six
-vispy
 statsmodels
-progressbar2
 cmcrameri
+tqdm
+joblib
+ipywidgets
 scikit-learn
 umap-learn
 networkx
@@ -17,10 +17,7 @@ imutils
 python_utils
 h5py
 numba
-tk
 urllib3
 certifi
 idna
-elephant
-neo
 opencv-python

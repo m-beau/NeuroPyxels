@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pickle as pkl
+from tqdm import tqdm_notebook as tqdm #from tqdm import tqdm
 
 import numpy as np
 
@@ -21,20 +22,16 @@ from cmcrameri import cm as cmcr
 cmcr=cmcr.__dict__
 from IPython.core.display import HTML,display
 
-
 mpl.rcParams['figure.dpi']=100
-
-import holoviews as hv
-import bokeh as bk
-import hvplot.pandas
-
-import seaborn as sns
+mpl.rcParams['pdf.fonttype'] = 42 # necessary to make the text editable
+mpl.rcParams['ps.fonttype'] = 42
 
 from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable
 from npyx.stats import fractile_normal, fractile_poisson
 
-from npyx.io import read_spikeglx_meta, extract_rawChunk, assert_chan_in_dataset, chan_map
-from npyx.gl import get_units, assert_multi, get_ds_ids
+from npyx.io import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map
+from npyx.gl import get_units
+from npyx.merger import assert_multi, get_ds_ids
 from npyx.spk_wvf import get_depthSort_peakChans, wvf, wvf_dsmatch, get_peak_chan, templates
 from npyx.spk_t import trn, train_quality
 from npyx.corr import acg, ccg, gen_sfc, get_cm, scaled_acg
@@ -49,6 +46,12 @@ import networkx as nx
 #%% plotting utilities ##############################################################################################
 
 def save_mpl_fig(fig, figname, saveDir, _format):
+
+    # Fix matplotlib resolution and make text editable
+    mpl.rcParams['figure.dpi']=500
+    mpl.rcParams['pdf.fonttype']=42
+    mpl.rcParams['ps.fonttype']=42
+
     saveDir=op.expanduser(saveDir)
     saveDir=Path(saveDir)
     if not saveDir.exists():
@@ -74,6 +77,8 @@ def mplshow(fig):
     fig.set_canvas(new_manager.canvas)
 
 def bkshow(bkfig, title=None, save=0, savePath='~/Downloads'):
+    import bokeh as bk
+
     if title is None: title=bkfig.__repr__()
     if save:bk.plotting.output_file(f'{title}.html')
     bk.plotting.show(bkfig)
@@ -92,6 +97,8 @@ def hvshow(hvobject, backend='matplotlib', return_mpl=True):
         - return_mpl: bool, returns a matplotlib figure
 
     '''
+    import holoviews as hv
+
     assert backend in ['bokeh', 'matplotlib']
     if backend=='matplotlib' or return_mpl:
         mplfig=hv.render(hvobject, backend='matplotlib')
@@ -219,7 +226,7 @@ def mplp(fig=None, ax=None, figsize=None,
         ax.set_yticks(yticks)
     else: ax.set_yticks(yticks)
 
-    # Tick labels
+    # Tick labels and x/y limits
     fig.canvas.draw() # To force setting of ticklabels
     if xtickslabels is None:
         if any(ax.get_xticklabels()):
@@ -497,7 +504,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 #%% Waveforms or raw data ##############################################################################################
 
 def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
-             subset_selection='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
+             periods='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
              whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
              title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
              labels=False, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
@@ -538,7 +545,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
 
     # Get metadata
     saveDir=op.expanduser(saveDir)
-    fs=read_spikeglx_meta(dp, subtype='ap')['sRateHz']
+    fs=read_metadata(dp)['highpass']['sampling_rate']
     pv=None if ignore_ks_chanfilt else 'local'
     cm=chan_map(dp, y_orig='tip', probe_version=pv)
 
@@ -550,20 +557,19 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     use_dsmatch=False ##TODO make sure that ds_match returns the waveforms std
     if not use_dsmatch:
         waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s,
-                        subset_selection=subset_selection, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
+                        periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
                         whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
-                        ignore_ks_chanfilt = ignore_ks_chanfilt,
-                        use_old=False, loop=True, parallel=False, memorysafe=False)
+                        ignore_ks_chanfilt = ignore_ks_chanfilt)
     else:
         waveforms=wvf_dsmatch(dp, u, n_waveforms=n_waveforms,
-                  t_waveforms=t_waveforms_s, subset_selection=subset_selection,
+                  t_waveforms=t_waveforms_s, periods=periods,
                   wvf_batch_size=wvf_batch_size, ignore_nwvf=True, spike_ids = None,
-                  save=True, prnt=False, again=again,
+                  save=True, verbose=False, again=again,
                   whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
                   nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
                   use_old=False, parallel=False,
                   memorysafe=False, fast = False )[1]
-    assert waveforms.shape[0]!=0,'No waveforms were found in the provided subset_selection!'
+    assert waveforms.shape[0]!=0,'No waveforms were found in the provided periods!'
     assert waveforms.shape[1:]==(t_waveforms_s, cm.shape[0])
     tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
     assert tplts.shape[2]==waveforms.shape[2]==cm.shape[0]
@@ -594,7 +600,6 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     elif type(sample_lines) in [int, float]:
         sample_lines=min(waveforms.shape[0],sample_lines, n_waveforms)
 
-    title = 'waveforms of {}'.format(u) if title=='' else title
     if isinstance(color, str):
         color=to_rgb(color)
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
@@ -682,7 +687,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
             ax[i_bottomleft].plot([0,0],[ylim1,ylim1+y_scale], c='k', lw=scalebar_w)
             ax[i_bottomleft].text(-0.05*xlimdiff, ylim1+y_scale*0.5, f'{y_scale} \u03bcV', weight='bold', size=18, va='center', ha='right')
 
-        if labels: fig.suptitle(t=title, x=0.5, y=0.92+0.02*(len(title.split('\n'))-1), size=18, weight='bold', va='top')
+        fig.suptitle(t=title, x=0.5, y=0.92+0.02*(len(title.split('\n'))-1), size=18, weight='bold', va='top')
 
     # Save figure
     if saveFig:
@@ -692,7 +697,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
 
     return fig
 
-def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), subtype='ap',
+def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), filt_key='highpass',
              offset=450, color='multi', lw=1, bg_alpha=0.8,
              title=None, _format='pdf',  saveDir='~/Downloads', saveData=0, saveFig=0, figsize=(20,8),
              whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
@@ -730,25 +735,25 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
 
     '''
     pyqtgraph=0
-    meta=read_spikeglx_meta(dp, subtype)
-    fs = int(meta['sRateHz'])
+    assert filt_key in ['highpass', 'lowpass']
+    fs = read_metadata(dp)[filt_key]['sampling_rate']
     assert assert_iterable(events)
     # Get data
     if ext_data is None:
         channels=assert_chan_in_dataset(dp, channels)
         if times is not None:
             assert alignement_events is None, 'You can either provide a window of 2 times or a list of alignement_events + a single window to compute an average, but not both!'
-            rc = extract_rawChunk(dp, times, channels, subtype, saveData, 1, whiten, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten)
+            rc = extract_rawChunk(dp, times, channels, filt_key, saveData, 1, whiten, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten)
         if alignement_events is not None:
             assert window is not None
             window[1]=window[1]+1*1000/fs # to make actual window[1] tick visible
             assert times is None, 'You can either provide a window of 2 times or a list of alignement_events + a single window to compute an average, but not both!'
             assert len(alignement_events)>1
-            rc = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, subtype, saveData,
+            rc = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, filt_key, saveData,
                                   whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
             for e in alignement_events[1:]:
                 times=e+npa(window)/1e3
-                rc+=extract_rawChunk(dp, times, channels, subtype, saveData,
+                rc+=extract_rawChunk(dp, times, channels, filt_key, saveData,
                                      whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
             rc/=len(alignement_events)
     else:
@@ -829,11 +834,11 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
         # fig.tight_layout()
 
         if saveFig:
-            saveDir=op.expanduser(saveDir)
             rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
             rcn=rcn+'_whitened' if whiten else rcn+'_raw'
             if title is not None: rcn=title
-            fig.savefig(Path(saveDir, '{}.{}'.format(rcn, _format)), format=_format, dpi=500, bbox_inches='tight')
+
+            save_mpl_fig(fig, rcn, saveDir, _format)
 
         return fig
 
@@ -871,7 +876,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
 
 
     fig=plot_raw(dp, times, None, None, channels,
-             subtype='ap', offset=450, saveDir=saveDir, saveData=saveData, saveFig=0,
+             filt_key='highpass', offset=450, saveDir=saveDir, saveData=saveData, saveFig=0,
              _format=_format, color=bg_color,
              whiten=whiten, nRangeWhiten=nRangeWhiten, med_sub=med_sub, nRangeMedSub=nRangeMedSub, hpfilt=hpfilt, hpfiltf=hpfiltf, ignore_ks_chanfilt=ignore_ks_chanfilt,
              show_allyticks=show_allyticks, yticks_jump=yticks_jump, events=events, set0atEvent=set0atEvent, figsize=figsize,
@@ -880,7 +885,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
     if not pyqtgraph: ax=fig.get_axes()[0]
     assert assert_iterable(units)
     assert len(units)>=1
-    fs=read_spikeglx_meta(dp, 'ap')['sRateHz']
+    fs=read_metadata(dp)['highpass']['sampling_rate']
     spk_w1 = spk_window // 2
     spk_w2 = spk_window - spk_w1
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
@@ -1340,7 +1345,8 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
     if figratio is None: figratio=6
     if figh is None: figh = 2.5
     figw=figratio*figh/len(events)
-    fig = plt.figure(figsize=(figw,figh))
+    figsize=(figw,figh)
+    fig = plt.figure(figsize=figsize)
     nmaps=len(events) if not transpose else len(trains)
     grid = plt.GridSpec(nmaps, 1, wspace=0.2, hspace=0.3)
     (l1,ls1,l2,ls2)=(events, events_str, trains, trains_str)
@@ -1388,8 +1394,8 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
 #%% Correlograms ##############################################################################################
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True,
-            _format='pdf', subset_selection='all', labels=True, std_lines=True, title=None, color=-1,
-            saveData=False, ylim1=0, ylim2=0, normalize='Hertz', ccg_mn=None, ccg_std=None,
+            _format='pdf', periods='all', labels=True, std_lines=True, title=None, color=-1,
+            saveData=False, ylim=None, normalize='Hertz', ccg_mn=None, ccg_std=None,
             figsize=(4.5,4), show_hz=False):
     '''Plots acg and saves it given the acg array.
     unit: int.
@@ -1407,19 +1413,17 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     fig, ax = plt.subplots(figsize=(10,8))
     x=np.linspace(-cwin*1./2, cwin*1./2, CCG.shape[0])
     assert x.shape==CCG.shape
-    if ylim1==0 and ylim2==0:
+    if ylim is None:
         if normalize in ['Hertz','Counts']:
-            ylim1=0
-            yl=max(CCG); ylim2=int(yl)+5-(yl%5);
+            yl=max(CCG)
+            ylim=[0,int(yl)+5-(yl%5)]
         elif normalize=='Pearson':
-            ylim1=0
-            yl=max(CCG); ylim2=yl+0.01-(yl%0.01);
+            yl=max(CCG)
+            ylim=[0, yl+0.01-(yl%0.01)]
         elif normalize=='zscore':
-            yl1=min(CCG);yl2=max(CCG)
-            ylim1=yl1-0.5+(abs(yl1)%0.5);ylim2=yl2+0.5-(yl2%0.5)
-            ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
-            ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
-    ax.set_ylim([ylim1, ylim2])
+            yl=np.max(np.abs(CCG))
+            ylim=[-yl, yl]
+    ax.set_ylim(ylim)
 
     if ccg_mn is not None and ccg_std is not None and show_hz:
         ax2 = ax.twinx()
@@ -1427,13 +1431,13 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels(ax2ticks, fontsize=20)
-        ax2.set_ylim([ylim1, ylim2])
+        ax2.set_ylim(ylim)
 
     if normalize in ['Hertz', 'Pearson', 'Counts']:
         y=CCG.copy()
     elif normalize in ['zscore']:
-        y=CCG.copy()+abs(ylim1)
-    ax.bar(x=x, height=y, width=cbin, color=color, edgecolor=color, bottom=ylim1) # Potentially: set bottom=0 for zscore
+        y=CCG.copy()+abs(ylim[0])
+    ax.bar(x=x, height=y, width=cbin, color=color, edgecolor=color, bottom=ylim[0]) # Potentially: set bottom=0 for zscore
 
     ax.plot([0,0], ax.get_ylim(), ls="--", c=[0.5,0.5,0.5], lw=1, zorder=1000)
     if labels:
@@ -1459,9 +1463,9 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         ax.set_xlim([-cwin*1./2, cwin*1./2])
         if not isinstance(title, str):
             if bChs is None:
-                title="Units {}->{} ({})s".format(uls[0], uls[1], str(subset_selection)[0:50].replace(' ',  ''))
+                title="Units {}->{} ({})s".format(uls[0], uls[1], str(periods)[0:50].replace(' ',  ''))
             else:
-                title="Units {}@{}->{}@{} ({})s".format(uls[0], bChs[0], uls[1], bChs[1], str(subset_selection)[0:50].replace(' ',  ''))
+                title="Units {}@{}->{}@{} ({})s".format(uls[0], bChs[0], uls[1], bChs[1], str(periods)[0:50].replace(' ',  ''))
         ax.set_title(title, size=22)
         ax.tick_params(labelsize=20)
     mplp(fig, ax, figsize=figsize)
@@ -1475,7 +1479,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     return fig
 
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=True,
-            _format='pdf', subset_selection='all', labels=True, title=None, ref_per=True, saveData=False,
+            _format='pdf', periods='all', labels=True, title=None, ref_per=True, saveData=False,
             ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None, figsize=(4.5,4)):
     '''Plots acg and saves it given the acg array.
     unit: int.
@@ -1523,10 +1527,10 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     if labels:
         if not isinstance(title, str):
             if  bChs is None:
-                title="Unit {} ({})s".format(unit, str(subset_selection)[0:50].replace(' ',  ''))
+                title="Unit {} ({})s".format(unit, str(periods)[0:50].replace(' ',  ''))
             else:
                 assert len(bChs)==1
-                title="Unit {}@{} ({})s".format(unit, bChs[0], str(subset_selection)[0:50].replace(' ',  ''))
+                title="Unit {}@{} ({})s".format(unit, bChs[0], str(periods)[0:50].replace(' ',  ''))
         if ref_per:
             ax.plot([-1, -1], [ylim1, ylim2], color='black', linestyle='--', linewidth=1)
             ax.plot([1, 1], [ylim1, ylim2], color='black', linestyle='--', linewidth=1)
@@ -1551,27 +1555,89 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
 
 
 def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downloads',
-                     saveFig=False, prnt=False, _format='pdf', figsize=None, subset_selection='all',
-                     labels=True, show_ttl=True, title=None, std_lines=False, ylim1=0, ylim2=0, normalize='zscore'):
-    bChs=npa(bChs).astype(int)
-    l=len(units)
-    x=np.arange(-cwin/2, cwin/2+cbin, cbin)
+                     saveFig=False, _format='pdf', figsize=None,
+                     labels=True, show_ttl=True, title=None,
+                     ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore'):
 
+    ## Instanciate figure and format x axis/channels
+    l=len(units)
     if figsize is None: figsize=(4.5*l/2,4*l/2)
     fig = plt.figure(figsize=figsize)
+
+    x=np.arange(-cwin/2, cwin/2+cbin, cbin)
+    bChs=npa(bChs).astype(int)
+
+    ## precompute y limits (in case of y_sharing)
+    ylims=[]
+    acg_mask = npa([]).astype(bool)
     for row in range(l):
         for col in range(l):
-            ax=fig.add_subplot(l, l, 1+row*l+col%l)
             if normalize!='mixte':normalize1=normalize
+            if row>col: continue
+            ylim=None
+            on_acg = (row==col)
+            if on_acg:
+                acg_mask=np.append(acg_mask,[True])
+                y=CCGs[row,col,:]
+                if normalize=='mixte': normalize1='Hertz'
+                if ylim_acg is not None: ylim=ylim_acg
+            else:
+                acg_mask=np.append(acg_mask,[False])
+                if normalize=='mixte':
+                    y=zscore(CCGs[row,col,:], 4./5)
+                    normalize1='zscore'
+                else:
+                    y=CCGs[row,col,:]
+                if ylim_ccg is not None: ylim=ylim_ccg
+
+            if ylim is None:
+                margin = abs(np.max(y)-np.min(y))*0.01
+                ylim = [np.min(y)-margin, np.max(y)+margin]
+            if normalize1 in ['Hertz','Pearson','Counts']:
+                ylims.append([0, ylim[1]])
+            elif normalize1=='zscore':
+                ylmax=max(np.abs(ylim))
+                ylims.append([-ylmax, ylmax])
+
+    ylims=npa(ylims)
+    if share_y:
+        if normalize=='mixte':
+            ylims_ccg = ylims[~acg_mask]
+            ylims_acg = ylims[acg_mask]
+            yl_max_ccg = np.max(ylims_ccg[:,1])
+            yl_max_acg = np.max(ylims_acg[:,1])
+            ylims[acg_mask,1] = yl_max_acg
+            ylims[~acg_mask,0] = -yl_max_ccg
+            ylims[~acg_mask,1] = yl_max_ccg
+        else:
+            yl_max = np.max(ylims[:,1])
+            if normalize in ['Hertz','Pearson']:
+                ylims[~acg_mask,0] = -yl_max
+                ylims[~acg_mask,1] = yl_max
+            else:
+                ylims[acg_mask,1] = yl_max
+
+    ## Actually generate subplots, plot and frame
+    pbar = tqdm(total=(l**2-l)//2+l, desc="Plotting CCGs")
+    i=0
+    for row in range(l):
+        for col in range(l):
+            # create subplot
+            ax=fig.add_subplot(l, l, 1+row*l+col%l)
             if row>col:
                 mplp(ax=ax, hide_axis=True)
                 continue
-            if (row==col):
+
+            # Process y data and pick color
+            if normalize!='mixte':normalize1=normalize
+            on_acg = (row==col)
+            if on_acg:
+                acg_mask=np.append(acg_mask,[True])
                 color=phyColorsDic[row%6]
                 y=CCGs[row,col,:]
-                if normalize=='mixte':
-                    normalize1='Hertz'
+                if normalize=='mixte': normalize1='Hertz'
             else:
+                acg_mask=np.append(acg_mask,[False])
                 color=phyColorsDic[-1]
                 if normalize=='mixte':
                     y=zscore(CCGs[row,col,:], 4./5)
@@ -1579,71 +1645,72 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 else:
                     y=CCGs[row,col,:]
 
+            # plotting
             ax.plot(x, y, color=color, alpha=0)
-            ax.set_xlim([-cwin*1./2, cwin*1./2])
-
             if normalize1 in ['Hertz','Pearson','Counts']:
-                ax.set_ylim([0, ax.get_ylim()[1]])
-                ax.fill_between(x, np.zeros(len(x)), y, color=color)
+                ax.fill_between(x, x*0, y, color=color)
             elif normalize1=='zscore':
-                ylmax=max(np.abs(ax.get_ylim()))
-                ax.set_ylim([-ylmax, ylmax])
-                ax.fill_between(x, -ylmax*np.ones(len(x)), y, color=color)
+                ax.fill_between(x, ylims[i][0]*np.ones(len(x)), y, color=color)
 
+            # plot framing
             if labels:
-                if row==col==0:
-                    ax.set_ylabel("Crosscorr. ({})".format(normalize), size=12)
-                if col==l-1 and row==l-1:
-                    ax.set_xlabel('Time (ms)', size=12)
-
-                if any(bChs):
-                    ttl="{}@{}>{}@{}".format(units[row], bChs[row], units[col], bChs[col])
-                else:
-                    ttl="{}>{}".format(units[row], units[col])
+                ylabel = f"Crosscorr. ({normalize})" if row==col==0 else None
+                xlabel = 'Time (ms)' if (col==l-1 and row==l-1) else None
+                ttl=f"{units[row]}@{bChs[row]}>{units[col]}@{bChs[col]}" if any(bChs) else f"{units[row]}>{units[col]}"
             else:
-                ttl=None
+                ttl, xlabel, ylabel = None, None, None
             if not show_ttl: ttl=None
 
-            mplp(ax=ax, figsize=figsize, lw=1,
-                 title=ttl, title_s=8, title_w='regular',
-                 axlab_s=12, axlab_w='regular',
-                 ticklab_s=12, ticklab_w='regular',
-                 tight_layout=False)
+            mplp(ax=ax, figsize=figsize, ylim=ylims[i], xlim=[-cwin*1./2, cwin*1./2],
+                lw=1, title=ttl, ylabel=ylabel, xlabel=xlabel,
+                title_s=8, title_w='regular',
+                axlab_s=12, axlab_w='regular',
+                ticklab_s=12, ticklab_w='regular',
+                tight_layout=False)
+            i+=1
+            pbar.update(1)
 
     if title is not None:
         fig.suptitle(title, size=20, weight='bold')
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     if saveFig:
-        saveDir=op.expanduser(saveDir)
-        if not os.path.isdir(saveDir): os.mkdir(saveDir)
-        save_mpl_fig(fig, f"ccg{str(units).replace(' ', '')}-{cwin}_{cbin}", saveDir, _format)
+        save_mpl_fig(fig, f"ccg_{title}_{str(units).replace(' ', '')}-{cwin}_{cbin}", saveDir, _format)
 
     return fig
 
-def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False,
-             _format='pdf', subset_selection='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0],
+def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, verbose=False,
+             _format='pdf', periods='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0],
              acg_mn=None, acg_std=None, again=False,
              figsize=(4.5,4)):
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=[unit])[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
-    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, prnt=prnt, subset_selection=subset_selection, again=again)
+    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, verbose=verbose, periods=periods, again=again)
     if normalize=='zscore':
-        ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, subset_selection=subset_selection)
+        ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', verbose=verbose, periods=periods)
         acg25, acg35 = ACG_hertz[:int(len(ACG_hertz)*2./5)], ACG_hertz[int(len(ACG_hertz)*3./5):]
         acg_std=np.std(np.append(acg25, acg35))
         acg_mn=np.mean(np.append(acg25, acg35))
     fig=plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, _format=_format,
-            subset_selection=subset_selection, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2,
+            periods=periods, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2,
             normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize)
 
     return fig
 
-def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloads', saveFig=False, prnt=False,
-             _format='pdf', figsize=None,subset_selection='all', labels=True, std_lines=True,
+def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloads', saveFig=False, verbose=False,
+             _format='pdf', figsize=None,periods='all', labels=True, std_lines=True,
              title=None, show_ttl=True, color=-1, CCG=None, saveData=False,
-             ylim=[0,0], ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False,
-             use_template=True):
+             ylim_acg=None, ylim_ccg=None, share_y=0,
+             ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False,
+             use_template=True, enforced_rp=0):
+    """
+    Parameters:
+    - as_grid: also plot units autocorrelograms along the diagonal (only relevant when plotting 2 units)
+    - use_template: whether to use the template files to find the peak channel
+
+    Returns:
+    - fig: matplotlib figure object
+    """
     assert assert_iterable(units)
     units=list(units)
     _, _idx=np.unique(units, return_index=True)
@@ -1652,27 +1719,27 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
     if normalize=='mixte' and len(units)==2 and not as_grid: normalize='zscore'
     saveDir=op.expanduser(saveDir)
     bChs=get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
-    ylim1, ylim2 = ylim[0], ylim[1]
 
     if CCG is None:
         normalize1 = normalize if normalize!='mixte' else 'Hertz'
-        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, prnt=prnt, subset_selection=subset_selection, again=again, trains=trains)
+        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, verbose=verbose, periods=periods, again=again, trains=trains, enforced_rp=enforced_rp)
     assert CCG is not None
 
     if CCG.shape[0]==2 and not as_grid:
         if normalize=='zscore':
-            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', prnt=prnt, subset_selection=subset_selection, again=again, trains=trains)[0,1,:]
+            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', verbose=verbose, periods=periods, again=again, trains=trains)[0,1,:]
             ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
             ccg_std=np.std(np.append(ccg25, ccg35))
             ccg_mn=np.mean(np.append(ccg25, ccg35))
 
         if figsize is None: figsize=(4.5,4)
-        fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format, subset_selection=subset_selection,
-                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim1=ylim1, ylim2=ylim2,
+        fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format, periods=periods,
+                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim=ylim_ccg,
                       normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std, figsize=figsize)
     else:
-        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, saveDir, saveFig, prnt, _format, figsize, subset_selection=subset_selection,
-                               labels=labels, show_ttl=show_ttl,title=title, std_lines=std_lines, ylim1=ylim1, ylim2=ylim2, normalize=normalize)
+        fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, saveDir, saveFig, _format, figsize,
+                               labels=labels, show_ttl=show_ttl,title=title,
+                               ylim_acg=ylim_acg, ylim_ccg=ylim_ccg, share_y=share_y, normalize=normalize)
 
     return fig
 
@@ -1814,11 +1881,13 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
           axlab_w='bold', axlab_s=14,
           ticklab_w='regular', ticklab_s=10, ticks_direction='out', lw=1,
           title=title, title_w='bold', title_s=14,
-          hide_top_right=False, hide_axis=False, tight_layout=tight_layout)
+          hide_top_right=False, hide_axis=False, tight_layout=False)
+
+    if tight_layout: fig.tight_layout(rect=[0,0,0.8,1])
 
     # Add colorbar, nicely formatted
     axpos=ax.get_position()
-    cbaraxx0,cbaraxy0 = float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
+    cbaraxx0,cbaraxy0 = float(axpos.x1+0.005), float(axpos.y0) #float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
     cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, .01, cmap_h])
     if cticks is None: cticks=get_bestticks_from_array(np.arange(vmin,vmax+(vmax-vmin)/10,(vmax-vmin)/10), light=True)
     fig.colorbar(axim, cax=cbar_ax, ax=ax,
@@ -1840,7 +1909,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
 
 # Plot correlation matrix of variables x observations 2D array
 
-def plot_cm(dp, units, cwin=100, cbin=0.2, b=5, corrEvaluator='CCG', vmax=5, vmin=0, cmap='viridis', subset_selection='all',
+def plot_cm(dp, units, cwin=100, cbin=0.2, b=5, corrEvaluator='CCG', vmax=5, vmin=0, cmap='viridis', periods='all',
             saveDir='~/Downloads', saveFig=False, _format='pdf', title=None, ret_cm=False):
     '''Plot correlation matrix.
     dp: datapath
@@ -1860,7 +1929,7 @@ def plot_cm(dp, units, cwin=100, cbin=0.2, b=5, corrEvaluator='CCG', vmax=5, vmi
     units, channels = mainChans[:,0], mainChans[:,1]
 
     # make correlation matrix of units sorted by depth
-    cm = get_cm(dp, units, cbin, cwin, b, corrEvaluator, subset_selection)
+    cm = get_cm(dp, units, cbin, cwin, b, corrEvaluator, periods)
 
     # Plot correlation matrix
     ttl = f"Dataset: {dp.split('/')[-1]}" if title is None else title
@@ -1874,8 +1943,8 @@ def plot_cm(dp, units, cwin=100, cbin=0.2, b=5, corrEvaluator='CCG', vmax=5, vmi
 
     if saveFig:
         if saveDir is None: saveDir=dp
-        assert title is not None, 'You need to provide a title parameter to save the figure!'
-        fig.savefig(Path(saveDir,title,f'.{_format}'))
+        if title is None: title = None
+        save_mpl_fig(fig, title, saveDir, _format)
 
     if ret_cm:
         return cm, units, channels # depth-sorted
@@ -1889,19 +1958,23 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
               text=False, markers=False, ticks=True, depth_ticks=False,
               regions={}, reg_colors={}, vminmax=[-7,7], figsize=(6,6),
               saveFig=False, saveDir=None, _format='pdf',
-              again=False, againCCG=False, use_template_for_peakchan=False, subset_selection='all'):
-    '''
-    Visually represents the connectivity datafrane outputted by 'gen_sfc'.
-    Each line/row is a good unit.
-    Each intersection is a square split in a varying amount of columns,
-    each column representing a positive or negatively significant peak collored accordingly to its size s.
+              again=False, againCCG=False, use_template_for_peakchan=False, periods='all'):
+    f'''
+    Visually represents the connectivity matrix sfcm computed with npyx.corr.gen_sfc().
+    Each line/row is a unit, sorted by depth, and the colormap corresponds to the 'metric' parameter.
+
+    Parameters:
+        - all parameters of npyx.corr.gen_sfc():
+            {gen_sfc.__doc__}
+    Returns:
+        - fig: matplotlib figure
     '''
 
     sfc, sfcm, peakChs, sigstack, sigustack = gen_sfc(dp, corr_type, metric, cbin, cwin,
                                  p_th, n_consec_bins, fract_baseline, W_sd, test,
                                  again, againCCG, drop_seq, None, None, units=units, name=name,
                                  use_template_for_peakchan=use_template_for_peakchan,
-                                 subset_selection=subset_selection)
+                                 periods=periods)
     gu = peakChs[:,0]
     ch = peakChs[:,1].astype(int)
 
@@ -1922,7 +1995,7 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         lab = 'unit.dataset@channel'
 
     mpl.rcParams['figure.dpi']=100
-    ttl='Significant functional correlation matrix\n{}\n{}-{}-{}-{}-{}\n({})'.format(op.basename(dp),test, p_th, n_consec_bins, fract_baseline, W_sd, corr_type)
+    ttl='{}\n{}-{}-{}-{}-{}\n({})'.format(op.basename(dp),test, p_th, n_consec_bins, fract_baseline, W_sd, corr_type)
     dataset_borders = list(np.nonzero(np.diff(get_ds_ids(peakChs[:,0])))[0]) if assert_multi(dp) else []
     fig=imshow_cbar(sfcm, origin='top', xevents_toplot=dataset_borders, yevents_toplot=dataset_borders, events_color=[0.5,0.5,0.5],events_lw=1,
                 xvalues=None, yvalues=None, xticks=tks, yticks=tks,
@@ -1980,113 +2053,12 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
 
     if saveFig:
         if saveDir is None: saveDir=dp
-        save_mpl_fig(fig, ttl.replace('\n', '_'), saveDir, _format)
+        ttl=ttl.replace('\n', '_')
+        if name is not None: ttl=ttl+'_'+name
+        save_mpl_fig(fig, ttl, saveDir, _format)
 
     return fig
 
-# def plot_sfcm_old(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
-#               p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-#               drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None,
-#               text=False, markers=False, ticks=True, depth_ticks=False,
-#               regions={}, reg_colors={}, vminmax=[-7,7], figsize=(7,7),
-#               saveFig=False, saveDir=None, again=False, againCCG=False, use_template_for_peakchan=False):
-#     '''
-#     Visually represents the connectivity datafrane outputted by 'gen_sfc'.
-#     Each line/row is a good unit.
-#     Each intersection is a square split in a varying amount of columns,
-#     each column representing a positive or negatively significant peak collored accordingly to its size s.
-#     '''
-
-#     sfc, sfcm, peakChs = gen_sfc(dp, corr_type, metric, cbin, cwin,
-#                                  p_th, n_consec_bins, fract_baseline, W_sd, test,
-#                                  again, againCCG, drop_seq, units, name,
-#                                  cross_cont_proof=False, use_template_for_peakchan=use_template_for_peakchan)
-
-#     gu = peakChs[:,0]
-#     ch = peakChs[:,1].astype(int)
-
-#     if corr_type=='synchrony':
-#         vminmax=[0,vminmax[1]]
-#     elif corr_type=='excitations':
-#         vminmax=[0,vminmax[1]]
-#     elif corr_type=='inhibitions':
-#         vminmax=[vminmax[0],0]
-
-#     fig = plt.figure(figsize=figsize)
-#     ax = fig.add_axes([0.15, 0.15, 0.7, 0.7])
-#     axpos=ax.get_position()
-#     cbar_ax = fig.add_axes([axpos.x0+axpos.width+0.01, axpos.y0, .02, .3])
-#     sns.heatmap(sfcm, yticklabels=True, xticklabels=True, cmap="RdBu_r", center=0, vmin=vminmax[0], vmax=vminmax[1],
-#                      cbar_kws={'label': 'Crosscorr. modulation (s.d.)'}, ax=ax, cbar_ax=cbar_ax)
-#     cbar_ax.yaxis.label.set_font_properties(matplotlib.font_manager.FontProperties(family='arial',weight='bold', size=12))
-#     cbar_ax.yaxis.label.set_rotation(90)
-#     cbar_ax.yaxis.label.set_va('top')
-#     cbar_ax.yaxis.labelpad=5
-#     cbar_ax.yaxis.set_ticklabels(cbar_ax.yaxis.get_ticklabels(), ha='center')
-#     cbar_ax.yaxis.set_tick_params(pad=11)
-#     set_ax_size(ax,*figsize)
-
-#     ax.plot(ax.get_xlim(), ax.get_ylim()[::-1], ls="--", c=[0.5,0.5,0.5], lw=1)
-#     ttl='Significant functional correlation matrix\n{}\n{}-{}-{}-{}-{}\n({})'.format(op.basename(dp),test, p_th, n_consec_bins, fract_baseline, W_sd, corr_type)
-#     ax.set_title(ttl, fontsize=16, fontweight='bold')
-
-#     if depth_ticks:
-#         labs=['{}'.format(3840-ch[i]*10) for i in range(len(gu)) if i%10==0]
-#         tks=[i for i in range(len(gu)) if i%10==0]
-#         ax.set_xticks(tks)
-#         ax.set_yticks(tks)
-#         ax.set_yticklabels(labs, fontsize=14, fontweight='bold', rotation=45)
-#         ax.set_xticklabels(labs, fontsize=14, fontweight='bold', rotation=45)
-#         ax.set_ylabel('Depth on probe (\u03BCm)', fontsize=16, fontweight='bold')
-#         ax.set_xlabel('Depth on probe (\u03BCm)', fontsize=16, fontweight='bold')
-#     else:
-#         labs=['{}@{}'.format(gu[i], ch[i]) for i in range(len(gu))]
-#         ax.set_yticklabels(labs, fontsize=12, fontweight='regular')
-#         ax.set_xticklabels(labs, fontsize=12, fontweight='regular')
-
-#     [ax.spines[sp].set_visible(True) for sp in ['left', 'bottom', 'top', 'right']]
-
-#     if not ticks:
-#         [tick.set_visible(False) for tick in ax.xaxis.get_major_ticks()]
-#         [tick.set_visible(False) for tick in ax.yaxis.get_major_ticks()]
-
-#     if any(regions):
-#         for region, rng in regions.items():
-#             rngi=[np.nonzero(abs(r-ch)==min(abs(r-ch)))[0][0] for r in rng[::-1]]
-#             for r in rngi:
-#                 ax.plot([r,r], [0,len(ch)], ls="-", c=[0.5,0.5,0.5], lw=1)
-#                 ax.plot([0,len(ch)], [r,r], ls="-", c=[0.5,0.5,0.5], lw=1)
-#             ax.plot(rngi,[len(ch),len(ch)], ls="-", c=reg_colors[region], lw=10, solid_capstyle='butt')
-#             ax.plot([0,0], rngi, ls="-", c=reg_colors[region], lw=10, solid_capstyle='butt')
-#             ax.text(x=2, y=rngi[0]+np.diff(rngi)/2, s=region, c=reg_colors[region], fontsize=18, fontweight='bold', rotation=90, va='center')
-
-#     if markers:
-#         for i in range(sfcm.shape[0]):
-#             for j in range(sfcm.shape[0]):
-#                 if i!=j:
-#                     ccgi=(gu[i]==sfc['uSrc'])&(gu[j]==sfc['uTrg'])
-#                     if np.any(ccgi):
-#                         pkT = sfc.loc[ccgi, 't_ms']
-#                         if pkT>0.5:
-#                             ax.scatter(j, i, marker='>', s=20, c="black")
-#                         elif pkT<-0.5:
-#                             ax.scatter(j, i, marker='<', s=20, c="black")
-#                         elif -0.5<=pkT and pkT<=0.5:
-#                             ax.scatter(j, i, marker='o', s=20, c="black")
-#     if text:
-#         for i in range(sfcm.shape[0]):
-#             for j in range(sfcm.shape[0]):
-#                 ccgi=(gu[i]==sfc['uSrc'])&(gu[j]==sfc['uTrg'])
-#                 if np.any(ccgi):
-#                     pkT = sfc.loc[ccgi, 't_ms']
-#                     if i!=j and (min(pkT)<=0 or max(pkT)>0):
-#                         ax.text(x=j, y=i, s=str(pkT), size=12)
-
-#     if saveFig:
-#         if saveDir is None: saveDir=dp
-#         fig.savefig(Path(saveDir,ttl.replace('\n', '_')+'.pdf'))
-
-#     return fig
 
 #%% Save matplotlib animations
 # https://towardsdatascience.com/how-to-create-animated-graphs-in-python-bb619cc2dec1
@@ -2244,7 +2216,7 @@ def plot_filtered_times(dp, unit, first_n_minutes=20, consecutive_n_seconds = 18
     gauss_sec = np.hstack((gauss_sec))
 
     # Parameters
-    fs = read_spikeglx_meta(dp, 'ap')['sRateHz']
+    fs = read_metadata(dp)['highpass']['sampling_rate']
 
     samples_fr = unit_size_s * fs
     spike_clusters = np.load(dp/'spike_clusters.npy')

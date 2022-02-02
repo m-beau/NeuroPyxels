@@ -10,100 +10,260 @@ Input/output utilitaries to deal with Neuropixels files.
 import psutil
 import os
 from ast import literal_eval as ale
-import os.path as op; opj=op.join
 from pathlib import Path
 
 import numpy as np
-from math import floor
 from scipy import signal
 
-from npyx.utils import npa
+from npyx.utils import npa, read_pyfile, list_files
 
-
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 import json
-
-
-#%% IO utilities
-
-def list_files(directory, extension, full_path=False):
-    directory=str(directory)
-    files = [f for f in os.listdir(directory) if f.endswith('.' + extension)]
-    files.sort()
-    if full_path:
-        return ['/'.join([directory,f]) for f in files]
-    return files
 
 #%% Extract metadata and sync channel
 
-def read_spikeglx_meta(dp, subtype='ap'):
+def read_metadata(dp):
+    f'''
+    {metadata.__doc__}
+
+    If ran on a merged dataset, an additional layer of keys is added: the probes used as keys of
+    dp_dict when npyx.merger.merge_datasets was ran (typically 'probe1' and 'probe2'):
+    the structure of meta is then 'probe1':meta_data_dataset1,
+                                  'probe2':meta_data_dataset_2, ...
+
     '''
-    Read spikeGLX metadata file.
-    '''
+
     if assert_multi(dp):
-        dp=get_ds_table(dp)['dp'][0]
-        #print(f'Multidataset detected - spikeGLX metadata taken from 1st dataset ({dp}).')
-    assert subtype in ['ap', 'lf']
-    metafile=''
-    for file in os.listdir(dp):
-        if file.endswith(".{}.meta".format(subtype)):
-            metafile=Path(dp, file)
-            break
-    if metafile=='':
-        raise FileNotFoundError('*.{}.meta not found in directory. Aborting.'.format(subtype))
-
-    with open(metafile, 'r') as f:
         meta = {}
-        for ln in f.readlines():
-            tmp = ln.split('=')
-            k, val = tmp[0], ''.join(tmp[1:])
-            k = k.strip()
-            val = val.strip('\r\n')
-            if '~' in k:
-                meta[k] = val.strip('(').strip(')').split(')(')
+        for dpx, probe in get_ds_table(dp).loc[:,'dp':'probe'].values:
+            meta[probe] = metadata(dpx)
+    else:
+        meta = metadata(dp)
+
+    return meta
+
+
+def metadata(dp):
+    '''
+    Read spikeGLX (.ap/lf.meta) or openEphys (.oebin) metadata files
+    and returns their contents as dictionnaries.
+
+    The 'highpass' or 'lowpass' nested dicts correspond to Neuropixels 1.0 high or low pass filtered metadata.
+    2.0 recordings only have a 'highpass' key, as they are acquired as a single file matched with a .ap.meta file.
+        for spikeGLX, corresponds to metadata of .ap.meta and .lf.meta files.
+        for OpenEphys, .oebin metadata relating to the first and second dictionnaries in 'continuous' of the .oebin file
+                       which match the /continuous/Neuropix-PXI-100.0 or .1 folders respectively.
+
+    Parameters:
+        - dp: str, datapath to spike sorted dataset
+
+    Returns:
+        - meta: dictionnary containing contents of meta file.
+        the structure of meta is as follow:
+        {
+        'probe_version':'3A', '1.0_staggered', '2.0_1shank', '2.0_4shanks',
+        'highpass':
+            {
+            'binary_relative_path':relative path to binary file from dp,
+            'sampling_rate':int, # sampling rate
+            'n_channels_binaryfile':int, # n channels saved on file, typically 385 for .bin and 384 for .dat
+            'n_channels_analysed':int, # n channels used for spikesorting. Will set the shape of temp_wh.daat for kilosort.
+            'datatype':str, # datatype of binary encoding, typically int16
+            'binary_relative_path':relative path to binary file from dp,
+            'key1...': all other keys present in meta file, that you must be familiar with!
+                       e.g. 'fileSizeBytes' for spikeGLX or 'channels' for OpenEphys...
+            },
+        'lowpass': {...}, # same as high for low pass filtered data (not existing in 2.0 recordings)
+        'events': {...}, # only for openephys recordings, contents of oebin file
+        'spikes': {...} # only for openephys recordings, contents of oebin file
+        }
+    '''
+    dp = Path(dp)
+
+    probe_versions = {
+        'glx':{3.0:'3A', # option 3
+               0.0:'1.0',
+               21:'2.0_singleshank',
+               24:'2.0_fourshanks'},
+        'oe':{"Neuropix-3a":'3A', # source_processor_name keys
+                "Neuropix-PXI":'1.0',
+                '?1':'2.0_singleshank', # do not know yet
+                '?2':'2.0_fourshanks'} # do not know yet
+        }
+
+    # import params.py data
+    params=read_pyfile(dp/'params.py')
+
+    # find meta file
+    glx_ap_files = list_files(dp, "ap.meta", True)
+    glx_lf_files = list_files(dp, "lf.meta", True)
+    oe_files = list_files(dp, "oebin", True)
+    glx_found = np.any(glx_ap_files) or np.any(glx_lf_files)
+    oe_found = np.any(oe_files)
+    assert glx_found or oe_found, \
+        f'WARNING no .ap/lf.meta (spikeGLX) or .oebin (OpenEphys) file found at {dp}.'
+    assert not (glx_found and oe_found),\
+        'WARNING dataset seems to contain both an open ephys and spikeGLX metafile - fix this!'
+    assert len(glx_ap_files)==1 or len(glx_lf_files)==1 or len(oe_files)==1,\
+        'WARNING more than 1 .ap.meta or 1 .oebin files found!'
+
+    # Formatting of openephys meta file
+    meta = {}
+    if oe_found:
+        meta['acquisition_software']='OpenEphys'
+        # Load OpenEphys metadata
+        metafile=Path(oe_files[0])
+        with open(metafile) as f:
+            meta_oe = json.load(f)
+
+        # find probe version
+        oe_probe_version = meta_oe["continuous"][0]["source_processor_name"]
+        assert oe_probe_version in probe_versions['oe'].keys(),\
+            f'WARNING only probe version {oe_probe_version} not handled with openEphys - post an issue at www.github.com/m-beau/NeuroPyxels'
+        meta['probe_version']=probe_versions['oe'][oe_probe_version]
+
+        # Find conversion factor
+        # should be 0.19499999284744262695
+        meta['bit_uV_conv_factor']=meta_oe["continuous"][0]["channels"][0]["bit_volts"]
+
+        # find everything else
+        for filt_key in ['highpass','lowpass']:
+            meta[filt_key]={}
+            filt_key_i={'highpass':0, 'lowpass':1}[filt_key]
+            meta[filt_key]['sampling_rate']=int(meta_oe["continuous"][filt_key_i]['sample_rate'])
+            meta[filt_key]['n_channels_binaryfile']=int(meta_oe["continuous"][filt_key_i]['num_channels'])
+            meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
+            meta[filt_key]['datatype']=params['dtype']
+            binary_folder = './continuous/'+meta_oe["continuous"][filt_key_i]['folder_name']
+            binary_file = list_files(dp/binary_folder, "dat", False)
+            if any(binary_file):
+                binary_rel_path = binary_folder+binary_file[0]
+                meta[filt_key]['binary_relative_path']=binary_rel_path
+                meta[filt_key]['binary_byte_size']=os.path.getsize(dp/binary_rel_path)
+                if filt_key=='highpass' and params['dat_path']!=binary_rel_path:
+                    print((f'\033[34;1mWARNING edit dat_path in params.py '
+                    f'so that it matches relative location of high pass filtered binary file: {binary_rel_path}'))
             else:
-                try:  # is it numeric?
-                    meta[k] = float(val)
-                except:
-                    try:
-                        meta[k] = float(val)
-                    except:
-                        meta[k] = val
-    # Set the sample rate depending on the recording mode
+                meta[filt_key]['binary_relative_path']='not_found'
+                meta[filt_key]['binary_byte_size']='unknown'
+            meta[filt_key]={**meta[filt_key], **meta_oe["continuous"][filt_key_i]}
+        meta["events"]=meta_oe["events"]
+        meta["spikes"]=meta_oe["spikes"]
 
-    meta['sRateHz'] = meta[meta['typeThis'][:2] + 'SampRate']
-    if meta['typeThis'] == 'imec':
-        meta['sRateHz'] = meta['imSampRate']
 
-    probe_versions = {'imProbeOpt':{3.0:'3A'},
-               'imDatPrb_type':{0:'1.0_staggered',
-                                21:'2.0_singleshank',
-                                24:'2.0_fourshanked'}}
-    meta['probe_version']=probe_versions['imProbeOpt'][meta['imProbeOpt']] if 'imProbeOpt' in meta.keys() else probe_versions['imDatPrb_type'][meta['imDatPrb_type']] if 'imDatPrb_type' in meta.keys() else 'N/A'
-    assert meta['probe_version'] in ['3A', '1.0_staggered', '1.0_aligned', '2.0_singleshank', '2.0_fourshanked']
+    # Formatting of SpikeGLX meta file
+    elif glx_found:
+        meta['acquisition_software']='SpikeGLX'
+        # Load SpikeGLX metadata
+        meta_glx = {}
+        for metafile in glx_ap_files+glx_lf_files:
+            if metafile in glx_ap_files: filtkey='highpass'
+            elif metafile in glx_lf_files: filtkey='lowpass'
+            metafile=Path(metafile)
+            meta_glx[filtkey]={}
+            with open(metafile, 'r') as f:
+                for ln in f.readlines():
+                    tmp = ln.split('=')
+                    k, val = tmp[0], ''.join(tmp[1:])
+                    k = k.strip()
+                    val = val.strip('\r\n')
+                    if '~' in k:
+                        meta_glx[filtkey][k] = val.strip('(').strip(')').split(')(')
+                    else:
+                        try:  # is it numeric?
+                            meta_glx[filtkey][k] = float(val)
+                        except:
+                            meta_glx[filtkey][k] = val
 
-    Vrange=(meta['imAiRangeMax']-meta['imAiRangeMin'])*1e6
-    if meta['probe_version'] in ['3A', '1.0_staggered', '1.0_aligned']:
-        assert Vrange==1.2e6
-        bits_encoding=10
-        ampFactor=ale(meta['~imroTbl'][1].split(' ')[3])
-        assert ampFactor==500
-    elif meta['probe_version'] in ['2.0_singleshank', '2.0_fourshanked']:
-        assert Vrange==1e6
-        bits_encoding=14
-        ampFactor=80
-    meta['scale_factor']=(Vrange/2**bits_encoding/ampFactor)
+        # find probe version
+        if 'imProbeOpt' in meta_glx["highpass"].keys(): # 3A
+            glx_probe_version = meta_glx["highpass"]["imProbeOpt"]
+        elif 'imDatPrb_type' in meta_glx["highpass"].keys(): # 1.0 and beyond
+            glx_probe_version = meta_glx["highpass"]["imDatPrb_type"]
+        else:
+             glx_probe_version = 'N/A'
+
+        assert glx_probe_version in probe_versions['glx'].keys(),\
+            f'WARNING probe version {glx_probe_version} not handled - post an issue at www.github.com/m-beau/NeuroPyxels'
+        meta['probe_version']=probe_versions['glx'][glx_probe_version]
+
+        # Based on probe version,
+        # Find the voltage range, gain, encoding
+        # and deduce the conversion from units/bit to uV
+        Vrange=(meta_glx["highpass"]['imAiRangeMax']-meta_glx["highpass"]['imAiRangeMin'])*1e6
+        if meta['probe_version'] in ['3A', '1.0']:
+            if Vrange!=1.2e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (1.2*10^6). Might be normal!')
+            bits_encoding=10
+            ampFactor=ale(meta_glx["highpass"]['~imroTbl'][1].split(' ')[3]) # typically 500
+            #if ampFactor!=500: print(f'\u001b[31mHeads-up, the voltage amplification factor seems to be {ampFactor}, which is not the default (500). Might be normal!')
+        elif meta['probe_version'] in ['2.0_singleshank', '2.0_fourshanks']:
+            if Vrange!=1e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
+            bits_encoding=14
+            ampFactor=80 # hardcoded
+        meta['bit_uV_conv_factor']=(Vrange/2**bits_encoding/ampFactor)
+
+
+        # find everything else
+        for filt_key in ['highpass','lowpass']:
+            if filt_key not in meta_glx.keys(): continue
+            meta[filt_key]={}
+
+            # binary file
+            filt_suffix={'highpass':'ap','lowpass':'lf'}[filt_key]
+            binary_file = list_files(dp, f"{filt_suffix}.bin", False)
+            if any(binary_file):
+                binary_rel_path = './'+binary_file[0]
+                meta[filt_key]['binary_relative_path']=binary_rel_path
+                meta[filt_key]['binary_byte_size']=os.path.getsize(dp/binary_rel_path)
+            else:
+                meta[filt_key]['binary_relative_path']='not_found'
+                meta[filt_key]['binary_byte_size']='unknown'
+
+            # sampling rate
+            if meta_glx[filt_key]['typeThis'] == 'imec':
+                meta[filt_key]['sampling_rate']=int(meta_glx[filt_key]['imSampRate'])
+            else:
+                meta[filt_key]['sampling_rate']=int(meta_glx[meta_glx['typeThis'][:2]+'SampRate'])
+
+            meta[filt_key]['n_channels_binaryfile']=int(meta_glx[filt_key]['nSavedChans'])
+            meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
+            meta[filt_key]['datatype']=params['dtype']
+            meta[filt_key]={**meta[filt_key], **meta_glx[filt_key]}
+
+    # Calculate length of recording
+    high_fs = meta['highpass']['sampling_rate']
+    if meta['highpass']['binary_byte_size']=='unknown':
+        t_end=np.load(dp/'spike_times.npy').ravel()[-1]
+        meta['recording_length_seconds']=t_end/high_fs
+    else:
+        file_size = meta['highpass']['binary_byte_size']
+        item_size = np.dtype(meta['highpass']['datatype']).itemsize
+        nChans = meta['highpass']['n_channels_binaryfile']
+        meta['recording_length_seconds'] = file_size/item_size/nChans/high_fs
+
 
     return meta
 
 def chan_map(dp=None, y_orig='surface', probe_version=None):
+    '''
+    Returns probe channel map.
+    Parameters:
+        - dp: str, datapath
+        - y_orig: 'surface' or 'tip', where to position channel 0.
+                If surface (default), channel map is flipped vertically (0 is now at the surface).
+        - probe_version: None, 'local', '3A', '1.0' or '2.0_singleshank' (other types not handled yet, reach out to give your own!).
+                        If 'local', will load channelmap from dp (only contains analyzed channels, not all channels)
+                        If explicitely given, will return complete channelmap of electrode.
+                        If None, will guess probe version from metadata and return complete channelmap.
+    Returns:
+        - chan_map: array of shape (N_electrodes, 3).
+                    1st column is channel indices, 2nd x position, 3rd y position
+    '''
 
+    dp = Path(dp)
     assert y_orig in ['surface', 'tip']
-    if probe_version is None: probe_version=read_spikeglx_meta(dp)['probe_version']
+    if probe_version is None: probe_version=read_metadata(dp)['probe_version']
 
-    if probe_version in ['3A', '1.0_staggered']:
+    if probe_version in ['3A', '1.0']:
         Nchan=384
         cm_el = npa([[  43,   0],
                            [  11,   0],
@@ -119,7 +279,7 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
             cm = np.vstack((cm, cm_el+vert*(i+1)))
         cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
 
-    elif probe_version=='1.0_aligned':
+    elif probe_version=='1.0':
         Nchan=384
         cm_el = npa([[  43,   0],
                      [  11,   0]])
@@ -143,12 +303,15 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
             cm = np.vstack((cm, cm_el+vert*(i+1)))
         cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
 
-    elif probe_version=='local':
+    else:
+        probe_version='local'
+
+    if probe_version=='local':
         if dp is None:
             raise ValueError("dp argument is not provided - when channel map is \
                              atypical and probe_version is hence called 'local', \
                              the datapath needs to be provided to load the channel map.")
-        c_ind=np.load(op.join(dp, 'channel_map.npy'));cp=np.load(op.join(dp, 'channel_positions.npy'))
+        c_ind=np.load(dp/'channel_map.npy');cp=np.load(dp/'channel_positions.npy')
         cm=npa(np.hstack([c_ind.reshape(max(c_ind.shape),1), cp]), dtype=np.int32)
 
     if y_orig=='surface':
@@ -167,128 +330,134 @@ def unpackbits(x,num_bits = 16):
     to_and = 2**np.arange(num_bits).reshape([1,num_bits])
     return (x & to_and).astype(bool).astype(int).reshape(xshape + [num_bits])
 
-def get_npix_sync(dp, output_binary = False, sourcefile='ap', unit='seconds'):
-    '''Unpacks neuropixels phase external input data
-    events = unpack_npix3a_sync(trigger_data_channel)
-        Inputs:
-            dp               : trigger data channel to unpack (pass the last channel of the memory mapped file)
-            output_binary (False) : outputs the unpacked signal
-            sourcefile            : whether to use .ap or .lf file (neuropixxels 1.0)
-            unit     ['seconds','samples'] : returns ons and ofs in either seconds or samples
-        Outputs
-            events        : dictionary of events. the keys are the channel number, the items the sample times of the events.
+def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'):
+    '''Unpacks neuropixels external input data, to align spikes to events.
+    Parameters:
+        - dp: str, datapath
+        - output_binary: bool, whether to output binary sync channel as 0/1s
+        - filt_key: str, 'highpass' or 'lowpass' (SpikeGLX: ap/lf, OIpenEphys: Neuropix-PXI-100.0/.1)
+        - unit: str, 'seconds' or 'samples', units of returned onsets/offset times
 
-        Usage:
-    Load and get trigger times in seconds:
-        dp='path/to/binary'
-        onsets,offsets = unpack_npix_sync(dp);
-    Plot events:
-        plt.figure(figsize = [10,4])
-        for ichan,times in onsets.items():
-            plt.vlines(times,ichan,ichan+.8,linewidth = 0.5)
-        plt.ylabel('Sync channel number'); plt.xlabel('time (s)')
+    Returns:
+        Dictionnaries of length n_channels = number of channels where threshold crossings were found, [0-16]
+        - onsets: dict, {channel_i:np.array(onset1, onset2, ...), ...} in 'unit'
+        - offsets: dict, {channel_i:np.array(offset1, offset2, ...), ...} in 'unit'
+
     '''
-
+    dp = Path(dp)
     if assert_multi(dp):
-        ds_table = get_ds_table(dp)
-        dp=get_ds_table(dp)['dp'][0]
+        dp=Path(get_ds_table(dp)['dp'][0])
         print(f'Loading npix sync channel from a merged dataset - assuming temporal reference frame of dataset 0:\n{dp}')
 
-    assert sourcefile in ['ap', 'lf']
+    assert filt_key in ['highpass', 'lowpass']
+    filt_suffix = {'highpass':'ap', 'lowpass':'lf'}[filt_key]
     assert unit in ['seconds', 'samples']
     fname=''
     onsets={}
     offsets={}
-    sync_dp=Path(dp, 'sync_chan')
+    sync_dp=dp/'sync_chan'
+    meta = read_metadata(dp)
+    srate = meta[filt_key]['sampling_rate'] if unit=='seconds' else 1
 
-    # Tries to load pre-saved onsets and offsets
-    if op.exists(sync_dp) and not output_binary:
-        print(f'sync channel extraction directory found: {sync_dp}')
-        for file in os.listdir(sync_dp):
-            if file.endswith("on_samples.npy"):
-                sourcefile_loaded=file.split('.')[-2][:2]
-                if sourcefile_loaded==sourcefile: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
-                    print(f'sync channel onsets extracted from {sourcefile_loaded} file found and loaded.')
-                    srate=read_spikeglx_meta(dp, sourcefile_loaded)['sRateHz'] if unit=='seconds' else 1
-                    file_i = ale(file[-15])
-                    onsets[file_i]=np.load(Path(sync_dp,file))/srate
-                    offsets[file_i]=np.load(Path(sync_dp,file[:-13]+'f'+file[-12:]))/srate
+    if meta['acquisition_software']=='OpenEphys':
+        raise('OpenEphys sync channel loading not implemented yet - manually load ./Neuropix-PXI-100.0/TTL_1/timestamps.npy.')
+        filt_id = 0 if filt_key=='highpass' else 1
+        timestamps = np.load(dp/f'events/Neuropix-PXI-100.{filt_id}/TTL_1/timestamps.npy')
 
-        return onsets, offsets
+        onsets={ok:ov/srate for ok, ov in onsets.items()}
+        offsets={ok:ov/srate for ok, ov in offsets.items()}
 
-    # Tries to load pre-saved compressed binary
-    if op.exists(sync_dp):
-        print(f"No file ending in 'on_samples.npy' with the right sampling rate ({sourcefile}) found in sync_chan directory: extracting sync channel from binary.")
-        for file in os.listdir(sync_dp):
-            if file.endswith(f"{sourcefile}_sync.npz"):
-                fname=file[:-9]
-                sync_fname=fname+'_sync'
-                binary=np.load(Path(sync_dp, sync_fname+'.npz'))
+        return onsets,offsets
+
+    elif meta['acquisition_software']=='SpikeGLX':
+
+        # Tries to load pre-saved onsets and offsets
+        if sync_dp.exists() and not output_binary:
+            print(f'Sync channel extraction directory found: {sync_dp}\n')
+            for file in os.listdir(sync_dp):
+                if file.endswith("on_samples.npy"):
+                    filt_suffix_loaded=file.split('.')[-2][:2]
+                    if filt_suffix_loaded==filt_suffix: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
+                        print(f'Sync channel onsets extracted from {filt_key} ({filt_suffix_loaded}) file found and loaded.')
+                        file_i = ale(file[-15])
+                        onsets[file_i]=np.load(sync_dp/file)/srate
+                elif file.endswith("of_samples.npy"):
+                    filt_suffix_loaded=file.split('.')[-2][:2]
+                    if filt_suffix_loaded==filt_suffix: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
+                        print(f'Sync channel offsets extracted from {filt_key} ({filt_suffix_loaded}) file found and loaded.')
+                        file_i = ale(file[-15])
+                        offsets[file_i]=np.load(sync_dp/file)/srate
+            if any(onsets):
+                # else, might be that sync_dp is empty
+                return onsets, offsets
+
+        # Tries to load pre-saved compressed binary
+        if sync_dp.exists():
+            print(f"No file ending in 'on_samples.npy' with the right sampling rate ({filt_suffix}) found in sync_chan directory: extracting sync channel from binary.\n")
+            npz_files = list_files(sync_dp, 'npz')
+            if any(npz_files):
+                print('Compressed binary found - extracting from there...')
+                fname=npz_files[0][:-9]
+                sync_fname = npz_files[0][:-4]
+                binary=np.load(sync_dp/(sync_fname+'.npz'))
                 binary=binary[dir(binary.f)[0]].astype(np.int8)
-                meta=read_spikeglx_meta(dp, fname[-2:])
-                break
-    else: os.mkdir(sync_dp)
 
-    # If still no file name, memorymaps binary directly
-    if fname=='':
-        for file in os.listdir(dp):
-            if file.endswith(".lf.bin"):
-                if sourcefile=='ap': break
-                fname=file[:-4]
-                break
+        else: os.mkdir(sync_dp)
+
+        # If still no file name, memorymaps binary directly
         if fname=='':
-            for file in os.listdir(dp):
-                if file.endswith(".ap.bin"):
-                    fname=file[:-4]
-                    if sourcefile=='lf': print('{}.lf.bin not found in directory - .ap.bin used instead: extracting sync channel will be slow.'.format(fname))
-                    break
-        if fname=='':
-            raise FileNotFoundError('No binary file found in {}!! Aborting.'.format(dp))
+            ap_files = list_files(dp, 'ap.bin')
+            lf_files = list_files(dp, 'lf.bin')
 
-        sync_fname=fname+'_sync'
-        meta=read_spikeglx_meta(dp, fname[-2:])
-        nchan=int(meta['nSavedChans'])
-        #all_channels = np.array([ale(ch.split(':')[-1]) for ch in meta['~snsChanMap'][1:-1]], dtype=np.int16);
-        #syncChan=nchan-ale(meta['acqApLfSy'].split(',')[-1])
+            if filt_suffix=='ap':
+                assert any(ap_files), f'No .ap.bin file found at {dp}!! Aborting.'
+                fname=ap_files[0]
+            elif filt_suffix=='lf':
+                assert any(lf_files), f'No .lf.bin file found at {dp}!! Aborting.'
+                fname=lf_files[0]
 
-        dt=np.dtype(np.int16)
-        nsamples = os.path.getsize(Path(dp, fname+'.bin')) / (nchan * dt.itemsize)
-        syncdat=np.memmap(Path(dp, fname+'.bin'),
-                        mode='r',
-                        dtype=dt,
-                        shape=(int(nsamples), int(nchan)))[:,-1]
+            nchan=meta[filt_key]['n_channels_binaryfile']
+            dt=np.dtype(meta[filt_key]['datatype'])
+            nsamples = os.path.getsize(dp/fname) / (nchan * dt.itemsize)
+            syncdat=np.memmap(dp/fname,
+                            mode='r',
+                            dtype=dt,
+                            shape=(int(nsamples), int(nchan)))[:,-1]
 
 
-        print('Unpacking {}...'.format(fname+'.bin'))
-        binary = unpackbits(syncdat.flatten(),16).astype(np.int8)
-        np.savez_compressed(Path(sync_dp, sync_fname+'.npz'), binary)
+            print('Unpacking {}...'.format(fname))
+            binary = unpackbits(syncdat.flatten(),16).astype(np.int8)
+            sync_fname = fname[:-4]+'_sync'
+            np.savez_compressed(sync_dp/(sync_fname+'.npz'), binary)
 
-    if output_binary:
-        return binary
+        if output_binary:
+            return binary
 
-    # Generates onsets and offsets from binary
-    mult = 1
-    sync_idx_onset = np.where(mult*np.diff(binary, axis = 0)>0)
-    sync_idx_offset = np.where(mult*np.diff(binary, axis = 0)<0)
-    for ichan in np.unique(sync_idx_onset[1]):
-        ons = sync_idx_onset[0][
-              sync_idx_onset[1] == ichan]
-        onsets[ichan] = ons
-        np.save(Path(sync_dp, sync_fname+'{}on_samples.npy'.format(ichan)), ons)
-    for ichan in np.unique(sync_idx_offset[1]):
-        ofs = sync_idx_offset[0][
-              sync_idx_offset[1] == ichan]
-        offsets[ichan] = ofs
-        np.save(Path(sync_dp, sync_fname+'{}of_samples.npy'.format(ichan)), ofs)
+        # Generates onsets and offsets from binary
+        mult = 1
+        sync_idx_onset = np.where(mult*np.diff(binary, axis = 0)>0)
+        sync_idx_offset = np.where(mult*np.diff(binary, axis = 0)<0)
+        for ichan in np.unique(sync_idx_onset[1]):
+            ons = sync_idx_onset[0][
+                sync_idx_onset[1] == ichan]
+            onsets[ichan] = ons
+            np.save(Path(sync_dp, sync_fname+'{}on_samples.npy'.format(ichan)), ons)
+        for ichan in np.unique(sync_idx_offset[1]):
+            ofs = sync_idx_offset[0][
+                sync_idx_offset[1] == ichan]
+            offsets[ichan] = ofs
+            np.save(Path(sync_dp, sync_fname+'{}of_samples.npy'.format(ichan)), ofs)
 
-    srate = meta['sRateHz'] if unit=='seconds' else 1
-    onsets={ok:ov/srate for ok, ov in onsets.items()}
-    offsets={ok:ov/srate for ok, ov in offsets.items()}
+        onsets={ok:ov/srate for ok, ov in onsets.items()}
+        offsets={ok:ov/srate for ok, ov in offsets.items()}
 
-    return onsets,offsets
+        assert any(onsets), ("WARNING no sync channel found in dataset - "
+            "make sure you are running this function on a dataset with a synchronization TTL!")
+
+        return onsets,offsets
 
 
-def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0,
+def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
                      whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
                      ignore_ks_chanfilt=0):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
@@ -296,7 +465,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0,
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
     - times: list of boundaries of the time window, in seconds [t1, t2].
     - channels (default: np.arange(384)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
-    - subtype: 'ap' or 'lf', whether to exxtract from the high-pass or low-pass filtered binary file
+    - filt_key: 'ap' or 'lf', whether to exxtract from the high-pass or low-pass filtered binary file
     - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
     - whiten: whether to whiten the data across channels. If nRangeWhiten is not None, whitening matrix is computed with the nRangeWhiten closest channels.
     - med_sub: whether to median-subtract the data across channels. If nRangeMedSub is not none, median of each channel is computed using the nRangeMedSub closest channels.
@@ -311,21 +480,18 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0,
     rawChunk[0,:] is channel 0; rawChunk[1,:] is channel 1, etc.
     '''
     # Find binary file
+    dp = Path(dp)
+    meta = read_metadata(dp)
+    assert meta[filt_key]['binary_relative_path']!='not_found',\
+        f'No binary file (./*.ap.bin or ./continuous/Neuropix-PXI-100.0/*.dat) found in folder {dp}!!'
+    fname = dp/meta[filt_key]['binary_relative_path']
+
     assert len(times)==2
     assert times[0]>0
-    assert times[1]<get_rec_len(dp, unit='seconds')
-    fname=''
-    for file in os.listdir(dp):
-        if file.endswith(".{}.bin".format(subtype)):
-            fname=Path(dp, file)
-            break
-    if fname=='':
-        raise FileNotFoundError('*.{}.bin not found in directory. Aborting.'.format(subtype))
+    assert times[1]<meta['recording_length']
 
-    # Extract and format meta data
-    meta=read_spikeglx_meta(dp, subtype)
-    fs = int(meta['sRateHz'])
-    Nchans=int(meta['nSavedChans'])
+    fs = meta[filt_key]['sampling_rate']
+    Nchans=meta[filt_key]['n_channels_binaryfile']
     bytes_per_sample=2
 
     # Format inputs
@@ -335,7 +501,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0,
     if whiten:
         whitenpad=200
         t1, t2 = t1-whitenpad, t2+whitenpad
-    bn = op.basename(fname) # binary name
+    bn = os.path.basename(fname) # binary name
     rcn = f'{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}_{whiten}_{med_sub}.npy' # raw chunk name
     rcp = Path(dp, 'routinesMemory', rcn)
 
@@ -388,7 +554,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), subtype='ap', save=0,
     # get the right channels range, AFTER WHITENING
     rc = rc[channels, :]
     # Scale data
-    rc = rc*meta['scale_factor'] # convert into uV
+    rc = rc*meta['bit_uV_conv_factor'] # convert into uV
 
     if save: # sync chan saved in extract_syncChan
         np.save(rcp, rc)
@@ -565,11 +731,12 @@ def paq_read(file_path):
     Read PAQ file (from PackIO) into python
     Lloyd Russell 2015
     See https://github.com/llerussell/paq2py
+
     Parameters
     ==========
     file_path : str, optional
-        full path to file to read in. if none is supplied a load file dialog
-        is opened, buggy on mac osx - Tk/matplotlib. Default: None.
+        full path to file to read in.
+
     Returns
     =======
     data : ndarray
@@ -585,18 +752,12 @@ def paq_read(file_path):
         the acquisition sample rate, in Hz
     """
 
-    # file load gui
-    # if file_path is None:
-    #     root = Tkinter.Tk()
-    #     root.withdraw()
-    #     file_path = tkFileDialog.askopenfilename()
-    #     root.destroy()
-
     # open file
     fid = open(file_path, 'rb')
 
     # get sample rate
     rate = int(np.fromfile(fid, dtype='>f', count=1))
+    assert rate!=0, 'WARNING something went wrong with the paq file, redownload it.'
 
     # get number of channels
     num_chans = int(np.fromfile(fid, dtype='>f', count=1))
@@ -797,35 +958,35 @@ def _pad(arr, n, dir='right'):
         assert out.shape == shape
         return out
 
-def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
-    """Convert a slice to an array of integers."""
-    assert isinstance(myslice, slice)
-    # Find 'step'.
-    step = myslice.step if myslice.step is not None else step
-    if step is None:
-        step = 1
-    # Find 'start'.
-    start = myslice.start if myslice.start is not None else start
-    if start is None:
-        start = 0
-    # Find 'stop' as a function of length if 'stop' is unspecified.
-    stop = myslice.stop if myslice.stop is not None else stop
-    if length is not None:
-        stop_inferred = floor(start + step * length)
-        if stop is not None and stop < stop_inferred:
-            raise ValueError("'stop' ({stop}) and ".format(stop=stop) +
-                             "'length' ({length}) ".format(length=length) +
-                             "are not compatible.")
-        stop = stop_inferred
-    if stop is None and length is None:
-        raise ValueError("'stop' and 'length' cannot be both unspecified.")
-    myrange = np.arange(start, stop, step)
-    # Check the length if it was specified.
-    if length is not None:
-        assert len(myrange) == length
-    return myrange
+# def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
+#     """Convert a slice to an array of integers."""
+#     assert isinstance(myslice, slice)
+#     # Find 'step'.
+#     step = myslice.step if myslice.step is not None else step
+#     if step is None:
+#         step = 1
+#     # Find 'start'.
+#     start = myslice.start if myslice.start is not None else start
+#     if start is None:
+#         start = 0
+#     # Find 'stop' as a function of length if 'stop' is unspecified.
+#     stop = myslice.stop if myslice.stop is not None else stop
+#     if length is not None:
+#         stop_inferred = floor(start + step * length)
+#         if stop is not None and stop < stop_inferred:
+#             raise ValueError("'stop' ({stop}) and ".format(stop=stop) +
+#                              "'length' ({length}) ".format(length=length) +
+#                              "are not compatible.")
+#         stop = stop_inferred
+#     if stop is None and length is None:
+#         raise ValueError("'stop' and 'length' cannot be both unspecified.")
+#     myrange = np.arange(start, stop, step)
+#     # Check the length if it was specified.
+#     if length is not None:
+#         assert len(myrange) == length
+#     return myrange
 
 
 
-from npyx.gl import get_rec_len, assert_multi, get_ds_table, get_units
+from npyx.gl import assert_multi, get_ds_table
 #

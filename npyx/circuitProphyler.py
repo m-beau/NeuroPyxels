@@ -1,50 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-2019-06-13
-@author: Maxime Beau, Neural Computations Lab, University College London
-
-WARNING - DO NOT TRY TO ACTUALLY STORE DATA IN THE DATASET OBJECT, THIS WAS THE FLAW OF XTRADATAMANAGER!
-INSTEAD, MEMORYMAP EVERYTHING IN THE ROUTINESMEMORY FOLDER
-THE DATASET AND SUBSEQUENT CLASSES SHOULD BE CONECPTUALLY NOTHING BUT
-1) WAYS TO INITIATE HIGH DATA PROCESSING
-2) SYMBOLIC LINKS TO THE PROCESSED DATA STORED ON THE MACHINE
-
-Circuit prophyler class: embeds a set of functions whose end goal is to represent a Neuropixels Dataset as a network
-with nodes being characterized as cell types
-and edges as putative connections.
-
-It is exploiting all the basic Neuropixels routines as well as the python module NetworkX.
-
-The way to use it is as follow:
-
-# initiation
-DPs = {'dataset name 1': path/to/dataset1,...} # dic listing the datasets paths
-pro = Prophyler(DPs['dataset name 1'])
-
-# Connect the graph
-pro.connect_graph()
-
-
-# Plot the graph
-pro.plot_graph()
-
-# Get N of putative connections of a given node spotted on the graph
-pro.get_node_edges(node)
-
-# Only keep a set of relevant nodes or edges and plot it again
-pro.keep_edges(edges_list)
-pro.keep_nodes_list(nodes_list)
-pro.plot_graph()
-
-# every graph operation of circuit prophyler can be performed on external networkx graphs
-# provided with the argument 'src_graph'
-g=pro.get_graph_copy(prophylerGraph='undigraph')
-pro.keep_nodes_list(nodes_list, src_graph=g) # g itself will be modified, not need to do g=...
-pro.plot_graph(graph_src=g)
-
-
-"""
-
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -63,172 +17,94 @@ import numpy as np
 import pandas as pd
 
 import npyx
-from npyx.utils import npa, sign, align_timeseries
+from npyx.utils import npa, sign
 
-from npyx.io import read_spikeglx_meta, get_npix_sync, chan_map
-from npyx.gl import load_units_qualities
+from npyx.io import read_metadata, chan_map
 from npyx.spk_wvf import get_depthSort_peakChans, get_peak_chan
 from npyx.corr import gen_sfc
+from npyx.merger import assert_multi, get_ds_table
 
 import networkx as nx
 
 class Prophyler:
     '''
-    For single probe recording:
+    Represents a collection of Neuropixels Datasets (no theoretical upper limit on number of probes)
+    as a networkx network, with nodes being characterized as cell types
+    and edges as putative connections.
+
+    Runs on a regular kilosort path, as well as on a merged dataset created using npyx.merger.merge_datasets().
+
+    --------- Initialization -> simply merge datasets together ---------
+
+    Usage for single probe recording:
     >>> dp = path/to/kilosort/output
     >>> pro = Prophyler(dp)
 
     Structure of pro: pro generated a networkx graph whose nodes correspond to the dataset units labeled as good.
     Bear in mind that the graph nodes are actual objects, instances of Unit(), making this structure more powerful
-    Because the relevant rtn methods can be integrated either in the Dataset class (connections related stuff) or the Units class (individual units related stuff)
+    Because relevant methods can be integrated either in the Dataset class (connections related stuff) or the Units class (individual units related stuff)
 
     If you want to access unit u:
     >>> pro.units[u]
     >>> pro.units[u].trn(): equivalent to npyx.spk_t.trn(dp,u)
 
     The units can also be accessed through the 'unit' attributes of the graph nodes:
-    >>> pro.graph.nodes[u]]['unit'].trn() returns the same thing as ds.units[u].trn()
+    >>> pro.graph.nodes[u]['unit'].trn() returns the same thing as ds.units[u].trn()
 
     For multi probes recordings:
     >>> dp_dic = {'name_probe_1':'path/to/kilosort/output', ...
             }
-    >>> multipro = Prophyler(dp_dic)
+    >>> pro = Prophyler(dp_dic)
 
-    multipro has the same structure as pro, but
+    Here pro has the same structure as for a single path, but
     - nested into dictionaries for dataset-specific items: pro.dp becomes multipro.dp['name_probe_1'], pro.units becomes multipro.units['name_probe_1'] etc
     - still accessible directly for across-datasets items: pro.graph remains multipro.graph
 
-    The way it works is:
-        Thanks to the Unit class which takes in independently a given dataset and a given graph,
-        it is possible to instanciate the Units with their own datasets but the same graph.
+    --------- Use graph related utilities (experimental) ---------
 
-        The reference for the channel map is the
+    Connect the graph with putative monosynaptic connections
+    >>> pro.connect_graph()
+
+    Plot the graph
+    >>> pro.plot_graph()
+
+    Get N of putative connections of a given node spotted on the graph
+    >>> pro.get_node_edges(node)
+
+    Only keep a set of relevant nodes or edges and plot it again
+    >>> pro.keep_edges(edges_list)
+    >>> pro.keep_nodes_list(nodes_list)
+    >>> pro.plot_graph()
+
+    every graph operation of dataset prophyler can be performed on external networkx graphs
+    provided with the argument 'src_graph'
+    >>> g=pro.get_graph_copy(prophylerGraph='undigraph')
+    >>> pro.keep_nodes_list(nodes_list, src_graph=g) # g itself will be modified, not need to do g=...
+    >>> pro.plot_graph(graph_src=g)
+
     '''
 
+    def __init__(self, dp):
 
-    def __init__(self, datapaths, sync_idx3A=2):
-        # Handle datapaths format
-        val_e=ValueError('''
-        Datapath should be either an existing kilosort path:
-        'path/to/kilosort/output1'
-        or a dict of such paths:
-        {'name_probe_1':'path/to/kilosort/output1', ...}''')
-        if type(datapaths) is dict:
-            for i, v in datapaths.items():
-                datapaths[i]=Path(v)
-                if not datapaths[i].exists():
-                    raise val_e
-        else:
-            try:
-                datapaths=Path(datapaths)
-                assert datapaths.exists()
-            except:
-                raise val_e
-            datapaths={'prb1':datapaths}
+        # Process dp and dataset(s) table
+        self.dp_pro = dp
+        if assert_multi(self.dp_pro):
+            self.ds_table = get_ds_table(self.dp_pro)
+        else: # make up transitory ds_table
+            self.ds_table=pd.DataFrame(columns=['dataset_i', 'dataset_name', 'dp', 'probe'])
+            self.ds_table.loc[0, 'dataset_i']=0
+            self.ds_table.loc[0, 'dataset_name']=op.basename(self.dp_pro)
+            self.ds_table.loc[0, 'dp']=self.dp_pro
+            self.ds_table.loc[0, 'probe']='probe1'
 
-        # Make an alphabetically indexed table of all fed datasets (if several)
-        self.ds_table=pd.DataFrame(columns=['dataset_name', 'dp', 'probe'])
-        for i, (prb, dp) in enumerate(datapaths.items()):
-            self.ds_table.loc[i, 'dataset_name']=op.basename(dp)
-            self.ds_table.loc[i, 'dp']=dp
-            self.ds_table.loc[i, 'probe']=prb
-        self.ds_table.insert(0, 'dataset_i', self.ds_table['dataset_name'].argsort()) # sort table by dataset_name alphabetically
-        self.ds_table.sort_values('dataset_i', axis=0, inplace=True)
-        self.ds_table.set_index('dataset_i', inplace=True)
-
-        # Instanciate datasets and define the prophyler path, where the 'merged' data will be saved,
-        # together with the dataset table, holding information about the datasets (indices, names, source paths etc)
-        ds_names=''
-        predirname=op.dirname(self.ds_table['dp'][0])
+        # Instanciate Datasets()
         self.ds={}
+        self.name=''
         for ds_i in self.ds_table.index:
-            dp, prb = self.ds_table.loc[ds_i, 'dp'], self.ds_table.loc[ds_i, 'probe']
+            dp=self.ds_table.loc[ds_i, 'dp']
+            prb=self.ds_table.loc[ds_i, 'probe']
             self.ds[ds_i]=Dataset(dp, prb, ds_i)
-            ds_names+='_'+self.ds[ds_i].name
-            if predirname!=op.dirname(dp):
-                print('WARNING: all your datasets are not stored in the same pre-directory - {} is picked anyway.'.format(predirname))
-        self.dp_pro= Path(predirname) / ('prophyler'+ds_names) #Path(predirname, 'prophyler'+ds_names)
-        self.name=ds_names
-        print('>>> Prophyler data (shared across {} dataset(s)) will be saved here: {}.'.format(len(self.ds_table.index), self.dp_pro))
-        if not op.isdir(self.dp_pro):
-            os.mkdir(self.dp_pro)
-        else:
-            ds_table=pd.read_csv(Path(self.dp_pro, 'datasets_table.csv'), index_col='dataset_i') #pd.read_csv(Path(self.dp_pro, 'datasets_table.csv'), index_col='dataset_i')
-            for ds_i in ds_table.index:
-                try:
-                    assert self.ds_table.loc[ds_i, 'probe']==ds_table.loc[ds_i, 'probe']
-                except:
-                    print('''WARNING you ran circuit prophyler on these {} datasets in the past \
-                              but used the probe names {} for datasets {} ({} currently)!! Using new probe names. \
-                              If you wish to use the same probe names as before, re-instanciate prophyler with these.\
-                              '''.format(len(self.ds_table.index), ds_table['probe'].tolist(), ds_table.index.tolist(), self.ds_table['probe'].tolist()))
-            del ds_table
-        self.ds_table.to_csv(Path(self.dp_pro, 'datasets_table.csv')) # self.ds_table.to_csv(Path(self.dp_pro, 'datasets_table.csv'))
-
-        # Load and save units qualities
-        # + check whether datasets have been re-spike sorted if not first instanciation
-        re_spksorted=False
-        qualities=pd.DataFrame(columns=['cluster_id', 'group'])
-        for ds_i in self.ds_table.index:
-            cl_grp = load_units_qualities(self.ds[ds_i].dp)
-            cl_grp['cluster_id']=cl_grp['cluster_id']+1e-1*ds_i
-            qualities=qualities.append(cl_grp, ignore_index=True)
-        qualities_dp=Path(self.dp_pro, 'cluster_group.tsv')
-        if op.exists(qualities_dp):
-            qualities_old=pd.read_csv(qualities_dp, sep='	')
-            # only consider re-spike sorted if cluster indices have been changed, do not if only qualities were changed (spike times are unimpacted by that)
-            if not np.all(np.isin(qualities_old.loc[:, 'cluster_id'], qualities.loc[:, 'cluster_id'])):
-                re_spksorted=True
-                print('New spike-sorting detected.')
-        qualities.to_csv(qualities_dp, sep='	', index=False)
-
-        # Merge spike times (or copy them if only 1 dataset)
-        # Only if merged_clusters_times does not exist already or does but re-spikesorting has been detected
-        merge_fname_times='spike_times'
-        merge_fname_clusters='spike_clusters'
-        if (not op.exists(Path(self.dp_pro, merge_fname_times+'.npy'))) or re_spksorted:
-            print(">>> Loading spike trains of {} datasets...".format(len(self.ds_table.index)))
-            spike_times, spike_clusters, sync_signals = [], [], []
-            for ds_i in self.ds_table.index:
-                ds=self.ds[ds_i]
-                spike_times.append(np.load(Path(ds.dp, 'spike_times.npy')).flatten())
-                spike_clusters.append(np.load(Path(ds.dp, 'spike_clusters.npy')).flatten())
-                if len(self.ds_table.index)>1: # sync signals only needed if alignment necessary
-                    ons, offs = get_npix_sync(ds.dp, output_binary = False, sourcefile='ap', unit='samples')
-                    syncchan=ask_syncchan(ons)
-                    ds.sync_chan_ons=ons[syncchan]
-                    sync_signals.append(ds.sync_chan_ons)
-            NspikesTotal=0
-            for i in range(len(spike_times)): NspikesTotal+=len(spike_times[i])
-
-            # If several datasets are fed to the prophyler, align their spike times.
-            # Merged dataset is saved as two arrays:
-            # spike_times and spike_clusters, as in a regular dataset,
-            # but where spike_clusters is a larger int (1 is unit 1 from dataset 0, 1,000,000,001 is unit 1 from dataset 1)
-            if len(self.ds_table.index)>1:
-                print(">>> Aligning spike trains of {} datasets...".format(len(self.ds_table.index)))
-                spike_times = align_timeseries(spike_times, sync_signals, 30000)
-            # Now save the new array
-            merged_spike_clusters=npa(zeros=(NspikesTotal), dtype=np.float64)
-            merged_spike_times=npa(zeros=(NspikesTotal), dtype=np.uint64)
-            cum_Nspikes=0
-            for ds_i in self.ds_table.index:
-                Nspikes=len(spike_times[ds_i])
-                merged_spike_clusters[cum_Nspikes:cum_Nspikes+Nspikes]=spike_clusters[ds_i]+1e-1*ds_i
-                merged_spike_times[cum_Nspikes:cum_Nspikes+Nspikes]=spike_times[ds_i]
-                cum_Nspikes+=Nspikes
-            merged_spike_clusters=merged_spike_clusters[np.argsort(merged_spike_times)]
-            merged_spike_times=np.sort(merged_spike_times)
-            np.save(Path(self.dp_pro, merge_fname_clusters+'.npy'), merged_spike_clusters)
-            np.save(Path(self.dp_pro, merge_fname_times+'.npy'), merged_spike_times)
-            print(f'>>> {merge_fname_times} and {merge_fname_clusters} saved at {self.dp_pro}.')
-            del spike_times, spike_clusters, sync_signals, merged_spike_clusters, merged_spike_times
-
-            print(f'>>> {merge_fname_times} and {merge_fname_clusters} found at {self.dp_pro} and memory mapped at self.merged_spike_clusters and self.merged_spike_clusters.')
-            self.merged_spike_clusters=np.memmap(Path(self.dp_pro, merge_fname_clusters+'.npy'))
-            self.merged_spike_times=np.memmap(Path(self.dp_pro, merge_fname_times+'.npy'))
-
-        # CREATE A KEYWORD IN CCG FUNCTION: MERGED_DATASET=TRUE OR FALSE - IF TRUE, HANDLES LOADED FILE DIFFERENTLY
+            self.name+='_'+self.ds_table.loc[ds_i, 'dataset_name']
 
         # Create a networkX graph whose nodes are Units()
         self.undigraph=nx.MultiGraph() # Undirected multigraph - directionality is given by uSrc and uTrg. Several peaks -> several edges -> multigraph.
@@ -246,6 +122,14 @@ class Prophyler:
                 unit=Unit(ds, u, self.undigraph) # Units are added to the same graph when initialized, even from different source datasets
                 self.units[unit.nodename]=unit
 
+        print(f"\nProphyler graph successfully created ({len(self.units)} nodes, good units). Now try to use pro.connect_graph() to draw edges.")
+
+    def __repr__(self):
+        if assert_multi(self.dp_pro):
+            message = f'Prophyler mapping merged dataset {self.dp_pro} onto graph {self.undigraph}.'
+        else:
+            message = f'Prophyler mapping dataset {self.dp_pro} onto graph {self.undigraph}.'
+        return message
 
     def get_graph(self, prophylerGraph='undigraph'):
         assert prophylerGraph in ['undigraph', 'digraph']
@@ -263,7 +147,7 @@ class Prophyler:
 
     def connect_graph(self, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3,
                       fract_baseline=4./5, W_sd=10, test='Poisson_Stark', again=False, againCCG=False, plotsfcm=False,
-                      drop_seq=['sign', 'time', 'max_amplitude'], name=None, use_template_for_peakchan=True, subset_selection='all',
+                      drop_seq=['sign', 'time', 'max_amplitude'], name=None, use_template_for_peakchan=True, periods='all',
                       prophylerGraph='undigraph', src_graph=None):
 
         g=self.get_graph(prophylerGraph) if src_graph is None else src_graph
@@ -301,7 +185,7 @@ class Prophyler:
                                 p_th, n_consec_bins, fract_baseline, W_sd, test,
                                 again, againCCG, drop_seq,
                                 pre_chanrange=None, post_chanrange=None, units=None, name=name,
-                                use_template_for_peakchan=use_template_for_peakchan, subset_selection=subset_selection)
+                                use_template_for_peakchan=use_template_for_peakchan, periods=periods)
         self.sfc = sfc
         criteria={'test':test, 'cbin':cbin, 'cwin':cwin, 'p_th':p_th, 'n_consec_bins':n_consec_bins, 'fract_baseline':fract_baseline, 'W_sd':W_sd}
         g=self.map_sfc_on_g(g, self.sfc, criteria)
@@ -930,13 +814,13 @@ class Prophyler:
         return nx_exp[frmt](name)
 
 # def map_sfc_on_graph(g, dp, cbin=0.5, cwin=100, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
-#              metric='amp_z', again=False, againCCG=False, name=None, use_template_for_peakchan=True, subset_selection='all'):
+#              metric='amp_z', again=False, againCCG=False, name=None, use_template_for_peakchan=True, periods='all'):
 #     # If called in the context of CircuitProphyler, add the connection to the graph
 #     sfc, sfcm, peakChs, sigstack, sigustack = gen_sfc(dp, cbin, cwin,
 #                                         p_th, n_consec_bins, sgn, fract_baseline, W_sd, test,
 #                                         metric, again, againCCG, drop_seq,
 #                                         pre_chanrange=None, post_chanrange=None, units=None, name=name,
-#                                         use_template_for_peakchan=use_template_for_peakchan, subset_selection=subset_selection)
+#                                         use_template_for_peakchan=use_template_for_peakchan, periods=periods)
 #     if test=='Normal_Kopelowitz':
 #         criteria={'cbin':cbin, 'cwin':cwin, 'p_th':p_th, 'n_consec_bins':n_consec_bins, 'fract_baseline':fract_baseline, }
 #     elif test=='':
@@ -986,7 +870,7 @@ class Dataset:
                     'path/to/kilosort/output1'.''')
 
         self.dp = Path(datapath)
-        self.meta=read_spikeglx_meta(self.dp)
+        self.meta=read_metadata(self.dp)
         self.probe_version=self.meta['probe_version']
         self.ds_i=dataset_index
         self.name=self.dp.name if dataset_name is None else dataset_name
@@ -994,7 +878,7 @@ class Dataset:
         self.params={}; params=imp.load_source('params', Path(self.dp,'params.py').absolute().as_posix())
         for p in dir(params):
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
-        self.fs=self.meta['sRateHz']
+        self.fs=self.meta['sampling_rate']
         self.endTime=self.meta['fileTimeSecs']
         self.chan_map=chan_map(self.dp, y_orig='surface')
         sk_output_cm=chan_map(self.dp, y_orig='surface', probe_version='local')
@@ -1071,36 +955,36 @@ class Unit:
         self.peak_position_real=self.ds.peak_positions_real[self.idx==self.ds.peak_positions_real[:,0], 1:].flatten()
 
     def trn(self, rec_section='all'):
-        return npyx.spk_t.trn(self.dp, self.idx, subset_selection=rec_section)
+        return npyx.spk_t.trn(self.dp, self.idx, periods=rec_section)
 
     def trnb(self, bin_size, rec_section='all'):
-        return npyx.spk_t.trnb(self.dp, self.idx, bin_size, subset_selection=rec_section)
+        return npyx.spk_t.trnb(self.dp, self.idx, bin_size, periods=rec_section)
 
     def ids(self):
         return npyx.spk_t.ids(self.dp, self.idx)
 
     def isi(self, rec_section='all'):
-        return npyx.spk_t.isi(self.dp, self.idx, subset_selection=rec_section)
+        return npyx.spk_t.isi(self.dp, self.idx, periods=rec_section)
 
-    def acg(self, cbin, cwin, normalize='Hertz', subset_selection='all'):
-        return npyx.corr.acg(self.dp, self.idx, bin_size=cbin, win_size=cwin, normalize=normalize, subset_selection=subset_selection)
+    def acg(self, cbin, cwin, normalize='Hertz', periods='all'):
+        return npyx.corr.acg(self.dp, self.idx, bin_size=cbin, win_size=cwin, normalize=normalize, periods=periods)
 
-    def ccg(self, U, cbin, cwin, fs=30000, normalize='Hertz', ret=True, sav=True, prnt=True, rec_section='all', again=False):
-        return npyx.corr.ccg(self.dp, [self.idx]+list(U), cbin, cwin, fs, normalize, ret, sav, prnt, rec_section, again)
+    def ccg(self, U, cbin, cwin, fs=30000, normalize='Hertz', ret=True, sav=True, verbose=True, rec_section='all', again=False):
+        return npyx.corr.ccg(self.dp, [self.idx]+list(U), cbin, cwin, fs, normalize, ret, sav, verbose, rec_section, again)
 
-    def wvf(self, n_waveforms=100, t_waveforms=82, wvf_subset_selection='regular', wvf_batch_size=10):
-        return npyx.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_subset_selection, wvf_batch_size, True, True)
+    def wvf(self, n_waveforms=100, t_waveforms=82, wvf_periods='regular', wvf_batch_size=10):
+        return npyx.spk_wvf.wvf(self.dp, self.idx, n_waveforms, t_waveforms, wvf_periods, wvf_batch_size, True, True)
 
-    def plot_acg(self, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, prnt=False, show=True,
+    def plot_acg(self, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, verbose=False, show=True,
              pdf=True, png=False, rec_section='all', labels=True, title=None, ref_per=True, saveData=False, ylim=0):
 
-        npyx.plot.plot_acg(self.dp, self.idx, cbin, cwin, normalize, color, saveDir, saveFig, prnt, show,
+        npyx.plot.plot_acg(self.dp, self.idx, cbin, cwin, normalize, color, saveDir, saveFig, verbose, show,
              pdf, png, rec_section, labels, title, ref_per, saveData, ylim)
 
-    def plot_ccg(self, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, prnt=False, show=True,
+    def plot_ccg(self, units, cbin=0.2, cwin=80, normalize='Hertz', saveDir='~/Downloads', saveFig=False, verbose=False, show=True,
              pdf=False, png=False, rec_section='all', labels=True, std_lines=True, title=None, color=-1, CCG=None, saveData=False, ylim=0):
 
-        npyx.plot.plot_ccg(self.dp, [self.idx]+list(units), cbin, cwin, normalize, saveDir, saveFig, prnt, show,
+        npyx.plot.plot_ccg(self.dp, [self.idx]+list(units), cbin, cwin, normalize, saveDir, saveFig, verbose, show,
                  pdf, png, rec_section, labels, std_lines, title, color, CCG, saveData, ylim)
 
     def connections(self):

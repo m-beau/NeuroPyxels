@@ -2,6 +2,8 @@ from setuptools import setup
 import codecs
 import os.path as op
 
+# am I in cell types branch?
+
 def read(rel_path):
     here = op.abspath(op.dirname(__file__))
     with codecs.open(op.join(here, rel_path), 'r') as fp:

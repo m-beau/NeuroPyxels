@@ -39,6 +39,9 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from npyx.corr import (ccg, StarkAbeles2009_ccg_significance, ccg_sig_stack, gen_sfc, scaled_acg)
 from npyx.gl import get_units, get_npyx_memory
+
+
+
 #############################################
 # Waveform features
 
@@ -1391,6 +1394,13 @@ def temp_feat(dp, units, use_or_operator = True, use_consecutive = False):
     """
     High level function for getting the temporal features from a single (integer) or
     set of units (list of units) from a dp dataset.
+
+    Parameters:
+        - use_or_operator: if True, if a chunk (10sec default) belongs to at least one 30s chunk
+          passing both false positive and negative filters, it is considered good.
+          Else, the 3 overlapping 30sec chunks must all pass both thresholds.
+        - use_consecutive: if True, uses the longest period with consecutive good chunks.
+            Else, uses a concatenation of all good chunks.
     """
     # get the train quality for each unit in the list of units
     # pass the spike times for that unit

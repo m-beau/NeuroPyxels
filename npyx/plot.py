@@ -4,7 +4,9 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 import os
-import os.path as op; opj=op.join
+import os.path as op
+
+from psutil import disk_partitions; opj=op.join
 import subprocess
 import sys
 from pathlib import Path
@@ -45,6 +47,9 @@ import networkx as nx
 def save_mpl_fig(fig, figname, saveDir, _format):
 
     # Fix matplotlib resolution and make text editable
+    dpi = mpl.rcParams['figure.dpi']
+    fonttype1 = mpl.rcParams['pdf.fonttype']
+    fonttype2 = mpl.rcParams['ps.fonttype']
     mpl.rcParams['figure.dpi']=500
     mpl.rcParams['pdf.fonttype']=42
     mpl.rcParams['ps.fonttype']=42
@@ -56,11 +61,16 @@ def save_mpl_fig(fig, figname, saveDir, _format):
         saveDir.mkdir()
     p=saveDir/f"{figname}.{_format}"
     fig.savefig(p, dpi=500, bbox_inches='tight')
-    platform=sys.platform
-    if platform=='linux':
-        bashCommand = f'sudo chmod a+rwx {p}'
-        process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-        output, error = process.communicate()
+
+    # restaure original parameters
+    mpl.rcParams['figure.dpi']=dpi
+    mpl.rcParams['pdf.fonttype']=fonttype1
+    mpl.rcParams['ps.fonttype']=fonttype2
+    # platform=sys.platform
+    # if platform=='linux':
+    #     bashCommand = f'sudo chmod a+rwx {p}'
+    #     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+    #     output, error = process.communicate()
 
 
 def mplshow(fig):
@@ -171,13 +181,14 @@ def get_labels_from_ticks(ticks):
     ticks_labels=[str(l)+'0'*(nflt+jump_n-len(str(l).replace('-',''))) for l in ticks_labels]
     return ticks_labels, nflt
 
+
 def mplp(fig=None, ax=None, figsize=None,
          xlim=None, ylim=None, xlabel=None, ylabel=None,
          xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=False, reset_yticks=False,
          xtickrot=0, ytickrot=0, xtickha='center', xtickva='top', ytickha='right', ytickva='center',
-         axlab_w='bold', axlab_s=20,
-         ticklab_w='regular', ticklab_s=16, ticks_direction='out', lw=2,
-         title=None, title_w='bold', title_s=20,
+         axlab_w='bold', axlab_s=16,
+         ticklab_w='regular', ticklab_s=14, ticks_direction='out', lw=2,
+         title=None, title_w='bold', title_s=16,
          hide_top_right=True, hide_axis=False,
          tight_layout=True, hspace=None, wspace=None):
     '''
@@ -439,7 +450,10 @@ def set_ax_size(ax,w,h):
     figh = float(h)/(t-b)
     ax.figure.set_size_inches(figw, figh)
 
-def hist_MB(arr, a=None, b=None, s=None, title='Histogram', xlabel='', ylabel='', ax=None, color=None):
+def hist_MB(arr, a=None, b=None, s=None,
+            title='Histogram', xlabel='', ylabel='',
+            ax=None, color=None, figsize=None, xlim=None,
+            saveFig=False, saveDir='', _format='pdf'):
     if a is None: a=np.min(arr)
     if b is None: b=np.max(arr)
     if s is None: s=(b-a)/100
@@ -455,8 +469,10 @@ def hist_MB(arr, a=None, b=None, s=None, title='Histogram', xlabel='', ylabel=''
     ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Binsize:{}'.format(s))
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
 
-    #fig,ax=mplp(fig,ax)
+    if xlim is None: xlim = [a-s/2,b+s/2]
+    fig,ax=mplp(fig, ax, xlim=xlim, figsize=figsize)
 
+    if saveFig: save_mpl_fig(fig, title, saveDir, _format)
     return fig
 
 
@@ -949,8 +965,8 @@ def psth_popsync_plot(trains, events, psthb=10, window=[-1000,1000],
 
                         events_toplot=[0], events_color='r',
                         title='', color='darkgreen', figsize=None,
-                        saveDir='~/Downloads', saveFig=0, saveData=0, _format='pdf',
-                        xticks=None, xticklabels=None, xlabel='Time (ms)', ax=None):
+                        saveDir='~/Downloads', saveFig=0, _format='pdf',
+                        xticks=None, xticklabels=None, xlabel='Time (ms)', ylim=None, ax=None):
 
     x, y, y_p, y_p_var=get_processed_popsync(trains, events, psthb, window,
                           events_tiling_frac, sync_win, fs, t_end,
@@ -963,11 +979,11 @@ def psth_popsync_plot(trains, events, psthb=10, window=[-1000,1000],
     ylabel='Population synchrony\n(zscore of fraction firing)' if zscore \
         else r'$\Delta$ pop synchrony\n(fraction firing)' if bsl_subtract else 'Population synchrony\n(fraction firing)'
     return psth_plt(x, y_p, y_p_var, window, events_toplot, events_color,
-           title, color, figsize,
-           saveDir, saveFig, saveData, _format,
-           zscore, bsl_subtract,
+           title, color,
+           saveDir, saveFig, _format,
+           zscore, bsl_subtract, ylim,
            convolve, xticks, xticklabels, xlabel, ylabel, None, False,
-           ax)
+           ax, figsize)
 
 def psth_plot(times, events, psthb=5, psthw=[-1000, 1000], remove_empty_trials=True, events_toplot=[0], events_color='r',
            title='', color='darkgreen', legend_label=None, legend=False,
@@ -1045,9 +1061,9 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
     fig,ax=mplp(fig=fig, ax=ax, figsize=figsize,
      xlim=psthw, ylim=yl, xlabel=xlabel, ylabel=ylabel,
      xticks=xticks, xtickslabels=xticklabels,
-     axlab_w='bold', axlab_s=20,
-     ticklab_w='regular',ticklab_s=16, lw=1,
-     title=title, title_w='bold', title_s=20,
+     axlab_w='bold', axlab_s=16,
+     ticklab_w='regular',ticklab_s=14, lw=1,
+     title=title, title_w='bold', title_s=16,
      hide_top_right=True, tight_layout=tight_layout, hspace=hspace, wspace=wspace)
 
     if saveFig:
@@ -1284,12 +1300,13 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
 
     # Plot as 2D grid of PSTHs
     if not as_heatmap:
-        if figh is None: figh=8
-        if figratio is None: figratio=1.2
+
         (nrows, ncols) = (len(events), len(trains)) if not transpose else (len(trains), len(events))
         if overlap_events: (nrows, ncols) = (1,ncols) if not transpose else (nrows, 1)
-        figh=nrows*3
-        figw=ncols*3*figratio
+
+        if figh is None: figh=nrows*1.5 # 10 for 7 is good
+        if figratio is None: figratio=1.2
+        figw=figh*(ncols/nrows)*figratio
         figsize=(figw,figh)
 
         # pre-generate figure axes
@@ -1391,9 +1408,9 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
 #%% Correlograms ##############################################################################################
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True,
-            _format='pdf', periods='all', labels=True, std_lines=True, title=None, color=-1,
-            saveData=False, ylim=None, normalize='Hertz', ccg_mn=None, ccg_std=None,
-            figsize=(4.5,4), show_hz=False):
+            _format='pdf', labels=True, title=None, color=-1,
+            ylim=None, normalize='Hertz', ccg_mn=None, ccg_std=None,
+            figsize=None, show_hz=False, style='line'):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -1403,13 +1420,18 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     save: boolean, to save the figure or not.
     '''
     global phyColorsDic
+    assert style in ['line', 'bar']
+
+    fig, ax = plt.subplots()
+
+    # x axis
 
     cbin = np.clip(cbin, 1000*1./fs, 1e8)
-    if isinstance(color, int): # else, an actual color is passed
-        color=phyColorsDic[color]
-    fig, ax = plt.subplots(figsize=(10,8))
     x=np.linspace(-cwin*1./2, cwin*1./2, CCG.shape[0])
     assert x.shape==CCG.shape
+
+    # y axis
+    y=CCG.copy()
     if ylim is None:
         if normalize in ['Hertz','Counts']:
             yl=max(CCG)
@@ -1420,64 +1442,65 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         elif normalize=='zscore':
             yl=np.max(np.abs(CCG))
             ylim=[-yl, yl]
-    ax.set_ylim(ylim)
 
+
+    # optional second y axis
     if ccg_mn is not None and ccg_std is not None and show_hz:
         ax2 = ax.twinx()
-        ax2.set_ylabel('Crosscorrelation (Hz)', fontsize=20, rotation=270, va='bottom')
+        ax2.set_ylabel('Crosscorrelation (Hz)', fontsize=16, rotation=270, va='bottom')
         ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
         ax2.set_yticks(ax.get_yticks())
-        ax2.set_yticklabels(ax2ticks, fontsize=20)
+        ax2.set_yticklabels(ax2ticks, fontsize=16)
         ax2.set_ylim(ylim)
 
-    if normalize in ['Hertz', 'Pearson', 'Counts']:
-        y=CCG.copy()
-    elif normalize in ['zscore']:
-        y=CCG.copy()+abs(ylim[0])
-    ax.bar(x=x, height=y, width=cbin, color=color, edgecolor=color, bottom=ylim[0]) # Potentially: set bottom=0 for zscore
+    # pick color and plot
+    if isinstance(color, int): # else, an actual color is passed
+        color=phyColorsDic[color]
 
-    ax.plot([0,0], ax.get_ylim(), ls="--", c=[0.5,0.5,0.5], lw=1, zorder=1000)
-    if labels:
-        if std_lines:
-            if (normalize!='zscore'):
-                mn = np.mean(np.append(CCG[:int(len(CCG)*2./5)], CCG[int(len(CCG)*3./5):]))
-                std = np.std(np.append(CCG[:int(len(CCG)*2./5)], CCG[int(len(CCG)*3./5):]))
-                ax.plot([x[0], x[-1]], [mn,mn], ls="--", c=[0,0,0], lw=2)
-                for st in [1,2,3]:
-                    ax.plot([x[0], x[-1]], [mn+st*std,mn+st*std], ls="--", c=[0.5,0,0], lw=0.5)
-                    ax.plot([x[0], x[-1]], [mn-st*std,mn-st*std], ls="--", c=[0,0,0.5], lw=0.5)
-            else:
-                ax.plot([x[0], x[-1]], [0,0], ls="--", c=[0,0,0], lw=2)
-        if normalize=='Counts':
-            ax.set_ylabel("Crosscorrelation (Counts)", size=20)
-        if normalize=='Hertz':
-            ax.set_ylabel("Crosscorrelation (Hz)", size=20)
-        elif normalize=='Pearson':
-            ax.set_ylabel("Crosscorrelation (Pearson)", size=20)
+    # plotting
+    if style=='bar':
+        ax.step(x, y, color='black', alpha=1, where='mid')
+        ax.bar(x=x, height=y+ abs(ylim[0]), width=cbin, color=color, edgecolor=color, bottom=ylim[0]) # Potentially: set bottom=0 for zscore
+    elif style=='line':
+        ax.plot(x, y, color='black', alpha=1)
+        if normalize in ['Hertz','Pearson','Counts']:
+            ax.fill_between(x, x*0, y, color=color)
         elif normalize=='zscore':
-            ax.set_ylabel("Crosscorrelation (z-score)", size=20)
-        ax.set_xlabel('Time (ms)', size=20)
-        ax.set_xlim([-cwin*1./2, cwin*1./2])
+            ax.fill_between(x, ylim[0]*np.ones(len(x)), y, color=color)
+
+    # plot formatting
+    ax.plot([0,0], ylim, c=[0.7, 0.7, 0.7], lw=1, zorder=-1)
+    if labels:
+        if normalize=='zscore':
+                ax.plot([x[0], x[-1]], [0,0], c=[0.7, 0.7, 0.7], lw=1, zorder=-1)
         if not isinstance(title, str):
             if bChs is None:
-                title="Units {}->{} ({})s".format(uls[0], uls[1], str(periods)[0:50].replace(' ',  ''))
+                title=f"{uls[0]}->{uls[1]}"
             else:
-                title="Units {}@{}->{}@{} ({})s".format(uls[0], bChs[0], uls[1], bChs[1], str(periods)[0:50].replace(' ',  ''))
-        ax.set_title(title, size=22)
-        ax.tick_params(labelsize=20)
-    mplp(fig, ax, figsize=figsize)
+                title=f"{uls[0]}@{bChs[0]}->{uls[1]}@{bChs[1]}"
+    
+    ylabdic={'Counts':'Counts',
+                'Hertz':'Hz',
+                'Pearson':'Pearson',
+                'zscore':'z-score'}
+    ylabel=f"Crosscorrelation ({ylabdic[normalize]})" if labels else None
 
+    if figsize is None: figsize = (4.5,4)
+    mplp(fig, figsize=figsize,
+         title=title,
+         xlabel='Time (ms)', ylabel=ylabel,
+         title_s=16, axlab_s=16, ticklab_s=16,
+         xlim=[-cwin*1./2, cwin*1./2], ylim=ylim)
+
+    # Eventually save figure
     if saveFig:
         save_mpl_fig(fig, 'ccg{0}-{1}_{2}_{3:.2f}'.format(uls[0], uls[1], cwin, cbin), saveDir, _format)
-    if saveData:
-        np.save(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}_x.npy'.format(uls[0], uls[1], cwin, cbin), x)
-        np.save(saveDir+'/ccg{0}-{1}_{2}_{3:.2f}_y.npy'.format(uls[0], uls[1], cwin, cbin), CCG)
 
     return fig
 
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=True,
-            _format='pdf', periods='all', labels=True, title=None, ref_per=True, saveData=False,
-            ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None, figsize=(4.5,4)):
+            _format='pdf', labels=True, title=None, ref_per=True,
+            ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None, figsize=None):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -1487,12 +1510,15 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     saveFig: boolean, to save the figure or not.
     '''
     global phyColorsDic
+
+    fig, ax = plt.subplots()
+
+    # x axis
     cbin = np.clip(cbin, 1000*1./fs, 1e8)
-    if isinstance(color, int): # else, an actual color is passed
-        color=phyColorsDic[color]
-    fig, ax = plt.subplots(figsize=figsize)
     x=np.linspace(-cwin*1./2, cwin*1./2, ACG.shape[0])
     assert x.shape==ACG.shape
+
+    # y axis
     if ylim1==0 and ylim2==0:
         if normalize in ['Hertz','Counts']:
             ylim1=0
@@ -1506,47 +1532,55 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
             ylim1, ylim2 = min(-3, ylim1), max(3, ylim2)
             ylim1, ylim2 = -max(abs(ylim1), abs(ylim2)), max(abs(ylim1), abs(ylim2))
 
-    if acg_mn is not None and acg_std is not None:
-        ax2 = ax.twinx()
-        ax2.set_ylabel('Autocorrelation (Hz)', fontsize=20, rotation=270, va='bottom')
-        ax2ticks=[np.round(acg_mn+tick*acg_std,1) for tick in ax.get_yticks()]
-        ax2.set_yticks(ax.get_yticks())
-        ax2.set_yticklabels(ax2ticks, fontsize=20)
-        ax2.set_ylim([ylim1, ylim2])
-
     if normalize in ['Hertz', 'Pearson', 'Counts']:
         y=ACG.copy()
     elif normalize=='zscore':
         y=ACG.copy()+abs(ylim1)
+
+    # optional secondary y axis
+    if acg_mn is not None and acg_std is not None:
+        ax2 = ax.twinx()
+        ax2.set_ylabel('Autocorrelation (Hz)', fontsize=16, rotation=270, va='bottom')
+        ax2ticks=[np.round(acg_mn+tick*acg_std,1) for tick in ax.get_yticks()]
+        ax2.set_yticks(ax.get_yticks())
+        ax2.set_yticklabels(ax2ticks, fontsize=16)
+        ax2.set_ylim([ylim1, ylim2])
+
+    # pick color and plot
+    if isinstance(color, int): # else, an actual color is passed
+        color=phyColorsDic[color]
     ax.fill_between(x, y*0, y, color=color, step='mid')
     ax.step(x, y, where='mid', color='black', lw=1)
 
+    # Plot formatting
     if labels:
         if not isinstance(title, str):
             if  bChs is None:
-                title="Unit {} ({})s".format(unit, str(periods)[0:50].replace(' ',  ''))
+                title=f"{unit}"
             else:
                 assert len(bChs)==1
-                title="Unit {}@{} ({})s".format(unit, bChs[0], str(periods)[0:50].replace(' ',  ''))
+                title=f"{unit}@{bChs[0]}"
         if ref_per:
             ax.plot([-1, -1], [ylim1, ylim2], color='black', linestyle='--', linewidth=1)
             ax.plot([1, 1], [ylim1, ylim2], color='black', linestyle='--', linewidth=1)
+
     ylabdic={'Counts':'Counts',
                     'Hertz':'Hz',
                     'Pearson':'Pearson',
                     'zscore':'z-score'}
     ylabel=f"Autocorrelation ({ylabdic[normalize]})" if labels else None
+
+    if figsize is None: figsize = (4.5,4)
     mplp(fig, figsize=figsize,
          title=title,
          xlabel='Time (ms)', ylabel=ylabel,
          title_s=16, axlab_s=16, ticklab_s=16,
          xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2])
 
+
+    # Eventually save figure
     if saveFig:
         save_mpl_fig(fig, 'acg{}-{}_{:.2f}'.format(unit, cwin, cbin), saveDir, _format)
-    if saveData:
-        np.save(saveDir+'/acg{}-{}_{:.2f}_x.npy'.format(unit, cwin, cbin), x)
-        np.save(saveDir+'/acg{}-{}_{:.2f}_y.npy'.format(unit, cwin, cbin), ACG)
 
     return fig
 
@@ -1562,7 +1596,8 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
     fig = plt.figure(figsize=figsize)
 
     x=np.arange(-cwin/2, cwin/2+cbin, cbin)
-    bChs=npa(bChs).astype(int)
+    if bChs is not None:
+        bChs=npa(bChs).astype(int)
 
     ## precompute y limits (in case of y_sharing)
     ylims=[]
@@ -1656,7 +1691,10 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
             ylabel = f"Crosscorr. {norm_str[normalize]}" if row==col else None
             xlabel = 'Time (ms)' if row==col else None
             if labels:
-                ttl=f"{units[row]}@{bChs[row]}>{units[col]}@{bChs[col]}" if any(bChs) else f"{units[row]}>{units[col]}"
+                if bChs is not None:
+                    ttl=f"{units[row]}@{bChs[row]}>{units[col]}@{bChs[col]}" if any(bChs) else f"{units[row]}>{units[col]}"
+                else:
+                    ttl = f"{units[row]}>{units[col]}"
             else:
                 ttl = None
             if not show_ttl: ttl=None
@@ -1679,63 +1717,93 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
     return fig
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, verbose=False,
-             _format='pdf', periods='all', labels=True, title=None, ref_per=True, saveData=False, ylim=[0,0],
+             _format='pdf', periods='all', labels=True, title=None, ref_per=True, ylim=[0,0],
              acg_mn=None, acg_std=None, again=False,
-             figsize=(4.5,4)):
+             figsize=None, train=None):
     saveDir=op.expanduser(saveDir)
-    bChs=get_depthSort_peakChans(dp, units=[unit])[:,1].flatten()
+    if train is not None:
+        bChs=None
+    else:
+        bChs=get_depthSort_peakChans(dp, units=[unit])[:,1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
-    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, verbose=verbose, periods=periods, again=again)
+    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, verbose=verbose, periods=periods, again=again, train=train)
     if normalize=='zscore':
         ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', verbose=verbose, periods=periods)
         acg25, acg35 = ACG_hertz[:int(len(ACG_hertz)*2./5)], ACG_hertz[int(len(ACG_hertz)*3./5):]
         acg_std=np.std(np.append(acg25, acg35))
         acg_mn=np.mean(np.append(acg25, acg35))
     fig=plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, _format=_format,
-            periods=periods, labels=labels, title=title, ref_per=ref_per, saveData=saveData, ylim1=ylim1, ylim2=ylim2,
+            labels=labels, title=title, ref_per=ref_per, ylim1=ylim1, ylim2=ylim2,
             normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize)
 
     return fig
 
-def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloads', saveFig=False, verbose=False,
-             _format='pdf', figsize=None,periods='all', labels=True, std_lines=True,
-             title=None, show_ttl=True, color=-1, CCG=None, saveData=False,
-             ylim_acg=None, ylim_ccg=None, share_y=0,
+def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloads', saveFig=False,
+             _format='pdf', figsize=None, periods='all', labels=True,
+             title=None, show_ttl=True, color=-1, CCG=None,
+             ylim_acg=None, ylim_ccg=None, share_y=False,
              ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False,
-             use_template=True, enforced_rp=0):
+             use_template=True, enforced_rp=0, style='line'):
     """
     Parameters:
-    - as_grid: also plot units autocorrelograms along the diagonal (only relevant when plotting 2 units)
-    - use_template: whether to use the template files to find the peak channel
+        - dp: str, data path
+        - units: [float, float], list of 2 unit indices
+        - cbin: float, binsize (ms)
+        - cwin: float, full window size (ms)
+        - normalize: str in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'], unit of y axis
+        - saveDir: str, save directory for figure
+        - saveFig: bool, whether to dave Figure at saveDir
+        - _format: str, format to save fig (pdf, svg, eps, png, jpeg...)
+        - figsize: (float, float), figure size ((x, y) in inches)
+        - periods: 'all' or [(t1,t2), (t3,t4)...], periods to use to compute CCG (in SECONDS)
+        - labels: bool, whether to plot axis labels/title
+        - title: str, figure title
+        - show_ttl: bool, whether to show title
+        - color: int, classical phy ACG colors (-1 black, 0 blue, 1 red...)
+        - CCG: array, optionnaly feed externally computed CCG
+        - ylim_acg: [float, float], ylim for autocorrelograms in case as_grid is True
+        - ylim_ccg: [float, float], ylim for crosscorrelogram(s)
+        - share_y: bool, whether to use the same y limit for all CCGs if as_grid is True
+        - ccg_mn: float, optionally feed externally calculated mean to zscore the CCG
+        - ccg_std: float, optionally feed externally calculated std to zscore the CCG
+        - again: bool, whether to recompute the CCG
+        - trains: [array1, array2...], optional externally fed list of trains to compute ACGs/CCGs (in samples). Then use any integers as 'units'.
+        - as_grid: bool, also plot units autocorrelograms along the diagonal (only relevant when plotting 2 units)
+        - use_template: bool, whether to use the template files to find the peak channel
+        - enforced_rp: float, enforced refractory period (will remove spikes happening within enforced_rp ms of another) | Default 0
+        - style: str, 'line' or 'bar' (to plot ccg as a line or a histogram)
 
     Returns:
-    - fig: matplotlib figure object
+        - fig: matplotlib figure object
     """
     assert assert_iterable(units)
     units=list(units)
     _, _idx=np.unique(units, return_index=True)
     units=npa(units)[np.sort(_idx)].tolist()
-    assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'],"WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte']."#
+    assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'], "WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte']."#
     if normalize=='mixte' and len(units)==2 and not as_grid: normalize='zscore'
     saveDir=op.expanduser(saveDir)
-    bChs=get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
+
+    if trains is None:
+        bChs=get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
+    else:
+        bChs=None
 
     if CCG is None:
         normalize1 = normalize if normalize!='mixte' else 'Hertz'
-        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, verbose=verbose, periods=periods, again=again, trains=trains, enforced_rp=enforced_rp)
+        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, verbose=0, periods=periods, again=again, trains=trains, enforced_rp=enforced_rp)
     assert CCG is not None
 
     if CCG.shape[0]==2 and not as_grid:
         if normalize=='zscore':
-            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', verbose=verbose, periods=periods, again=again, trains=trains)[0,1,:]
+            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', verbose=0, periods=periods, again=again, trains=trains)[0,1,:]
             ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
             ccg_std=np.std(np.append(ccg25, ccg35))
             ccg_mn=np.mean(np.append(ccg25, ccg35))
 
-        if figsize is None: figsize=(4.5,4)
-        fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format, periods=periods,
-                      labels=labels, std_lines=std_lines, title=title, color=color, saveData=saveData, ylim=ylim_ccg,
-                      normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std, figsize=figsize)
+        fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format,
+                      labels=labels, title=title, color=color, ylim=ylim_ccg,
+                      normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std, figsize=figsize, style=style)
     else:
         fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, saveDir, saveFig, _format, figsize,
                                labels=labels, show_ttl=show_ttl,title=title,
@@ -1854,7 +1922,8 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     # Plot image with custom colormap
     fig,ax=plt.subplots(figsize=figsize) if ax is None else (ax.get_figure(), ax)
     if function=='imshow': axim=ax.imshow(im, cmap=cmap, vmin=vmin, vmax=vmax, aspect=aspect,
-                                          origin={'top':'upper', 'bottom':'lower'}[origin], extent=extent, interpolation='none',
+                                          origin={'top':'upper', 'bottom':'lower'}[origin],
+                                          extent=extent, interpolation='nearest',
                                           **kwargs)
     elif function=='pcolor': axim=ax.pcolormesh(im, X=xvalues, Y=yvalues,
                                                 cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)

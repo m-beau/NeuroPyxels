@@ -12,13 +12,11 @@ warnings.simplefilter('default', category=NumbaPendingDeprecationWarning)#'ignor
 
 from ast import literal_eval as ale
 import numpy as np
-from numpy.fft import rfft, irfft
 import matplotlib.pyplot as plt
 
 from six import integer_types
 from statsmodels.nonparametric.smoothers_lowess import lowess
 import scipy.stats as stt
-import scipy.signal as sgnl
 
 import logging
 from math import pi, log
@@ -422,76 +420,6 @@ def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
 
     return sarr
 
-def xcorr_axis(x, y, axis=0):
-    """
-    Cross-correlation between two Nd arrays
-    only along the specified axis
-    (eg. for 2D array along axis 1, equivalent of applying np.correlate() to every pair of 1D array).
-
-    Written because np.correlate does not handle axis argument, whereas fft does.
-
-    Equivalent to (for axis 0, is x is 2D):
-    c = np.zeros(x.shape)
-    for i, (x_, y_) in enumerate(zip(normalize(x,0).T, normalize(y,0).T)):
-        c[:,i] = np.correlate(x_, y_, mode='same')
-    (actually this for loop is faster for small array because everything is done in C by numpy)
-    """
-    assert x.shape[axis]>3, f'array too short along axis {axis} to compute crosscorrelation.'
-    y_rev = np.flip(y, axis=axis)
-    c = irfft(rfft(x, axis=axis)*rfft(y_rev, axis=axis), axis=axis)
-
-    # now need to simply reindex along the specified axis
-    c_first = c.take(indices=range(0, c.shape[axis]//2-1), axis=axis)
-    c_last = c.take(indices=range(c.shape[axis]//2-1, c.shape[axis]), axis=axis)
-
-    return np.concatenate([c_last, c_first], axis=axis)
-
-def xcorr_1d_fft(w1, w2, axis = 0):
-    """
-    Cross-correlation along specific axis between two Nd arrays.
-    Typically for template matching when you know that you only need
-    to 'slide' the template along a single axis (e.g. a column of 100x3 pixels in a 100x100 image,
-    or a waveform across channels (10x82 samples) and a waveform template (10x82 as well)).
-
-    w1, w2: Nd arrays
-    axis: int, axis along which to perform crosscorrelation
-    """
-    c = xcorr_axis(normalize(w1,axis), normalize(w2,axis), axis=axis)
-    # reindex along axis - fucked up at the moment
-    return c
-
-def xcorr_1d_loop(w1, w2):
-    """
-    Cross-correlation along axis 0 between two 2D arrays.
-    Typically for template matching when you know that you only need
-    to 'slide' the template along a single axis (e.g. a column of 100x3 pixels in a 100x100 image,
-    or a waveform across channels (10x82 samples) and a waveform template (10x82 as well)).
-
-    Faster than xcorr_1d_fft for small 2D arrays.
-
-    w1, w2: 2d arrays
-    """
-    c = np.zeros(w1.shape)
-    for i, (wave1, wave2) in enumerate(zip(normalize(w1,0).T, normalize(w2,0).T)):
-        c[:,i] = np.correlate(wave1, wave2, mode='same')
-    return c
-
-def xcorr_2d(w1, w2):
-    """
-    Cross-correlation along ALL axis between two Nd arrays.
-    Typically for template matching when you want to 'slide' the template along all axis
-    (e.g. a 10x10 element pixels in a 100x100 image,
-    or a 10x10x10 voxel in a 100x100x100 volume).
-    """
-    c = sgnl.correlate(normalize(w1, 0), normalize(w2, 0),  mode='same')
-    return c
-
-def normalize(x, axis=0):
-    """
-    Vanilla normalization (center, reduce) along specified axis
-    """
-    return (x-np.mean(x, axis=axis))/np.std(x, axis=axis)
-
 def get_bins(cwin, cbin):
     mod2=(cwin/cbin)%2
     if mod2==0: # even
@@ -594,14 +522,14 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, verbose=
         sp=samples[lasti]
     return make_2D_array(samples[:lasti+1])
 
-# def n_largest_samples(to_sort: np.array, largest_n: int) -> np.array:
+def n_largest_samples(to_sort: np.array, largest_n: int) -> np.array:
 
-#     """
-#     Returns the n largest sorted samples from an array
-#     """
+    """
+    Returns the n largest sorted samples from an array
+    """
 
-#     sorted_n = np.argpartition(to_sort, -largest_n, axis=0 )[-largest_n:].flatten()
-#     return sorted_n
+    sorted_n = np.argpartition(to_sort, -largest_n, axis=0 )[-largest_n:].flatten()
+    return sorted_n
 
 def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     '''

@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: npyx
-Version: 2.1.2
+Version: 2.1.1
 Summary: Python routines dealing with Neuropixels data.
 Home-page: https://github.com/Npix-routines/NeuroPyxels
 Author: Maxime Beau
@@ -376,30 +376,7 @@ Older versions of numba did not feature the .core submodule. You probably run a 
   pip uninstall numba
   pip install numba
   ```
-<br/>
-- core dumped when importing
 
-This seems to be an issue related to PyQt5 required by opencv (opencv-python).
-Solution:
-```
-# activate npyx environment first
-pip uninstall opencv-python
-pip install opencv-python
-# pip install other missing dependencies
-```
-Full log:
-```
-In [1]: from npyx import *
-In [2]: QObject::moveToThread: Current thread (0x5622e1ea6800) is not the object's thread (0x5622e30e86f0).
-Cannot move to target thread (0x5622e1ea6800)
-
-qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "/home/maxime/miniconda3/envs/npyx/lib/python3.7/site-packages/cv2/qt/plugins" even though it was found.
-This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
-
-Available platform plugins are: xcb, eglfs, linuxfb, minimal, minimalegl, offscreen, vnc, wayland-egl, wayland, wayland-xcomposite-egl, wayland-xcomposite-glx, webgl.
-
-Aborted (core dumped)
-```
 <br/>
 
 ## Acknowledgement

@@ -248,6 +248,11 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
         - use_average_peakchan: bool, if True simply use the channel with highest average amplitude across spikes as peak channel
                                        instead of using the channel where the most spikes peak on
         - max_allowed_amplitude: float, maximum amplitude in uV (peak to trough) that a spike average can have to be considered (above, must be artefactual)
+        - max_allowed_shift: int (samples), maximum allowed temporal shift during shift-matching (see Shift-matching explanation above)
+        - n_waves_to_average: int, maximum number of waveforms averaged together (5000 waveforms = 500 batches)
+        - plot_debug: bool, whether to plot informative histograms displaying the ditribution of peak channels (Z drift matching),
+                      amplitudes on this peak channel (XY drift matching) and shifts (shift matching)
+        - do_shift_match: bool, whether to perform shift matching
 
     Returns:
         - peak_dsmatched_waveform: (n_samples,) array (t_waveforms samples) storing the peak channel waveform

@@ -378,13 +378,13 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
                 if file.endswith("on_samples.npy"):
                     filt_suffix_loaded=file.split('.')[-2][:2]
                     if filt_suffix_loaded==filt_suffix: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
-                        print(f'Sync channel onsets extracted from {filt_key} ({filt_suffix_loaded}) file found and loaded.')
+                        print(f'Sync channel onsets ({file}) file found and loaded.')
                         file_i = ale(file[-15])
                         onsets[file_i]=np.load(sync_dp/file)/srate
                 elif file.endswith("of_samples.npy"):
                     filt_suffix_loaded=file.split('.')[-2][:2]
                     if filt_suffix_loaded==filt_suffix: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
-                        print(f'Sync channel offsets extracted from {filt_key} ({filt_suffix_loaded}) file found and loaded.')
+                        print(f'Sync channel offsets ({file}) file found and loaded.')
                         file_i = ale(file[-15])
                         offsets[file_i]=np.load(sync_dp/file)/srate
             if any(onsets):

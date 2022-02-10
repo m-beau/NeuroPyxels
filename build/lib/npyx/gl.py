@@ -27,7 +27,7 @@ def get_npyx_memory(dp):
 
     return dprm
 
-def get_datasets(ds_master, ds_paths_master, ds_behav_master=None):
+def get_datasets(ds_master, ds_paths_master, ds_behav_master=None, warnings=True):
     """
     Function to load dictionnary of dataset paths and relevant units.
 
@@ -123,7 +123,7 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None):
         for ds_name, dp in dp_dic.items():
             dp=Path(dp)/f'{ds_name}'
             if not dp.exists():
-                print(\
+                if warnings: print(\
                     f"\n\033[31;1mWARNING path {dp} does not seem to exist. Edit path of {ds_name}:path in \033[34;1mds_paths_master\033[31;1m.")
                 continue
             assert ds_name in DSs.keys(),\
@@ -133,7 +133,7 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None):
                 if 'probe' in prb:
                     dp_prb=dp/f'{ds_name}_{prb}'
                     if not dp_prb.exists():
-                        print((f"\n\033[31;1mWARNING path {dp_prb} does not seem to exist! "
+                        if warnings: print((f"\n\033[31;1mWARNING path {dp_prb} does not seem to exist! "
                         f"Edit path of {ds_name}:path in \033[34;1mds_paths_master\033[31;1m "
                         "and check that all probes are in subdirectories."))
                         continue
@@ -141,7 +141,7 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None):
 
     for ds_name, ds in DSs.items():
         if "dp" not in ds.keys():
-            print(f"\n\033[31;1mWARNING dataset {ds_name} does not have a path! Add it as a key:value pair in \033[34;1mds_paths_master\033[31;1m.")
+            if warnings: print(f"\n\033[31;1mWARNING dataset {ds_name} does not have a path! Add it as a key:value pair in \033[34;1mds_paths_master\033[31;1m.")
 
     # Add behavioural parameters to the dict for relevant datasets,
     # if any

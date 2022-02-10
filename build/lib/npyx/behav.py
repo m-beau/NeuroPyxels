@@ -28,6 +28,8 @@ from npyx.spk_t import mean_firing_rate
 from npyx.corr import crosscorr_cyrille, frac_pop_sync
 from npyx.merger import assert_multi, get_ds_table
 
+from IPython.core.debugger import set_trace as breakpoint
+
 #%% Generate trials dataframe from either paqIO file or matlab datastructure
 
 def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, again_rawpaq=False,
@@ -54,6 +56,7 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
 
     paqdic=npix_aligned_paq(dp,f_behav=f_behav, again=again_align, again_rawpaq=again_rawpaq)
     paq_fs=paqdic['paq_fs']
+    fs=paqdic['npix_fs']
     if assert_multi(dp):
         dp_source=get_ds_table(dp)['dp'][0]
         npix_fs=read_metadata(dp_source)['highpass']['sampling_rate']
@@ -64,6 +67,13 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
     licks_on=paqdic['LICKS_Piezo_ON_npix'].copy()
     paqdic['LICKS_Piezo_ON_npix']=licks_on[np.diff(np.append([0],licks_on))>lick_ili_th*npix_fs] # 0.075 is the right threshold, across mice!
     paqdic['licks']=paqdic['LICKS_Piezo_ON_npix'] # for convenience
+
+    licks_diff = np.diff(paqdic['licks'])
+    m_pre = np.append([True], licks_diff>0.4*fs).astype(bool)
+    m_post = np.append((licks_diff<0.25*fs)&(licks_diff>0.1*fs), [True]).astype(bool)
+    m_noprepost = m_pre&m_post
+    paqdic['lick_salve_onsets'] = paqdic['licks'][m_noprepost]
+
     print(f'\nInter lick interval lower threshold set at {lick_ili_th} seconds.\n')
     if plot:
         hbins=np.logspace(np.log10(0.005),np.log10(10), 500)
@@ -141,54 +151,53 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
                     # is where it is expected
                     assert frames_npix[ii-1]-frames_npix[ii-2]<0.05
                     if not last:assert frames_npix[ii]-frames_npix[ii-1]>0.05
-            frames_npix=(frames_npix[~np.isnan(frames_npix)]*paqdic['npix_fs']).astype(int)
+            frames_npix=(frames_npix[~np.isnan(frames_npix)]*paqdic['npix_fs']).astype(np.int64)
             print(f'After correction the delta between expected/actual frames is **{frames_npix.shape[0]-sum(nframes)}**.')
             paqdic['CameraFrames_ON_npix']=frames_npix
 
+        # load swing onsets if already computed
+        swings_fn = dp.parent/'behavior'/'leftfrontpaw_swings.npy'
+        if swings_fn.exists():
+            print('Loaded swing onsets from deeplabcut data.')
+            swings_onof_i=np.load(swings_fn)
+            paqdic['swing_ON_npix']=paqdic['CameraFrames_ON_npix'][swings_onof_i[:,0].ravel()]
+            paqdic['swing_OFF_npix']=paqdic['CameraFrames_ON_npix'][swings_onof_i[:,1].ravel()]
+
+
     # Process cues and rewards - only engaged events are considered!
-    fs=paqdic['npix_fs']
     cues=paqdic['CUE_ON_npix']
     rewards=paqdic['REW_ON_npix']
     licks=paqdic['LICKS_Piezo_ON_npix']
 
     rewarded_cues=[]
-    cued_rewards=[]
+    engaged_rewards=[]
     random_rewards=[]
-    post_r_lick=[]
     for r in rewards:
         licks_m=(r<licks)&(licks<r+2*fs)
         if any(licks_m): #engaged_rewards
+            engaged_rewards.append(r)
             cues_m=(r-2*fs<cues)&(cues<r)
             if any(cues_m):
                 c=cues[cues_m][0]
                 rewarded_cues.append(c)
-                cued_rewards.append(r)
-                licks_postr_m = ((c<licks)&(licks<c+2*fs))
-                if any(licks_postr_m):
-                    post_r_lick.append(licks[licks_postr_m][0])
             else:
                 random_rewards.append(r)
-                post_r_lick.append(licks[(r<licks)&(licks<r+2*fs)][0])
 
-    cued_omission_c=[]
+    omitted_cues=[]
     engaged_cues=[]
-    post_c_lick=[]
     for c in cues:
         licks_m=(c<licks)&(licks<c+2*fs)
         if any(licks_m):
             engaged_cues.append(c)
-            post_c_lick.append(licks[licks_m][0])
             rew_m=(c<rewards)&(rewards<c+2*fs)
             if not any(rew_m):
-                cued_omission_c.append(c)
+                omitted_cues.append(c)
 
-    paqdic['cr_c']=rewarded_cues
-    paqdic['cr_r']=cued_rewards
-    paqdic['rr']=random_rewards
-    paqdic['lick_r']=post_r_lick
-    paqdic['c']=engaged_cues
-    paqdic['co_c']=cued_omission_c
-    paqdic['lick_c']=post_c_lick
+    paqdic['random_rewards']=npa(random_rewards)    
+    paqdic['omitted_cues']=npa(omitted_cues)
+    paqdic['rewarded_cues']=npa(rewarded_cues)
+    paqdic['engaged_rewards']=npa(engaged_rewards)
+    paqdic['engaged_cues']=npa(engaged_cues)
 
     # Process turning wheel events if turning wheel dataset
     if 'ROTreal' in paqdic.keys():
@@ -197,7 +206,7 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
                         include_wheel_data=False, add_spont_licks=False,
                         wheel_gain=3, rew_zone=12.5, rew_frames=3, vr_rate=30,
                         wheel_diam=45, difficulty=2, ballistic_thresh=100,
-                        plot=False, again=again)[1]
+                        plot=False, again=again, verbose=False)[1]
         # merge giving priority to rr, cr_c and cr_r from wheel_turn_dic
         paqdic={**paqdic,**wheel_turn_dic}
 
@@ -286,10 +295,10 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
                 paqdic[f'{paqk}_npix']=npix_ons[npix_paq[paqk]]
                 paqdic[f"{off_key}_npix"]=npix_ofs[npix_paq[paqk]] # same key for onsets and offsets
             else:
-                paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
-                paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(int)
-                paqdic[f'{paqk}_npix']=(a*paqv+b).astype(int)
-                paqdic[f"{off_key}_npix"]=(a*paqdic[off_key]+b).astype(int)
+                paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(np.int64)
+                paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(np.int64)
+                paqdic[f'{paqk}_npix']=np.round(a*paqv+b, 0).astype(np.int64)
+                paqdic[f"{off_key}_npix"]=np.round(a*paqdic[off_key]+b, 0).astype(np.int64)
 
     pickle.dump(paqdic, open(str(fn),"wb"))
 
@@ -362,8 +371,8 @@ def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.
             if variables[v]=='digital':
                 print('    Thresholding...')
                 th = min(data)+(max(data)-min(data))*th_frac
-                rawPAQVariables[v+'_ON'] = thresh(data, th, 1).astype(int)
-                rawPAQVariables[v+'_OFF'] = thresh(data, th, -1).astype(int)
+                rawPAQVariables[v+'_ON'] = thresh(data, th, 1).astype(np.int64)
+                rawPAQVariables[v+'_OFF'] = thresh(data, th, -1).astype(np.int64)
 
         # Pickle it
         if np.all(list(variables.keys())==allVariables):
@@ -379,7 +388,7 @@ def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.
 def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=False,
                     wheel_gain=3, rew_zone=12.5, rew_frames=3, vr_rate=30,
                     wheel_diam=45, difficulty=2, ballistic_thresh=100,
-                    plot=False, again=False):
+                    plot=False, again=False, verbose=True):
     '''
     Parameters:
         - dp: str, path to neuropixels data directory (behavioural data is in dp/behavior)
@@ -483,7 +492,7 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
         pad=4
         assert difficulty in [2,3]
         for tr in df.index:
-            print(f'  Wheel steering trial {tr}/{len(df.index)}...')
+            if verbose: print(f'  Wheel steering trial {tr}/{len(df.index)}...')
             npixon=paqdic['TRIALON_ON_npix'][tr]
             npixof=paqdic['TRIALON_OFF_npix'][tr]
             paqon=int(paqdic['TRIALON_ON'][tr])
@@ -723,9 +732,9 @@ def align_times_manyevents(times, events, b=2, window=[-1000,1000], fs=30000):
         - aligned_tb: a 1 x window/b matrix where the spikes have been aligned, in counts.
     '''
     tfs, efs = np.round(times*fs, 2), np.round(events*fs, 2)
-    assert np.all(tfs==tfs.astype(int)), 'WARNING sampling rate must be wrong or provided times are not in seconds!'
-    indices=np.append(0*events, 0*times+1).astype(int)
-    times=np.append(efs, tfs).astype(int)
+    assert np.all(tfs==tfs.astype(np.int64)), 'WARNING sampling rate must be wrong or provided times are not in seconds!'
+    indices=np.append(0*events, 0*times+1).astype(np.int64)
+    times=np.append(efs, tfs).astype(np.int64)
 
     sorti=np.argsort(times)
     indices, times = indices[sorti], times[sorti]
@@ -953,8 +962,7 @@ def get_processed_popsync(trains, events, psthb=10, window=[-1000,1000],
 
     y, y_p, y_p_var = process_2d_trials_array(y, y_bsl, zscore, zscoretype,
                       convolve, gsd, method,
-                      bsl_subtract, bsl_window,
-                      process_y)
+                      bsl_subtract, process_y)
 
     return x, y, y_p, y_p_var
 
@@ -985,8 +993,17 @@ def psth_fraction_pop_sync(trains, events, psthb, psthw, events_tiling_frac=0.1,
     assert sync_win>=psthb*events_tiling_frac, 'you are not tiling time in a meaningful way - \
         use a bigger sync window, a smaller psthb or a smaller events_tiling_frac'
     events_tiling_frac=1./int(1/events_tiling_frac) # ensures that downsampling is possible later
-    eventiles=(np.arange(psthw[0], psthw[1]+psthb*events_tiling_frac, psthb*events_tiling_frac)*fs/1000).astype(int)
+    eventiles=(np.arange(psthw[0], psthw[1]+psthb*events_tiling_frac, psthb*events_tiling_frac)*fs/1000).astype(np.int64)
     peri_event_stamps=np.concatenate([events+dt for dt in eventiles])
+
+    # only consider spikes around events
+    for ti, t in enumerate(trains.copy()):
+        print(f'pre_masking: {len(trains[ti])} spikes.')
+        t_mask = (t*0).astype(bool)
+        for e in events:
+            t_mask = t_mask | ( (t>=e+(psthw[0]*fs/1000)) & (t<=e+(psthw[1]*fs/1000)) )
+        trains[ti] = t[t_mask]
+        print(f'post_masking: {len(trains[ti])} spikes.')
     fps = frac_pop_sync(peri_event_stamps, trains, fs, t_end, sync_win, b, sd, th, again, dp, U)
 
     # Now reshape the pop synchrony trial-wise and
@@ -996,6 +1013,8 @@ def psth_fraction_pop_sync(trains, events, psthb, psthw, events_tiling_frac=0.1,
     window = (1.0 / n) * np.ones(n,)
     #y_popsync = np.convolve2d(y_popsync, window, mode='valid')[:,::n]
     y_popsync = np.apply_along_axis(lambda m:np.convolve(m, window, mode='valid'), axis=1, arr=y_popsync)[:,::n]
+
+    assert not np.any(np.isnan(y_popsync.ravel())), 'WARNING nans found in aligned ifr!!'
 
     return y_popsync
 

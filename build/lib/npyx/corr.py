@@ -46,7 +46,7 @@ def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=False, trains
             # Even lists of strings can be dealt with as integers by being replaced by their indices
             trains_dic[iu]=trn(dp, u, sav=True, periods=periods, verbose=verbose, enforced_rp=enforced_rp) # trains in samples
     else:
-        assert len(trains)>1
+        #assert len(trains)>1
         assert type(trains) in [list, np.ndarray]
         for iu, t in enumerate(trains):
             assert len(t)>0
@@ -230,14 +230,15 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
     # Preformat
     U=list(U)
-    assert np.all(np.isin(U, get_units(dp))), f'Units {npa(U)[~np.isin(U, get_units(dp))]} not found in dataset!'
     assert len(U)>=2
     if U[0]==U[1]: U=[U[0]] # Handling autocorrelograms
-    same_ds=assert_same_dataset(U) if assert_multi(dp) else False
     U_=U.copy()
-    for iu,u in enumerate(U_):
-        (dp1, U_[iu]) = get_source_dp_u(dp, u) if same_ds else (dp, u)
-    dp=dp1;del dp1
+    if trains is None:
+        assert np.all(np.isin(U, get_units(dp))), f'Units {npa(U)[~np.isin(U, get_units(dp))]} not found in dataset!'
+        same_ds=assert_same_dataset(U) if assert_multi(dp) else False
+        for iu,u in enumerate(U_):
+            (dp1, U_[iu]) = get_source_dp_u(dp, u) if same_ds else (dp, u)
+        dp=dp1;del dp1
     sortedU=U_.copy()
     if trains is not None:
         assert len(U)==len(trains), 'You must feed as many trains as units!'
@@ -274,11 +275,15 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
             crosscorrelograms=np.zeros((len(U), len(U), crosscorrelograms.shape[2]))
         if normalize in ['Hertz', 'Pearson', 'zscore']:
             for i1,u1 in enumerate(sortedU):
-                Nspikes1=len(trn(dp, u1, verbose=False, periods=periods))
-                #imfr1=np.mean(1000./isi(dp, u1)[isi(dp, u1)>0])
+                if trains is None:
+                    Nspikes1=len(trn(dp, u1, verbose=False, periods=periods))
+                else:
+                    Nspikes1=len(trains[i1]) # trains and sortedU are both sorted
                 for i2,u2 in enumerate(sortedU):
-                    Nspikes2=len(trn(dp, u2, verbose=False, periods=periods))
-                    #imfr2=np.mean(1000./isi(dp, u2)[isi(dp, u2)>0])
+                    if trains is None:
+                        Nspikes2=len(trn(dp, u2, verbose=False, periods=periods))
+                    else:
+                        Nspikes2=len(trains[i2]) # trains and sortedU are both sorted
                     arr=crosscorrelograms[i1,i2,:]
                     if normalize == 'Hertz':
                         crosscorrelograms[i1,i2,:]=arr*1./(Nspikes1*bin_size*1./1000)
@@ -305,7 +310,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
     return sortedC
 
-def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=True, verbose=False, periods='all', again=False):
+def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz',
+        ret=True, sav=True, verbose=False, periods='all', again=False, train=None):
     '''
     dp,
     u,
@@ -339,7 +345,8 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz', ret=True, sav=Tr
       returns numpy array (win_size/bin_size)
       '''
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
-    return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, verbose, periods, again)[0,0,:]
+    if train is not None: train = [train]
+    return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, verbose, periods, again, trains=train)[0,0,:]
 
 def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
             min_sec = 180, again = False, first_n_minutes = 20,
@@ -1693,7 +1700,7 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
     consisting of the fraction of timeseries in trains
     having a timestamp occurring within 'sync_win' ms of each t1 time stamp.
         Denominator - running total N of cells firing, handles drift
-        Numerator - N of cells firing withing the predefined synchorny window
+        Numerator - N of cells firing withing the predefined synchrony window
 
     Parameters:
     - t1: np array, time series in SAMPLES - MUST BE INTEGERS
@@ -1736,6 +1743,7 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
     N_pop_firing[-1]=N_pop_firing[-2]
     # no division by 0 allowed (reflects that cases where no one fired do not count)
     N_pop_firing[N_pop_firing==0]=np.nan
+
     return pop_sync/N_pop_firing
 
 def fraction_pop_sync(dp, u1, U, sync_win=2, b=1, sd=1000, th=0.02, again=False,

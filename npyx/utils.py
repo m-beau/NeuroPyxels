@@ -359,7 +359,7 @@ def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
     if sd==0: sd=1
     return (arr-mn)*1./sd
 
-def smooth(arr, method='gaussian', sd=5, a=5, frac=0.06, it=0):
+def smooth(arr, method='gaussian_causal', sd=5, a=5, frac=0.06, it=0):
     '''
     Smoothes a 1D array or a 2D array along axis 1
     Parameters:
@@ -681,17 +681,18 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     return timeseries if usage==1 else timeseries[1]
 
 
-def align_timeseries_interpol(timeseries, sync_signals, fs=None):
+def  align_timeseries_interpol(timeseries, sync_signals, fs=None):
     '''
     Align a list of N timeseries in the temporal reference frame of the first timeserie.
 
     Assumes that the drift is going to be linear, it is interpolated for times far from sync signals
     (sync_signal1 = a * sync_signal0 + b).
 
-    timeseries: list of np arrays (len N), timeseries to align. In samples to ensure accurate alignment
-    sync_signals: list of np arrays (len N), sync signals respective to timeseries. In samples to ensure accurate alignment
+    Parameters:
+    - timeseries: list[array[int]], list of np arrays (len N), timeseries to align. In SAMPLES to ensure accurate alignment
+    - sync_signals: list[array[int]], list of np arrays (len N), sync signals respective to timeseries. In SAMPLES to ensure accurate alignment
     fs: float or list of floats (len N), sampling frequencies of time series.
-        fs is optional (only to get drift and offset in seconds).
+        fs is optional (only to print drift and offset in seconds).
 
     returns:
         - timeseries: list of np arrays (len N, in samples), timeries aligned in temporal reference frame of timeseries[0]
@@ -705,10 +706,10 @@ def align_timeseries_interpol(timeseries, sync_signals, fs=None):
         else:fs=[fs]*len(timeseries)
     for tsi, ts in enumerate(timeseries):
         assert np.all(ts.astype(int)==ts), 'Timeseries need to be integers, in samples acquired at fs sampling rate!'
-        timeseries[tsi]=ts.astype(int)
+        timeseries[tsi]=ts.astype(np.int64)
     for tsi, ts in enumerate(sync_signals):
         assert np.all(ts.astype(int)==ts), 'Sync signals need to be integers, in samples acquired at fs sampling rate!'
-        sync_signals[tsi]=ts.astype(int)
+        sync_signals[tsi]=ts.astype(np.int64)
 
     # Align
     ref_sync=sync_signals[0]
@@ -719,7 +720,7 @@ def align_timeseries_interpol(timeseries, sync_signals, fs=None):
             drift=round(abs(a*fs[i]/fs[0]-1)*3600*1000,2)
             offset=round(b/fs[0],2)
             print(f'Drift (assumed linear) of {drift}ms/h, \noffset of {offset}s between time series 1 and {i+2}.\n')
-        timeseries[i+1]=(a*ts+b).astype(int)
+        timeseries[i+1]=np.round(a*ts+b, 0).astype(np.int64)
 
     return timeseries
 

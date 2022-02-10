@@ -346,7 +346,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
     '''
     dp = Path(dp)
     if assert_multi(dp):
-        dp=get_ds_table(dp)['dp'][0]
+        dp=Path(get_ds_table(dp)['dp'][0])
         print(f'Loading npix sync channel from a merged dataset - assuming temporal reference frame of dataset 0:\n{dp}')
 
     assert filt_key in ['highpass', 'lowpass']
@@ -360,7 +360,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
     srate = meta[filt_key]['sampling_rate'] if unit=='seconds' else 1
 
     if meta['acquisition_software']=='OpenEphys':
-        raise('OpenEphys sync channel loading not implemented yet.')
+        raise('OpenEphys sync channel loading not implemented yet - manually load ./Neuropix-PXI-100.0/TTL_1/timestamps.npy.')
         filt_id = 0 if filt_key=='highpass' else 1
         timestamps = np.load(dp/f'events/Neuropix-PXI-100.{filt_id}/TTL_1/timestamps.npy')
 
@@ -381,7 +381,12 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
                         print(f'Sync channel onsets extracted from {filt_key} ({filt_suffix_loaded}) file found and loaded.')
                         file_i = ale(file[-15])
                         onsets[file_i]=np.load(sync_dp/file)/srate
-                        offsets[file_i]=np.load(sync_dp/(file[:-13]+'f'+file[-12:]))/srate
+                elif file.endswith("of_samples.npy"):
+                    filt_suffix_loaded=file.split('.')[-2][:2]
+                    if filt_suffix_loaded==filt_suffix: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
+                        print(f'Sync channel offsets extracted from {filt_key} ({filt_suffix_loaded}) file found and loaded.')
+                        file_i = ale(file[-15])
+                        offsets[file_i]=np.load(sync_dp/file)/srate
             if any(onsets):
                 # else, might be that sync_dp is empty
                 return onsets, offsets

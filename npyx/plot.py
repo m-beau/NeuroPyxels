@@ -72,7 +72,6 @@ def save_mpl_fig(fig, figname, saveDir, _format):
     #     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     #     output, error = process.communicate()
 
-
 def mplshow(fig):
 
     # create a dummy figure and use its
@@ -452,7 +451,7 @@ def set_ax_size(ax,w,h):
 
 def hist_MB(arr, a=None, b=None, s=None,
             title='Histogram', xlabel='', ylabel='',
-            ax=None, color=None, figsize=None, xlim=None,
+            ax=None, color=None, alpha=1, figsize=None, xlim=None,
             saveFig=False, saveDir='', _format='pdf'):
     if a is None: a=np.min(arr)
     if b is None: b=np.max(arr)
@@ -464,7 +463,7 @@ def hist_MB(arr, a=None, b=None, s=None,
         (fig, ax) = plt.subplots()
     else:
         fig, ax = ax.get_figure(), ax
-    ax.bar(x=x, height=y, width=s, color=color, edgecolor='k')
+    ax.bar(x=x, height=y, width=s, color=color, edgecolor='k', alpha=alpha)
     ax.set_title(title)
     ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Binsize:{}'.format(s))
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
@@ -473,6 +472,7 @@ def hist_MB(arr, a=None, b=None, s=None,
     fig,ax=mplp(fig, ax, xlim=xlim, figsize=figsize)
 
     if saveFig: save_mpl_fig(fig, title, saveDir, _format)
+      
     return fig
 
 
@@ -579,9 +579,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
                   wvf_batch_size=wvf_batch_size, ignore_nwvf=True, spike_ids = None,
                   save=True, verbose=False, again=again,
                   whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
-                  nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
-                  use_old=False, parallel=False,
-                  memorysafe=False, fast = False )[1]
+                  nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub)[1]
     assert waveforms.shape[0]!=0,'No waveforms were found in the provided periods!'
     assert waveforms.shape[1:]==(t_waveforms_s, cm.shape[0])
     tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
@@ -708,6 +706,31 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     if saveData:
         np.save(Path(saveDir, title+'.npy'), waveforms)
 
+    return fig
+
+def quickplot_n_waves(w, title, peak_channel, nchans = 10, fig=None):
+    "w is a (n_samples, n_channels) array"
+    if peak_channel is None:
+        pk = np.argmax(np.ptp(w, axis=0))
+    else:
+        pk = peak_channel
+    ylim = [np.min(w[:,pk])-50, np.max(w[:,pk])+50]
+    if fig is None: fig = plt.figure(figsize=(10, 14))
+    chans = np.arange(pk-nchans//2, pk+nchans//2)
+    for i in range(nchans):
+        ax = plt.subplot(nchans//2, 2, i+1) # will retrieve axes if alrady exists
+        if chans[i] == pk:
+            ax.spines['right'].set_color('red')
+            ax.spines['left'].set_color('red')
+            ax.spines['top'].set_color('red')
+            ax.spines['bottom'].set_color('red')
+        ax.text(0.05, 0.7, f'{chans[i]}', fontsize=8, transform = ax.transAxes)
+        ax.plot(np.arange(-w.shape[0]//2/30, w.shape[0]//2/30, 1/30), w[:,chans[i]], alpha=0.5, lw=2)
+        ax.set_ylim(ylim)
+        if i%2==1: ax.set_yticklabels([])
+        if i<nchans-2: ax.set_xticklabels([])
+    fig.suptitle(title)
+    
     return fig
 
 def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), filt_key='highpass',

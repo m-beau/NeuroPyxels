@@ -250,7 +250,11 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
         - max_allowed_amplitude: float, maximum amplitude in uV (peak to trough) that a spike average can have to be considered (above, must be artefactual)
 
     Returns:
-        waveform:            numpy array of shape (t_waveforms)
+        - peak_dsmatched_waveform: (n_samples,) array (t_waveforms samples) storing the peak channel waveform
+        - dsmatched_waveform: (n_samples, n_channels) array storing the drift-shift-matched waveform across channels (384 for Neuropixels 1.0)
+        - spike_ids: (n_spikes,) array of absolute ids (w/r all spikes in recording)
+                     of spikes subset selected to compute the final drift-shift-matched waveform
+        - peak_channel: (1,) array storing the channel used to select the subset of waveforms during drift matching (de facto, peak channel)
 
     """
 

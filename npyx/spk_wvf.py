@@ -185,23 +185,33 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
                 save=True, verbose=False, again=False,
                 whiten=False,  hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
                 subsample_spikes = 2, peakchan_allowed_range=10,
-                use_average_peakchan = False, max_allowed_amplitude = 1800,
-                n_waves_to_average=1000, plot_debug=False, do_shift_match=True):
+                use_average_peakchan = False, max_allowed_amplitude = 1800, max_allowed_shift=3,
+                n_waves_to_average=5000, plot_debug=False, do_shift_match=True):
     """
     ********
     Extract the drift and shift matched mean waveforms of the specified unit.
     Drift and shift matching consists of two steps:
 
+    First: load all waveforms, average them 10 by 10 = 'spike batches'
+    (else, they would be too noisy to work with. Assumption: 10 consecutive waveforms have the same 'drift state')
+
     Drift matching:
-        The algorithm first selects all the waveforms that are registered
-        on the channel with the highest median amplitude. From the waveforms on
-        this channel, the waves that have the highest amplitude (diff between neg
-        and positive peaks) is selected.
+        - Z-drift-matching: sub-select spike batches peaking on same peak channel (modal channel)
+        - XY-drift-marching: sub-select n_waves_to_average/10 spikes batches
+          with the highest amplitude on this peak channel
+          (up to 99th percentile, not highest amplitude)
+        - Exclude batches with amplitude higher than max_allowed_amplitude uV (gets rid of potential artefacts)
 
     Shift matching:
-        These waves with the highest amplitudes are then aligned in time to
-        match the negative peaks.
+        - Define a template from the 5 drift-matched batches with the highest amplitude
+        - Compute crosscorrelation between each batch and template
+        - Re-align each batch to the template accordingly to peaking crosscorrelation
+        - Exclude batches which were required to shift by more than +/-max_allowed_shift samples
+          (naturally gets rid of
+          - completely off batches - there is probably something wrong with them
+          - noisy batches - which do not match the template well enough for a match to be found around 0
 
+    To diagnose issues: set **plot_debug=True** (and again=true of course), to plot the distributions of peak channel, amplitudes and shifts
 
     Currently only supports passing a single unit as input, hence
     prints error message if 'spike_ids = single_slice' if passed.
@@ -356,7 +366,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
     # shift waves using simple negative peak matching
     recenter_spikes = False
     if do_shift_match:
-        drift_shift_matched_batches = shift_match(drift_matched_batches, peak_channel, 3, recenter_spikes, plot_debug)
+        drift_shift_matched_batches = shift_match(drift_matched_batches, peak_channel, max_allowed_shift, recenter_spikes, plot_debug)
     else:
         drift_shift_matched_batches = drift_matched_batches
     # Get the mean of the drift and shift matched waves

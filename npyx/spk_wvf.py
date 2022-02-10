@@ -260,7 +260,6 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
         - spike_ids: (n_spikes,) array of absolute ids (w/r all spikes in recording)
                      of spikes subset selected to compute the final drift-shift-matched waveform
         - peak_channel: (1,) array storing the channel used to select the subset of waveforms during drift matching (de facto, peak channel)
-
     """
 
     dp = Path(dp)

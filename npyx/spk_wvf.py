@@ -7,6 +7,7 @@
 import os
 import os.path as op; opj=op.join
 from pathlib import Path
+from tqdm.notebook import tqdm
 
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
@@ -14,7 +15,9 @@ num_cores = multiprocessing.cpu_count()
 import numpy as np
 from math import ceil
 
-from npyx.utils import npa, split, n_largest_samples
+import matplotlib.pyplot as plt
+
+from npyx.utils import npa, split, xcorr_1d_loop
 from npyx.io import _pad, read_metadata, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 from npyx.gl import get_units, get_npyx_memory
 
@@ -143,14 +146,17 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, periods='regular', spi
 
     # Iterate over waveforms
     waveforms = np.zeros((n_spikes, t_waveforms, n_channels_rec), dtype=np.float32)
+    print(f'Loading waveforms of unit {u} ({n_spikes}):')
     with open(dat_path, "rb") as f:
         for i,t1 in enumerate(waveforms_t1):
+            if i%(n_spikes//10)==0: print(f'{round((i/n_spikes)*100)}%...', end=' ')
             f.seek(t1, 0) # 0 for absolute file positioning
             wave=f.read(n_channels_dat*t_waveforms*item_size)
             wave=np.frombuffer(wave, dtype=dtype).reshape((t_waveforms,n_channels_dat))
             wave = wave-np.median(wave, axis = 0)[np.newaxis,:] # center the waveforms on 0
             # get rid of sync channel
             waveforms[i,:,:] = wave[:,:-1] if meta['acquisition_software']=='SpikeGLX' else wave
+    print('\n')
 
     # Preprocess waveforms
     if hpfilt|med_sub|whiten:
@@ -174,29 +180,38 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, periods='regular', spi
 
     return  waveforms.astype(np.float32)
 
-def wvf_dsmatch(dp, u, n_waveforms=100,
-                  t_waveforms=82, periods='regular',
-                  wvf_batch_size=10, ignore_nwvf=True,med_sub = False, spike_ids = None,
-                  save=True, verbose=False, again=False,
-                  whiten=False,  hpfilt=False, hpfiltf=300,
-                  nRangeWhiten=None, nRangeMedSub=None,
-                  use_old=False, parallel=False,
-                  memorysafe=False, sample_spikes = 2 ):
+def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
+                wvf_batch_size=10, ignore_nwvf=True, med_sub = False, spike_ids = None,
+                save=True, verbose=False, again=False,
+                whiten=False,  hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
+                subsample_spikes = 2, peakchan_allowed_range=10,
+                use_average_peakchan = False, max_allowed_amplitude = 1800, max_allowed_shift=3,
+                n_waves_to_average=5000, plot_debug=False, do_shift_match=True):
     """
     ********
     Extract the drift and shift matched mean waveforms of the specified unit.
     Drift and shift matching consists of two steps:
 
+    First: load all waveforms, average them 10 by 10 = 'spike batches'
+    (else, they would be too noisy to work with. Assumption: 10 consecutive waveforms have the same 'drift state')
+
     Drift matching:
-        The algorithm first selects all the waveforms that are registered
-        on the channel with the highest median amplitude. From the waveforms on
-        this channel, the waves that have the highest amplitude (diff between neg
-        and positive peaks) is selected.
+        - Z-drift-matching: sub-select spike batches peaking on same peak channel (modal channel)
+        - XY-drift-marching: sub-select n_waves_to_average/10 spikes batches
+          with the highest amplitude on this peak channel
+          (up to 99th percentile, not highest amplitude)
+        - Exclude batches with amplitude higher than max_allowed_amplitude uV (gets rid of potential artefacts)
 
     Shift matching:
-        These waves with the highest amplitudes are then aligned in time to
-        match the negative peaks.
+        - Define a template from the 5 drift-matched batches with the highest amplitude
+        - Compute crosscorrelation between each batch and template
+        - Re-align each batch to the template accordingly to peaking crosscorrelation
+        - Exclude batches which were required to shift by more than +/-max_allowed_shift samples
+          (naturally gets rid of
+          - completely off batches - there is probably something wrong with them
+          - noisy batches - which do not match the template well enough for a match to be found around 0
 
+    To diagnose issues: set **plot_debug=True** (and again=true of course), to plot the distributions of peak channel, amplitudes and shifts
 
     Currently only supports passing a single unit as input, hence
     prints error message if 'spike_ids = single_slice' if passed.
@@ -228,15 +243,23 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
         - nRangeMedSub:       int, number of channels to use to compute the local median. | Default None
         - ignore_ks_chanfilt: bool, whether to ignore kilosort channel filtering
                                     (if False, output shape will always be n_waveforms x t_waveforms x 384) | Default False
-        - use_old:            bool, whether to use phy 1 implementation of waveform loading. | Default False
-        - loop:               bool, whether to use a loop to iterate over waveforms
-                                    instead of masking of the whole memory-mapped binary file to eaxtract waveforms. | Default True
-                                    Looping is faster, especially if parallel is True.
-        - parallel:           bool, if loop is True, whether to use parallel processing to go faster
-                                    (depends on number of CPU cores). | Default False
+        - subsample_spikes:   int, by how much spikes should be subsampled (default 2 - 10 spikes used, 10 skipped, 10 used...)
+        - peakchan_allowed_range: int (channel id), maximum allowed distance between original pek channel and ds-matched drift channel
+        - use_average_peakchan: bool, if True simply use the channel with highest average amplitude across spikes as peak channel
+                                       instead of using the channel where the most spikes peak on
+        - max_allowed_amplitude: float, maximum amplitude in uV (peak to trough) that a spike average can have to be considered (above, must be artefactual)
+        - max_allowed_shift: int (samples), maximum allowed temporal shift during shift-matching (see Shift-matching explanation above)
+        - n_waves_to_average: int, maximum number of waveforms averaged together (5000 waveforms = 500 batches)
+        - plot_debug: bool, whether to plot informative histograms displaying the ditribution of peak channels (Z drift matching),
+                      amplitudes on this peak channel (XY drift matching) and shifts (shift matching)
+        - do_shift_match: bool, whether to perform shift matching
 
     Returns:
-        waveform:            numpy array of shape (t_waveforms)
+        - peak_dsmatched_waveform: (n_samples,) array (t_waveforms samples) storing the peak channel waveform
+        - dsmatched_waveform: (n_samples, n_channels) array storing the drift-shift-matched waveform across channels (384 for Neuropixels 1.0)
+        - spike_ids: (n_spikes,) array of absolute ids (w/r all spikes in recording)
+                     of spikes subset selected to compute the final drift-shift-matched waveform
+        - peak_channel: (1,) array storing the channel used to select the subset of waveforms during drift matching (de facto, peak channel)
 
     """
 
@@ -257,330 +280,218 @@ def wvf_dsmatch(dp, u, n_waveforms=100,
         if verbose: print(f"File {fn} found in routines memory.")
         return np.load(Path(dprm,fn)),np.load(Path(dprm,fn_all)),np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
 
-    # Load the spike clusters file
-    spike_clusters= np.load(Path(dp, 'spike_clusters.npy')).flatten()
+    # Number of waveforms per batch used to drift-shift matching
+    # (need to average to denoise waveforms. Assuming same drift state for 10 consec waveforms.)
+    dsmatch_wvf_batch_size = 10
 
-    # Get the spikes ids for the current unit
-    spike_cluster_unit = np.nonzero(spike_clusters == u)[0]
+    ## Extract spike ids so we can extract consecutive waveforms
+    spike_ids_split_all = split(ids(dp, u), dsmatch_wvf_batch_size, return_last = False).astype(int)
+    spike_ids_split = spike_ids_split_all[::subsample_spikes]
+    spike_ids_split_indices = np.arange(0,spike_ids_split.shape[0],1)
 
-    # Reshape the spike ids so we can extract consecutive waves
-    #spike_ids_split = reshape_ids_to(spike_clusters, u, size = 10)
-    spike_ids_split_all = split(spike_cluster_unit, 10, return_last = False).astype(int)
-
-    spike_ids_split = spike_ids_split_all[::sample_spikes]
-    chans_counts = int(100/sample_spikes)
-    largest_n = chans_counts
-
-    peak_chan_split = np.zeros((spike_ids_split.shape[0], 2),dtype='float32')
-
-    # Insert an extra column to the existing matrix
-    # so we can track which spike it belongs to
-    peak_chan_split_indices = np.insert(peak_chan_split,0,
-                                    np.arange(0,peak_chan_split.shape[0],1),
-                                    axis = 1)
-
-    # Extract the waveforms using the wvf function in blocks of 10.
+    ## Extract the waveforms using the wvf function in blocks of 10 (dsmatch_wvf_batch_size).
     # After waves have been extracted, put the index of the channel with the
     # max amplitude as well as the max amplitude into the peak_chan_split array
-
     spike_ids_split = spike_ids_split.flatten()
     raw_waves = wvf(dp, u = None, n_waveforms= 100, t_waveforms = t_waveforms,
-                            periods =None ,  spike_ids =spike_ids_split,
-                            wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
-                            save=save , verbose = verbose,  again=True, whiten = whiten,
-                            hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                            nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True)
-    raw_waves = raw_waves.reshape(peak_chan_split.shape[0], 10, 82, -1)
-    mean_times = np.mean(raw_waves, axis = 1)
-
-    for no_per_ten in np.arange(mean_times.shape[0]):
-        peak_chan_split_indices[no_per_ten,1:] = max_amp_consecutive_peaks(mean_times[no_per_ten])
-    spike_ids_split = spike_ids_split.reshape(-1,10)
-    no_chans = raw_waves.shape[-1]
-
-#    if fast:
-#        spike_ids_split = spike_ids_split.flatten()
-#        raw_waves = wvf(dp, u = None, n_waveforms= 100, t_waveforms = t_waveforms,
-#                                periods =None ,  spike_ids =spike_ids_split,
-#                                wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
-#                                save=save , verbose = verbose,  again=True, whiten = whiten,
-#                                hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-#                                nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-#                                use_old=use_old, loop=False, parallel=parallel,
-#                                memorysafe=memorysafe)
-#        raw_waves = raw_waves.reshape(peak_chan_split.shape[0], 10, 82, -1)
-#        mean_times = np.mean(raw_waves, axis = 1)
-#
-#        for no_per_ten in np.arange(mean_times.shape[0]):
-#            peak_chan_split_indices[no_per_ten,1:] = max_amp_consecutive_peaks(mean_times[no_per_ten])
-#        spike_ids_split = spike_ids_split.reshape(-1,10)
-#        no_chans = raw_waves.shape[-1]
-#    else:
-#        for idx, idx_spike in enumerate(spike_ids_split):
-#
-#            raw_waves = wvf(dp, u = None, n_waveforms= 100, t_waveforms = t_waveforms,
-#                                periods =None ,  spike_ids =idx_spike,
-#                                wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
-#                                save=save , verbose = verbose,  again=True, whiten = whiten,med_sub=med_sub,
-#                                hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-#                                nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-#                                use_old=use_old, loop=True, parallel=parallel,
-#                                memorysafe=memorysafe)
-#            mean_times = np.mean(raw_waves, axis = 0)
-#            peak_chan_split_indices[idx,1:] = max_amp_consecutive_peaks(mean_times)
-
-#        no_chans = raw_waves.shape[-1]
-    # find the 10long vecotrs where teh peak channel is the most common one
-    # sum up the values of these 10 loong blocks
-
-#    breakpoint()
-
-    # get the slices of tens where the peak channel was the overall most likley peak channel
-    # take these waves and extract them again so they can be averaged together
-
-    # count the frequncy of each channel to get which channels were the most active overall
-
-    # chans,count  = np.unique(peak_chan_split[:,0], return_counts = True)
-    all_chan_peaks = peak_chan_split_indices[:,1].astype(np.int32)
-#    chans,count  = np.unique(peak_chan_split_indices[:,1].astype(np.int32), return_counts = True)
-    chans,count  = np.unique(all_chan_peaks, return_counts = True)
-
-    more_than_100_chans = chans[count>chans_counts]
-
-    # Find the median amplitude channel
-    median_chans= []
-    for current_chan in more_than_100_chans:
-        current_chan_distr = peak_chan_split_indices[peak_chan_split_indices[:,1] == current_chan][:,2]
-        median_chans.append(np.median(current_chan_distr))
-#        median_chans.append(np.max(current_chan_distr))
-
-    # Find the channel with the highest median from all channels
-    median_common_chan =int(more_than_100_chans[np.argmax(median_chans)])
-
-#    median_common_chan = 123
-#    print('peak chan set at 123!')
-    # So we have the channel that has the highest median of amplitudes.
-    # Now we pick out the blocks of 10 spikes that were on this channel
-    median_chan_splits = peak_chan_split_indices[peak_chan_split_indices[:,1] == median_common_chan]
-
-    # in some cases there are Kilosort artefacts, where a very large spike
-    # might be included in the here
-    # so we filter out the batches, where the spike is larger than 1000
-
-    median_chan_splits = median_chan_splits[median_chan_splits[:,2] <1800]
-
-    # check if the median_chan_splits matrix is large enough for our needs
-    if median_chan_splits.shape[0] < largest_n:
-        largest_n = median_chan_splits.shape[0]
-
-    # find the 10 rows where the amplitudue is maxed
-    median_chan_max_amp_indices = n_largest_samples(median_chan_splits[:,2],
-                                                    largest_n=largest_n)
-
-    # find the slices with the largest amplitude of the waveform
-    # this will tell us where the cell was closest to the specific peak channel
-    # to get the spike_ids of the section with the highest amplitude difference
-    median_max_spike_ids = spike_ids_split[median_chan_splits[median_chan_max_amp_indices][:,0].astype('int16')]
-
-
-    # now we have the max amplitude spikes on the best single channel
-    # extract the waves from this channel
-
-    # initialise array to store data
-    closest_waves_median_max= np.zeros((len(median_max_spike_ids),82))
-    all_closest_waves = np.zeros((len(median_max_spike_ids),82, no_chans))
-
-    extract_spk_id = median_max_spike_ids.flatten()
-    raw_waves = wvf(dp, u = None, n_waveforms= 100, t_waveforms = 82,
-                    periods =None,  spike_ids =extract_spk_id,
+                    periods =None ,  spike_ids =spike_ids_split,
                     wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
-                    save=save, verbose = verbose,  again=True, whiten = whiten,
+                    save=save , verbose = verbose,  again=True, whiten = whiten,
                     hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
                     nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True)
-    raw_waves = raw_waves.reshape(median_max_spike_ids.shape[0],10, 82, no_chans )
-    closest_waves_median_max = np.mean(raw_waves, axis = 1)[:,:,median_common_chan]
-    all_closest_waves= np.mean(raw_waves, axis=1)
-#    if fast:
-#        extract_spk_id = median_max_spike_ids.flatten()
-#        raw_waves = wvf(dp, u = None, n_waveforms= 100, t_waveforms = 82,
-#                        periods =None,  spike_ids =extract_spk_id,
-#                        wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
-#                        save=save, verbose = verbose,  again=True, whiten = whiten,
-#                        hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-#                        nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-#                        use_old=use_old, loop=False, parallel=parallel,
-#                        memorysafe=memorysafe)
-#        raw_waves = raw_waves.reshape(median_max_spike_ids.shape[0],10, 82, no_chans )
-#        closest_waves_median_max = np.mean(raw_waves, axis = 1)[:,:,median_common_chan]
-#        all_closest_waves= np.mean(raw_waves, axis=1)
-#    else:
-#        for slice_id, single_slice in enumerate(median_max_spike_ids):
-#            raw_waves = wvf(dp, u = None, n_waveforms= 100, t_waveforms = 82,
-#                        periods =None,  spike_ids =single_slice,
-#                        wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
-#                        save=save, verbose = verbose,  again=True, whiten = whiten,med_sub = med_sub,
-#                        hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-#                        nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
-#                        use_old=use_old, loop=True, parallel=parallel,
-#                        memorysafe=memorysafe)
-#
-#            closest_waves_median_max[slice_id] = np.mean(raw_waves, axis = 0)[:,median_common_chan]
-#            all_closest_waves[slice_id] = np.mean(raw_waves, axis=0)
+    spike_ids_split = spike_ids_split.reshape(-1,dsmatch_wvf_batch_size)
+    raw_waves = raw_waves.reshape(spike_ids_split.shape[0], dsmatch_wvf_batch_size, t_waveforms, -1)
+    mean_waves = np.mean(raw_waves, axis = 1)
+
+    ## Find peak channel (and store amplitude) of every batch
+    # only consider amplitudes on channels around original peak channel
+    original_peak_chan = get_peak_chan(dp, u)
+    c_left, c_right = original_peak_chan-peakchan_allowed_range, original_peak_chan+peakchan_allowed_range
+    # calculate amplitudes ("peak-to-peak"), but ONLY using 2ms (-30,30) in the middle
+    t1, t2 = max(0,mean_waves.shape[1]//2-30), min(mean_waves.shape[1]//2+30, mean_waves.shape[1])
+    amplitudes = np.ptp(mean_waves[:,t1:t2,c_left:c_right], axis=1)
+    batch_peak_channels = np.zeros(shape=(spike_ids_split_indices.shape[0], 3))
+    batch_peak_channels[:,0] = spike_ids_split_indices # store batch indices (batch = averaged 10 spikes)
+    batch_peak_channels[:,1] = c_left+np.argmax(amplitudes, axis = 1) # store peak channel of each batch
+    batch_peak_channels[:,2] = np.max(amplitudes, axis = 1) # store peak channel amplitude
+
+    # Filter out batches with too large amplitude (probably artefactual)
+    batch_peak_channels = batch_peak_channels[batch_peak_channels[:,2] < max_allowed_amplitude]
+
+    #### Z-drift matching ####
+    # subselect batches with same peak channel
+    if use_average_peakchan:
+        peak_channel = int(original_peak_chan)
+    else:
+        # use mode of peak channel distribution across spikes
+        chans, count = np.unique(batch_peak_channels[:,1], return_counts = True)
+        peak_channel = int(chans[np.argmax(count)])
+
+    if plot_debug:
+        fig = hist_MB(batch_peak_channels[:,1], a=peak_channel-20, b=peak_channel+20, s=1,
+        title=f'Z drift matching:\ndistribution of peak channel across spike batches\n({dsmatch_wvf_batch_size} spikes/batch - mode: chan {peak_channel})')
+        ylim = fig.get_axes()[0].get_ylim()
+        fig.get_axes()[0].plot([peak_channel,peak_channel], ylim, color='red', ls='--')
+        fig.get_axes()[0].set_ylim(ylim)
+
+    batch_peak_channels = batch_peak_channels[batch_peak_channels[:,1] == peak_channel]
+
+    #### X-Y-drift matching ####
+    # subselect batches with similar amplitude (i.e. similar distance to probe)
+    # and in particular, close to largest amplitude (close to probe, but not max to avoid artefacts)
+    # aim for 500 spikes (50 batches)
+    # should average enough, but still use a small subset of drift-matched spikes!
+    n_driftmatched_subset = n_waves_to_average//dsmatch_wvf_batch_size
+    batch_peak_channels = batch_peak_channels[np.argsort(batch_peak_channels[:,2])] # sort by amplitude
+
+    if plot_debug:
+        max_amp_hist = np.max(batch_peak_channels[:,2])
+        max_amp_hist += 10-max_amp_hist%10
+        nbatches_hist = batch_peak_channels.shape[0]
+        fig = hist_MB(batch_peak_channels[:,2], a=10, b=max_amp_hist, s=5, color='grey', alpha=0.7)
+
+    # if less than n_driftmatched_subset batches below 99th percentile,
+    # use all up to n_driftmatched_subset batches
+    prct_99_i = int(batch_peak_channels.shape[0]*0.99)
+    if prct_99_i<n_driftmatched_subset: 
+        batch_peak_channels = batch_peak_channels[0:n_driftmatched_subset]
+    else:
+        i_left = max(prct_99_i - n_driftmatched_subset, 0) # should never be negative given if statement, but precaution
+        batch_peak_channels = batch_peak_channels[i_left:prct_99_i]
+    drift_matched_spike_ids = np.sort(batch_peak_channels[:,0])
+
+    if plot_debug:
+        fig = hist_MB(batch_peak_channels[:,2], a=10, b=max_amp_hist, s=5, ax=fig.get_axes()[0], color='orange', alpha=0.7,
+        title=(f'XY drift matching:\ndistribution of amplitude on peak channel across spike batches\n'
+               f'({dsmatch_wvf_batch_size} spikes/batch - {batch_peak_channels.shape[0]}/{nbatches_hist} batches)'))
+
+
+    #### shift matching ####
+    # extract drift-matched raw waveforms
+    dsmatch_batch_ids = batch_peak_channels[:,0].astype(int)
+    drift_matched_waves = raw_waves[dsmatch_batch_ids]#.reshape(-1, t_waveforms, raw_waves.shape[-1])
+    drift_matched_batches = np.mean(drift_matched_waves, axis=1)
+
     # shift waves using simple negative peak matching
-    shifted_waves_median_max = shift_many_waves(closest_waves_median_max)
+    recenter_spikes = False
+    if do_shift_match:
+        drift_shift_matched_batches = shift_match(drift_matched_batches, peak_channel, max_allowed_shift, recenter_spikes, plot_debug)
+    else:
+        drift_shift_matched_batches = drift_matched_batches
     # Get the mean of the drift and shift matched waves
-    mean_shifted_waves = np.mean(shifted_waves_median_max, axis = 0)
-
-    # shift waves for all channels
-    shifted_all_waves = np.zeros((len(median_max_spike_ids),82,no_chans ))
-    # need to make sure that for each wave the shifts along channels are same
-    # so find the shift needed on peak chan, apply to all waves
-
-    need_shift = shift_neg_peak(all_closest_waves[:,:,median_common_chan])
-    for chani in range(all_closest_waves.shape[2]):
-        shifted_all_waves[:,:,chani] = shift_many_waves(all_closest_waves[:,:,chani], need_shift)
-#    breakpoint()
-    #for chani in range(all_closest_waves.shape[2]):
-       # shifted_all_waves[:,:,chani] = shift_many_waves(all_closest_waves[:,:,chani])
-
-    mean_shift_all = np.mean(shifted_all_waves, axis = 0)
-    # save the drift and shift mean eave
+    drift_shift_matched_mean = np.mean(drift_shift_matched_batches, axis=0)
+    drift_shift_matched_mean_peak = drift_shift_matched_mean[:,peak_channel]
+    # recenter spike absolute maximum
+    shift = (np.argmax(np.abs(drift_shift_matched_mean_peak)) - drift_shift_matched_mean_peak.shape[0]//2)%drift_shift_matched_mean_peak.shape[0]
+    drift_shift_matched_mean = np.concatenate([drift_shift_matched_mean[shift:], drift_shift_matched_mean[:shift]], axis=0)
+    drift_shift_matched_mean_peak = np.concatenate([drift_shift_matched_mean_peak[shift:], drift_shift_matched_mean_peak[:shift]], axis=0)
 
     if save:
-        np.save(Path(dprm,fn), mean_shifted_waves)
-        np.save(Path(dprm,fn_all), mean_shift_all)
-        np.save(Path(dprm,fn_spike_id), median_max_spike_ids)
-        np.save(Path(dprm, fn_peakchan),median_common_chan )
+        np.save(Path(dprm,fn), drift_shift_matched_mean_peak)
+        np.save(Path(dprm,fn_all), drift_shift_matched_mean)
+        np.save(Path(dprm,fn_spike_id), drift_matched_spike_ids)
+        np.save(Path(dprm, fn_peakchan), peak_channel)
 
+    if plot_debug:
+        print(f'Total averaged waveform batches ({dsmatch_wvf_batch_size}/batch) after drift-shift matching: {batch_peak_channels.shape[0]}')
+        fig = quickplot_n_waves(np.mean(mean_waves[np.random.randint(0, mean_waves.shape[0], batch_peak_channels.shape[0]),:,:], axis=0), '', peak_channel)
+        fig = quickplot_n_waves(np.mean(drift_matched_batches, axis=0), '', peak_channel, fig=fig)
+        fig = quickplot_n_waves(drift_shift_matched_mean, 'raw:blue\ndrift-matched:orange\ndrift-shift-matched:green', peak_channel, fig=fig)
+        #breakpoint()
 
-    return mean_shifted_waves, mean_shift_all, median_max_spike_ids, median_common_chan
+    return drift_shift_matched_mean_peak, drift_shift_matched_mean, drift_matched_spike_ids, peak_channel
 
-
-def max_amp_consecutive_peaks_break(mean_waves: np.array) -> tuple:
-
+def shift_match(waves, alignment_channel,
+                chan_range=2, recenter_spikes=False,
+                plot_debug=False, dynamic_template=False,
+                max_shift_allowed = 5):
     """
-    Takes all channels corresponding to a single wave as input.
-    Returns the maximum channel and the max amplitude.
-    Max amplitude is calculated by first finding the most negative peak,
-    then the most positive peak that happens in the time after the first neg
-    peak is also found.
-    This is in place to add an extra filter so we know the amplitudes we are
-    using happen in the 'correct' order.
+    Iterate through waveforms to align them to each other
+    by maximizing their convolution.
 
-    Input:
-        mean_waves -- np.arrray of waveforms
-    Return:
-        max_channel -- the channel where the consecuitive amplitude is maximised
-        max_amplitude -- value of the max amplitude
+    In order to have a time complexity O(n),
+    starts by aligning waves[1] to waves[0],
+    then waves[2] to mean(waves[[0], aligned waves[1]])...
+    So every wave will be aligned to the first wave.
+
+    When shifting a wave, fills the gap
+    with the bit clipped from the other end.
+
+    Parameters:
+        - waves: (n_waves, n_samples, n_channels,) array
+        - alignment_channel: channel to use to compute the convolution
+        - chan_range: int, range of channels around alignment channel used for template matching
+                      (3 corresponds to 6 channels, 5 to 10 etc)
+        - recenter_spikes: bool, whether to align the maximum of template to 0
+        - dynamic_template: bool, whether to update the template by averaging it with the aligned spike
+        - max_shift_allowed: int, maximum shift allowed (half window) - other waveforms are discarded (if need to shift more, they must be way too noisy)
+
+    Returns:
+        - shifted_waves: (n_waves, n_samples, n_channels,) array
     """
+    
 
-    truncated_waves = np.zeros_like(mean_waves.T)
-    loc_min_val = np.argmin(mean_waves,axis = 0)
+    # pick 5 waveforms of highest amplitude to initialize template
+    # concretely, sort waves array by amplitude and start with first wave
+    amplitudes = np.ptp(waves[:,:,alignment_channel], axis=1)
+    amplitudes_i = np.argsort(amplitudes, axis=0)
+    waves_sort = waves[amplitudes_i[::-1],:,:]
+    # use 10 waves of highest amplitude as template
+    # most arbitrary decision 0 but seems reasonable and empirically works
+    template = np.mean(waves_sort[:10,:,:], axis=0)
+    if recenter_spikes:
+        shift = (np.argmax(np.abs(template[:,alignment_channel])) - template.shape[0]//2)%template.shape[0]
+        if plot_debug:
+            plt.figure()
+            plt.plot(template[:,alignment_channel])
+        template = np.concatenate([template[shift:], template[:shift]], axis=0)# shift template to center maximum
+        if plot_debug: plt.plot(template[:,alignment_channel])
 
-    # truncate the waves so we can look at the amplitudes of the neg and next peak
-    for idx, row in enumerate(mean_waves.T):
-        truncated_waves[idx, loc_min_val[idx]:] = row[loc_min_val[idx]:]
-    truncated_waves = truncated_waves.T
-    breakpoint()
-    return [np.argmax(np.ptp(truncated_waves,axis=0)), np.max(np.ptp(truncated_waves,axis=0))]
+    # initialize array
+    aligned_waves = np.zeros(waves_sort.shape)
+    template = template[:,alignment_channel-chan_range:alignment_channel+chan_range] # defined across 10 closest channels
+    shifts = []
+    for i, w in enumerate(waves_sort):
+        w_closestchannels = w[:,alignment_channel-chan_range:alignment_channel+chan_range]
+        xcorr_w_template = xcorr_1d_loop(template, w_closestchannels)
+        # average xcorr across channels to find the optimal alignment
+        # using information from all channels around peak!
+        xcorr_max = np.argmax(np.mean(xcorr_w_template, axis=1))
+        shift = (xcorr_max-waves_sort.shape[1]//2)%waves_sort.shape[1]
+        relative_shift = (shift+waves_sort.shape[1]//2)%waves_sort.shape[1]-waves_sort.shape[1]//2
+        shifts.append(relative_shift)
+        realigned_w = np.concatenate([w[-shift:,:], w[:-shift,:]], axis=0)
+        if abs(relative_shift)>max_shift_allowed:
+            realigned_w=realigned_w*np.nan
 
+        # store realigned_wave in array
+        aligned_waves[i,:,:] = realigned_w
 
-def max_amp_consecutive_peaks(mean_waves: np.array) -> tuple:
+        # optionnally update template by averaging with realigned waveform
+        # didn't work very well - better to keep a relatively 'focused' template
+        if dynamic_template:
+            template = np.mean(np.stack(
+                            [template,
+                            realigned_w[:,alignment_channel-chan_range:alignment_channel+chan_range]],
+                            axis=2), axis=2)
 
-    """
-    Takes all channels corresponding to a single wave as input.
-    Returns the maximum channel and the max amplitude.
-    Max amplitude is calculated by first finding the most negative peak,
-    then the most positive peak that happens in the time after the first neg
-    peak is also found.
-    This is in place to add an extra filter so we know the amplitudes we are
-    using happen in the 'correct' order.
+    # discard nans (beyond max_shift_allowed) and re-sort waves properly
+    aligned_waves = aligned_waves[np.arange(aligned_waves.shape[0])[amplitudes_i[::-1]],:,:]
+    nan_m = np.isnan(aligned_waves[:,0,0])
+    aligned_waves = aligned_waves[~nan_m,:,:]
 
-    Input:
-        mean_waves -- np.arrray of waveforms
-    Return:
-        max_channel -- the channel where the consecuitive amplitude is maximised
-        max_amplitude -- value of the max amplitude
-    """
+    if plot_debug:
+        #fig = imshow_cbar(template.T)
+        a = np.max(np.abs(shifts))
+        a += 10-a%10
+        fig = hist_MB(shifts, s=1, a=-a, b=a, color='darkgreen', alpha=1,
+        title=(f'Shift matching:\ndistribution of shifts w/r template across spike batches'))
+        ylim = fig.get_axes()[0].get_ylim()
+        fig.get_axes()[0].plot([max_shift_allowed,max_shift_allowed], ylim, color='red', ls='--')
+        fig.get_axes()[0].plot([-max_shift_allowed,-max_shift_allowed], ylim, color='red', ls='--')
+        fig.get_axes()[0].set_ylim(ylim)
 
-    truncated_waves = np.zeros_like(mean_waves.T)
-
-    loc_min_val = np.argmin(mean_waves, axis = 0)
-#    # truncate the waves so we can look at the amplitudes of the neg and next peak
-#    for idx, row in enumerate(mean_waves.T):
-#        truncated_waves[idx, loc_min_val[idx]:] = row[loc_min_val[idx]:]
-#    truncated_waves = truncated_waves.T
-#    return [np.argmax(np.ptp(truncated_waves,axis=0)), np.max(np.ptp(truncated_waves,axis=0))]
-
-    # implement the option for also looking at the peaks before the most negative peak
-    # find the most positive peak before the negative peak
-    # for cases, where there is a triple peak this should improve the extraction
-    # where there is no first peak, this will just find some value near 0, hence will also work here
-
-    # first find the most negative peak
-    # look for the positive peak after this
-    # look for the positive peak before this
-
-    triple_peaks = np.min(mean_waves, axis=0)
-    for idx, row in enumerate(mean_waves.T):
-        # peak before the min value
-        before_peak = np.max(row[:loc_min_val[idx]], initial = 0)
-        after_peak = np.max(row[loc_min_val[idx]:], initial = 0)
-        triple_peaks[idx]  = np.abs(triple_peaks[idx]) + before_peak + after_peak
-#    breakpoint()
-#    return [np.argmax(triple_peaks), np.max(triple_peaks)]
-    return [np.argmax(np.ptp(mean_waves,axis=0)), np.max(np.ptp(mean_waves,axis=0))]
-
-
-def shift_many_waves(waves:np.array, *args) -> np.array:
-
-    """
-
-    Shift each wave in a matrix of n waves, so that the negative peak is aligned
-    for each single wave
-
-    Input:
-        waves -- Matrix of waves
-
-    Return:
-        np.array -- matrix with the same dimensions, but with each wave shifted
-
-    """
-
-    shifts_needed = shift_neg_peak(waves)
-    shifted_waves  = np.zeros_like((waves))
-
-    if len(args) !=0:
-        shifts_needed = args[0]
-
-    for i in range(waves.shape[0]):
-        current_shift = shifts_needed[i]
-        shifted_waves[i] = np.concatenate([waves[i,current_shift:], waves[i,:current_shift]])
-
-    return shifted_waves
-
-
-def shift_neg_peak(first_wvf : np.array) -> int:
-
-    """
-    Takes as an argument either a single wvf or a matrix of waves
-    returns an array with all the shifts needed to put each wave at 40
-
-    Input:
-        first_wave -- matrix or vector, containing many waves or a single wave
-
-    Return:
-        int/vector -- returns a single int or a vector with each element
-                        specifying the shift needed for the current wave
-
-    """
-
-    if len(first_wvf.shape) ==1:
-        first_wvf = first_wvf.reshape(1,-1)
-    first_neg_peak = np.argmin(first_wvf, axis = 1)
-
-    fourties =  np.repeat(40, repeats =first_neg_peak.shape[0] )
-    return first_neg_peak -fourties
+    return aligned_waves
 
 def get_pc(waveforms):
     wvf_m = np.mean(waveforms, axis=0)
@@ -835,3 +746,4 @@ def _excerpt_step(n_samples, n_excerpts=None, excerpt_size=None):
 # Recurrent imports
 from npyx.merger import assert_multi, get_ds_ids, get_source_dp_u
 from npyx.spk_t import ids
+from npyx.plot import hist_MB, imshow_cbar, quickplot_n_waves

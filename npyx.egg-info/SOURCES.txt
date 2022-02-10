@@ -7,6 +7,7 @@ npyx/circuitProphyler.py
 npyx/corr.py
 npyx/feat.py
 npyx/gl.py
+npyx/info.py
 npyx/io.py
 npyx/merger.py
 npyx/plot.py

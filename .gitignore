@@ -10,3 +10,4 @@ npyx.egg-info/
 dist/
 build/
 spk_wvf2.py
+.vscode/

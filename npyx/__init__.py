@@ -13,31 +13,27 @@ from .plot import *
 from .behav import *
 from .merger import *
 from .circuitProphyler import *
+from .feat import *
+from .h5 import *
 
 __doc__="""
 
 npyx submodules:
-    npyx.utils
-
-    npyx.io
-
-    npyx.gl
-
-    npyx.spk_t
-
-    npyx.spk_wvf
-
-    npyx.corr
-
-    npyx.plot
-
-    npyx.ml
-
-    npyx.behav
-
-    npyx.stats
+ .utils
+ .io
+ .gl
+ .spk_t
+ .spk_wvf
+ .corr
+ .stats
+ .plot
+ .behav
+ .merger
+ .circuitProphyler
+ .feat
+ .h5
 """
 
-__version__ = '2.2.0'
+__version__ = '2.2.1'
 
 print(f'npyx version {__version__} imported.')

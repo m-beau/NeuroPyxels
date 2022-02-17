@@ -708,14 +708,14 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
 
     return fig
 
-def quickplot_n_waves(w, title, peak_channel, nchans = 10, fig=None):
+def quickplot_n_waves(w, title, peak_channel, nchans = 20, fig=None):
     "w is a (n_samples, n_channels) array"
     if peak_channel is None:
         pk = np.argmax(np.ptp(w, axis=0))
     else:
         pk = peak_channel
     ylim = [np.min(w[:,pk])-50, np.max(w[:,pk])+50]
-    if fig is None: fig = plt.figure(figsize=(10, 14))
+    if fig is None: fig = plt.figure(figsize=(8, 14))
     chans = np.arange(pk-nchans//2, pk+nchans//2)
     for i in range(nchans):
         ax = plt.subplot(nchans//2, 2, i+1) # will retrieve axes if alrady exists
@@ -1739,10 +1739,43 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
 
     return fig
 
-def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', color=0, saveDir='~/Downloads', saveFig=True, verbose=False,
-             _format='pdf', periods='all', labels=True, title=None, ref_per=True, ylim=[0,0],
+def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
+             saveDir='~/Downloads', saveFig=True, _format='pdf', figsize=None, verbose=False,
+             color=0, labels=True, title=None, ref_per=True, ylim=[0,0],
              acg_mn=None, acg_std=None, again=False,
-             figsize=None, train=None):
+              train=None):
+    """
+    Parameters:
+        - dp: str, data path
+        - unit: float, unit index
+        - cbin: float, binsize (ms)
+        - cwin: float, full window size (ms)
+        - normalize: str in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'], unit of y axis
+        - periods: 'all' or [(t1,t2), (t3,t4)...], periods to use to compute CCG (in SECONDS)
+        
+
+        - saveDir: str, save directory for figure
+        - saveFig: bool, whether to dave Figure at saveDir
+        - _format: str, format to save fig (pdf, svg, eps, png, jpeg...)
+        - figsize: (float, float), figure size ((x, y) in inches)
+        - verbose: bool, if True prints more information
+
+        - color: string, self explanatory (can also use 0-5 as keys of npyx.utils.phyColorsDic)
+        - labels: bool, whether to plot axis labels/title
+        - title: str, figure title
+        - ref_per: bool, if True plot vertical lines highlighting 2ms refractory period
+
+        - ylim: [float, float], ylim for autocorrelograms in case as_grid is True
+        - acg_mn: float, optionally feed externally calculated mean to zscore the CCG
+        - acg_std: float, optionally feed externally calculated std to zscore the CCG
+
+        - again: bool, whether to recompute the CCG
+        - train: [array1, array2...], optional externally fed train to compute ACG (in samples, not seconds).
+                 If used, use any integers as 'units'.
+
+    Returns:
+        - fig: matplotlib figure object
+    """
     saveDir=op.expanduser(saveDir)
     if train is not None:
         bChs=None

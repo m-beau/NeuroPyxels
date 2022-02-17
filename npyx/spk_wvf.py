@@ -186,7 +186,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
                 whiten=False,  hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
                 subsample_spikes = 2, peakchan_allowed_range=10,
                 use_average_peakchan = False, max_allowed_amplitude = 1800, max_allowed_shift=3,
-                n_waves_to_average=5000, plot_debug=False, do_shift_match=True):
+                n_waves_to_average=5000, plot_debug=False, do_shift_match=True, n_waveforms_per_batch=10):
     """
     ********
     Extract the drift and shift matched mean waveforms of the specified unit.
@@ -253,6 +253,9 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
         - plot_debug: bool, whether to plot informative histograms displaying the ditribution of peak channels (Z drift matching),
                       amplitudes on this peak channel (XY drift matching) and shifts (shift matching)
         - do_shift_match: bool, whether to perform shift matching
+        - n_waveforms_per_batch: int, number of waveforms to use per batch for drift matching
+                                 (in an ideal world 1, but too noisy - we assume that
+                                  n_waveforms_per_batch consecutive waveforms have the same drift state)
 
     Returns:
         - peak_dsmatched_waveform: (n_samples,) array (t_waveforms samples) storing the peak channel waveform
@@ -277,7 +280,10 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
 
     if Path(dprm,fn).is_file() and (not again) and (spike_ids is None):
         if verbose: print(f"File {fn} found in routines memory.")
-        return np.load(Path(dprm,fn)),np.load(Path(dprm,fn_all)),np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
+        if plot_debug:
+            drift_shift_matched_mean = np.load(Path(dprm,fn_all))
+            fig = quickplot_n_waves(drift_shift_matched_mean, f'dsmatched_waveform {u}')
+        return np.load(Path(dprm,fn)),drift_shift_matched_mean,np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
 
     # Number of waveforms per batch used to drift-shift matching
     # (need to average to denoise waveforms. Assuming same drift state for 10 consec waveforms.)

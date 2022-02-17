@@ -220,7 +220,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
       - ret (bool - default False): if True, train returned by the routine.
       If False, by definition of the routine, drawn to global namespace.
       - sav (bool - default True): if True, by definition of the routine, saves the file in dp.
-      - trains: list of trains fed to the function (the U can be any ints/floats, but it still needs)
+      - trains: [array, array...]: list of trains fed to the function in SAMPLES (not seconds)
 
       returns numpy array (Nunits, Nunits, win_size/bin_size)
 
@@ -313,22 +313,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz',
         ret=True, sav=True, verbose=False, periods='all', again=False, train=None):
     '''
-    dp,
-    u,
-    bin_size,
-    win_size,
-    fs=30000,
-    symmetrize=True,
-    normalize=False,
-    normalize1=True,
-    ret=True,
-    sav=True,
-    verbose=False'''
-    u = u[0] if type(u)==list else u
-    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
-    '''
     ********
-    routine from routines_spikes
     computes autocorrelogram (1, window/bin_size) - int64, in Hertz
     ********
 
@@ -336,14 +321,18 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz',
      - u (int): unit index
      - win_size: size of binarized spike train bins, in milliseconds.
      - bin_size: size of autocorrelograms bins, in milliseconds.
-     - rec_len: length of the recording, in seconds. If not provided, time of the last spike.
      - fs: sampling frequency, in Hertz.
-     - ret (bool - default False): if True, train returned by the routine.
-      If False, by definition of the routine, drawn to global namespace.
-      - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
+     - normalize: ['Counts', 'Hertz', 'zscore']
+     - sav (bool - default True): if True, saves array to get_npyx_memory
+     - periods: [[t1,t2], [t3,t4...]], windows of time (in seconds) to use to comput acg
+     - again: bool, whether to recompute array rather than loading it from npyxMemory
+     - train: array (nspikes,), externally fed spike train (in SAMPLES, not seconds)
 
       returns numpy array (win_size/bin_size)
       '''
+    u = u[0] if type(u)==list else u
+    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
+
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
     if train is not None: train = [train]
     return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, verbose, periods, again, trains=train)[0,0,:]

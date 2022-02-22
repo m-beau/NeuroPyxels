@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: npyx
-Version: 2.2.0
+Version: 2.2.2
 Summary: Python routines dealing with Neuropixels data.
 Home-page: https://github.com/Npix-routines/NeuroPyxels
 Author: Maxime Beau
@@ -309,8 +309,8 @@ fig=plot_ccg(dp_merged,[10.0, 92.1, cbin=0.2, cwin=80]) # compute CCG between 2 
 ```
 
 PS - The spike times are aligned across datasets by modelling the drift between the clocks of the neuropixels headstages linearly: TTL probe 1 = a * TTL probe 1 + b (if a!=1, there is drift between the clocks), so spiketimes_probe2_aligned_to_probe1  = a * spiketimes_probe2 + b
-<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ttl1-ttl2_1.png.png" width="600"/>
-<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ttl1-ttl2_2.png.png" width="600"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ttl1-ttl2_1.png" width="600"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ttl1-ttl2_2.png" width="600"/>
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/error_dist.png" width="600"/>
 <br/>
 

@@ -731,7 +731,7 @@ class Prophyler:
                        )
                 fig.colorbar(sm, cax=axins)#, ticks=np.arange(edge_vmin, edge_vmax, 2))
                 axins.set_ylabel("z-score", labelpad=10, rotation=270, fontsize=30, fontweight='bold')
-                axins.set_yticklabels(npa(axins.get_yticks()).astype(int), fontsize=26, fontweight='bold')
+                axins.set_yticklabels(npa(axins.get_yticks()).astype(np.int64), fontsize=26, fontweight='bold')
 
         if draw_edges and edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
@@ -742,8 +742,8 @@ class Prophyler:
         ax.set_ylim(ylim) # flips the plot upside down
         ax.set_xlim([0,70])
         ax.tick_params(axis='both', reset=True, labelsize=12, top=0)
-        ax.set_yticklabels(npa(ax.get_yticks()).astype(int), fontsize=30, fontweight='bold', **hfont)
-        ax.set_xticklabels(ax.get_xticks().astype(int), fontsize=30, fontweight='bold', **hfont)
+        ax.set_yticklabels(npa(ax.get_yticks()).astype(np.int64), fontsize=30, fontweight='bold', **hfont)
+        ax.set_xticklabels(ax.get_xticks().astype(np.int64), fontsize=30, fontweight='bold', **hfont)
         ax2 = ax.twinx()
         ax2.set_ylabel('Channel #', fontsize=40, fontweight='bold', rotation=270, va='bottom', **hfont)
         ax2.set_ylim(ylim)

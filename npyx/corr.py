@@ -220,7 +220,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
       - ret (bool - default False): if True, train returned by the routine.
       If False, by definition of the routine, drawn to global namespace.
       - sav (bool - default True): if True, by definition of the routine, saves the file in dp.
-      - trains: [array, array...]: list of trains fed to the function in SAMPLES (not seconds)
+      - trains: [array, array...]: list of trains fed to the function in SAMPLES (not seconds).
+                (the U can be any ints/floats, but it is still necessary)
 
       returns numpy array (Nunits, Nunits, win_size/bin_size)
 
@@ -779,7 +780,7 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
     Parameters:
         - CCG: numpy array, crosscorrelogram in Counts
         - cbin: float, CCG bins value, in milliseconds. Used to convert W_sd (ms) in samples.
-        - pval_thresh: float [0-1], threshold of modulation, in pvalue (based on Poisson distribution with continuity correction)
+        - p_th: float [0-1], threshold of modulation, in pvalue (based on Poisson distribution with continuity correction)
         - n_consec: int, number of consecutive
         - sgn: 1 or -1, direction of threshold crossing, either positive (1) or negative (-1)
         - W_sd: float, sd of convolution window, in millisecond
@@ -851,7 +852,9 @@ def get_cross_features(cross, cbin, cwin):
 
     return (l_ms, r_ms, amp_z, t_ms, n_triplets, n_bincrossing, bin_heights, entropy)
 
-def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', ret_features=True, only_max=True):
+def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0,
+                fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+                ret_features=True, only_max=True, plot=False):
     '''
     Parameters:
         - CCG: 1d array,
@@ -1723,9 +1726,9 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
     pop_sync=t1*0
     for it2, t2 in enumerate(trains):
         N_cell_firing=cofiring_tags(t1, t2, fs, t_end, b, sd, th, again, dp, U[it2]) # denominator
-        N_pop_firing=N_pop_firing+N_cell_firing.astype(int)
+        N_pop_firing=N_pop_firing+N_cell_firing.astype(np.int64)
         cell_sync=(get_cisi(t1, t2, direction=0, verbose=False)<=sync_win/2) # UNDERCOVER BUG, sync_win not originally converted in samples!!
-        pop_sync=pop_sync+(cell_sync&N_cell_firing).astype(int) # cell_sync only counts when cell is considered to fire (single spikes ignored)
+        pop_sync=pop_sync+(cell_sync&N_cell_firing).astype(np.int64) # cell_sync only counts when cell is considered to fire (single spikes ignored)
 
     # Last spike will be 0 if t1 last spike happens is the last to happen of the bunch
     # so just give it the value of the spike before

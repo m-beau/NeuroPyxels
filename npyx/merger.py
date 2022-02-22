@@ -313,7 +313,7 @@ def assert_multi(dp):
 
 
 def get_ds_ids(U):
-    return (U % 1 * 10).round(0).astype(int)
+    return (U % 1 * 10).round(0).astype(np.int64)
 
 
 def get_dataset_ids(dp_pro):

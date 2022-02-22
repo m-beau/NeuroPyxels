@@ -135,7 +135,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, periods='regular', spi
     # Get waveforms times in bytes
     # and check that, for this waveform width,
     # they no not go beyond file limits
-    waveforms_t = spike_samples[spike_ids_subset].astype(int)
+    waveforms_t = spike_samples[spike_ids_subset].astype(np.int64)
     waveforms_t1 = (waveforms_t-t_waveforms//2)*n_channels_dat*item_size
     waveforms_t2 = (waveforms_t+t_waveforms//2)*n_channels_dat*item_size
     wcheck_m=(0<=waveforms_t1)&(waveforms_t2<fileSizeBytes)
@@ -290,7 +290,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
     dsmatch_wvf_batch_size = 10
 
     ## Extract spike ids so we can extract consecutive waveforms
-    spike_ids_split_all = split(ids(dp, u), dsmatch_wvf_batch_size, return_last = False).astype(int)
+    spike_ids_split_all = split(ids(dp, u), dsmatch_wvf_batch_size, return_last = False).astype(np.int64)
     spike_ids_split = spike_ids_split_all[::subsample_spikes]
     spike_ids_split_indices = np.arange(0,spike_ids_split.shape[0],1)
 
@@ -373,7 +373,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
 
     #### shift matching ####
     # extract drift-matched raw waveforms
-    dsmatch_batch_ids = batch_peak_channels[:,0].astype(int)
+    dsmatch_batch_ids = batch_peak_channels[:,0].astype(np.int64)
     drift_matched_waves = raw_waves[dsmatch_batch_ids]#.reshape(-1, t_waveforms, raw_waves.shape[-1])
     drift_matched_batches = np.mean(drift_matched_waves, axis=1)
 

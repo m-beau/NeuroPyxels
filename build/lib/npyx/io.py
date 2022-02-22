@@ -330,7 +330,7 @@ def unpackbits(x,num_bits = 16):
     to_and = 2**np.arange(num_bits).reshape([1,num_bits])
     return (x & to_and).astype(bool).astype(int).reshape(xshape + [num_bits])
 
-def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'):
+def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds', verbose=True):
     '''Unpacks neuropixels external input data, to align spikes to events.
     Parameters:
         - dp: str, datapath
@@ -347,7 +347,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
     dp = Path(dp)
     if assert_multi(dp):
         dp=Path(get_ds_table(dp)['dp'][0])
-        print(f'Loading npix sync channel from a merged dataset - assuming temporal reference frame of dataset 0:\n{dp}')
+        if verbose: print(f'Loading npix sync channel from a merged dataset - assuming temporal reference frame of dataset 0:\n{dp}')
 
     assert filt_key in ['highpass', 'lowpass']
     filt_suffix = {'highpass':'ap', 'lowpass':'lf'}[filt_key]
@@ -373,18 +373,18 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
         # Tries to load pre-saved onsets and offsets
         if sync_dp.exists() and not output_binary:
-            print(f'Sync channel extraction directory found: {sync_dp}\n')
+            if verbose: print(f'Sync channel extraction directory found: {sync_dp}\n')
             for file in os.listdir(sync_dp):
                 if file.endswith("on_samples.npy"):
                     filt_suffix_loaded=file.split('.')[-2][:2]
                     if filt_suffix_loaded==filt_suffix: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
-                        print(f'Sync channel onsets extracted from {filt_key} ({filt_suffix_loaded}) file found and loaded.')
+                        if verbose: print(f'Sync channel onsets ({file}) file found and loaded.')
                         file_i = ale(file[-15])
                         onsets[file_i]=np.load(sync_dp/file)/srate
                 elif file.endswith("of_samples.npy"):
                     filt_suffix_loaded=file.split('.')[-2][:2]
                     if filt_suffix_loaded==filt_suffix: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
-                        print(f'Sync channel offsets extracted from {filt_key} ({filt_suffix_loaded}) file found and loaded.')
+                        if verbose: print(f'Sync channel offsets ({file}) file found and loaded.')
                         file_i = ale(file[-15])
                         offsets[file_i]=np.load(sync_dp/file)/srate
             if any(onsets):
@@ -393,10 +393,10 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
         # Tries to load pre-saved compressed binary
         if sync_dp.exists():
-            print(f"No file ending in 'on_samples.npy' with the right sampling rate ({filt_suffix}) found in sync_chan directory: extracting sync channel from binary.\n")
+            if verbose: print(f"No file ending in 'on_samples.npy' with the right sampling rate ({filt_suffix}) found in sync_chan directory: extracting sync channel from binary.\n")
             npz_files = list_files(sync_dp, 'npz')
             if any(npz_files):
-                print('Compressed binary found - extracting from there...')
+                if verbose: print('Compressed binary found - extracting from there...')
                 fname=npz_files[0][:-9]
                 sync_fname = npz_files[0][:-4]
                 binary=np.load(sync_dp/(sync_fname+'.npz'))
@@ -459,7 +459,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
 def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
                      whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
-                     ignore_ks_chanfilt=0):
+                     ignore_ks_chanfilt=0, verbose=False):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     ## PARAMETERS
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
@@ -488,7 +488,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
 
     assert len(times)==2
     assert times[0]>0
-    assert times[1]<meta['recording_length']
+    assert times[1]<meta['recording_length_seconds']
 
     fs = meta[filt_key]['sampling_rate']
     Nchans=meta[filt_key]['n_channels_binaryfile']
@@ -511,8 +511,9 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     # Check that available memory is high enough to load the raw chunk
     vmem=dict(psutil.virtual_memory()._asdict())
     chunkSize = int(fs*Nchans*bytes_per_sample*(times[1]-times[0]))
-    print('Used RAM: {0:.1f}% ({1:.2f}GB total).'.format(vmem['used']*100/vmem['total'], vmem['total']/1024/1024/1024))
-    print('Chunk size:{0:.3f}MB. Available RAM: {1:.3f}MB.'.format(chunkSize/1024/1024, vmem['available']/1024/1024))
+    if verbose:
+        print('Used RAM: {0:.1f}% ({1:.2f}GB total).'.format(vmem['used']*100/vmem['total'], vmem['total']/1024/1024/1024))
+        print('Chunk size:{0:.3f}MB. Available RAM: {1:.3f}MB.'.format(chunkSize/1024/1024, vmem['available']/1024/1024))
     if chunkSize>0.9*vmem['available']:
         print('WARNING you are trying to load {0:.3f}MB into RAM but have only {1:.3f}MB available.\
               Pick less channels or a smaller time chunk.'.format(chunkSize/1024/1024, vmem['available']/1024/1024))

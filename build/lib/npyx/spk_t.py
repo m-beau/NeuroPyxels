@@ -87,7 +87,6 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
     return indices
 
 
-
 def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=0):
     '''
     ********
@@ -100,7 +99,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     - ret (bool - default False): if True, train returned by the routine.
     if False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
-    - periods = 'all' or [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
+    - periods: list [[t1,t2], [t3,t4],...] (in seconds) or 'all' for all periods.
     - again: boolean, if True recomputes data from source files without checking routines memory.
     - enforced_rp: enforced refractory period, in millisecond. 0 by default (only pure duplicates are removed)
     '''
@@ -456,7 +455,7 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
     n = 0
     x = 0
 
-       # steps:
+    # steps:
         # split into 10 second chunks
         # run 3 concatenated 10 sec chunks through the filter
         # find all the chunks that passed the filter
@@ -688,9 +687,14 @@ def get_consec_sections(seconds):
         return start_end
 
 
-def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180, acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3, gauss_chunk_size = 10, use_or_operator = False, use_consecutive = True, verbose = False, again = False, save = True):
+def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180,
+                 acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3,
+                 gauss_chunk_size = 10, use_or_operator = False, use_consecutive = True,
+                 verbose = False, again = False, save = True):
 
-    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes, acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size, use_or_operator, again=again, save = save, verbose =verbose)
+    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes,
+                                  acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size,
+                                  use_or_operator, again=again, save = save, verbose =verbose)
 
     """
     High level function for getting the spike ids for the spikes that passed

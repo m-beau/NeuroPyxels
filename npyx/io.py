@@ -328,7 +328,7 @@ def unpackbits(x,num_bits = 16):
     xshape = list(x.shape)
     x = x.reshape([-1,1])
     to_and = 2**np.arange(num_bits).reshape([1,num_bits])
-    return (x & to_and).astype(bool).astype(int).reshape(xshape + [num_bits])
+    return (x & to_and).astype(bool).astype(np.int64).reshape(xshape + [num_bits])
 
 def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds', verbose=True):
     '''Unpacks neuropixels external input data, to align spikes to events.

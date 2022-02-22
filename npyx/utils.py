@@ -123,7 +123,7 @@ def sign(x):
     "Returns the sign of the input number (1 or -1). 1 for 0 or -0."
     x=npa(x)
     x[x==0]=1
-    return (x/np.abs(x)).astype(int)
+    return (x/np.abs(x)).astype(np.int64)
 
 def minus_is_1(x):
     return abs(1-1*x)*1./2
@@ -626,11 +626,11 @@ def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     '''
     assert type(timeseries) is type(sync_signals) is list, "You must provide timeseries and sync_signals as lists of arrays!"
     for tsi, ts in enumerate(timeseries):
-        assert np.all(ts.astype(int)==ts), 'Timeseries need to be integers, in samples acquired at fs sampling rate!'
-        timeseries[tsi]=ts.astype(int)
+        assert np.all(ts.astype(np.int64)==ts), 'Timeseries need to be integers, in samples acquired at fs sampling rate!'
+        timeseries[tsi]=ts.astype(np.int64)
     for tsi, ts in enumerate(sync_signals):
-        assert np.all(ts.astype(int)==ts), 'Sync signals need to be integers, in samples acquired at fs sampling rate!'
-        sync_signals[tsi]=ts.astype(int)
+        assert np.all(ts.astype(np.int64)==ts), 'Sync signals need to be integers, in samples acquired at fs sampling rate!'
+        sync_signals[tsi]=ts.astype(np.int64)
 
 
     for ss in sync_signals:
@@ -705,10 +705,10 @@ def  align_timeseries_interpol(timeseries, sync_signals, fs=None):
         if assert_iterable(fs):assert len(timeseries)==len(fs)
         else:fs=[fs]*len(timeseries)
     for tsi, ts in enumerate(timeseries):
-        assert np.all(ts.astype(int)==ts), 'Timeseries need to be integers, in samples acquired at fs sampling rate!'
+        assert np.all(ts.astype(np.int64)==ts), 'Timeseries need to be integers, in samples acquired at fs sampling rate!'
         timeseries[tsi]=ts.astype(np.int64)
     for tsi, ts in enumerate(sync_signals):
-        assert np.all(ts.astype(int)==ts), 'Sync signals need to be integers, in samples acquired at fs sampling rate!'
+        assert np.all(ts.astype(np.int64)==ts), 'Sync signals need to be integers, in samples acquired at fs sampling rate!'
         sync_signals[tsi]=ts.astype(np.int64)
 
     # Align

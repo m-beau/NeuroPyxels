@@ -87,7 +87,6 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
     return indices
 
 
-
 def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=0):
     '''
     ********
@@ -100,7 +99,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     - ret (bool - default False): if True, train returned by the routine.
     if False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
-    - periods = 'all' or [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
+    - periods: list [[t1,t2], [t3,t4],...] (in seconds) or 'all' for all periods.
     - again: boolean, if True recomputes data from source files without checking routines memory.
     - enforced_rp: enforced refractory period, in millisecond. 0 by default (only pure duplicates are removed)
     '''

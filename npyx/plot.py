@@ -162,7 +162,7 @@ def get_bestticks_from_array(arr, step=None, light=False):
     assert step<span, f'Step {step} is too large for array span {span}!'
     ticks=np.arange(myceil(arr[0],step),myfloor(arr[-1],step)+step,step)
     ticks=np.round(ticks, n_decimals(step))
-    if step==int(step):ticks=ticks.astype(int)
+    if step==int(step):ticks=ticks.astype(np.int64)
 
     return ticks
 
@@ -175,7 +175,7 @@ def get_labels_from_ticks(ticks):
             if t == round(t, roundi):
                 if nflt<(roundi):nflt=roundi
                 break
-    ticks_labels=ticks.astype(int) if nflt==0 else np.round(ticks.astype(float), nflt)
+    ticks_labels=ticks.astype(np.int64) if nflt==0 else np.round(ticks.astype(float), nflt)
     jump_n=1 if nflt==0 else 2
     ticks_labels=[str(l)+'0'*(nflt+jump_n-len(str(l).replace('-',''))) for l in ticks_labels]
     return ticks_labels, nflt
@@ -413,11 +413,11 @@ def get_color_families(ncolors, nfamilies, cmapstr=None, gap_between_families=4)
     '''
     if cmapstr is None:
         colors_all=get_mpl_css_colors(sort=True, aslist=True)[15:-10]
-        colors=npa(colors_all)[np.linspace(0,len(colors_all)-1,(ncolors+gap_between_families)*nfamilies).astype(int)].tolist()
+        colors=npa(colors_all)[np.linspace(0,len(colors_all)-1,(ncolors+gap_between_families)*nfamilies).astype(np.int64)].tolist()
     else:
         colors=get_ncolors_cmap(cmapstr, (ncolors+gap_between_families//2)*nfamilies, plot=False)
     highsat_colors=[c for c in colors if to_hsv(c)[1]>0.4]
-    seed_ids=np.linspace(0, len(highsat_colors)-ncolors, nfamilies).astype(int)
+    seed_ids=np.linspace(0, len(highsat_colors)-ncolors, nfamilies).astype(np.int64)
 
     color_families=[[highsat_colors[si+i] for i in range(ncolors)] for si in seed_ids]
 
@@ -1620,7 +1620,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
 
     x=np.arange(-cwin/2, cwin/2+cbin, cbin)
     if bChs is not None:
-        bChs=npa(bChs).astype(int)
+        bChs=npa(bChs).astype(np.int64)
 
     ## precompute y limits (in case of y_sharing)
     ylims=[]
@@ -2068,7 +2068,7 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
                                  use_template_for_peakchan=use_template_for_peakchan,
                                  periods=periods)
     gu = peakChs[:,0]
-    ch = peakChs[:,1].astype(int)
+    ch = peakChs[:,1].astype(np.int64)
 
     if corr_type=='synchrony':
         vminmax=[0,vminmax[1]]

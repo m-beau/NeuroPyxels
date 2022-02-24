@@ -5,7 +5,7 @@ import sys
 
 import numpy as np
 
-from npyx.io import get_npix_sync, chan_map, extract_rawChunk
+from npyx.inout import get_npix_sync, chan_map, extract_rawChunk
 from npyx.spk_t import ids, trn
 from npyx.spk_wvf import wvf_dsmatch
 

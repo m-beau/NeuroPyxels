@@ -27,7 +27,7 @@ from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \
                     assert_int, assert_float, assert_iterable, smooth
 
-from npyx.io import read_metadata
+from npyx.inout import read_metadata
 from npyx.gl import get_units, get_npyx_memory
 from npyx.spk_t import trn, trnb, binarize, firing_periods,\
                         isi, mfr, train_quality

@@ -9,7 +9,7 @@ npyx/feat.py
 npyx/gl.py
 npyx/h5.py
 npyx/info.py
-npyx/io.py
+npyx/inout.py
 npyx/merger.py
 npyx/plot.py
 npyx/spk_t.py

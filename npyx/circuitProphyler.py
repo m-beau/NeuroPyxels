@@ -19,7 +19,7 @@ import pandas as pd
 import npyx
 from npyx.utils import npa, sign
 
-from npyx.io import read_metadata, chan_map
+from npyx.inout import read_metadata, chan_map
 from npyx.spk_wvf import get_depthSort_peakChans, get_peak_chan
 from npyx.corr import gen_sfc
 from npyx.merger import assert_multi, get_ds_table

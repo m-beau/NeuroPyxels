@@ -34,7 +34,7 @@ from psutil import virtual_memory as vmem
 
 import pandas as pd
 import json
-from npyx.io import chan_map, read_metadata
+from npyx.inout import chan_map, read_metadata
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from npyx.corr import (ccg, StarkAbeles2009_ccg_significance, ccg_sig_stack, gen_sfc, scaled_acg)

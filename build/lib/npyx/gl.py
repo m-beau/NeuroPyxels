@@ -315,6 +315,6 @@ def get_good_units(dp):
     return get_units(dp, quality='good')
 
 # circular imports
-from npyx.io import read_metadata
+from npyx.inout import read_metadata
 from npyx.spk_wvf import get_depthSort_peakChans
 from npyx.merger import assert_multi, get_ds_table

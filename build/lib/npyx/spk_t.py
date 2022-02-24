@@ -20,7 +20,7 @@ from scipy.optimize import curve_fit
 from scipy.stats import norm
 from npyx.utils import smooth, thresh_consec, npa, assert_int, assert_float
 from npyx.gl import get_units, get_npyx_memory
-from npyx.io import read_metadata
+from npyx.inout import read_metadata
 
 
 def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):

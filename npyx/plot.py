@@ -517,7 +517,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 #%% Waveforms or raw data ##############################################################################################
 
 def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
-             periods='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
+             periods='all', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
              whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
              title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
              labels=False, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
@@ -569,7 +569,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     # Get data
     use_dsmatch=False ##TODO make sure that ds_match returns the waveforms std
     if not use_dsmatch:
-        waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s,
+        waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s, selection='regular',
                         periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
                         whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
                         ignore_ks_chanfilt = ignore_ks_chanfilt)

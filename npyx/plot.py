@@ -7,8 +7,6 @@ import os
 import os.path as op
 
 from psutil import disk_partitions; opj=op.join
-import subprocess
-import sys
 from pathlib import Path
 
 import pickle as pkl
@@ -38,9 +36,6 @@ from npyx.spk_wvf import get_depthSort_peakChans, wvf, wvf_dsmatch, get_peak_cha
 from npyx.spk_t import trn, train_quality
 from npyx.corr import acg, ccg, gen_sfc, get_cm, scaled_acg
 from npyx.behav import align_times, get_processed_ifr, get_processed_popsync
-from mpl_toolkits.mplot3d import Axes3D
-
-import networkx as nx
 
 #%% plotting utilities ##############################################################################################
 

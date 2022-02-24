@@ -18,7 +18,7 @@ from math import ceil
 import matplotlib.pyplot as plt
 
 from npyx.utils import npa, split, xcorr_1d_loop
-from npyx.inout import _pad, read_metadata, chan_map, whitening, bandpass_filter, apply_filter, med_substract
+from npyx.inout import read_metadata, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 from npyx.gl import get_units, get_npyx_memory
 
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', periods='all',

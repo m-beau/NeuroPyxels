@@ -8,7 +8,6 @@ import os.path as op
 
 from six import b; opj=op.join
 from pathlib import Path, PosixPath
-from ast import literal_eval as ale
 
 from itertools import groupby
 from operator import itemgetter

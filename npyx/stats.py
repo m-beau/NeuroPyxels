@@ -14,7 +14,6 @@ import numpy as np
 import math
 from numpy.random import seed, randn
 import scipy.stats as stt
-import statsmodels as sttmdl
 
 from npyx.utils import npa
 

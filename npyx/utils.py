@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from numba import jit, njit, prange
+from numba import njit
 from numba.typed import List
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
 import warnings
@@ -22,7 +22,6 @@ import scipy.signal as sgnl
 
 import logging
 from math import pi, log
-import pylab
 from scipy import fft, ifft
 from scipy.optimize import curve_fit
 from scipy.signal import cspline1d_eval, cspline1d

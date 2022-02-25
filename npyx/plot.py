@@ -7,8 +7,6 @@ import os
 import os.path as op
 
 from psutil import disk_partitions; opj=op.join
-import subprocess
-import sys
 from pathlib import Path
 
 import pickle as pkl
@@ -38,9 +36,6 @@ from npyx.spk_wvf import get_depthSort_peakChans, wvf, wvf_dsmatch, get_peak_cha
 from npyx.spk_t import trn, train_quality
 from npyx.corr import acg, ccg, gen_sfc, get_cm, scaled_acg
 from npyx.behav import align_times, get_processed_ifr, get_processed_popsync
-from mpl_toolkits.mplot3d import Axes3D
-
-import networkx as nx
 
 #%% plotting utilities ##############################################################################################
 
@@ -517,7 +512,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 #%% Waveforms or raw data ##############################################################################################
 
 def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
-             periods='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
+             periods='all', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
              whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
              title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
              labels=False, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
@@ -569,7 +564,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     # Get data
     use_dsmatch=False ##TODO make sure that ds_match returns the waveforms std
     if not use_dsmatch:
-        waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s,
+        waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s, selection='regular',
                         periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
                         whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
                         ignore_ks_chanfilt = ignore_ks_chanfilt)

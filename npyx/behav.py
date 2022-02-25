@@ -28,8 +28,6 @@ from npyx.spk_t import mean_firing_rate
 from npyx.corr import crosscorr_cyrille, frac_pop_sync
 from npyx.merger import assert_multi, get_ds_table
 
-from IPython.core.debugger import set_trace as breakpoint
-
 #%% Generate trials dataframe from either paqIO file or matlab datastructure
 
 def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, again_rawpaq=False,

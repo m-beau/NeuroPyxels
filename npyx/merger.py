@@ -48,7 +48,6 @@ import os.path as op
 opj = op.join
 from pathlib import Path
 
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import numpy as np
 import pandas as pd
 

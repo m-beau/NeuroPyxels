@@ -6,8 +6,11 @@
 
 import os
 import os.path as op; opj=op.join
+import psutil
 from pathlib import Path
 from tqdm.notebook import tqdm
+
+from collections.abc import Iterable
 
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
@@ -132,7 +135,9 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
     if spike_ids is None:
         spike_ids_subset=get_ids_subset(dp, u, n_waveforms, wvf_batch_size, selection, periods, ignore_nwvf, verbose)
-    else: spike_ids_subset=spike_ids
+    else:
+        assert isinstance(spike_ids, Iterable), "WARNING spike_ids must be a list/array of ids!"
+        spike_ids_subset=np.array(spike_ids)
     n_spikes = len(spike_ids_subset)
 
     # Get waveforms times in bytes
@@ -149,17 +154,18 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
 
     # Iterate over waveforms
     waveforms = np.zeros((n_spikes, t_waveforms, n_channels_rec), dtype=np.float32)
-    print(f'Loading waveforms of unit {u} ({n_spikes}):')
+    if verbose: print(f'Loading waveforms of unit {u} ({n_spikes})...')
     with open(dat_path, "rb") as f:
         for i,t1 in enumerate(waveforms_t1):
-            if i%(n_spikes//10)==0: print(f'{round((i/n_spikes)*100)}%...', end=' ')
+            if n_spikes>10:
+                if i%(n_spikes//10)==0 and verbose: print(f'{round((i/n_spikes)*100)}%...', end=' ')
             f.seek(t1, 0) # 0 for absolute file positioning
             wave=f.read(n_channels_dat*t_waveforms*item_size)
             wave=np.frombuffer(wave, dtype=dtype).reshape((t_waveforms,n_channels_dat))
             wave = wave-np.median(wave, axis = 0)[np.newaxis,:] # center the waveforms on 0
             # get rid of sync channel
             waveforms[i,:,:] = wave[:,:-1] if meta['acquisition_software']=='SpikeGLX' else wave
-    print('\n')
+    if verbose: print('\n')
 
     # Preprocess waveforms
     if hpfilt|med_sub|whiten:
@@ -187,7 +193,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
                 wvf_batch_size=10, ignore_nwvf=True, med_sub = False, spike_ids = None,
                 save=True, verbose=False, again=False,
                 whiten=False,  hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
-                subsample_spikes = 2, peakchan_allowed_range=10,
+                n_waves_used_for_matching = 50000, peakchan_allowed_range=10,
                 use_average_peakchan = False, max_allowed_amplitude = 1800, max_allowed_shift=3,
                 n_waves_to_average=5000, plot_debug=False, do_shift_match=True, n_waveforms_per_batch=10):
     """
@@ -246,7 +252,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         - nRangeMedSub:       int, number of channels to use to compute the local median. | Default None
         - ignore_ks_chanfilt: bool, whether to ignore kilosort channel filtering
                                     (if False, output shape will always be n_waveforms x t_waveforms x 384) | Default False
-        - subsample_spikes:   int, by how much spikes should be subsampled (default 2 - 10 spikes used, 10 skipped, 10 used...)
+        - n_waves_used_for_matching:   int, how many spikes to subsample to perform matching (default 50000 waveforms)
         - peakchan_allowed_range: int (channel id), maximum allowed distance between original pek channel and ds-matched drift channel
         - use_average_peakchan: bool, if True simply use the channel with highest average amplitude across spikes as peak channel
                                        instead of using the channel where the most spikes peak on
@@ -289,11 +295,23 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         return np.load(Path(dprm,fn)),drift_shift_matched_mean,np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
 
     ## Extract spike ids so we can extract consecutive waveforms
-    spike_ids_split_all = split(ids(dp, u, periods=periods), n_waveforms_per_batch, return_last = False).astype(np.int64)
+    spike_ids_all = ids(dp, u, periods=periods)
+    spike_ids_split_all = split(spike_ids_all, n_waveforms_per_batch, return_last = False).astype(np.int64)
     
-    ## Figure out how many waveforms to collect based on available RAM
+    ## Subsample waveforms based on available RAM
+    vmem=dict(psutil.virtual_memory()._asdict())
+    available_RAM = vmem['total']-vmem['used']
+    single_w_size = wvf(dp, None, t_waveforms=t_waveforms, spike_ids=[0]).nbytes
+    max_n_waveforms = available_RAM//single_w_size-100 # -100 to be safe
+    n_waves_used_for_matching = min(n_waves_used_for_matching, max_n_waveforms)
     
-    spike_ids_split = spike_ids_split_all[::subsample_spikes]
+    # now subsample ids based on the RAM-safe n_waves_used_for_matching
+    if n_waves_used_for_matching<len(spike_ids_all):
+        n_batches_used_for_matching=n_waves_used_for_matching//n_waveforms_per_batch # floor division
+        spike_ids_subsample=np.round(np.linspace(0,spike_ids_split_all.shape[0]-1,n_batches_used_for_matching)).astype(int)
+        spike_ids_split = spike_ids_split_all[spike_ids_subsample]
+    else:
+        spike_ids_split=spike_ids_split_all
     spike_ids_split_indices = np.arange(0,spike_ids_split.shape[0],1)
 
     ## Extract the waveforms using the wvf function in blocks of 10 (n_waveforms_per_batch).

@@ -289,8 +289,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
 
     if Path(dprm,fn).is_file() and (not again) and (spike_ids is None):
         if verbose: print(f"File {fn} found in routines memory.")
+        drift_shift_matched_mean = np.load(Path(dprm,fn_all))
         if plot_debug:
-            drift_shift_matched_mean = np.load(Path(dprm,fn_all))
             fig = quickplot_n_waves(drift_shift_matched_mean, f'dsmatched_waveform {u}')
         return np.load(Path(dprm,fn)),drift_shift_matched_mean,np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
 

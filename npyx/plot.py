@@ -703,7 +703,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
 
     return fig
 
-def quickplot_n_waves(w, title, peak_channel, nchans = 20, fig=None):
+def quickplot_n_waves(w, title, peak_channel=None, nchans = 20, fig=None):
     "w is a (n_samples, n_channels) array"
     if peak_channel is None:
         pk = np.argmax(np.ptp(w, axis=0))

@@ -84,7 +84,7 @@ def label_unit_h5(h5_path, dataset, unit, label, field='optotagged_label'):
 
 def add_unit_h5(h5_path, dp, unit,
                 unit_abolute_id=None, opto_id=None,
-                again=False, plot_debug=False):
+                again=False, plot_debug=False, verbose=0):
     """
     Assumes that dataset id is last folder of directory (yy-mm-dd_iiXXX_probeX).
     """
@@ -92,7 +92,7 @@ def add_unit_h5(h5_path, dp, unit,
     # hard-coded parameters
     samp_rate = 30000
     waveform_samples = 6  # ms
-    waveform_samples = int(waveform_samples*30000/1000)
+    waveform_samples = int(waveform_samples*samp_rate/1000)
     lab_id = "hausser"
 
     # open file in append mode
@@ -103,7 +103,8 @@ def add_unit_h5(h5_path, dp, unit,
     check_dataset_format(dataset)
     neuron_path = f"datasets/{dataset}/{unit}"
     if neuron_path in h5_file:
-        print(f"Neuron already in h5 file: {neuron_path}")
+        neuron_absolute_path=h5_file[f'{neuron_path}/neuron_absolute_id'][()].decode()
+        print(f"Neuron already in h5 file: {neuron_path} ({neuron_absolute_path})")
         return neuron_path
 
     # figure out where we're at
@@ -116,8 +117,10 @@ def add_unit_h5(h5_path, dp, unit,
             unit_abolute_id = np.sort(neuron_ids)[-1] + 1
 
     # create group for new neuron
-    neuron_group = h5_file.create_group(f'{lab_id}_neuron_{unit_abolute_id}')
+    neuron_absolute_path=f'{lab_id}_neuron_{unit_abolute_id}'
+    neuron_group = h5_file.create_group(neuron_absolute_path)
     h5_file[neuron_path] = neuron_group
+    print(f"Adding data at {neuron_path} ({neuron_absolute_path})...")
 
     # metadata
     neuron_group['lab_id'] = lab_id
@@ -140,7 +143,7 @@ def add_unit_h5(h5_path, dp, unit,
 
     # waveforms
     dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples,
-                            again=again, plot_debug=plot_debug)
+                            again=again, plot_debug=plot_debug, verbose=verbose)
     dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
     chan_bottom = max(0, peak_chan-11)
     chan_top = min(383, peak_chan+11)

@@ -70,20 +70,19 @@ def label_unit_h5(h5_path, dataset, unit, label, field='optotagged_label'):
     - dataset: str, neuron dataset (yy-mm-dd_mouse_probex)
     - unit: neuron unit index
     """
-    h5_file = h5py.File(h5_path, "r")
+    with h5py.File(h5_path, "a") as h5_file:
+        check_dataset_format(dataset)
+        neuron_path = f"datasets/{dataset}/{unit}"
 
-    check_dataset_format(dataset)
-    neuron_path = f"datasets/{dataset}/{unit}"
+        authorized_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC"]
+        assert label in authorized_labels
+        if field in h5_file[neuron_path]: del h5_file[neuron_path][field]
+        h5_file[neuron_path][field] = label
 
-    authorized_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC"]
-    assert label in authorized_labels
-    h5_file[neuron_path][field] = label
-
-    h5_file.close()
 
 
 def add_unit_h5(h5_path, dp, unit,
-                unit_abolute_id=None, opto_id=None,
+                unit_abolute_id=None, sync_chan_id=None, label=None,
                 again=False, plot_debug=False, verbose=0):
     """
     Assumes that dataset id is last folder of directory (yy-mm-dd_iiXXX_probeX).
@@ -133,9 +132,9 @@ def add_unit_h5(h5_path, dp, unit,
     t = trn(dp, unit)
     neuron_group['spike_indices'] = t
     ons, ofs = get_npix_sync(dp, verbose=False)
-    if opto_id is None:
-        opto_id = get_stim_chan(ons)
-    ons, ofs = ons[opto_id], ofs[opto_id]
+    if sync_chan_id is None:
+        sync_chan_id = get_stim_chan(ons)
+    ons, ofs = ons[sync_chan_id], ofs[sync_chan_id]
     optostims = np.hstack([ons[:, None], ofs[:, None], (ofs-ons)[:, None]])
     neuron_group['optostims'] = optostims
     # Only consider spikes 10s before opto onset

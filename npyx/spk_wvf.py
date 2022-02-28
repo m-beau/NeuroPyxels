@@ -291,7 +291,9 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         if verbose: print(f"File {fn} found in routines memory.")
         drift_shift_matched_mean = np.load(Path(dprm,fn_all))
         if plot_debug:
-            fig = quickplot_n_waves(drift_shift_matched_mean, f'dsmatched_waveform {u}')
+            w=wvf(dp, u, n_waveforms=n_waveforms, t_waveforms=t_waveforms)
+            fig = quickplot_n_waves(np.mean(w, 0))
+            fig = quickplot_n_waves(drift_shift_matched_mean, f'blue: 100 random waveforms\norange: dsmatched_waveforms (unit {u})', fig=fig)
         return np.load(Path(dprm,fn)),drift_shift_matched_mean,np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
 
     ## Extract spike ids so we can extract consecutive waveforms
@@ -456,14 +458,14 @@ def shift_match(waves, alignment_channel,
     """
     
 
-    # pick 5 waveforms of highest amplitude to initialize template
-    # concretely, sort waves array by amplitude and start with first wave
+    # sort waveforms by amplitude
     amplitudes = np.ptp(waves[:,:,alignment_channel], axis=1)
     amplitudes_i = np.argsort(amplitudes, axis=0)
     waves_sort = waves[amplitudes_i[::-1],:,:]
     # use 10 waves of highest amplitude as template
     # most arbitrary decision 0 but seems reasonable and empirically works
-    template = np.mean(waves_sort[:10,:,:], axis=0)
+    n_waveforms_template=10
+    template = np.mean(waves_sort[:n_waveforms_template,:,:], axis=0)
     if recenter_spikes:
         shift = (np.argmax(np.abs(template[:,alignment_channel])) - template.shape[0]//2)%template.shape[0]
         if plot_debug:
@@ -488,7 +490,10 @@ def shift_match(waves, alignment_channel,
         realigned_w = np.concatenate([w[-shift:,:], w[:-shift,:]], axis=0)
         if abs(relative_shift)>max_shift_allowed:
             realigned_w=realigned_w*np.nan
-
+        if plot_debug and i==0:
+            fig=imshow_cbar(template)
+            fig=imshow_cbar(w_closestchannels)
+            fig=imshow_cbar(xcorr_w_template)
         # store realigned_wave in array
         aligned_waves[i,:,:] = realigned_w
 

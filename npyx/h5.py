@@ -5,6 +5,7 @@ import sys
 
 import numpy as np
 
+from npyx.utils import assert_int, assert_float
 from npyx.inout import get_npix_sync, chan_map, extract_rawChunk
 from npyx.spk_t import ids, trn
 from npyx.spk_wvf import wvf_dsmatch
@@ -28,7 +29,16 @@ def visititems(group, func):
 
 def visitor_func(name, node):
     if isinstance(node, h5py.Dataset):
-        string = f"{name}: {type(node[()])}"
+        n=node[()]
+        if isinstance(n, bytes):
+            s=n.decode()
+        elif isinstance(n, np.ndarray):
+            s=f"ndarray {n.shape}"
+        elif assert_int(n) or assert_float(n):
+            s=n
+        else:
+            s=type(n)
+        string = f"{name}: {s}"
     else:
         string = name
     print(string)
@@ -82,8 +92,8 @@ def label_unit_h5(h5_path, dataset, unit, label, field='optotagged_label'):
 
 
 def add_unit_h5(h5_path, dp, unit,
-                unit_abolute_id=None, sync_chan_id=None, label=None,
-                again=False, plot_debug=False, verbose=0):
+                unit_abolute_id=None, sync_chan_id=None,
+                again=False, again_wvf=False, plot_debug=False, verbose=False):
     """
     Assumes that dataset id is last folder of directory (yy-mm-dd_iiXXX_probeX).
     """
@@ -98,13 +108,18 @@ def add_unit_h5(h5_path, dp, unit,
     h5_file = h5py.File(h5_path, "a")
 
     # check whether neuron already exists in dataset
-    dataset = Path(dp).name
+    dp=Path(dp)
+    dataset = dp.name
     check_dataset_format(dataset)
     neuron_path = f"datasets/{dataset}/{unit}"
     if neuron_path in h5_file:
         neuron_absolute_path=h5_file[f'{neuron_path}/neuron_absolute_id'][()].decode()
-        print(f"Neuron already in h5 file: {neuron_path} ({neuron_absolute_path})")
-        return neuron_path
+        if again:
+            del h5_file[neuron_path]
+            del h5_file[neuron_absolute_path]
+        else:
+            print(f"Neuron already in h5 file: {neuron_path} ({neuron_absolute_path})")
+            return neuron_path
 
     # figure out where we're at
     if unit_abolute_id is None:
@@ -142,7 +157,7 @@ def add_unit_h5(h5_path, dp, unit,
 
     # waveforms
     dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples,
-                            again=again, plot_debug=plot_debug, verbose=verbose)
+                            again=again_wvf, plot_debug=plot_debug, verbose=verbose)
     dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
     chan_bottom = max(0, peak_chan-11)
     chan_top = min(383, peak_chan+11)

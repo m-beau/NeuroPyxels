@@ -7,7 +7,7 @@ import numpy as np
 
 from npyx.utils import assert_int, assert_float
 from npyx.inout import get_npix_sync, chan_map, extract_rawChunk
-from npyx.spk_t import ids, trn
+from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 
 
@@ -72,23 +72,36 @@ def check_dataset_format(dataset):
     assert bool(re.match(pattern, dataset, re.IGNORECASE)), warning
 
 
-def label_unit_h5(h5_path, dataset, unit, label, field='optotagged_label'):
+def label_unit_h5(h5_path, dataset, unit, label):
     """
     Add optotagged label to neuron.
 
     - h5_path: full path to h5 file
     - dataset: str, neuron dataset (yy-mm-dd_mouse_probex)
     - unit: neuron unit index
+    - label: label to add
+    """
+    authorized_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC"]
+    assert label in authorized_labels
+    add_data_to_unit_h5(h5_path, dataset, unit, label, 'optotagged_label')
+
+
+def add_data_to_unit_h5(h5_path, dataset, unit, data, field):
+    """
+    Add data to neuron already in h5 file.
+
+    - h5_path: full path to h5 file
+    - dataset: str, neuron dataset (yy-mm-dd_mouse_probex)
+    - unit: unit index
+    - data: data to add to unit
+    - field: name of dataset to add data (id exists already, will overwrite)
     """
     with h5py.File(h5_path, "a") as h5_file:
         check_dataset_format(dataset)
         neuron_path = f"datasets/{dataset}/{unit}"
-
-        authorized_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC"]
-        assert label in authorized_labels
+        assert neuron_path in h5_file, f"WARNING unit {neuron_path} does not seem to be present in the file. To add it, use add_unit_h5()."
         if field in h5_file[neuron_path]: del h5_file[neuron_path][field]
-        h5_file[neuron_path][field] = label
-
+        h5_file[neuron_path][field] = data
 
 
 def add_unit_h5(h5_path, dp, unit,
@@ -154,6 +167,8 @@ def add_unit_h5(h5_path, dp, unit,
     neuron_group['optostims'] = optostims
     # Only consider spikes 10s before opto onset
     neuron_group['sane_spikes'] = (t < ons[0]-10*samp_rate)
+    fp_fn_good_spikes = trn_filtered(dp, unit)[1]
+    neuron_group['fn_fp_filtered_spikes'] = fp_fn_good_spikes
 
     # waveforms
     dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples,

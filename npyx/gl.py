@@ -15,17 +15,17 @@ import pandas as pd
 
 
 def get_npyx_memory(dp):
-    dprm = Path(dp,'npyxMemory')
-    old_dprm =Path(dp,'routinesMemory')
-    if old_dprm.exists():
-        print("Backward compatibility - renaming routinesMemory as npyxMemory.")
+    dpnm = Path(dp,'npyxMemory')
+    old_dpnm =Path(dp,'routinesMemory')
+    if old_dpnm.exists() and not dpnm.exists():
         try: # because of parallel proccessing, might have been renamed in the process!
-            os.rename(str(old_dprm), str(dprm))
+            os.rename(str(old_dpnm), str(dpnm))
+            print("Backward compatibility - renaming routinesMemory as npyxMemory.")
         except:
-            assert dprm.exists()
-    if not os.path.isdir(dprm): os.makedirs(dprm)
+            assert dpnm.exists()
+    os.makedirs(dpnm, exist_ok=True)
 
-    return dprm
+    return dpnm
 
 def get_datasets(ds_master, ds_paths_master, ds_behav_master=None, warnings=True):
     """

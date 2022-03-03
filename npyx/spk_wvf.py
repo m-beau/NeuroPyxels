@@ -78,19 +78,19 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
         u=u[0]
     dp, u = get_source_dp_u(dp, u)
 
-    dprm = get_npyx_memory(dp)
+    dpnm = get_npyx_memory(dp)
 
     if isinstance(periods, str): assert periods=='all', "WARNING periods should either be 'all' or [[t1,t2],[t3,t4]...]."
     fn=f"wvf{u}_{n_waveforms}-{t_waveforms}_{str(periods)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
-    if os.path.exists(Path(dprm,fn)) and (not again) and (spike_ids is None):
+    if os.path.exists(Path(dpnm,fn)) and (not again) and (spike_ids is None):
         if verbose: print("File {} found in routines memory.".format(fn))
-        return np.load(Path(dprm,fn))
+        return np.load(Path(dpnm,fn))
 
     waveforms = get_waveforms(dp, u, n_waveforms, t_waveforms, selection, periods, spike_ids, wvf_batch_size, ignore_nwvf,
                  whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt, verbose)
     # Save it
     if (save and (spike_ids is None)):
-        np.save(Path(dprm,fn), waveforms)
+        np.save(Path(dpnm,fn), waveforms)
 
     return waveforms
 
@@ -280,19 +280,21 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         raise ValueError('No support yet for passing multiple spike indices. Exiting.')
 
 
-    dprm = get_npyx_memory(dp)
+    dpnm = get_npyx_memory(dp)
 
     fn=f"dsm_{u}_{n_waveforms}-{t_waveforms}_{str(periods)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
     fn_all=f"dsm_{u}_all_waves_{n_waveforms}-{t_waveforms}_{str(periods)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
     fn_spike_id=f"dsm_{u}_spike_id_{n_waveforms}-{t_waveforms}_{str(periods)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
     fn_peakchan=f"dsm_{u}_peakchan_{n_waveforms}-{t_waveforms}_{str(periods)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
 
-    if Path(dprm,fn).is_file() and (not again) and (spike_ids is None):
+    if Path(dpnm,fn).is_file() and (not again) and (spike_ids is None):
         if verbose: print(f"File {fn} found in routines memory.")
+        drift_shift_matched_mean = np.load(Path(dpnm,fn_all))
         if plot_debug:
-            drift_shift_matched_mean = np.load(Path(dprm,fn_all))
-            fig = quickplot_n_waves(drift_shift_matched_mean, f'dsmatched_waveform {u}')
-        return np.load(Path(dprm,fn)),drift_shift_matched_mean,np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
+            w=wvf(dp, u, n_waveforms=n_waveforms, t_waveforms=t_waveforms)
+            fig = quickplot_n_waves(np.mean(w, 0))
+            fig = quickplot_n_waves(drift_shift_matched_mean, f'blue: 100 random waveforms\norange: dsmatched_waveforms (unit {u})', fig=fig)
+        return np.load(Path(dpnm,fn)),drift_shift_matched_mean,np.load(Path(dpnm,fn_spike_id)), np.load(Path(dpnm,fn_peakchan))
 
     ## Extract spike ids so we can extract consecutive waveforms
     spike_ids_all = ids(dp, u, periods=periods)
@@ -412,10 +414,10 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     drift_shift_matched_mean_peak = np.concatenate([drift_shift_matched_mean_peak[shift:], drift_shift_matched_mean_peak[:shift]], axis=0)
 
     if save:
-        np.save(Path(dprm,fn), drift_shift_matched_mean_peak)
-        np.save(Path(dprm,fn_all), drift_shift_matched_mean)
-        np.save(Path(dprm,fn_spike_id), drift_matched_spike_ids)
-        np.save(Path(dprm, fn_peakchan), peak_channel)
+        np.save(Path(dpnm,fn), drift_shift_matched_mean_peak)
+        np.save(Path(dpnm,fn_all), drift_shift_matched_mean)
+        np.save(Path(dpnm,fn_spike_id), drift_matched_spike_ids)
+        np.save(Path(dpnm, fn_peakchan), peak_channel)
 
     if plot_debug:
         print(f'Total averaged waveform batches ({n_waveforms_per_batch}/batch) after drift-shift matching: {batch_peak_channels.shape[0]}')
@@ -456,14 +458,14 @@ def shift_match(waves, alignment_channel,
     """
     
 
-    # pick 5 waveforms of highest amplitude to initialize template
-    # concretely, sort waves array by amplitude and start with first wave
+    # sort waveforms by amplitude
     amplitudes = np.ptp(waves[:,:,alignment_channel], axis=1)
     amplitudes_i = np.argsort(amplitudes, axis=0)
     waves_sort = waves[amplitudes_i[::-1],:,:]
     # use 10 waves of highest amplitude as template
     # most arbitrary decision 0 but seems reasonable and empirically works
-    template = np.mean(waves_sort[:10,:,:], axis=0)
+    n_waveforms_template=10
+    template = np.mean(waves_sort[:n_waveforms_template,:,:], axis=0)
     if recenter_spikes:
         shift = (np.argmax(np.abs(template[:,alignment_channel])) - template.shape[0]//2)%template.shape[0]
         if plot_debug:
@@ -488,7 +490,10 @@ def shift_match(waves, alignment_channel,
         realigned_w = np.concatenate([w[-shift:,:], w[:-shift,:]], axis=0)
         if abs(relative_shift)>max_shift_allowed:
             realigned_w=realigned_w*np.nan
-
+        if plot_debug and i==0:
+            fig=imshow_cbar(template)
+            fig=imshow_cbar(w_closestchannels)
+            fig=imshow_cbar(xcorr_w_template)
         # store realigned_wave in array
         aligned_waves[i,:,:] = realigned_w
 
@@ -596,7 +601,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
     save=False # can only turn True if no (i.e. all) units are fed
     strdic={True:'templates', False:'raw-waveforms'}
 
-    if not np.any(units):
+    if len(units)==0:
         # If no units, load them all from dataset
         # and prepare to save the FULL array of peak channels at the end
         units=get_units(dp, quality=quality, again=again)

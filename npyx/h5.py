@@ -5,8 +5,9 @@ import sys
 
 import numpy as np
 
+from npyx.utils import assert_int, assert_float
 from npyx.inout import get_npix_sync, chan_map, extract_rawChunk
-from npyx.spk_t import ids, trn
+from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 
 
@@ -28,7 +29,16 @@ def visititems(group, func):
 
 def visitor_func(name, node):
     if isinstance(node, h5py.Dataset):
-        string = f"{name}: {type(node[()])}"
+        n=node[()]
+        if isinstance(n, bytes):
+            s=n.decode()
+        elif isinstance(n, np.ndarray):
+            s=f"ndarray {n.shape}"
+        elif assert_int(n) or assert_float(n):
+            s=n
+        else:
+            s=type(n)
+        string = f"{name}: {s}"
     else:
         string = name
     print(string)
@@ -62,29 +72,41 @@ def check_dataset_format(dataset):
     assert bool(re.match(pattern, dataset, re.IGNORECASE)), warning
 
 
-def label_unit_h5(h5_path, dataset, unit, label, field='optotagged_label'):
+def label_unit_h5(h5_path, dataset, unit, label):
     """
     Add optotagged label to neuron.
 
     - h5_path: full path to h5 file
     - dataset: str, neuron dataset (yy-mm-dd_mouse_probex)
     - unit: neuron unit index
+    - label: label to add
     """
-    h5_file = h5py.File(h5_path, "r")
-
-    check_dataset_format(dataset)
-    neuron_path = f"datasets/{dataset}/{unit}"
-
     authorized_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC"]
     assert label in authorized_labels
-    h5_file[neuron_path][field] = label
+    add_data_to_unit_h5(h5_path, dataset, unit, label, 'optotagged_label')
 
-    h5_file.close()
+
+def add_data_to_unit_h5(h5_path, dataset, unit, data, field):
+    """
+    Add data to neuron already in h5 file.
+
+    - h5_path: full path to h5 file
+    - dataset: str, neuron dataset (yy-mm-dd_mouse_probex)
+    - unit: unit index
+    - data: data to add to unit
+    - field: name of dataset to add data (id exists already, will overwrite)
+    """
+    with h5py.File(h5_path, "a") as h5_file:
+        check_dataset_format(dataset)
+        neuron_path = f"datasets/{dataset}/{unit}"
+        assert neuron_path in h5_file, f"WARNING unit {neuron_path} does not seem to be present in the file. To add it, use add_unit_h5()."
+        if field in h5_file[neuron_path]: del h5_file[neuron_path][field]
+        h5_file[neuron_path][field] = data
 
 
 def add_unit_h5(h5_path, dp, unit,
-                unit_abolute_id=None, opto_id=None,
-                again=False, plot_debug=False):
+                unit_abolute_id=None, sync_chan_id=None,
+                again=False, again_wvf=False, plot_debug=False, verbose=False):
     """
     Assumes that dataset id is last folder of directory (yy-mm-dd_iiXXX_probeX).
     """
@@ -92,19 +114,25 @@ def add_unit_h5(h5_path, dp, unit,
     # hard-coded parameters
     samp_rate = 30000
     waveform_samples = 6  # ms
-    waveform_samples = int(waveform_samples*30000/1000)
+    waveform_samples = int(waveform_samples*samp_rate/1000)
     lab_id = "hausser"
 
     # open file in append mode
     h5_file = h5py.File(h5_path, "a")
 
     # check whether neuron already exists in dataset
-    dataset = Path(dp).name
+    dp=Path(dp)
+    dataset = dp.name
     check_dataset_format(dataset)
     neuron_path = f"datasets/{dataset}/{unit}"
     if neuron_path in h5_file:
-        print(f"Neuron already in h5 file: {neuron_path}")
-        return neuron_path
+        neuron_absolute_path=h5_file[f'{neuron_path}/neuron_absolute_id'][()].decode()
+        if again:
+            del h5_file[neuron_path]
+            del h5_file[neuron_absolute_path]
+        else:
+            print(f"Neuron already in h5 file: {neuron_path} ({neuron_absolute_path})")
+            return neuron_path
 
     # figure out where we're at
     if unit_abolute_id is None:
@@ -116,8 +144,10 @@ def add_unit_h5(h5_path, dp, unit,
             unit_abolute_id = np.sort(neuron_ids)[-1] + 1
 
     # create group for new neuron
-    neuron_group = h5_file.create_group(f'{lab_id}_neuron_{unit_abolute_id}')
+    neuron_absolute_path=f'{lab_id}_neuron_{unit_abolute_id}'
+    neuron_group = h5_file.create_group(neuron_absolute_path)
     h5_file[neuron_path] = neuron_group
+    print(f"Adding data at {neuron_path} ({neuron_absolute_path})...")
 
     # metadata
     neuron_group['lab_id'] = lab_id
@@ -130,17 +160,19 @@ def add_unit_h5(h5_path, dp, unit,
     t = trn(dp, unit)
     neuron_group['spike_indices'] = t
     ons, ofs = get_npix_sync(dp, verbose=False)
-    if opto_id is None:
-        opto_id = get_stim_chan(ons)
-    ons, ofs = ons[opto_id], ofs[opto_id]
+    if sync_chan_id is None:
+        sync_chan_id = get_stim_chan(ons)
+    ons, ofs = ons[sync_chan_id], ofs[sync_chan_id]
     optostims = np.hstack([ons[:, None], ofs[:, None], (ofs-ons)[:, None]])
     neuron_group['optostims'] = optostims
     # Only consider spikes 10s before opto onset
     neuron_group['sane_spikes'] = (t < ons[0]-10*samp_rate)
+    fp_fn_good_spikes = trn_filtered(dp, unit)[1]
+    neuron_group['fn_fp_filtered_spikes'] = fp_fn_good_spikes
 
     # waveforms
     dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples,
-                            again=again, plot_debug=plot_debug)
+                            again=again_wvf, plot_debug=plot_debug, verbose=verbose)
     dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
     chan_bottom = max(0, peak_chan-11)
     chan_top = min(383, peak_chan+11)

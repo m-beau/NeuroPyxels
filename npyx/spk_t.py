@@ -360,8 +360,8 @@ def train_quality(dp, unit, period_m=[0,20],
                   fp_n_chunks=3, fp_chunk_size = 10,
                   fn_n_chunks = 3, fn_chunk_size = 10,
                   use_or_operator = True,
-                  violations_ms = 0.8, fp_threshold = 0.05, fn_threshold=0.05,
-                  again = False, save = True, verbose = False, plot_debug=False):
+                  violations_ms = 0.8, fp_threshold = 0.05, fn_threshold = 0.05,
+                  again = False, save = True, verbose = False, plot_debug = False):
 
     """
     Subselect spike times which meet two criteria:
@@ -465,9 +465,10 @@ def train_quality(dp, unit, period_m=[0,20],
         
         good_fp_start_end_plot=None if len(good_fp_start_end)==1 else good_fp_start_end
         good_fn_start_end_plot=None if len(good_fn_start_end)==1 else good_fn_start_end
-        plot_fp_fn_rates(unit_train/fs, period_s, unit_amp, good_spikes_m,
-            None, None, None, None,
-            fp_threshold, fn_threshold, good_fp_start_end_plot, good_fn_start_end_plot)
+        if plot_debug:
+            plot_fp_fn_rates(unit_train/fs, period_s, unit_amp, good_spikes_m,
+                None, None, None, None,
+                fp_threshold, fn_threshold, good_fp_start_end_plot, good_fn_start_end_plot)
         
         return good_spikes_m, good_fp_start_end.tolist(), good_fn_start_end.tolist()
 
@@ -534,7 +535,7 @@ def train_quality(dp, unit, period_m=[0,20],
             if n_spikes_chunk > 15:
                 ACG = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[(t1, t2)])
                 violations_mean = np.mean(ACG[rp_mask])
-                rpv_ratio_acg = round(violations_mean / baseline_mean, 2)
+                rpv_ratio_acg = round(violations_mean / baseline_mean, 4)
                 fp_toplot.append(rpv_ratio_acg)
                 chunk_fp_t.append(t1+(t2-t1)/2)
                 if (rpv_ratio_acg <= fp_threshold):
@@ -563,10 +564,20 @@ def train_quality(dp, unit, period_m=[0,20],
             subchunks_fn_bool[i:len(subchunks_fn_bool)-fn_n_chunks+i+1,i]=good_fn_bool
         
         # (NaNs do not count in np/all/any -> decision on edges based on only 1 chunk)
+        nanm_fp = np.isnan(subchunks_fp_bool)
+        nanm_fn = np.isnan(subchunks_fn_bool)
         if use_or_operator:
+            # nans must be 0 to be ignored by any
+            subchunks_fn_bool[nanm_fn] = 0
+            subchunks_fp_bool[nanm_fp] = 0
+            
             subchunks_fn_bool = np.any(subchunks_fn_bool, axis=1)
             subchunks_fp_bool = np.any(subchunks_fp_bool, axis=1)
         else:
+            # nans must be 1 to be ignorred by all
+            subchunks_fn_bool[nanm_fn] = 1
+            subchunks_fp_bool[nanm_fp] = 1
+            
             subchunks_fn_bool = np.all(subchunks_fn_bool, axis=1)
             subchunks_fp_bool = np.all(subchunks_fp_bool, axis=1)
             
@@ -632,7 +643,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
                   use_or_operator = True,
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold=0.05,
                   use_consecutive = False, consecutive_n_seconds = 180,
-                  again = False, save = True, verbose = False, plot_debug=False):
+                  again = False, save = True, verbose = False, plot_debug = False):
     f"""
     Returns spike times (in sample) meeting the false positive and false negative criteria.
     Mainly wrapper of train_quality().
@@ -755,7 +766,7 @@ def gaussian_amp_est(x, n_bins):
         min_amp = p0[3]
         n_fit_no_cut = 0
         #n_fit_no_cut = gaussian_cut(x1, a=p0[0], mu=p0[1], sigma=p0[2], x_cut=0)
-        percent_missing = int(round(100 * norm.cdf((min_amp - p0[1]) / p0[2]), 0))
+        percent_missing = round(100 * norm.cdf((min_amp - p0[1]) / p0[2]), 2)
 
     except RuntimeError:
         x1, p0, min_amp, n_fit, n_fit_no_cut, percent_missing = None, None, None, None, None, np.nan

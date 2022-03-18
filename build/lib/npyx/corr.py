@@ -220,7 +220,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
       - ret (bool - default False): if True, train returned by the routine.
       If False, by definition of the routine, drawn to global namespace.
       - sav (bool - default True): if True, by definition of the routine, saves the file in dp.
-      - trains: list of trains fed to the function (the U can be any ints/floats, but it still needs)
+      - trains: [array, array...]: list of trains fed to the function in SAMPLES (not seconds).
+                (the U can be any ints/floats, but it is still necessary)
 
       returns numpy array (Nunits, Nunits, win_size/bin_size)
 
@@ -313,22 +314,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz',
         ret=True, sav=True, verbose=False, periods='all', again=False, train=None):
     '''
-    dp,
-    u,
-    bin_size,
-    win_size,
-    fs=30000,
-    symmetrize=True,
-    normalize=False,
-    normalize1=True,
-    ret=True,
-    sav=True,
-    verbose=False'''
-    u = u[0] if type(u)==list else u
-    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
-    '''
     ********
-    routine from routines_spikes
     computes autocorrelogram (1, window/bin_size) - int64, in Hertz
     ********
 
@@ -336,14 +322,18 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz',
      - u (int): unit index
      - win_size: size of binarized spike train bins, in milliseconds.
      - bin_size: size of autocorrelograms bins, in milliseconds.
-     - rec_len: length of the recording, in seconds. If not provided, time of the last spike.
      - fs: sampling frequency, in Hertz.
-     - ret (bool - default False): if True, train returned by the routine.
-      If False, by definition of the routine, drawn to global namespace.
-      - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
+     - normalize: ['Counts', 'Hertz', 'zscore']
+     - sav (bool - default True): if True, saves array to get_npyx_memory
+     - periods: [[t1,t2], [t3,t4...]], windows of time (in seconds) to use to comput acg
+     - again: bool, whether to recompute array rather than loading it from npyxMemory
+     - train: array (nspikes,), externally fed spike train (in SAMPLES, not seconds)
 
       returns numpy array (win_size/bin_size)
       '''
+    u = u[0] if type(u)==list else u
+    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
+
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
     if train is not None: train = [train]
     return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, verbose, periods, again, trains=train)[0,0,:]
@@ -790,7 +780,7 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
     Parameters:
         - CCG: numpy array, crosscorrelogram in Counts
         - cbin: float, CCG bins value, in milliseconds. Used to convert W_sd (ms) in samples.
-        - pval_thresh: float [0-1], threshold of modulation, in pvalue (based on Poisson distribution with continuity correction)
+        - p_th: float [0-1], threshold of modulation, in pvalue (based on Poisson distribution with continuity correction)
         - n_consec: int, number of consecutive
         - sgn: 1 or -1, direction of threshold crossing, either positive (1) or negative (-1)
         - W_sd: float, sd of convolution window, in millisecond
@@ -862,7 +852,9 @@ def get_cross_features(cross, cbin, cwin):
 
     return (l_ms, r_ms, amp_z, t_ms, n_triplets, n_bincrossing, bin_heights, entropy)
 
-def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0, fract_baseline=4./5, W_sd=10, test='Poisson_Stark', ret_features=True, only_max=True):
+def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0,
+                fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
+                ret_features=True, only_max=True, plot=False):
     '''
     Parameters:
         - CCG: 1d array,
@@ -1734,9 +1726,9 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
     pop_sync=t1*0
     for it2, t2 in enumerate(trains):
         N_cell_firing=cofiring_tags(t1, t2, fs, t_end, b, sd, th, again, dp, U[it2]) # denominator
-        N_pop_firing=N_pop_firing+N_cell_firing.astype(int)
+        N_pop_firing=N_pop_firing+N_cell_firing.astype(np.int64)
         cell_sync=(get_cisi(t1, t2, direction=0, verbose=False)<=sync_win/2) # UNDERCOVER BUG, sync_win not originally converted in samples!!
-        pop_sync=pop_sync+(cell_sync&N_cell_firing).astype(int) # cell_sync only counts when cell is considered to fire (single spikes ignored)
+        pop_sync=pop_sync+(cell_sync&N_cell_firing).astype(np.int64) # cell_sync only counts when cell is considered to fire (single spikes ignored)
 
     # Last spike will be 0 if t1 last spike happens is the last to happen of the bunch
     # so just give it the value of the spike before

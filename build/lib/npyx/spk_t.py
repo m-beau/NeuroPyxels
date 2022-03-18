@@ -349,7 +349,7 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=
 
     periods = thresh_consec(tbs, fr_th, sgn=1, n_consec=0, exclude_edges=False, only_max=False, ret_values=False)
     if not any(periods): periods=[[0,len(tbs)-1]]
-    periods=(np.array(periods)*(b_s*fs)).astype(int) # conversion from bins to samples
+    periods=(np.array(periods)*(b_s*fs)).astype(np.int64) # conversion from bins to samples
 
     if sav: np.save(Path(dprm,fn), periods)
 

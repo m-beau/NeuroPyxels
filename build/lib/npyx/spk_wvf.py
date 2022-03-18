@@ -135,7 +135,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, periods='regular', spi
     # Get waveforms times in bytes
     # and check that, for this waveform width,
     # they no not go beyond file limits
-    waveforms_t = spike_samples[spike_ids_subset].astype(int)
+    waveforms_t = spike_samples[spike_ids_subset].astype(np.int64)
     waveforms_t1 = (waveforms_t-t_waveforms//2)*n_channels_dat*item_size
     waveforms_t2 = (waveforms_t+t_waveforms//2)*n_channels_dat*item_size
     wcheck_m=(0<=waveforms_t1)&(waveforms_t2<fileSizeBytes)
@@ -186,7 +186,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
                 whiten=False,  hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
                 subsample_spikes = 2, peakchan_allowed_range=10,
                 use_average_peakchan = False, max_allowed_amplitude = 1800, max_allowed_shift=3,
-                n_waves_to_average=5000, plot_debug=False, do_shift_match=True):
+                n_waves_to_average=5000, plot_debug=False, do_shift_match=True, n_waveforms_per_batch=10):
     """
     ********
     Extract the drift and shift matched mean waveforms of the specified unit.
@@ -253,6 +253,9 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
         - plot_debug: bool, whether to plot informative histograms displaying the ditribution of peak channels (Z drift matching),
                       amplitudes on this peak channel (XY drift matching) and shifts (shift matching)
         - do_shift_match: bool, whether to perform shift matching
+        - n_waveforms_per_batch: int, number of waveforms to use per batch for drift matching
+                                 (in an ideal world 1, but too noisy - we assume that
+                                  n_waveforms_per_batch consecutive waveforms have the same drift state)
 
     Returns:
         - peak_dsmatched_waveform: (n_samples,) array (t_waveforms samples) storing the peak channel waveform
@@ -277,14 +280,17 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
 
     if Path(dprm,fn).is_file() and (not again) and (spike_ids is None):
         if verbose: print(f"File {fn} found in routines memory.")
-        return np.load(Path(dprm,fn)),np.load(Path(dprm,fn_all)),np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
+        if plot_debug:
+            drift_shift_matched_mean = np.load(Path(dprm,fn_all))
+            fig = quickplot_n_waves(drift_shift_matched_mean, f'dsmatched_waveform {u}')
+        return np.load(Path(dprm,fn)),drift_shift_matched_mean,np.load(Path(dprm,fn_spike_id)), np.load(Path(dprm,fn_peakchan))
 
     # Number of waveforms per batch used to drift-shift matching
     # (need to average to denoise waveforms. Assuming same drift state for 10 consec waveforms.)
     dsmatch_wvf_batch_size = 10
 
     ## Extract spike ids so we can extract consecutive waveforms
-    spike_ids_split_all = split(ids(dp, u), dsmatch_wvf_batch_size, return_last = False).astype(int)
+    spike_ids_split_all = split(ids(dp, u), dsmatch_wvf_batch_size, return_last = False).astype(np.int64)
     spike_ids_split = spike_ids_split_all[::subsample_spikes]
     spike_ids_split_indices = np.arange(0,spike_ids_split.shape[0],1)
 
@@ -367,7 +373,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='regular',
 
     #### shift matching ####
     # extract drift-matched raw waveforms
-    dsmatch_batch_ids = batch_peak_channels[:,0].astype(int)
+    dsmatch_batch_ids = batch_peak_channels[:,0].astype(np.int64)
     drift_matched_waves = raw_waves[dsmatch_batch_ids]#.reshape(-1, t_waveforms, raw_waves.shape[-1])
     drift_matched_batches = np.mean(drift_matched_waves, axis=1)
 

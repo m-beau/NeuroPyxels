@@ -604,11 +604,11 @@ def pos_half_width(waves, axes = 1):
         # look for crossings from 0 to cross_time
 
         start_interval = 0
-        end_interval = cross_times(waves)[0].astype(int)
+        end_interval = cross_times(waves)[0].astype(np.int64)
 
     else:
         # look for crossings from cross_time to end
-        start_interval = cross_times(waves)[0].astype(int)
+        start_interval = cross_times(waves)[0].astype(np.int64)
         end_interval = waves.shape[0]
 
     current_slope = waves[start_interval:end_interval]
@@ -643,7 +643,7 @@ def pos_half_width(waves, axes = 1):
 #
 #    # depending on the orientation of the peaks, find the corresponding
 #    # pos half-width
-#    start_interval = cross_times(waves)[0].astype(int)
+#    start_interval = cross_times(waves)[0].astype(np.int64)
 #    end_interval = end_amp_time(waves)[0]
 #    current_slope = waves[start_interval:end_interval]
 #    # get the real time when the crossings happened, not just relative time
@@ -674,7 +674,7 @@ def neg_half_width(waves):
     # find the interval we need start from 0 crossing to end
 
     start_interval = prev_peak_t
-    end_interval = cross_times(waves)[0].astype(int)
+    end_interval = cross_times(waves)[0].astype(np.int64)
     current_slope = waves[start_interval:end_interval]
     cross_start, cross_end = start_interval + np.where(np.diff(np.sign(current_slope- perc_50)))[0]
 #    breakpoint()
@@ -731,15 +731,15 @@ def repol_slope(waves):
     # get the wvf peaks
     peak_t, peak_v = detect_peaks(waves)
 
-    neg_t = peak_t[np.argmin(peak_v)].astype(int)
-    neg_v = np.min(peak_v).astype(int)
+    neg_t = peak_t[np.argmin(peak_v)].astype(np.int64)
+    neg_v = np.min(peak_v).astype(np.int64)
 
     # find number of points between negative and positive peaks
 
     pos_t = peak_t[np.argmax(peak_v)]
 
     all_dots_peak = np.abs(pos_t - neg_t)
-    dots_pos_neg_20 = (0.3*all_dots_peak).astype(int)
+    dots_pos_neg_20 = (0.3*all_dots_peak).astype(np.int64)
     fit_slope = waves[neg_t:neg_t+dots_pos_neg_20]
     coeff = np.polyfit(np.linspace(0,dots_pos_neg_20-1, dots_pos_neg_20), fit_slope, deg=1)
     # fit a slope with the new parameters
@@ -764,14 +764,14 @@ def recovery_slope(waves):
     pos_t = peak_t[max_amp_arg]
     neg_t = peak_t[min_amp_arg]
 
-#    pos_t = peak_t[np.argmax(peak_v)].astype(int)
-#    pos_v = np.max(peak_v).astype(int)
+#    pos_t = peak_t[np.argmax(peak_v)].astype(np.int64)
+#    pos_v = np.max(peak_v).astype(np.int64)
 
     # find number of points between negative and positive peaks
 
 
     all_dots_peak = waves.shape[0] - pos_t
-    dots_pos_neg_20 = (0.2*all_dots_peak).astype(int)
+    dots_pos_neg_20 = (0.2*all_dots_peak).astype(np.int64)
     fit_slope = waves[pos_t:pos_t+dots_pos_neg_20]
 
     coeff = np.polyfit(np.linspace(0,dots_pos_neg_20-1, dots_pos_neg_20), fit_slope, deg=1)
@@ -1571,7 +1571,7 @@ def gen_ss_cs(recs_fn, show = False):
 
                 df.drop_duplicates(inplace=True)
                 df.sort_values(by=['unit'], inplace=True)
-                df=df.astype(int)
+                df=df.astype(np.int64)
 
                 df.to_csv(Path(ss_cs_folder, 'SS-CS-table.csv'))
                 ss_list = np.unique(df.unit[df.ss==1].values)

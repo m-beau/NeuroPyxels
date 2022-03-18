@@ -8,6 +8,6 @@ __pycache__/
 __*
 npyx.egg-info/
 dist/
-build/
+build/*
 spk_wvf2.py
 .vscode/

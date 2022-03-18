@@ -31,7 +31,7 @@ mpl.rcParams['ps.fonttype'] = 42
 from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable
 from npyx.stats import fractile_normal, fractile_poisson
 
-from npyx.io import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map
+from npyx.inout import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map
 from npyx.gl import get_units
 from npyx.merger import assert_multi, get_ds_ids
 from npyx.spk_wvf import get_depthSort_peakChans, wvf, wvf_dsmatch, get_peak_chan, templates

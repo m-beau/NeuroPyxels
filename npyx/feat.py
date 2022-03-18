@@ -34,7 +34,7 @@ from psutil import virtual_memory as vmem
 
 import pandas as pd
 import json
-from npyx.io import chan_map, read_metadata
+from npyx.inout import chan_map, read_metadata
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from npyx.corr import (ccg, StarkAbeles2009_ccg_significance, ccg_sig_stack, gen_sfc, scaled_acg)
@@ -1415,7 +1415,7 @@ def temp_feat(dp, units, use_or_operator = True, use_consecutive = False):
     all_ft_list = []
     for unit in units:
 
-        unit_spikes = trn_filtered(dp, unit, use_or_operator = use_or_operator, use_consecutive = use_consecutive)
+        unit_spikes, good_spikes_m = trn_filtered(dp, unit, use_or_operator = use_or_operator, use_consecutive = use_consecutive)
         if len(unit_spikes) >1:
             all_ft_list.append(temporal_features(dp,unit_spikes, unit))
         else:

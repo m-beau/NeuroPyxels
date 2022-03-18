@@ -27,7 +27,7 @@ from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \
                     assert_int, assert_float, assert_iterable, smooth
 
-from npyx.io import read_metadata
+from npyx.inout import read_metadata
 from npyx.gl import get_units, get_npyx_memory
 from npyx.spk_t import trn, trnb, binarize, firing_periods,\
                         isi, mfr, train_quality
@@ -250,7 +250,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = get_npyx_memory(dp)
+    dpnm = get_npyx_memory(dp)
 
     ep_str='' if enforced_rp==0 else str(enforced_rp)
     fn='ccg{}_{}_{}_{}({}){}.npy'.format(
@@ -258,10 +258,10 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
         int(win_size), normalize,
         str(periods)[0:50].replace(' ', '').replace('\n',''),
         ep_str)
-    if os.path.exists(Path(dprm,fn)) and not again and trains is None:
+    if os.path.exists(Path(dpnm,fn)) and not again and trains is None:
         if verbose: print("File {} found in routines memory.".format(fn))
         try:  # handling of weird allow_picke=True error
-            crosscorrelograms = np.load(Path(dprm,fn))
+            crosscorrelograms = np.load(Path(dpnm,fn))
             crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
         except: pass
 
@@ -296,7 +296,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
         # Save it only if no custom trains were provided
         if sav and trains is None:
-            np.save(Path(dprm,fn), crosscorrelograms)
+            np.save(Path(dpnm,fn), crosscorrelograms)
 
     # Structure the 3d array to return accordingly to the order of the inputed units U
     if crosscorrelograms.shape[0]>1:
@@ -511,14 +511,14 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
         - sigstack: np array, ccg stack containing the ccgs, of shape U_src=U_trg x cwin//cbin+1 if all_to_all=False or U_src x U_trg x cwin//cbin+1 else
         - sigustack: np array, matching unit pairs for each ccg, of shape U_src=U_trg if all_to_all=False or U_src x U_trg else
     '''
-    dprm = get_npyx_memory(dp)
+    dpnm = get_npyx_memory(dp)
 
     Nu=len(U_src)+len(U_trg)
     if name is not None:
         fn, fnu = get_ccgstack_fullname(name=name, cbin=cbin, cwin=cwin, normalize=normalize, periods=periods)
-        if op.exists(dprm/fn) and not again:
-            stack=np.load(dprm/fn)
-            ustack=np.load(dprm/fnu)
+        if op.exists(dpnm/fn) and not again:
+            stack=np.load(dpnm/fn)
+            ustack=np.load(dpnm/fnu)
             if all_to_all:
                 assert stack.ndim==3
             else:
@@ -584,8 +584,8 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
             stack[i, :]=CCG[0,1,:]
 
     if sav and name is not None:
-        np.save(dprm/fn, stack)
-        np.save(dprm/fnu, ustack)
+        np.save(dpnm/fn, stack)
+        np.save(dpnm/fnu, ustack)
 
     return stack, ustack
 
@@ -953,9 +953,9 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         # (as others will already be added to the saved file name by ccg_stack)
         signame=name+'-{}-{}-{}-{}-{}'.format(test, p_th, n_consec_bins, fract_baseline, W_sd)
 
-        dprm = get_npyx_memory(dp)
+        dpnm = get_npyx_memory(dp)
 
-        feat_path=Path(dp,dprm,'ccgstack_{}_{}_{}_{}_{}_{}_{}_features.csv'.format(\
+        feat_path=Path(dp,dpnm,'ccgstack_{}_{}_{}_{}_{}_{}_{}_features.csv'.format(\
                        signame, 'Counts', cbin, cwin, str(periods)[0:50].replace(' ', '').replace('\n',''), sgn, only_max))
 
         # tries to load the significangt ccgs stack
@@ -1021,8 +1021,8 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         sigustack=npa(sigustack)
         sigstack=npa(sigstack)
         fn, fnu = get_ccgstack_fullname(name=signame, cbin=cbin, cwin=cwin, normalize='Counts', periods=periods)
-        np.save(dprm/fn, sigstack)
-        np.save(dprm/fnu, sigustack)
+        np.save(dpnm/fn, sigstack)
+        np.save(dpnm/fnu, sigustack)
         # print('Reloading only significant CCGs...')
         # sigstack, sigustack = ccg_stack(dp, sigustack[:,0], sigustack[:,1], cbin, cwin, normalize='Counts', all_to_all=False, name=signame, again=True,
         #                                 periods=periods)
@@ -1982,11 +1982,11 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
     sortedU=list(np.sort(np.array(U)))
 
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = get_npyx_memory(dp)
+    dpnm = get_npyx_memory(dp)
 
-    if os.path.exists(Path(dprm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_')))):
+    if os.path.exists(Path(dpnm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_')))):
         if verbose: print("File PSDxy{}_{}.npy found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
-        Pxy = np.load(Path(dprm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_'))))
+        Pxy = np.load(Path(dpnm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_'))))
         Pxy = Pxy.astype(np.float64)
 
     # if not, compute it
@@ -2001,7 +2001,7 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
         Pxy = Pxy.astype(np.float64)
         # Save it
         if sav:
-            np.save(Path(dprm,'PSDxy{}_{}.npy'.format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_'))), Pxy)
+            np.save(Path(dpnm,'PSDxy{}_{}.npy'.format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_'))), Pxy)
 
     # Back to the original order
     sPxy = np.zeros(Pxy.shape)

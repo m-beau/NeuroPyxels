@@ -48,13 +48,12 @@ import os.path as op
 opj = op.join
 from pathlib import Path
 
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import numpy as np
 import pandas as pd
 
 from npyx.utils import npa, align_timeseries_interpol, assert_float
 
-from npyx.io import get_npix_sync
+from npyx.inout import get_npix_sync
 from npyx.gl import (
     get_units,
     load_merged_units_qualities,

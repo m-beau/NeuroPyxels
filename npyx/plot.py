@@ -7,8 +7,6 @@ import os
 import os.path as op
 
 from psutil import disk_partitions; opj=op.join
-import subprocess
-import sys
 from pathlib import Path
 
 import pickle as pkl
@@ -24,23 +22,20 @@ from cmcrameri import cm as cmcr
 cmcr=cmcr.__dict__
 from IPython.core.display import HTML,display
 
-mpl.rcParams['figure.dpi']=100
+#mpl.rcParams['figure.dpi']=100
 mpl.rcParams['pdf.fonttype'] = 42 # necessary to make the text editable
 mpl.rcParams['ps.fonttype'] = 42
 
 from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable
 from npyx.stats import fractile_normal, fractile_poisson
 
-from npyx.io import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map
+from npyx.inout import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map
 from npyx.gl import get_units
 from npyx.merger import assert_multi, get_ds_ids
 from npyx.spk_wvf import get_depthSort_peakChans, wvf, wvf_dsmatch, get_peak_chan, templates
 from npyx.spk_t import trn, train_quality
 from npyx.corr import acg, ccg, gen_sfc, get_cm, scaled_acg
 from npyx.behav import align_times, get_processed_ifr, get_processed_popsync
-from mpl_toolkits.mplot3d import Axes3D
-
-import networkx as nx
 
 #%% plotting utilities ##############################################################################################
 
@@ -514,10 +509,52 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
     return fig
 
+def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
+                     fp=None, fn=None, fp_t=None, fn_t=None, fp_threshold=0.05, fn_threshold=0.05,
+                     good_fp_periods=None, good_fn_periods=None):
+    """
+    - train: seconds
+    """
+    if fp is not None and fn is not None:
+        fp_ok, fn_ok = len(fp)>0, len(fn)>0
+    else:
+        fp_ok, fn_ok = False, False
+    n_rows=1+int(fp_ok)+int(fn_ok)
+    fig, axs = plt.subplots(n_rows, 1, figsize=(8, n_rows*3), sharex=True)
+    if n_rows==1: axs=[axs]
+    x1,x2 = train[0], train[-1]
+    axi=0
+    if fp_ok:
+        axs[axi].scatter(fp_t, fp, color='firebrick')
+        axs[axi].plot([x1,x2], [fp_threshold,fp_threshold], c='r', alpha=0.5)
+        axs[axi].set_ylabel("FP rate")
+        axi+=1
+    if fn_ok:
+        axs[axi].scatter(fn_t, fn, color='teal')
+        axs[axi].plot([x1,x2], [fn_threshold,fn_threshold], c='r', alpha=0.5)
+        axs[axi].plot(ls="--")
+        axs[axi].set_ylabel("FN rate")
+        axi+=1
+    axs[axi].scatter((train)[good_spikes_m], amplitudes[good_spikes_m], color='green', alpha=0.5, s=3)
+    axs[axi].scatter((train)[~good_spikes_m], amplitudes[~good_spikes_m], color='k', alpha=0.5, s=3)
+    min_amp=np.min(amplitudes)
+    axs[axi].plot([x1,x2], [min_amp,min_amp], color='grey', lw=0.5, zorder=-1)
+    if good_fp_periods is not None:
+        for per in good_fp_periods:
+            axs[axi].plot(per, [5,5], color='firebrick', lw=3)
+    if good_fn_periods is not None:
+        for per in good_fn_periods:
+            axs[axi].plot(per, [0,0], color='teal', lw=3)
+    axs[axi].set_xlabel("Time (s)")
+    axs[axi].set_ylabel("Amplitudes (a.u.)")
+    axs[axi].set_xlim(period_s)
+    
+    return fig
+
 #%% Waveforms or raw data ##############################################################################################
 
 def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
-             periods='regular', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
+             periods='all', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
              whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
              title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
              labels=False, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
@@ -569,7 +606,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     # Get data
     use_dsmatch=False ##TODO make sure that ds_match returns the waveforms std
     if not use_dsmatch:
-        waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s,
+        waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s, selection='regular',
                         periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
                         whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
                         ignore_ks_chanfilt = ignore_ks_chanfilt)
@@ -708,14 +745,14 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
 
     return fig
 
-def quickplot_n_waves(w, title, peak_channel, nchans = 20, fig=None):
+def quickplot_n_waves(w, title='', peak_channel=None, nchans = 20, fig=None):
     "w is a (n_samples, n_channels) array"
     if peak_channel is None:
         pk = np.argmax(np.ptp(w, axis=0))
     else:
         pk = peak_channel
     ylim = [np.min(w[:,pk])-50, np.max(w[:,pk])+50]
-    if fig is None: fig = plt.figure(figsize=(8, 14))
+    if fig is None: fig = plt.figure(figsize=(6, 14))
     chans = np.arange(pk-nchans//2, pk+nchans//2)
     for i in range(nchans):
         ax = plt.subplot(nchans//2, 2, i+1) # will retrieve axes if alrady exists
@@ -729,7 +766,7 @@ def quickplot_n_waves(w, title, peak_channel, nchans = 20, fig=None):
         ax.set_ylim(ylim)
         if i%2==1: ax.set_yticklabels([])
         if i<nchans-2: ax.set_xticklabels([])
-    fig.suptitle(title)
+    fig.suptitle(title, y=0.92)
     
     return fig
 
@@ -1740,7 +1777,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
     return fig
 
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
-             saveDir='~/Downloads', saveFig=True, _format='pdf', figsize=None, verbose=False,
+             saveDir='~/Downloads', saveFig=False, _format='pdf', figsize=None, verbose=False,
              color=0, labels=True, title=None, ref_per=True, ylim=[0,0],
              acg_mn=None, acg_std=None, again=False,
               train=None):

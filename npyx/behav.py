@@ -23,12 +23,10 @@ import cv2
 
 from npyx.utils import npa, thresh, thresh_consec, smooth, sign, align_timeseries, assert_int, get_bins
 
-from npyx.io import read_metadata, get_npix_sync, paq_read, list_files
+from npyx.inout import read_metadata, get_npix_sync, paq_read, list_files
 from npyx.spk_t import mean_firing_rate
 from npyx.corr import crosscorr_cyrille, frac_pop_sync
 from npyx.merger import assert_multi, get_ds_table
-
-from IPython.core.debugger import set_trace as breakpoint
 
 #%% Generate trials dataframe from either paqIO file or matlab datastructure
 

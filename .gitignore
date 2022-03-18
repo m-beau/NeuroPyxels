@@ -11,3 +11,4 @@ dist/
 build/*
 spk_wvf2.py
 .vscode/
+.DS_Store

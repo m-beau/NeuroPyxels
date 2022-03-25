@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from numba import jit, njit, prange
+from numba import njit
 from numba.typed import List
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
 import warnings
@@ -22,7 +22,6 @@ import scipy.signal as sgnl
 
 import logging
 from math import pi, log
-import pylab
 from scipy import fft, ifft
 from scipy.optimize import curve_fit
 from scipy.signal import cspline1d_eval, cspline1d
@@ -82,12 +81,13 @@ _ACCEPTED_ARRAY_DTYPES = (np.float, np.float32, np.float64,
                           np.bool)
 
 def assert_float(x):
-    return type(x) in [float, np.float, np.float16,
-                       np.float32, np.float64]
+    return isinstance(x, (float, np.float,
+                          np.float16, np.float32, np.float64))
 
 def assert_int(x):
-    return type(x) in [int, np.int, np.int8, np.int16, np.uint8,
-                       np.uint16, np.int32, np.int64, np.uint32, np.uint64]
+    return isinstance(x, (int, np.int, np.int8, np.int16,
+                          np.uint8, np.uint16, np.int32,
+                          np.int64, np.uint32, np.uint64))
 
 def assert_iterable(x):
     return hasattr(x, '__iter__')
@@ -474,6 +474,7 @@ def xcorr_1d_loop(w1, w2):
     c = np.zeros(w1.shape)
     for i, (wave1, wave2) in enumerate(zip(normalize(w1,0).T, normalize(w2,0).T)):
         c[:,i] = np.correlate(wave1, wave2, mode='same')
+    c[np.isnan(c)]=0 # replace nans with 0 correlation
     return c
 
 def xcorr_2d(w1, w2):
@@ -490,7 +491,9 @@ def normalize(x, axis=0):
     """
     Vanilla normalization (center, reduce) along specified axis
     """
-    return (x-np.mean(x, axis=axis))/np.std(x, axis=axis)
+    s = np.std(x, axis=axis)
+    m = np.mean(x, axis=axis)
+    return (x-m)/s
 
 def get_bins(cwin, cbin):
     mod2=(cwin/cbin)%2

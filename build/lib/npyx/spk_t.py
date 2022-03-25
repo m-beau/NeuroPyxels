@@ -3,15 +3,15 @@
 2018-07-20
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
-import os
+from IPython.core.debugger import set_trace as breakpoint 
 import os.path as op
-
-from six import b; opj=op.join
+opj=op.join
 from pathlib import Path, PosixPath
-from ast import literal_eval as ale
 
-from itertools import groupby
-from operator import itemgetter
+# from itertools import groupby
+# from operator import itemgetter
+
+import matplotlib.pyplot as plt
 
 import numpy as np
 import pandas as pd
@@ -42,12 +42,12 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
     dp = Path(dp)
     assert unit in get_units(dp), 'WARNING unit {} not found in dataset {}!'.format(unit, dp)
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = get_npyx_memory(dp)
+    dpnm = get_npyx_memory(dp)
 
     fn='ids{}.npy'.format(unit)
-    if op.exists(Path(dprm,fn)) and not again:
+    if op.exists(Path(dpnm,fn)) and not again:
         if verbose: print("File {} found in routines memory.".format(fn))
-        indices = np.asarray(np.load(Path(dprm,fn)), dtype='int64')
+        indices = np.asarray(np.load(Path(dpnm,fn)), dtype='int64')
     # if not, compute it
     else:
         if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
@@ -69,7 +69,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
 
         # Save it
         if sav:
-            np.save(dprm/fn, indices)
+            np.save(dpnm/fn, indices)
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
@@ -105,14 +105,14 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     '''
 
     # Search if the variable is already saved in dp/routinesMemory
-    dprm = get_npyx_memory(dp)
+    dpnm = get_npyx_memory(dp)
     dp_source = get_source_dp_u(dp, unit)[0]
     fs=read_metadata(dp_source)['highpass']['sampling_rate']
 
     fn=f'trn{unit}_{enforced_rp}.npy'
-    if (dprm/fn).exists() and not again:
+    if (dpnm/fn).exists() and not again:
         if verbose: print("File {} found in routines memory.".format(fn))
-        try: train = np.load(dprm/fn) # handling of weird allow_picke=True error
+        try: train = np.load(dpnm/fn) # handling of weird allow_picke=True error
         except: pass
 
     # if not, compute it
@@ -143,7 +143,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
         # Save it
         if sav:
-            np.save(dprm/fn, train)
+            np.save(dpnm/fn, train)
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
@@ -294,10 +294,10 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
     sav=False
     if train is None:
         sav=True
-        dprm = get_npyx_memory(dp)
+        dpnm = get_npyx_memory(dp)
         fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
-        if op.exists(Path(dprm,fn)) and not again:
-            return np.load(Path(dprm,fn))
+        if op.exists(Path(dpnm,fn)) and not again:
+            return np.load(Path(dpnm,fn))
         t = trn(dp, u, enforced_rp=1, again=again)
         dp_source = get_source_dp_u(dp, u)[0]
         fs=read_metadata(dp_source)['highpass']['sampling_rate']
@@ -311,7 +311,7 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
     periods = firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02)
 
     if sav:
-        np.save(Path(dprm,fn), periods)
+        np.save(Path(dpnm,fn), periods)
 
     return periods
 
@@ -331,9 +331,9 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=
         assert dp is not None
         assert len(trn(dp,u,0))==len(t), 'There seems to be a mismatch between the provided spike trains and the unit index.'
         fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
-        dprm = get_npyx_memory(dp)
-        if op.exists(Path(dprm,fn)) and not again:
-            return np.load(Path(dprm,fn))
+        dpnm = get_npyx_memory(dp)
+        if op.exists(Path(dpnm,fn)) and not again:
+            return np.load(Path(dpnm,fn))
 
     assert 1<sd<10000
     assert 0<=th<1
@@ -351,36 +351,73 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=
     if not any(periods): periods=[[0,len(tbs)-1]]
     periods=(np.array(periods)*(b_s*fs)).astype(np.int64) # conversion from bins to samples
 
-    if sav: np.save(Path(dprm,fn), periods)
+    if sav: np.save(Path(dpnm,fn), periods)
 
     return periods
 
 
-def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
-        acg_chunk_size = 10, gauss_window_len = 3,
-        gauss_chunk_size = 10, use_or_operator = False, violations_ms = 0.8,
-        rpv_threshold = 0.05,  missing_spikes_threshold=5, again = False,
-        save = True, verbose = False):
+def train_quality(dp, unit, period_m=[0,20],
+                  fp_n_chunks=3, fp_chunk_size = 10,
+                  fn_n_chunks = 3, fn_chunk_size = 10,
+                  use_or_operator = True,
+                  violations_ms = 0.8, fp_threshold = 0.05, fn_threshold = 0.05,
+                  again = False, save = True, verbose = False, plot_debug = False):
 
     """
-    Apply a filter over the spike times in order to find time points with
-    low number of 'missed spikes' (false negatives)
-    and low number of 'extra spikes' (false positives).
+    Subselect spike times which meet two criteria:
+        low number of 'missed spikes' (false negatives)
+        and low number of 'extra spikes' (false positives).
+        
+    The recording within period_m is split in fp/fn_chunk_size seconds chunks,
+    and fp/fn_n_chunks chunks are used to estimate the fp and fn rates.
+    (e.g. 3 10s chunks means that the rates are estimated on 30s chunks, overlapping by 10s).
 
-    There are two filters applied:
-            - Flase negative filtering: for checking which sections of the recording
-                have too many spikes missing, by looking if the section is
-                approximately Gaussian. If the time section of the recording
-                has too much of the Gaussian distribution cut off (>5%) the section
-                has to be discarded
-            - False positive filtering: check if there are not too many spikes
-                occuring in the the refractory period of the autocorrelogram.
-                If there are too many spikes in the ACG the section of the
-                recording will be discarded.
-    Once we have both of these filters applied to the recording, we can take
-    the intersection of them. Hence we will have the times when both filters
-    were passed.
-    Returns: times when the false positive, false negative and both filters were passed
+    - False negative rate estimation: for checking which sections of the recording
+        have too many spikes missing, by looking if the section is
+        approximately Gaussian. If the time section of the recording
+        has too much of the Gaussian distribution cut off (>5%) the section
+        has to be discarded
+    - False positive rate estimation: check if there are not too many spikes
+        occuring in the the refractory period of the autocorrelogram.
+        If there are too many spikes in the ACG the section of the
+        recording will be discarded.
+        
+    Finally, the spikes belonging to the intersection (use_or_operator=False) or union (use_or_operator=True)
+    of the chunks with low enough fp/fn rates are returned.
+    
+    E.g. if fp_n_chunks=3 and fp_chunk_size=10 anf use_or_operator=False,
+    for a given 10s "chunk_k" to be considered, ALL 3*10=30s chunk triplets
+    (chunk_k-2,chunk_k-1,chunk_k), (chunk_k-1,chunk_k,chunk_k+1) AND (chunk_k,chunk_k+1,chunk_k+2)
+    fp rate estimations must be below fp_threshold.
+    
+    ***********
+    
+    Parameters:
+        - dp: str, path to dataset.
+        - unit: int/float, unit index.
+        - period_m: [t1, t2] list of floats in minutes, period to consider
+        - fp_n_chunks: int, number of recording chunks to concatenate to estimate fp rate.
+        - fp_chunk_size: int, size of recording chunks used to estimate fp rate.
+        
+        - fn_n_chunks: int, number of chunks to concatenate to estimate fp rate.
+        - fn_chunk_size: int, size of recording chunks used to estimate fn rate.
+        
+        - use_or_operator: bool, whether to use the union (True) or intersection (False)
+                        of stitched chunks (fp/fn_n_chunks)
+                        to state that a chunk passed the fp/fn threshold or not.
+                        E.g. if 
+        
+        - violations_ms: float, width of window in ms used to estimate refractory period violations (center of autocorrelogram)
+        - fp_threshold: [0-1] float, false positive rate (ratio of refractory periods violations/mean firing rate) threshold
+        - fn_threshold: [0-1] float, false negative rate (AUC of gaussian fit missing) threshold
+        
+        - again: bool, whether to recompute trn_filtered or simply load it from npyxMemory
+        - save: bool, whether to save result to npyxMemory for future fast reloading
+        - verbose: bool, whether to print extra information for debugging purposes.
+    
+    Returns:
+    - goodsec, acgsec, gausssec
+
     """
     # check that the passed values make sense
 
@@ -393,67 +430,60 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
     if not isinstance(unit, (int, np.int16, np.int32, np.int64)):
         raise TypeError('Unit provided should be an int')
 
-    if not isinstance(acg_window_len , (int, np.int16, np.int32, np.int64)):
-        raise TypeError('acg_window_len provided should be an int')
+    if not isinstance(fp_n_chunks , (int, np.int16, np.int32, np.int64)):
+        raise TypeError('fp_n_chunks provided should be an int')
 
-    if not isinstance(acg_chunk_size , (int, np.int16, np.int32, np.int64)):
-        raise TypeError('acg_chunk_size provided should be an int')
+    if not isinstance(fp_chunk_size , (int, np.int16, np.int32, np.int64)):
+        raise TypeError('fp_chunk_size provided should be an int')
 
-    if not isinstance(gauss_window_len , (int, np.int16, np.int32, np.int64)):
-        raise TypeError('gauss_window_len provided should be an int')
+    if not isinstance(fn_n_chunks , (int, np.int16, np.int32, np.int64)):
+        raise TypeError('fn_n_chunks provided should be an int')
 
-    if not isinstance(gauss_chunk_size , (int, np.int16, np.int32, np.int64)):
-        raise TypeError('gauss_chunk_size provided should be an int')
+    if not isinstance(fn_chunk_size , (int, np.int16, np.int32, np.int64)):
+        raise TypeError('fn_chunk_size provided should be an int')
 
-    assert acg_chunk_size >= 1, "ACG window length needs to be larger than 1 sec"
-    assert gauss_chunk_size >= 1, "Gaussian window length needs to be larger than 1 sec"
-    assert acg_window_len >= 1, "ACG chunk size needs to be larger than 1 "
-    assert gauss_window_len >= 1, "Gaussian chunk size needs to be larger than 1 "
+    assert fp_chunk_size >= 1, "ACG window length needs to be larger than 1 sec"
+    assert fn_chunk_size >= 1, "Gaussian window length needs to be larger than 1 sec"
+    assert fp_n_chunks >= 1, "ACG chunk size needs to be larger than 1 "
+    assert fn_n_chunks >= 1, "Gaussian chunk size needs to be larger than 1 "
 
-    dprm = get_npyx_memory(dp)
-
-    fn=f"trn_qual_{unit}_{str(acg_window_len)}_{str(acg_chunk_size)}_{str(gauss_window_len)}_{str(gauss_chunk_size)}_{str(violations_ms)}_{str(rpv_threshold)}_{str(missing_spikes_threshold)}.npy"
-
-    if Path(dprm,fn).is_file() and (not again):
-        if verbose: print(f"File {fn} found in routines memory.")
-        good_start_end, acg_start_end, gauss_start_end = np.load(Path(dprm,fn))
-        return good_start_end.tolist(), acg_start_end.tolist(), gauss_start_end.tolist()
-
-    unit_size_s = first_n_minutes * 60
-
-    no_gauss_chunks =  int(unit_size_s / gauss_chunk_size)
-    no_acg_chunks =  int(unit_size_s / acg_chunk_size)
-    all_recs = []
-    # Parameters
+    dpnm = get_npyx_memory(dp)
+    
+    # Load data
+    unit_ids = ids(dp, unit, again=again, verbose=verbose)
+    unit_amp = np.load(dp/'amplitudes.npy')[unit_ids]
     fs = 30_000
-#    exclusion_quantile = 0.02
-#    amples_fr = unit_size_s * fs
+    unit_train = trn(dp, unit, enforced_rp=0, again=again, verbose=verbose)
+    period_s=[period_m[0]*60, period_m[1]*60]
+
+    fn=f"trn_qual_{unit}_{str(fp_n_chunks)}_{str(fp_chunk_size)}_{str(fn_n_chunks)}_{str(fn_chunk_size)}_{str(violations_ms)}_{str(fp_threshold)}_{str(fn_threshold)}.npy"
+    fn_spikes = "spikes_"+fn
+    if (dpnm/fn).exists() and (dpnm/fn_spikes).exists() and (not again):
+        if verbose: print(f"File {fn} found in routines memory.")
+        good_fp_start_end, good_fn_start_end = np.load(dpnm/fn, allow_pickle=True)
+        good_spikes_m = np.load(dpnm/fn_spikes)
+        
+        good_fp_start_end_plot=None if len(good_fp_start_end)==1 else good_fp_start_end
+        good_fn_start_end_plot=None if len(good_fn_start_end)==1 else good_fn_start_end
+        if plot_debug:
+            plot_fp_fn_rates(unit_train/fs, period_s, unit_amp, good_spikes_m,
+                None, None, None, None,
+                fp_threshold, fn_threshold, good_fp_start_end_plot, good_fn_start_end_plot)
+        
+        return good_spikes_m, good_fp_start_end.tolist(), good_fn_start_end.tolist()
+
+    
+    recording_span = period_s[1]-period_s[0]
+    no_gauss_chunks =  int(recording_span / fn_chunk_size)
+    no_acg_chunks =  int(recording_span / fp_chunk_size)
+    
+    # Hard-coded parameters
     c_bin = 0.2
     c_win = 100
-#    violations_ms = 0.8
-#    rpv_threshold = 0.05
-#    missing_spikes_threshold=5
-#    taur = 0.0015
-    samples_fr = unit_size_s * fs
-#    tauc = 0.0005
-    spikes_threshold = 300
-
-    routines_mem = dp/'routinesMemory'
-    # Create alternative dir for routines
-    if routines_mem.is_dir() == False:
-        routines_mem.mkdir()
-
-    # Load kilosort aux files
-    amplitudes_sample = np.load(dp/'amplitudes.npy')  # shape N_tot_spikes x 1
-    spike_times = np.load(dp/'spike_times.npy')  # in samples
-    spike_clusters = np.load(dp/'spike_clusters.npy')
-
-    # Parameters
-    # Extract good units of current sample
-    good_units = get_units(dp, quality='good')
-    all_units = get_units(dp)
-    n = 0
-    x = 0
+    n_bins_acg_baseline=80 # from start and end of acg window
+    n_spikes_threshold = 300
+    
+    n_spikes = np.count_nonzero((unit_train/fs>period_s[0])&(unit_train/fs<period_s[1]))
 
     # steps:
         # split into 10 second chunks
@@ -464,297 +494,210 @@ def train_quality(dp, unit, first_n_minutes=20, acg_window_len=3,
         # append the spike times from these consecutiv windowws
         # calculate features on this array
 
-    chunk_acg_qual = np.zeros((no_acg_chunks,3)).astype('int')
-    chunk_gauss_qual = np.zeros((no_gauss_chunks,3)).astype('int')
+    chunks_fp_rate = np.zeros((no_acg_chunks,3)).astype('int')
+    chunks_fn_rate = np.zeros((no_gauss_chunks,3)).astype('int')
 
-    # Unit spikes during first 20 minutes
-    if spike_clusters[spike_clusters == unit].shape[0] > spikes_threshold:
-        trn_samples_unit_20 = trn(dp, unit=unit,verbose=False, periods=[(0, unit_size_s)], enforced_rp=0, again=True)
-        trn_ms_unit_20 = trn_samples_unit_20 * 1. / (fs * 1. / 1000)
-        spikes_unit_20 = len(trn_ms_unit_20)
+    fp_toplot, chunk_fp_t, fn_toplot, chunk_fn_t = [], [], [], []
+    if len(unit_ids) > n_spikes_threshold:
+        
+        fn_chunks = [[t*fn_chunk_size, (t+fn_n_chunks)*fn_chunk_size] for t in range(no_gauss_chunks)]
+        for i, (t1,t2) in enumerate(fn_chunks):
 
-        # Extract peak channel of current unit (where the deflection is maximum)
-        # here we use the peal channel used by KS and not our peak
+            chunk_mask = ((t1*fs) <= unit_train) & (unit_train < (t2*fs))
+            n_spikes_chunk=np.sum(chunk_mask)
 
-        if spikes_unit_20 > spikes_threshold:
+            if n_spikes_chunk > 15:
+                amplitudes_chunk = unit_amp[chunk_mask].astype(np.float64)
+                chunk_bins = estimate_bins(amplitudes_chunk, rule='Fd')
+                if chunk_bins> 3:
+                    x_c, p0_c, min_amp_c, n_fit_c, n_fit_no_cut_c, chunk_spikes_missing = gaussian_amp_est(amplitudes_chunk, chunk_bins)
+                    fn_toplot.append(chunk_spikes_missing/100)
+                    chunk_fn_t.append(t1+(t2-t1)/2)
+                    if (~np.isnan(chunk_spikes_missing)) & (chunk_spikes_missing <= fn_threshold*100):
+                        chunks_fn_rate[i] = [t1, t2, 1]
 
-            # Create a local path to store this unit info
+        # next loop through the chunks made for the ACG extraction
+        # get the periods where the ACG filter passed
+        
+        # Find ACG baseline level
+        acg_tot = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[period_s])
+        x_block = np.linspace(-c_win * 1. / 2, c_win * 1. / 2, acg_tot.shape[0])
+        rp_mask = (x_block >= -violations_ms) & (x_block <= violations_ms)
+        egdes_m = (acg_tot*0).astype(bool)
+        egdes_m[:n_bins_acg_baseline] = True
+        egdes_m[-n_bins_acg_baseline:] = True
+        baseline_mean = np.mean(acg_tot[egdes_m])
+                
+        fp_chunks = [[t*fp_chunk_size, (t+fp_n_chunks)*fp_chunk_size] for t in range(no_gauss_chunks)]
+        for i, (t1,t2) in enumerate(fp_chunks):
+            chunk_mask = ((t1*fs) <= unit_train) & (unit_train < (t2*fs))
+            n_spikes_chunk=np.sum(chunk_mask)
+            if n_spikes_chunk > 15:
+                ACG = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[(t1, t2)])
+                violations_mean = np.mean(ACG[rp_mask])
+                rpv_ratio_acg = round(violations_mean / baseline_mean, 4)
+                fp_toplot.append(rpv_ratio_acg)
+                chunk_fp_t.append(t1+(t2-t1)/2)
+                if (rpv_ratio_acg <= fp_threshold):
+                    chunks_fp_rate[i] = [t1, t2, 1]
 
-            paths = [routines_mem/'temp_features']
+    # Across all chunks, if at least 5 good for both fp and fn rate
+    if (np.sum(chunks_fp_rate[:,2])  > 5) & (np.sum(chunks_fn_rate[:,2]) > 5):
 
-            for pathi in paths:
-                if pathi.is_dir() == False:
-                    pathi.mkdir()
-
-            # Unit amplitudes
-            amplitudes_unit = amplitudes_sample[spike_clusters == unit]
-            spike_times_unit = spike_times[spike_clusters == unit]
-            unit_mask_20 = (spike_times_unit <= samples_fr)
-            spike_times_unit_20 = spike_times_unit[unit_mask_20]
-            amplitudes_unit_20 = amplitudes_unit[unit_mask_20]
-            # now we have all the spikes in the first 20 min for the unit
-            # split the recording into 10 second chunks
-            # find the quality of each chunk
-            #
-            # first look at the Gaussian filtering and the chunks made for this
-
-            for chunk_id in range(no_gauss_chunks):
-               # find the spikes that happened in this period of time
-               # get the ampllitude values for these spikes
-               # fit the gaussian model to this
-                chunk_start_time = chunk_id * gauss_chunk_size
-                chunk_end_time = (chunk_id + 3) * gauss_chunk_size
-                chunk_start_samples = chunk_start_time * fs
-                chunk_end_samples = chunk_end_time * fs
-
-                chunk_mask = (chunk_start_samples <= spike_times_unit_20) & \
-                                 (spike_times_unit_20 < chunk_end_samples)
-                chunk_mask = chunk_mask.reshape(len(spike_times_unit_20), )
-
-                # Chunk amplitudes
-                amplitudes_chunk = amplitudes_unit_20[chunk_mask]
-                amplitudes_chunk = np.asarray(amplitudes_chunk, dtype='float64')
-
-                if amplitudes_chunk.shape[0] > 15:
-
-                    chunk_bins = estimate_bins(amplitudes_chunk, rule='Fd')
-
-                    # % of missing spikes per chunk
-                    if chunk_bins> 3:
-                        x_c, p0_c, min_amp_c, n_fit_c, n_fit_no_cut_c, chunk_spikes_missing = gaussian_amp_est(amplitudes_chunk, chunk_bins)
-                        if (~np.isnan(chunk_spikes_missing)) & (chunk_spikes_missing <= missing_spikes_threshold):
-                            chunk_gauss_qual[chunk_id] = [chunk_start_time, chunk_end_time, 1]
-
-
-
-            # next loop through the chunks made for the ACG extraction
-            # get the periods where the ACG filter passed
-
-            for chunk_id in range(no_acg_chunks):
-               # find the spikes that happened in this period of time
-               # get the ampllitude values for these spikes
-               # fit the gaussian model to this
-                chunk_start_time = chunk_id * acg_chunk_size
-                chunk_end_time = (chunk_id + 3) * acg_chunk_size
-                chunk_start_samples = chunk_start_time * fs
-                chunk_end_samples = chunk_end_time * fs
-
-                chunk_mask = (chunk_start_samples <= spike_times_unit_20) & \
-                                 (spike_times_unit_20 < chunk_end_samples)
-                chunk_mask = chunk_mask.reshape(len(spike_times_unit_20), )
-
-                # Chunk amplitudes
-                amplitudes_chunk = amplitudes_unit_20[chunk_mask]
-                amplitudes_chunk = np.asarray(amplitudes_chunk, dtype='float64')
-                if amplitudes_chunk.shape[0] > 15:
-                        block_ACG = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[(chunk_start_time, chunk_end_time)])
-                        x_block = np.linspace(-c_win * 1. / 2, c_win * 1. / 2, block_ACG.shape[0])
-                        y_block = block_ACG.copy()
-#                        y_lim1_unit = 0
-#                        yl_unit = max(block_ACG)
-#                        y_lim2_unit = int(yl_unit) + 5 - (yl_unit % 5)
-
-                        # Find refractory period violations
-                        booleanCond = np.zeros(len(y_block), dtype=np.bool)
-                        # find periods where the
-                        booleanCond[(x_block >= -violations_ms) & (x_block <= violations_ms)] = True
-                        violations = y_block[booleanCond]
-                        violations_mean = np.mean(violations)
-
-                        # Select normal refractory points in the ACG
-                        booleanCond2 = np.zeros(len(y_block), dtype=np.bool)
-                        booleanCond2[:80] = True
-                        booleanCond2[-80:] = True
-                        normal_obs = y_block[booleanCond2]
-                        normal_obs_mean = np.mean(normal_obs)
-                        # Compute ACG ratio to account for refractory violations
-                        rpv_ratio_acg = round(violations_mean / normal_obs_mean, 2)
-                        if (rpv_ratio_acg <= rpv_threshold):
-                            chunk_acg_qual[chunk_id] = [chunk_start_time, chunk_end_time, 1]
-    # start at thi col
-    # have all the good chunks
-    # find sequences where there are more than 3
-    # run nsliding window over values, when the sum gets to 3
-    # drop the middle value
-
-    if (np.sum(chunk_acg_qual[:,2])  > 5) & (np.sum(chunk_gauss_qual[:,2]) > 5):
-
-        # create sum of rolling windows
-        # by stacking the vecotrs with overlap and summing across the vectors
-
-
-
-        # get where the values of the rolling sums are 0
-        # add 1 to the indices of where the rolling sums are 0
-        # to get the index of the middle value, which is 'bad'
-        # alternatively, check if any sections are bad, not all sections
-
-
-        # input values to chunk_acg_qual and chunk_gauss_qual
-        # this is needed bc I only have the values with positive results recorded
-        # I can also remove the following pieces of code, as the
-        # arrays are already initiated at 0, and the size is correct
-        # so the roll_sum summing will work
-
-        chunk_gauss_qual  = np.array(chunk_gauss_qual)
-        chunk_acg_qual = np.array(chunk_acg_qual)
-
-        acg_array = chunk_acg_qual[:,2]
-        gauss_array = chunk_gauss_qual[:,2]
-
-
-        # index into the vectors to effectively create sliding windows
-        # use fancy indexing, by first making a matrix of vector indices
-        # to be used. Then use this matrix to index the vector
-
-        acg_indexer = np.arange(no_acg_chunks - acg_window_len)[None,:] + np.arange(acg_window_len)[:,None]
-
-        roll_sum_acg = acg_array[acg_indexer].sum(axis = 0).reshape(1,-1)
-
-        gauss_indexer = np.arange(no_gauss_chunks - gauss_window_len)[None, :] + np.arange(gauss_window_len)[:,None]
-
-        roll_sum_gauss = gauss_array[gauss_indexer].sum(axis = 0).reshape(1,-1)
-
-        # Use OR or AND operator to find the sections of one filtering
-        # process that qualify
+        # Aggregate FP and FN masks for each elemental chunks
+        # e.g. for 30s chunks overlapping at 33% (3 10s chunks),
+        # find for each 10s chunk what the final FP/FN rate is
+        # based on the rate of the 3 30s chunks which overlap with it (and/or, see use_or_operator)
+        # (apart from edges, where only 1 30s chunk overlaps)
+        subchunks_fp = np.unique(npa(fp_chunks).flatten())
+        subchunks_fp = npa([[subchunks_fp[i], subchunks_fp[i+1]] for i in range(len(subchunks_fp)-1)])
+        good_fp_bool = chunks_fp_rate[:,2].astype(bool)
+        subchunks_fp_bool = np.zeros((subchunks_fp.shape[0], fp_n_chunks))*np.nan
+        for i in range(fp_n_chunks):
+            subchunks_fp_bool[i:len(subchunks_fp_bool)-fp_n_chunks+i+1,i]=good_fp_bool
+        
+        subchunks_fn = np.unique(npa(fn_chunks).flatten())
+        subchunks_fn = npa([[subchunks_fn[i], subchunks_fn[i+1]] for i in range(len(subchunks_fn)-1)])
+        good_fn_bool = chunks_fn_rate[:,2].astype(bool)
+        subchunks_fn_bool = np.zeros((subchunks_fn.shape[0], fn_n_chunks))*np.nan
+        for i in range(fn_n_chunks):
+            subchunks_fn_bool[i:len(subchunks_fn_bool)-fn_n_chunks+i+1,i]=good_fn_bool
+        
+        # (NaNs do not count in np/all/any -> decision on edges based on only 1 chunk)
+        nanm_fp = np.isnan(subchunks_fp_bool)
+        nanm_fn = np.isnan(subchunks_fn_bool)
         if use_or_operator:
-            good_vals_acg = np.where(np.any(roll_sum_acg, axis = 0))[0] +1
-            good_vals_gauss = np.where(np.any(roll_sum_gauss, axis =0))[0] +1
+            # nans must be 0 to be ignored by any
+            subchunks_fn_bool[nanm_fn] = 0
+            subchunks_fp_bool[nanm_fp] = 0
+            
+            subchunks_fn_bool = np.any(subchunks_fn_bool, axis=1)
+            subchunks_fp_bool = np.any(subchunks_fp_bool, axis=1)
         else:
-            good_vals_acg = np.where(np.all(roll_sum_acg, axis = 0))[0] +1
-            good_vals_gauss = np.where(np.all(roll_sum_gauss, axis =0))[0] +1
+            # nans must be 1 to be ignorred by all
+            subchunks_fn_bool[nanm_fn] = 1
+            subchunks_fp_bool[nanm_fp] = 1
+            
+            subchunks_fn_bool = np.all(subchunks_fn_bool, axis=1)
+            subchunks_fp_bool = np.all(subchunks_fp_bool, axis=1)
+            
+        good_fp_start_end = subchunks_fp[subchunks_fp_bool]
+        good_fn_start_end = subchunks_fn[subchunks_fn_bool]
+        
+        ## Finally, mask spikes meeting the FP AND FN rates
+        fp_m = np.zeros(unit_train.shape[0]).astype(bool)
+        for subchunk in good_fp_start_end:
+            m = (unit_train/fs>subchunk[0])&(unit_train/fs<subchunk[1])
+            fp_m = fp_m|m
+        fn_m = np.zeros(unit_train.shape[0]).astype(bool)
+        for subchunk in good_fn_start_end:
+            m = (unit_train/fs>subchunk[0])&(unit_train/fs<subchunk[1])
+            fn_m = fn_m|m
+        good_spikes_m=fp_m&fn_m
 
-        # take the intersection of these two 'good' sets to
-        # get where both filters were passed
-        # get the times where each passed individually and look for intersections
-        # get the seconds where each passed, look at the intersection of these two lists
-        # for both filters want a long list of second start times where
-        # the filter was passed
-
-        # get the good acg seconds
-        good_acg_sec = []
-        for i in good_vals_acg:
-            good_acg_sec.append(list(np.linspace(i*acg_chunk_size,(i+1)*acg_chunk_size-1, acg_chunk_size ).astype('int')))
-        good_acg_sec = np.array(good_acg_sec).flatten()
-
-        # if the array is empty add a single 0 to it, so it doesn't break elsewhere
-        if len(good_acg_sec) ==0:
-            good_acg_sec = np.array([0])
-        # get the good gauss seconds
-        good_gauss_sec = []
-        for i in good_vals_gauss:
-            good_gauss_sec.append(list(np.linspace(i*gauss_chunk_size, (i+1)*gauss_chunk_size -1, gauss_chunk_size).astype('int')))
-        good_gauss_sec = np.array(good_gauss_sec).flatten()
-
-        # if the array is empty add a single 0 to it, so it doesn't break elsewhere
-        if len(good_gauss_sec) == 0:
-            good_gauss_sec = np.array([0])
-        acg_start_end  = get_consec_sections(good_acg_sec)
-        # get the seconds where both the intervals overlap
-        good_sec = np.array(list(set(good_gauss_sec) & set(good_acg_sec) ))
-
-        # if the array is empty add a single 0 to it, so it doesn't break elsewhere
-        if len(good_sec) == 0:
-            good_sec = np.array([0])
-        gauss_start_end  = get_consec_sections(good_gauss_sec)
-
-        # get the good overlapping seconds
-        good_start_end  = get_consec_sections(good_sec)
         if save:
-            np.save(Path(dprm,fn), np.array( (np.array(good_start_end), np.array(acg_start_end), np.array(gauss_start_end)), dtype = object))
-        return good_start_end, acg_start_end, gauss_start_end
+            np.save(Path(dpnm,fn), np.array( (np.array(good_fp_start_end), np.array(good_fn_start_end)), dtype = object))
+            np.save(dpnm/fn_spikes, good_spikes_m)
+
+        if plot_debug:
+            plot_fp_fn_rates(unit_train/fs, period_s, unit_amp, good_spikes_m,
+                     fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
+                     fp_threshold, fn_threshold, good_fp_start_end, good_fn_start_end)
+            
+        return good_spikes_m, good_fp_start_end, good_fn_start_end
+    
     else:
-        zeros3 = np.zeros((1,3), dtype = np.int8)
+        good_spikes_m=(unit_train*0).astype(bool)
         if save:
-            np.save(Path(dprm,fn), np.array((zeros3, zeros3, zeros3), dtype = object)  )
-        return zeros3, zeros3, zeros3
+            np.save(Path(dpnm,fn), np.array(([0], [0]), dtype = object)  )
+            np.save(dpnm/fn_spikes, good_spikes_m)
+            
+        if plot_debug and n_spikes>0:
+            plot_fp_fn_rates(unit_train/fs, period_s, unit_amp, good_spikes_m,
+                     fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
+                     fp_threshold, fn_threshold)
+            
+        return good_spikes_m, [0], [0]
 
-def get_consec_sections(seconds):
-        """
-        Given an array with seconds as entries (with 1 sec increments)
+# def get_consec_sections(seconds):
+#         """
+#         Given an array with seconds as entries (with 1 sec increments)
 
-        Return: list of consecutive sections start and end times
-        """
-        sec_all = []
-        for k, g in groupby(enumerate(seconds), lambda ix: ix[0]-ix[1]):
-            sec_all.append(list( map(itemgetter(1), g)))
-        start_end = []
+#         Return: list of consecutive sections start and end times
+#         """
+#         sec_all = []
+#         for k, g in groupby(enumerate(seconds), lambda ix: ix[0]-ix[1]):
+#             sec_all.append(list( map(itemgetter(1), g)))
+#         start_end = []
 
-        # get the start and end times of these section
-        for good_section in sec_all:
-            start_end.append([good_section[0], good_section[-1]])
+#         # get the start and end times of these section
+#         for good_section in sec_all:
+#             start_end.append([good_section[0], good_section[-1]])
 
-        return start_end
+#         return start_end
 
 
-def trn_filtered(dp, unit, first_n_minutes=20, consecutive_n_seconds = 180,
-                 acg_window_len=3, acg_chunk_size = 10, gauss_window_len = 3,
-                 gauss_chunk_size = 10, use_or_operator = False, use_consecutive = True,
-                 verbose = False, again = False, save = True):
-
-    goodsec, acgsec, gausssec = train_quality(dp, unit, first_n_minutes,
-                                  acg_window_len, acg_chunk_size, gauss_window_len, gauss_chunk_size,
-                                  use_or_operator, again=again, save = save, verbose =verbose)
-
+def trn_filtered(dp, unit, period_m=[0,20],
+                  fp_n_chunks=3, fp_chunk_size = 10,
+                  fn_n_chunks = 3, fn_chunk_size = 10,
+                  use_or_operator = True,
+                  violations_ms = 0.8, fp_threshold = 0.05, fn_threshold=0.05,
+                  use_consecutive = False, consecutive_n_seconds = 180,
+                  again = False, save = True, verbose = False, plot_debug = False):
+    f"""
+    Returns spike times (in sample) meeting the false positive and false negative criteria.
+    Mainly wrapper of train_quality().
+    
+    Extra parameters not in train_quality (see below for others):
+        - use_consecutive: bool, whether to only return spikes from the longest chunk
+                                 (at least consecutive_n_seconds total).
+                                 If False, all spikes belonging to good chunks are returned.
+        - consecutive_n_seconds: float, minimum tolerated size (in seconds) of recording section
+                                 with consecutive good chunks for its spikes to be returned.
+                                 If less than consecutive_n_seconds good sections in total, does not pass.
+        
+    Returns:
+        - train_filtered: array of spike times (in samples)
+                          belonging to recording chunks where both FP and FN rates are low enough.
+                          
+    train_quality docstring:
+    
+    {train_quality.__doc__}
     """
-    High level function for getting the spike ids for the spikes that passed
-    both filtering criteria in train_quality function.
-    Reurns: spike ids passing filters
-    """
+    t = trn(dp,unit)
+    t_s=t/30000
+    good_spikes_m, good_fp_start_end, good_fn_start_end = train_quality(dp, unit, period_m,
+                    fp_n_chunks, fp_chunk_size, fn_n_chunks, fn_chunk_size, use_or_operator,
+                    violations_ms, fp_threshold, fn_threshold, again, save, verbose, plot_debug)
 
-    good_sec = []
-    for i in goodsec:
-        good_sec.append(list(range(i[0], i[1]+1)))
-    good_sec = np.hstack((good_sec))
-    if good_sec.shape[0] > 5:
-        # chunks that pass out criteria
-        all_spikes = []
-
-
-        # condition, if the number of consecutive chunks is
-        # higehr than the 3min threshold, extract it
-        # Otherwise leave the unit
-
-        # need to extract the spike times again for chunks and concat
-        # extract the spike train and append it to one array
+    # use spike times themselves to define beginning and end of good Sections
+    # as the FP and FN sections do not necessarily overlap
+    edges = np.diff([0]+list(good_spikes_m.astype(int))+[0])
+    good_left = np.nonzero(edges==1)[0]
+    good_right = np.nonzero(edges==-1)[0]-1
+    good_sections = [[t_s[l], t_s[r]] for l,r in zip(good_left, good_right)]
+    
+    if len(good_sections)>0:#
+        total_good_sections = sum([s[1]-s[0] for s in good_sections])
         if use_consecutive:
-
             # get the longest consecutive section of time that passes
             # both our criteria
             maxrun = -1
             run_len = {}
-            for x in good_sec:
+            for x in good_sections:
                 mrun = run_len[x] = run_len.get(x-1, 0) + 1
-                #print x-run+1, 'to', x
                 if mrun > maxrun:
                     maxend, maxrun = x, mrun
             consecutive_good_chunk = list(range(maxend-maxrun+1, maxend+1))
-            consecutive_good_chunk_len = len(consecutive_good_chunk)
-            if consecutive_good_chunk_len > consecutive_n_seconds:
-                all_trn = trn(dp, unit, verbose = False, periods = [(consecutive_good_chunk[0], consecutive_good_chunk[-1]+1)])
-                all_spikes_return = all_trn
-                # this is the output we need, the spikes that are in
-                # the 3 min period that is classified good
-                return all_spikes_return#, good_vals_acg, good_acg_sec
-
-            else:
-                if verbose: print('No consecutive section passed the filters')
-                return np.array([0])
+            if len(consecutive_good_chunk) > consecutive_n_seconds:
+                good_spikes_m = (t_s>consecutive_good_chunk[0])&(t_s<consecutive_good_chunk[-1]+1)
+                return t[good_spikes_m], good_spikes_m
         else:
-            # get all the ranges of spikes
-            all_consecutive_ranges =[]
-            for k,g in groupby(enumerate(good_sec),lambda x:x[0]-x[1]):
-                range_group = (map(itemgetter(1),g))
-                range_group = list(map(int,range_group))
-                all_consecutive_ranges.append((range_group[0],range_group[-1]))
-            for train_secs in all_consecutive_ranges:
-                curr_spikes = trn(dp, unit, verbose = False, periods = [(train_secs[0], train_secs[1])])
-                all_spikes.append(curr_spikes)
-            all_spikes_return = np.hstack(all_spikes)
-
-            return all_spikes_return#, good_vals_acg, good_acg_sec
-    else:
-        return np.array([0])
+            if total_good_sections > consecutive_n_seconds:
+                return t[good_spikes_m], good_spikes_m
+        
+    if verbose: print('No consecutive section passed the filters')
+    return np.array([0]), (t*0).astype(bool)
 
 
 def gaussian_cut(x, a, mu, sigma, x_cut):
@@ -823,7 +766,7 @@ def gaussian_amp_est(x, n_bins):
         min_amp = p0[3]
         n_fit_no_cut = 0
         #n_fit_no_cut = gaussian_cut(x1, a=p0[0], mu=p0[1], sigma=p0[2], x_cut=0)
-        percent_missing = int(round(100 * norm.cdf((min_amp - p0[1]) / p0[2]), 0))
+        percent_missing = round(100 * norm.cdf((min_amp - p0[1]) / p0[2]), 2)
 
     except RuntimeError:
         x1, p0, min_amp, n_fit, n_fit_no_cut, percent_missing = None, None, None, None, None, np.nan
@@ -867,3 +810,4 @@ def estimate_bins(x, rule):
 
 from  npyx.corr import acg
 from npyx.merger import assert_multi, get_dataset_id, get_ds_table, get_source_dp_u
+from npyx.plot import plot_fp_fn_rates

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
-from . import utils, io, gl, spk_t, spk_wvf, corr, plot, behav, merger, stats
+from . import inout, utils, gl, spk_t, spk_wvf, corr, plot, behav, merger, stats
 
 from .utils import *
-from .io import *
+from .inout import *
 from .gl import *
 from .spk_t import *
 from .spk_wvf import *
@@ -34,6 +34,6 @@ npyx submodules:
  .h5
 """
 
-__version__ = '2.3.0'
+__version__ = '2.3.1'
 
 print(f'npyx version {__version__} imported.')

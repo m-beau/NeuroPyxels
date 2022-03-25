@@ -180,6 +180,10 @@ def detect_new_spikesorting(dp, print_message=True, qualities=None):
     '''
     dp=Path(dp)
     spikesorted = False
+    if not (dp/'cluster_group.tsv').exists():
+        # if first time this is ran on a merged dataset
+        return True
+    
     if qualities is None:
         assert 'merged' not in str(dp), 'this function should be ran on an original sorted dataset, not on a merged dataset.'
         last_spikesort = os.path.getmtime(dp/'spike_clusters.npy')

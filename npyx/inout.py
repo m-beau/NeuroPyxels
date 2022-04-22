@@ -108,6 +108,7 @@ def metadata(dp):
 
     # Formatting of openephys meta file
     meta = {}
+    meta['path'] = os.path.realpath(dp)
     if oe_found:
         meta['acquisition_software']='OpenEphys'
         # Load OpenEphys metadata
@@ -456,6 +457,52 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
         return onsets,offsets
 
+def get_binary_file_path(meta, filt_key):
+    '''Return the path of the binary file from the meta data
+
+    Given meta data read from the datapath, return the path to the associated
+    binary file under with the associated filt_key (e.g., 'highpass' or 'lowpass').
+    This function prints a helpful error message when the path is not found.
+    
+    Returns:
+    The absolute path to the binary file with the associated filt key
+    '''
+    dp_path = meta['path']
+    assert meta[filt_key]['binary_relative_path']!='not_found',\
+        f'No binary file (./*.ap.bin or ./continuous/Neuropix-PXI-100.0/*.dat) found in folder {dp_path}!!'
+    file_name = os.path.join(dp_path, meta[filt_key]['binary_relative_path'])
+    if not os.path.isfile(file_name):
+        raise RuntimeError(f"No binary file at {file_name}") 
+    return os.path.realpath(file_name)
+
+def mmap_binary_file(dp, filt_key='highpass'):
+    '''Memory map the contents of a raw binary file and return the contents as a numpy array
+
+    Memory maps the contents of the binary recording file specified
+    in the meta-data by the passed filt_key. 
+
+    Parameters:
+    - dp: datapath to the folder with the binary file
+    - filt_key: 'highpass' or 'lowpass' depending on which file to load
+    
+    Returns:
+    The contents of the the binary file as a memory mapped 2D numpy array, where
+    rows are channels and columns are consecutive timepoints.
+    '''
+    dp = Path(dp)
+    meta = read_metadata(dp)
+    binary_file_path = get_binary_file_path(meta, filt_key)
+    n_channels = meta[filt_key]['n_channels_binaryfile']
+    data_type = meta[filt_key]['datatype']
+    n_timepoints = meta[filt_key]['binary_byte_size'] // np.dtype(data_type).itemsize // n_channels
+    assert n_timepoints * np.dtype(data_type).itemsize * n_channels == meta[filt_key]['binary_byte_size'], \
+        f'Binary file at {binary_file_path} does not have dimensions consistent with meta data'
+    # Note that binary files are stored as consecutive channels across a single
+    # timepoint. To ensure the shape is n_channels x n_timepoints, this corresponds
+    # to order = F rather than order = C (its transpose)
+    return np.memmap(binary_file_path, dtype=data_type, mode="r", offset=0,
+                     shape=(n_channels, n_timepoints), order="F")
+
 
 def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
                      whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
@@ -482,9 +529,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     # Find binary file
     dp = Path(dp)
     meta = read_metadata(dp)
-    assert meta[filt_key]['binary_relative_path']!='not_found',\
-        f'No binary file (./*.ap.bin or ./continuous/Neuropix-PXI-100.0/*.dat) found in folder {dp}!!'
-    fname = dp/meta[filt_key]['binary_relative_path']
+    fname = get_binary_file_path(meta, filt_key) 
 
     assert len(times)==2
     assert times[0]>0

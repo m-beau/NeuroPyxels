@@ -14,6 +14,7 @@ from .behav import *
 from .merger import *
 from .circuitProphyler import *
 from .feat import *
+from .info import *
 from .h5 import *
 
 __doc__="""
@@ -34,6 +35,6 @@ npyx submodules:
  .h5
 """
 
-__version__ = '2.3.2'
+__version__ = '2.3.3'
 
 print(f'npyx version {__version__} imported.')

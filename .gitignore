@@ -6,9 +6,11 @@ __pycache__/
 .*.sw*
 *~
 __*
-npyx.egg-info/
+npyx.egg-info/*giti
 dist/
-build/*
+build/
+build/lib/npyx/*
 spk_wvf2.py
 .vscode/
 .DS_Store
+.ipynb_checkpoints/

@@ -106,6 +106,7 @@ def add_dataset_to_group(group, dataset, data, again=0):
     if dataset in group:
         if again:
             del group[dataset]
+            print(f"{dataset} overwritten.")
         else:
             return
     group[dataset] = data
@@ -163,7 +164,7 @@ def add_unit_h5(h5_path, dp, unit,
     # metadata
     add_dataset_to_group(neuron_group, 'lab_id', lab_id, again)
     add_dataset_to_group(neuron_group, 'dataset_id', dataset, again)
-    add_dataset_to_group(neuron_group, 'labneuron_id_id', unit, again)
+    add_dataset_to_group(neuron_group, 'neuron_id', unit, again)
     add_dataset_to_group(neuron_group, 'neuron_absolute_id', neuron_group.name, again)
     add_dataset_to_group(neuron_group, 'sampling_rate', samp_rate, again)
 
@@ -178,7 +179,7 @@ def add_unit_h5(h5_path, dp, unit,
         optostims = np.hstack([ons[:, None], ofs[:, None], (ofs-ons)[:, None]])
         add_dataset_to_group(neuron_group, 'optostims', optostims, again)
         # Only consider spikes 10s before opto onset
-        sane_spikes = (t < ons[0]-10*samp_rate)
+        sane_spikes = (t < (ons[0]-10)*samp_rate)
         add_dataset_to_group(neuron_group, 'sane_spikes', sane_spikes, again)
         
     if 'fn_fp_filtered_spikes' not in neuron_group or again: 
@@ -198,7 +199,7 @@ def add_unit_h5(h5_path, dp, unit,
         cm = chan_map(dp)
         add_dataset_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, :], again)
 
-    # quality metrics
+    # SNR estimation
     if 'amplitudes' not in neuron_group or again:
         add_dataset_to_group(neuron_group, 'amplitudes', np.load(dp/'amplitudes.npy').squeeze()[ids(dp, unit)], again)
         chunk = extract_rawChunk(dp, snr_window, channels=np.arange(chan_bottom, chan_top))

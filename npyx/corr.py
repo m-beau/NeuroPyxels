@@ -20,6 +20,8 @@ num_cores = multiprocessing.cpu_count()
 import numpy as np
 import pandas as pd
 
+from collections import Counter
+
 from scipy.interpolate import interp1d
 from tqdm.notebook import tqdm #from tqdm import tqdm
 
@@ -2029,3 +2031,4 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
 #%% Circular imports
 from npyx.plot import plot_pval_borders
 from npyx.spk_wvf import get_depthSort_peakChans
+from npyx.behav import get_processed_ifr

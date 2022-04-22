@@ -22,7 +22,7 @@ from npyx.utils import npa, sign
 from npyx.inout import read_metadata, chan_map
 from npyx.spk_wvf import get_depthSort_peakChans, get_peak_chan
 from npyx.corr import gen_sfc
-from npyx.merger import assert_multi, get_ds_table
+from npyx.merger import assert_multi, get_ds_table, merge_datasets
 
 import networkx as nx
 
@@ -84,7 +84,10 @@ class Prophyler:
 
     '''
 
-    def __init__(self, dp):
+    def __init__(self, dp, again=False):
+
+        if not isinstance(dp, str):
+            dp, ds_table = merge_datasets(dp, again=again)
 
         # Process dp and dataset(s) table
         self.dp_pro = dp
@@ -878,8 +881,8 @@ class Dataset:
         self.params={}; params=imp.load_source('params', Path(self.dp,'params.py').absolute().as_posix())
         for p in dir(params):
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
-        self.fs=self.meta['sampling_rate']
-        self.endTime=self.meta['fileTimeSecs']
+        self.fs=self.meta['highpass']['sampling_rate']
+        self.endTime=self.meta['recording_length_seconds']
         self.chan_map=chan_map(self.dp, y_orig='surface')
         sk_output_cm=chan_map(self.dp, y_orig='surface', probe_version='local')
         if not np.all(np.isin(sk_output_cm[:,0], self.chan_map[:,0])):

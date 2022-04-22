@@ -13,6 +13,7 @@ import pickle as pkl
 from tqdm.notebook import tqdm #from tqdm import tqdm
 
 import numpy as np
+from math import floor, log10
 
 import matplotlib
 import matplotlib as mpl
@@ -181,10 +182,10 @@ def mplp(fig=None, ax=None, figsize=None,
          xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=False, reset_yticks=False,
          xtickrot=0, ytickrot=0, xtickha='center', xtickva='top', ytickha='right', ytickva='center',
          axlab_w='bold', axlab_s=16,
-         ticklab_w='regular', ticklab_s=14, ticks_direction='out', lw=2,
+         ticklab_w='regular', ticklab_s=14, ticks_direction='out', lw=1,
          title=None, title_w='bold', title_s=16,
          hide_top_right=True, hide_axis=False,
-         tight_layout=True, hspace=None, wspace=None):
+         tight_layout=False, hspace=None, wspace=None, hide_legend=False):
     '''
     make plots pretty
     matplotlib plots
@@ -270,7 +271,26 @@ def mplp(fig=None, ax=None, figsize=None,
     fig.align_ylabels(axis_to_align)
     fig.align_xlabels(axis_to_align)
 
+    if hide_legend: plt.legend([],[], frameon=False)
+
     return fig, ax
+
+def sci_notation(num, decimal_digits=1, precision=None, exponent=None):
+    """
+    Returns a string representation of the scientific
+    notation of the given number formatted for use with
+    LaTeX or Mathtext, with specified number of significant
+    decimal digits and precision (number of decimal digits
+    to show). The exponent to be used can also be specified
+    explicitly.
+    """
+    if exponent is None:
+        exponent = int(floor(log10(abs(num))))
+    coeff = round(num / float(10**exponent), decimal_digits)
+    if precision is None:
+        precision = decimal_digits
+
+    return r"${0:.{2}f}\cdot10^{{{1:d}}}$".format(coeff, exponent, precision)
 
 def get_all_mpl_colors():
     mpl_colors=get_mpl_css_colors(sort=True, aslist=False)
@@ -444,6 +464,8 @@ def set_ax_size(ax,w,h):
     figh = float(h)/(t-b)
     ax.figure.set_size_inches(figw, figh)
 
+#%% Exploratory plots
+
 def hist_MB(arr, a=None, b=None, s=None,
             title='Histogram', xlabel='', ylabel='',
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
@@ -469,6 +491,36 @@ def hist_MB(arr, a=None, b=None, s=None,
     if saveFig: save_mpl_fig(fig, title, saveDir, _format)
       
     return fig
+
+def paired_plot(df, cats, ylabel=None, xlabel=None, color="grey",
+               dodge=True, dodge_range=0.1,
+               figsize=(3,5)):
+    """
+    df: pandas dataframe
+    cats: list of str, columns of dataframe df
+    """
+
+    plt.figure()
+
+    x0=df[cats[0]]*0
+    l=len(x0)
+
+    lines_x = np.zeros((len(cats), l))
+    lines = np.zeros((len(cats), l))
+    for i, cat in enumerate(cats):
+        x = x0+i
+        if dodge: x += np.random.uniform(-dodge_range, dodge_range, l)
+        y = df[cat]
+        assert len(y) == l
+        plt.scatter(x, y, color=color, edgecolor='k')
+
+        lines_x[i,:]=x
+        lines[i,:]=y
+
+    plt.plot(lines_x, lines, color=color, alpha=0.5, zorder=-1)
+
+    mplp(figsize=figsize, ylabel=ylabel, xlabel=xlabel,
+         xlim=[-0.5, i+0.5], xticks=np.arange(i+1), xtickslabels=cats)
 
 
 #%% Stats plots ##############################################################################################
@@ -561,7 +613,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf',
              ignore_ks_chanfilt = True,
              ax_edge_um_x=22, ax_edge_um_y=18, margin=0.12, figw_inch=6, figh_inch=None,
-             as_heatmap=False):
+             as_heatmap=False, use_dsmatch=False):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
     Parameters:
@@ -604,23 +656,25 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     t_waveforms_s=int(t_waveforms*(fs/1000))
 
     # Get data
-    use_dsmatch=False ##TODO make sure that ds_match returns the waveforms std
     if not use_dsmatch:
         waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s, selection='regular',
                         periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
                         whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
                         ignore_ks_chanfilt = ignore_ks_chanfilt)
+        assert waveforms.shape[0]!=0,'No waveforms were found in the provided periods!'
+        assert waveforms.shape[1:]==(t_waveforms_s, cm.shape[0])
     else:
+        plot_std=False
+        sample_lines=0
         waveforms=wvf_dsmatch(dp, u, n_waveforms=n_waveforms,
                   t_waveforms=t_waveforms_s, periods=periods,
                   wvf_batch_size=wvf_batch_size, ignore_nwvf=True, spike_ids = None,
-                  save=True, verbose=False, again=again,
+                  save=True, verbose=True, again=again,
                   whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
                   nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub)[1]
-    assert waveforms.shape[0]!=0,'No waveforms were found in the provided periods!'
-    assert waveforms.shape[1:]==(t_waveforms_s, cm.shape[0])
+
     tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
-    assert tplts.shape[2]==waveforms.shape[2]==cm.shape[0]
+    assert tplts.shape[2]==waveforms.shape[-1]==cm.shape[0]
 
     # Filter the right channels
     if chStart is None:
@@ -630,14 +684,19 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         chStart_i = int(max(int(np.argmin(np.abs(cm[:,0]-chStart))), 0)) # finds closest chStart given kilosort chanmap
         chStart=cm[chStart_i,0] # Should remain the same, unless chStart was capped to 384 or is a channel ignored to kilosort
 
-    chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
+    chStart_i=int(min(chStart_i, waveforms.shape[-1]-Nchannels-1))
     chEnd_i = int(chStart_i+Nchannels) # no lower capping needed as
-    assert chEnd_i <= waveforms.shape[2]-1
+    assert chEnd_i <= waveforms.shape[-1]-1
 
-    data = waveforms[:, :, chStart_i:chEnd_i]
-    data=data[~np.isnan(data[:,0,0]),:,:] # filter out nan waveforms
-    datam = np.mean(data,0).T
-    datastd = np.std(data,0).T
+    if not use_dsmatch:
+        data = waveforms[:, :, chStart_i:chEnd_i]
+        data=data[~np.isnan(data[:,0,0]),:,:] # filter out nan waveforms
+        datam = np.mean(data,0).T
+        datastd = np.std(data,0).T
+    else:
+        datam = waveforms[:, chStart_i:chEnd_i].T
+        datastd = datam*0
+
     tplts=tplts[:, :, chStart_i:chEnd_i]
     subcm=cm[chStart_i:chEnd_i,:].copy().astype(np.float32)
 
@@ -652,8 +711,8 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         color=to_rgb(color)
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
     ylim1, ylim2 = (np.nanmin(datam-datastd)-50, np.nanmax(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
-    x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot t datapoints between 0 and t/30 ms
-    x_tplts = x[(data.shape[1]-tplts.shape[1])//2:(data.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
+    x = np.linspace(0, datam.shape[1]/(fs/1000), datam.shape[1]) # Plot t datapoints between 0 and t/30 ms
+    x_tplts = x[(datam.shape[1]-tplts.shape[1])//2:(datam.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
 
     #Plot
     if as_heatmap:
@@ -2048,11 +2107,24 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     if tight_layout: fig.tight_layout(rect=[0,0,0.8,1])
 
     # Add colorbar, nicely formatted
+    fig = add_colorbar(fig, ax, axim, vmin, vmax,
+                 0.01, cmap_h, clabel, cticks, extend_cmap)
+
+    return fig
+
+def add_colorbar(fig, ax, mappable, vmin, vmax,
+                 width=0.01, height=0.5, clabel=None, cticks=None, extend_cmap=False):
+    """
+    Add colorbar to figure with a predefined axis.
+    
+    Makes sure that the size of the predefined axis does not change, but that the figure extends.
+    """
     axpos=ax.get_position()
     cbaraxx0,cbaraxy0 = float(axpos.x1+0.005), float(axpos.y0) #float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
-    cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, .01, cmap_h])
-    if cticks is None: cticks=get_bestticks_from_array(np.arange(vmin,vmax+(vmax-vmin)/10,(vmax-vmin)/10), light=True)
-    fig.colorbar(axim, cax=cbar_ax, ax=ax,
+    cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, width, height])
+    if cticks is None:
+        cticks=get_bestticks_from_array(np.arange(vmin,vmax+(vmax-vmin)/10,(vmax-vmin)/10), light=True)
+    fig.colorbar(mappable, cax=cbar_ax, ax=ax,
              orientation='vertical', label=clabel,
              extend=extend_cmap, ticks=cticks, use_gridspec=True)
     if clabel is not None:
@@ -2068,6 +2140,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     cbar_ax.yaxis.set_tick_params(pad=5, labelsize=12)
 
     return fig
+
 
 # Plot correlation matrix of variables x observations 2D array
 

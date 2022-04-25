@@ -329,11 +329,10 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     spike_ids_split = spike_ids_split.reshape(-1,n_waveforms_per_batch)
     raw_waves = raw_waves.reshape(spike_ids_split.shape[0], n_waveforms_per_batch, t_waveforms, -1)
     mean_waves = np.mean(raw_waves, axis = 1)
-
     ## Find peak channel (and store amplitude) of every batch
     # only consider amplitudes on channels around original peak channel
     original_peak_chan = get_peak_chan(dp, u)
-    c_left, c_right = original_peak_chan-peakchan_allowed_range, original_peak_chan+peakchan_allowed_range
+    c_left, c_right = max(0, original_peak_chan-peakchan_allowed_range), min(original_peak_chan+peakchan_allowed_range, mean_waves.shape[2])
     # calculate amplitudes ("peak-to-peak"), but ONLY using 2ms (-30,30) in the middle
     t1, t2 = max(0,mean_waves.shape[1]//2-30), min(mean_waves.shape[1]//2+30, mean_waves.shape[1])
     amplitudes = np.ptp(mean_waves[:,t1:t2,c_left:c_right], axis=1)

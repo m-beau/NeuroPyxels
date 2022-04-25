@@ -459,7 +459,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
 def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
                      whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
-                     ignore_ks_chanfilt=0, verbose=False):
+                     ignore_ks_chanfilt=0, verbose=False, scale=True):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     ## PARAMETERS
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
@@ -474,7 +474,8 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     - nRangeWhiten: int, see whiten.
     - nRangeMedSub: int, see med_sub.
     - ignore_ks_chanfilt: whether to ignore the filtering made by kilosort, which only uses channels with average events rate > ops.minfr to spike sort. | Default False
-
+    - scale: A boolean variable specifying whether we should convert the resulting raw
+             A2D samples to uV. Defaults to True
     ## RETURNS
     rawChunk: numpy array of shape ((c2-c1), (t2-t1)*fs).
     rawChunk[0,:] is channel 0; rawChunk[1,:] is channel 1, etc.
@@ -502,7 +503,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
         whitenpad=200
         t1, t2 = t1-whitenpad, t2+whitenpad
     bn = os.path.basename(fname) # binary name
-    rcn = f'{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}_{whiten}_{med_sub}.npy' # raw chunk name
+    rcn = f'{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}_{whiten}_{med_sub}_{scale}.npy' # raw chunk name
     rcp = Path(dp, 'routinesMemory', rcn)
 
     if os.path.isfile(rcp):
@@ -555,7 +556,8 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     # get the right channels range, AFTER WHITENING
     rc = rc[channels, :]
     # Scale data
-    rc = rc*meta['bit_uV_conv_factor'] # convert into uV
+    if scale:
+        rc = rc*meta['bit_uV_conv_factor'] # convert into uV
 
     if save: # sync chan saved in extract_syncChan
         np.save(rcp, rc)

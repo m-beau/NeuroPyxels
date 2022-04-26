@@ -1647,3 +1647,62 @@ def zero_crossings_sine_fit(y_axis, x_axis, fit_window = None, smooth_window = 1
 
 
     return true_crossings
+
+class DifferencingFilter:
+    '''Simple Differencing Filter
+
+    A simple class that implements the standard difference equation, used to
+    filter timeseries. This implementation of a differencing filting is "running"
+    in that it stores any necessary history within the class itself. This allows
+    the user to filter long-running signals (or near real-time signals) without
+    storing the complete signal in memory. Note that, by definition, application
+    of this differencing filter is *causal* and therefore will induce some
+    phase delay. Non-causal filtering is not possible with this class because
+    the complete signal is never assumed to be stored in memory.
+
+    The difference equation is given by:
+     y(n) = b_0 * x(n) + b_1 * x(n-1) + b_2 * x(n-2) + ... + b_m * x(n-M) ...
+           -a_1 * y(n-1) - ... -a_n * y(n-N)
+          = sum(b_i * x(n-1)) - sum(a_j * y(n-j))
+    '''
+
+    def __init__(self, b, a, init=0):
+        """Construct a new filter object
+
+        Parameters:
+        - b: A vector of length order + 1 corresponding to the denominator of the
+          filter
+        - a: A vector of length order + 1 corresponding to the numerator of the
+          digital filter
+        Optional parameters:
+        - init: The initial value of the filter (assumed to be zero)
+        """
+        self.b = b
+        self.a = a
+        self.order = len(b) - 1
+        # NOTE: We use circular buffers to avoid having to keep track of which
+        # pass index to drop
+        self.x = np.ones(self.order + 1) * init
+        self.y = np.ones(self.order) * init
+        self.index_x = 0
+        self.index_y = 0
+        self.passed_order = False
+
+    def filter(self, input):
+        """Filter the current input using the causal filter
+
+        Takes a single floating point value as the input and passes the value
+        through the filter, returning the filtered output
+        """
+        output = 0
+        self.x[self.index_x] = input
+        for j in range(0, self.order + 1 if self.passed_order else self.index_x + 1):
+            output += self.b[j] * self.x[(self.index_x - j + self.order + 1) % (self.order + 1)]
+        for j in range(0, self.order if self.passed_order else self.index_y):
+            output -= self.a[j+1] * self.y[(self.index_y - j - 1 + self.order) % (self.order)]
+        self.passed_order = (self.passed_order) or (self.index_x >= self.order - 1)
+        self.y[self.index_y] = output
+        # Advance our indices for the next timepoint
+        self.index_y = (self.index_y + 1) % self.order
+        self.index_x = (self.index_x + 1) % (self.order + 1)
+        return output

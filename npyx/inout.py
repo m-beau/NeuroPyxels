@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal
 
-from npyx.utils import npa, read_pyfile, list_files
+from npyx.utils import npa, read_pyfile, list_files, DifferencingFilter
 
 import json
 
@@ -218,7 +218,7 @@ def metadata(dp):
             else:
                 meta[filt_key]['binary_relative_path']='not_found'
                 meta[filt_key]['binary_byte_size']='unknown'
-            
+
             # check to see if there are any post-processed binary files
             processed_binary_files = list_files(dp, f"{filt_suffix}_processed.bin", False)
             if processed_binary_files:
@@ -468,7 +468,7 @@ def get_binary_file_path(meta, filt_key, prefer_processed=True):
     Given meta data read from the datapath, return the path to the associated
     binary file under with the associated filt_key (e.g., 'highpass' or 'lowpass').
     This function prints a helpful error message when the path is not found.
-    
+
     Parameters:
     - meta: A Dict of meta-data parsed from the `metadata` function
     - filt_key: The 'highpass' or 'lowpass' binary file to get
@@ -489,19 +489,19 @@ def get_binary_file_path(meta, filt_key, prefer_processed=True):
         f'No binary file (./*.ap.bin or ./continuous/Neuropix-PXI-100.0/*.dat) found in folder {dp_path}!!'
     file_name = os.path.join(dp_path, relative_path)
     if not os.path.isfile(file_name):
-        raise RuntimeError(f"No binary file at {file_name}") 
+        raise RuntimeError(f"No binary file at {file_name}")
     return os.path.realpath(file_name)
 
 def mmap_binary_file(dp, filt_key='highpass', mode="r", **kwargs):
     '''Memory map the contents of a raw binary file and return the contents as a numpy array
 
     Memory maps the contents of the binary recording file specified
-    in the meta-data by the passed filt_key. 
+    in the meta-data by the passed filt_key.
 
     Parameters:
     - dp: datapath to the folder with the binary file
     - filt_key: 'highpass' or 'lowpass' depending on which file to load
-    - mode: The file mode to open binary file as (see numpy.memmap). Defaults 
+    - mode: The file mode to open binary file as (see numpy.memmap). Defaults
       to "r" (read-only)
 
     Returns:
@@ -528,19 +528,19 @@ def filter_binary_file(dp, filt_key='highpass', suffix='_processed', verbose=Fal
     '''Filter the binary file in the datapath
 
     Perform post-recording filtering on the origin binary file specified
-    by the associated filt_key. The original binary file is not modified. 
+    by the associated filt_key. The original binary file is not modified.
     Rather, a copy of the original file is made and this processed binary
     file is then filtered. All additional keyword arguments are passed
     to the `bandpass_filter` function.
-    
-    For instance, the following will apply a high pass filter to the AP 
+
+    For instance, the following will apply a high pass filter to the AP
     band:
         filter_binary_file(dp, high=300)
 
     NOTE: All filtering is performed causally. While this can induce a
     slight phase-delay depending on the order of the filter, it ensures
     that spiking/voltage changes are not filtered before they actually
-    occur in the file. 
+    occur in the file.
 
     Parameters:
     - dp: The path to the data directory
@@ -551,7 +551,7 @@ def filter_binary_file(dp, filt_key='highpass', suffix='_processed', verbose=Fal
     - verbose: A boolean variable used to output the status of the processing,
       as this processing may take some time depending on available memory and
       processor utilization. Defaults to False.
-        
+
     Returns the path to the filtered binary file.
     '''
     dp = Path(dp)
@@ -565,7 +565,7 @@ def filter_binary_file(dp, filt_key='highpass', suffix='_processed', verbose=Fal
     processed_binary_file_path = root + suffix + ext
     assert os.path.normpath(original_binary_file_path) != os.path.normpath(processed_binary_file_path), \
         "Original and processed paths are identical. Refusing to overwrite original data."
-    
+
     # Memory map the contents of our copied file
     original_voltage = mmap_binary_file(dp, filt_key=filt_key, prefer_processed=False)
     filtered_voltage = np.memmap(processed_binary_file_path, mode="w+", order="F", offset=0,
@@ -575,24 +575,28 @@ def filter_binary_file(dp, filt_key='highpass', suffix='_processed', verbose=Fal
         # accessing pages in sequential order and therefore, it can agressively
         # read ahead to minimize cache misses
         import mmap
-        voltage._mmap.madvise(mmap.MADV_SEQUENTIAL)
+        original_voltage._mmap.madvise(mmap.MADV_SEQUENTIAL)
+        filtered_voltage._mmap.madvise(mmap.MADV_SEQUENTIAL)
     except Exception as e:
         pass
 
-    # Filter each row (channel) in the memory mapped array.
-    # We could call lfilter directly, but this would allocate a large
-    # floating point matrix to store the entire contents of the filtered
-    # recording. Therefore, we filter row-wise to ensure that we only need
-    # to be able to store a single channel (as a floating point array) in 
-    # memory at one time
-    # NOTE: The fastest way to do this would be to create n_channels "filter"
-    # objects, read a timepoint across all channels, apply each filter to n_channels
-    # and then write the filtered timepoint back out to the new mmap'ed file. This
-    # would require implementing our own running differencing filter function.
+    # Create a different DifferencingFilter for each channel and
+    # filter adjacent timepoints simulatneously. Note: We could use signal.lfilter
+    # here to filter each channel individually, but due to the way Kilosort stores
+    # data the mmap will perform extra reading of the binary file. We could, of course,
+    # seek within the file, but this would cause a tremendous amount of I/O for
+    # disk drives and would be inefficient as we can only read one two-byte value
+    # at each seek location. The below code, while computationally inefficient is
+    # both very I/O and memory efficient.
+    filters = [DifferencingFilter(b, a) for i in range(0, original_voltage.shape[0])]
     for i in range(0, original_voltage.shape[0]):
-        verbose and print(f"Applying filter to channel {i}")
-        filtered_voltage[i, :] = signal.lfilter(b, a, original_voltage[i, :]).astype(original_voltage.dtype)
+        for j in range(0, original_voltage.shape[1]):
+            if verbose and (i == 0) and (j % (original_voltage.shape[1] // 10) == 0):
+                print("%d%%..." % (10 * (j / (original_voltage.shape[1] // 10)),), end="", flush=True)
+            filtered_voltage[i, j] = filters[i].filter(original_voltage[i, j]).astype(original_voltage.dtype)
     filtered_voltage.flush() # Ensure all data is written to disk
+    verbose and print("Done.")
+
     return processed_binary_file_path
 
 def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
@@ -620,7 +624,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     # Find binary file
     dp = Path(dp)
     meta = read_metadata(dp)
-    fname = get_binary_file_path(meta, filt_key) 
+    fname = get_binary_file_path(meta, filt_key)
 
     assert len(times)==2
     assert times[0]>0

@@ -19,7 +19,7 @@ with open("README.md", "r") as readme_file:
     readme = readme_file.read()
 
 requirements=['ipython', 'numpy', 'scipy', 'pandas', 'matplotlib',
-      'six', 'statsmodels', 'cmcrameri', 'tqdm', 'joblib', 'ipywidgets',
+      'six', 'statsmodels', 'cmcrameri', 'tqdm', 'llvmlite', 'joblib', 'ipywidgets',
       'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils', 'python_utils',
       'h5py', 'numba', 'urllib3', 'certifi', 'idna', 'opencv-python']
 

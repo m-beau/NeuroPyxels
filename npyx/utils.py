@@ -9,7 +9,6 @@ from numba.typed import List
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
 import warnings
 
-from npyx.feat import end_amp_time
 warnings.simplefilter("default", category=NumbaDeprecationWarning) #'ignore'
 warnings.simplefilter('default', category=NumbaPendingDeprecationWarning)#'ignore'
 

@@ -341,8 +341,8 @@ Npyx supports Python 3.7+.
     cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
     git clone https://github.com/Npix-routines/NeuroPyxels
     cd NeuroPyxels
-    pip install -e . --user # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you pull an udpate from github.
-    # alternatively python setup.py develop, but this doesn't handle dependencies as nicely as pip
+    pip install -e . --user # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
+    # python setup.py develop deprecated (doesn't handle dependencies, unlike pip)
     ```
     and pull every now and then:
     ```bash

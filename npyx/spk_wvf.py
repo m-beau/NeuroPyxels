@@ -21,7 +21,7 @@ from math import ceil
 import matplotlib.pyplot as plt
 
 from npyx.utils import npa, split, xcorr_1d_loop
-from npyx.inout import read_metadata, chan_map, whitening, bandpass_filter, apply_filter, med_substract
+from npyx.inout import read_metadata, get_binary_file_path, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 from npyx.gl import get_units, get_npyx_memory
 
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', periods='all',
@@ -114,9 +114,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     # Extract and process metadata
     dp = Path(dp)
     meta = read_metadata(dp)
-    assert meta['highpass']['binary_relative_path']!='not_found',\
-        f'No binary file (./*.ap.bin or ./continuous/Neuropix-PXI-100.0/*.dat) found in folder {dp}!!'
-    dat_path = dp/meta['highpass']['binary_relative_path']
+    dat_path = get_binary_file_path(meta, 'highpass')
 
     dp_source = get_source_dp_u(dp, u)[0]
     meta=read_metadata(dp_source)

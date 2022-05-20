@@ -11,7 +11,7 @@ from npyx.behav import get_processed_ifr
 
 def sync_wr_chance_shadmehr(t1, t2, events, binsize=2, window=[-500, 500],
                    remove_empty_trials=False, smooth_sd=4, pre_smooth=False, post_smooth=False,
-                   y1=None, y2=None, return_trials = False, continuous=False):
+                   y1=None, y2=None, return_trials = False, continuous=True, return_terms=False):
     """
     y1 and y2 should be T trials x B bins 2D matrices
     containing integer numbers of spikes (in theory only 0 and 1; any integer above 1 will be reduced to 1.)
@@ -93,9 +93,17 @@ def sync_wr_chance_shadmehr(t1, t2, events, binsize=2, window=[-500, 500],
     sync[np.isnan(sync)]=1
 
     if return_trials:
-        return sync, p_12_trials/(p1*p2), trial_ids
+        if return_terms:
+            ret = (sync, p_12_trials/(p1*p2), p_12_trials, p1, p2, trial_ids)
+        else:
+            ret = (sync, p_12_trials/(p1*p2), trial_ids)
+    else:
+        if return_terms:
+            ret = (sync, p_12_trials, p1, p2)
+        else:
+            ret = sync
 
-    return sync
+    return ret
     
 
 def compute_sync_matrix(signal):

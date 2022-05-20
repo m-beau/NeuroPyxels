@@ -114,7 +114,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     # Extract and process metadata
     dp = Path(dp)
     meta = read_metadata(dp)
-    dat_path = get_binary_file_path(meta, 'highpass')
+    dat_path = get_binary_file_path(dp, 'highpass')
 
     dp_source = get_source_dp_u(dp, u)[0]
     meta=read_metadata(dp_source)
@@ -374,14 +374,16 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         nbatches_hist = batch_peak_channels.shape[0]
         fig = hist_MB(batch_peak_channels[:,2], a=10, b=max_amp_hist, s=5, color='grey', alpha=0.7)
 
-    # if less than n_driftmatched_subset batches below 99th percentile,
+    # if less than n_driftmatched_subset batches below 95th percentile,
     # use all up to n_driftmatched_subset batches
-    prct_99_i = int(batch_peak_channels.shape[0]*0.99)
-    if prct_99_i<n_driftmatched_subset: 
+    ## TODO only perform the following if distribution is unimodal
+    # (Hartigan Dip-test of Unimodality)
+    prct_95_i = int(batch_peak_channels.shape[0]*0.95)
+    if prct_95_i<n_driftmatched_subset: 
         batch_peak_channels = batch_peak_channels[0:n_driftmatched_subset]
     else:
-        i_left = max(prct_99_i - n_driftmatched_subset, 0) # should never be negative given if statement, but precaution
-        batch_peak_channels = batch_peak_channels[i_left:prct_99_i]
+        i_left = max(prct_95_i - n_driftmatched_subset, 0) # should never be negative given if statement, but precaution
+        batch_peak_channels = batch_peak_channels[i_left:prct_95_i]
     drift_matched_spike_ids = np.sort(batch_peak_channels[:,0])
 
     if plot_debug:
@@ -402,8 +404,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         drift_shift_matched_batches = shift_match(drift_matched_batches, peak_channel, max_allowed_shift, recenter_spikes, plot_debug)
     else:
         drift_shift_matched_batches = drift_matched_batches
-    # Get the mean of the drift and shift matched waves
-    drift_shift_matched_mean = np.mean(drift_shift_matched_batches, axis=0)
+    # Get the median of the drift and shift matched waves (not sensitive to outliers)
+    drift_shift_matched_mean = np.median(drift_shift_matched_batches, axis=0)
     drift_shift_matched_mean_peak = drift_shift_matched_mean[:,peak_channel]
     # recenter spike absolute maximum
     shift = (np.argmax(np.abs(drift_shift_matched_mean_peak)) - drift_shift_matched_mean_peak.shape[0]//2)%drift_shift_matched_mean_peak.shape[0]
@@ -459,10 +461,10 @@ def shift_match(waves, alignment_channel,
     amplitudes = np.ptp(waves[:,:,alignment_channel], axis=1)
     amplitudes_i = np.argsort(amplitudes, axis=0)
     waves_sort = waves[amplitudes_i[::-1],:,:]
-    # use 10 waves of highest amplitude as template
+    # use median of 50 waves of highest amplitude as template
     # most arbitrary decision 0 but seems reasonable and empirically works
-    n_waveforms_template=10
-    template = np.mean(waves_sort[:n_waveforms_template,:,:], axis=0)
+    n_waveforms_template=50
+    template = np.median(waves_sort[:n_waveforms_template,:,:], axis=0)
     if recenter_spikes:
         shift = (np.argmax(np.abs(template[:,alignment_channel])) - template.shape[0]//2)%template.shape[0]
         if plot_debug:

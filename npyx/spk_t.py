@@ -6,7 +6,7 @@
 from IPython.core.debugger import set_trace as breakpoint 
 import os.path as op
 opj=op.join
-from pathlib import Path, PosixPath
+from pathlib import Path, PosixPath, WindowsPath
 
 # from itertools import groupby
 # from operator import itemgetter
@@ -421,26 +421,14 @@ def train_quality(dp, unit, period_m=[0,20],
     """
     # check that the passed values make sense
 
+    assert isinstance(dp, (str, PosixPath, WindowsPath)),\
+        'Provide a string or a pathlib object as the source directory'
 
-    if isinstance(dp, str) == True:
-        dp = Path(dp)
-    elif isinstance(dp, PosixPath) == False:
-        raise TypeError('Provide a string or a pathlib object as the source directory')
-
-    if not isinstance(unit, (int, np.int16, np.int32, np.int64)):
-        raise TypeError('Unit provided should be an int')
-
-    if not isinstance(fp_n_chunks , (int, np.int16, np.int32, np.int64)):
-        raise TypeError('fp_n_chunks provided should be an int')
-
-    if not isinstance(fp_chunk_size , (int, np.int16, np.int32, np.int64)):
-        raise TypeError('fp_chunk_size provided should be an int')
-
-    if not isinstance(fn_n_chunks , (int, np.int16, np.int32, np.int64)):
-        raise TypeError('fn_n_chunks provided should be an int')
-
-    if not isinstance(fn_chunk_size , (int, np.int16, np.int32, np.int64)):
-        raise TypeError('fn_chunk_size provided should be an int')
+    assert assert_int(unit), 'Unit provided should be an int'
+    assert assert_int(fp_n_chunks), 'fp_n_chunks provided should be an int'
+    assert assert_int(fp_chunk_size), 'fp_chunk_size provided should be an int'
+    assert assert_int(fn_n_chunks), 'fn_n_chunks provided should be an int'
+    assert assert_int(fn_chunk_size), 'fn_chunk_size provided should be an int'
 
     assert fp_chunk_size >= 1, "ACG window length needs to be larger than 1 sec"
     assert fn_chunk_size >= 1, "Gaussian window length needs to be larger than 1 sec"

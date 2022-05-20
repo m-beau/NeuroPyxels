@@ -641,6 +641,9 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         - ax_edge_um_y: float, height of subplot.
         - margin: [0-1], figure margin (in proportion of figure)
         - figw_inch: float, figure width in inches (height is derived from width, in inches)
+        - figh_inch: float, specify figure height instead of width
+        - as_heatmap: bool, whether to display waveform as heatmap instead of collection of 2D plots
+        - use_dsmatch: bool, whether to use drift-shift-matched waveform
     Returns:
         - matplotlib figure with Nchannels subplots, plotting the mean
     '''
@@ -1213,7 +1216,7 @@ def raster_plot(times, events, window=[-1000, 1000], events_toplot=[0], events_c
         - window: list/array of shape (2,): the raster will be plotted from events-window[0] to events-window[1] | Default: [-1000,1000]
         - remove_empty_trials: boolean, if True does not use empty trials to compute psth
         - title: string, title of the plot + if saved file name will be raster_title._format.
-        - color: string or list of strings of size
+        - color: string or list of strings of same size as times (in cases with several cells)
         - figsize: tuple, (x,y) figure size
         - saveDir: save directory to save data and figure
         - saveFig: boolean, if 1 saves figure with name raster_title._format at saveDir

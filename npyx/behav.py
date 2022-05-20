@@ -954,6 +954,7 @@ def get_processed_BTN_matrix(b, w,
 
     if convolve:
         sd=int(sd/b) # convert from ms to bins
+        sd=max(1,sd) # cap to 1
         for n in range(N):
             M[:,:,n] = smooth(M[:,:,n], kernel, sd=sd, axis=0)
         if return_poisson:

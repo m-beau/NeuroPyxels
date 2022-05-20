@@ -4,75 +4,13 @@ import re
 import sys
 import warnings
 
-import numpy as np
+import numpy as np 
 
 from npyx.utils import assert_int, assert_float
 from npyx.inout import get_npix_sync, chan_map, extract_rawChunk, read_metadata
 from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 from npyx.gl import get_units
-
-def get_stim_chan(ons, min_th=20):
-    chan = -1
-    for k, v in ons.items():
-        if len(v) > min_th:
-            chan = k
-    assert chan != -1
-    return chan
-
-def visititems(group, func):
-    with h5py._hl.base.phil:
-        def proxy(name):
-            """ Call the function with the text name, not bytes """
-            name = group._d(name)
-            return func(name, group[name])
-        return group.id.links.visit(proxy)
-
-def visitor_func(name, node):
-    if isinstance(node, h5py.Dataset):
-        n=node[()]
-        if isinstance(n, bytes):
-            s=n.decode()
-        elif isinstance(n, np.ndarray):
-            s=f"ndarray {n.shape}"
-        elif assert_int(n) or assert_float(n):
-            s=n
-        else:
-            s=type(n)
-        string = f"{name}: {s}"
-    else:
-        string = name
-    print(string)
-
-def print_h5_contents(h5_path, txt_output=False):
-    """
-    h5_path: str, path to .h5 file
-    txt_output: bool, if True prints contents to file
-                      (same name as h5 name_content.txt)
-    """
-    h5_path = Path(h5_path)
-    if txt_output:
-        txt_output_path = h5_path.parent / f"{h5_path.name[:-3]}_content.txt"
-    with h5py.File(h5_path, "a") as hdf:
-        if txt_output:
-            with open(txt_output_path, "w") as txt:
-                original_stdout = sys.stdout
-                sys.stdout = txt
-                visititems(hdf, visitor_func)
-                sys.stdout = original_stdout
-        else:
-            visititems(hdf, visitor_func)
-
-def check_dataset_format(dataset):
-    """
-    Checks whether dataset name is formatted properly
-    i.e. aa-mm-dd_iiXXX_probeX (mouse can only be names )
-    """
-    warning = "WARNING last folder of path should match format: aa-mm-dd_ii[0-1000]_probe[0-9] (ii = 2 [a-z] initials)"
-    pattern = "[0-9]{2}-[0-9]{2}-[0-9]{2}_[a-z]{2}[0-9]{3}_probe[0-9]"
-    if re.match(pattern, dataset, re.IGNORECASE) is None:
-        warnings.warn(warning)
-
 
 def label_unit_h5(h5_path, dataset, unit, label):
     """
@@ -87,58 +25,24 @@ def label_unit_h5(h5_path, dataset, unit, label):
     assert label in authorized_labels
     add_data_to_unit_h5(h5_path, dataset, unit, label, 'optotagged_label')
 
-
-def add_data_to_unit_h5(h5_path, dataset, unit, data, field):
-    """
-    Add data to neuron already in h5 file.
-
-    - h5_path: full path to h5 file
-    - dataset: str, neuron dataset (yy-mm-dd_mouse_probex)
-    - unit: unit index
-    - data: data to add to unit
-    - field: name of dataset to add data (id exists already, will overwrite)
-    """
-    with h5py.File(h5_path, "a") as h5_file:
-        check_dataset_format(dataset)
-        neuron_path = f"datasets/{dataset}/{unit}"
-        assert neuron_path in h5_file, f"WARNING unit {neuron_path} does not seem to be present in the file. To add it, use add_unit_h5()."
-        add_dataset_to_group(h5_file[neuron_path], field, data)
-
-def add_dataset_to_group(group, dataset, data, again=0):
-    if dataset in group:
-        if again:
-            del group[dataset]
-        else:
-            return
-    group[dataset] = data
-    return
-    
-def add_units_to_h5(h5_path, dp, **kwargs):
-    """
-    Add all units at the respective data path to an HDF5 file.
-
-    This is a high-level function designed to add all units at the
-    specified datapath to an HDF5 file. All additional key-value 
-    arguments are passed to `add_unit_h5`
-
-    Example:
-      add_units_to_h5('my_lab_data.h5', '/path/to/kilosort_results', lab_id='pi_last_name')
-    Will add all sorted units in the 'kilosort_results' directory 
-    to the HDF5 file called 'my_lab_data.h5' (in the current directory).
-    """
-    for unit_id in get_units(dp):
-        add_unit_h5(h5_path, dp, unit_id, **kwargs)
-
-def add_unit_h5(h5_path, dp, unit,
+def add_unit_h5(h5_path, dp, unit, lab_id,
                 unit_abolute_id=None, sync_chan_id=None,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
-                lab_id="hausser", dataset=None, snr_window=[0.1, 30.1],
+                dataset=None, snr_window=[0.1, 30.1],
                 **kwargs):
     """
     Add a Kilosort sorted unit to an HDF5 file.
 
     Adds a Kilosort unit to a new or existing HDF5 five file using the
     file format specified by the C4 collaboration.
+
+    Each unit can be accessed from 2 paths which point to the same data:
+    - an absolute path, {unit_abolute_id}/
+                        which allows for a flat hierarchy and makes it easier to compute features,
+                        easier to work on data from other labs
+    - a relative path, datasets/{dataset}/{unit}/
+                       which allows to index units per dataset,
+                       easier to work on your own data
 
     Example:
         add_unit_h5('my_lab_data.h5', '/path/to/kilosort_results', 1, lab_id='pi_last_name')
@@ -150,20 +54,23 @@ def add_unit_h5(h5_path, dp, unit,
     - h5_path: Path to the h5 file to create/append
     - dp: Path the Kilosort data directory
     - unit: The unit id/neuron unit index
+    - lab_id: The lab/PI id to use to label the units
 
     Key-value parameters:
+    - unit_absolute_id: unit absolute id. Will increment from the last unit added to h5 file.
+    - sync_chan_id: The channel id used to denote opto stimulation. Defaults to None.
     - again: Whether to use cached results for storage in the HDF5 file (defaults to False)
+    - again_wvf: Whether to recompute drift-shift matched waveform in particular (very computationally intensive, defaults to False)
     - verbose: Additional verbosity/progress
-    - lab_id: The lab/PI id to use to label the units
     - dataset: A unique ID for this dataset. By default this value is None, in which case
       the dataset id is assumed to the dirname of the data directory passed as the dp argument
-    - sync_chan_id: The channel id used to denote opto stimulation. Defaults to None.
-    - snr_window: A two item list containing the start and stop times for computation of the
+    - snr_window: A two item list containing the start and stop times (in seconds) for computation of the
       snr/voltage clip/waveform results
 
     Additional key-value parameteters:
-    Note that all additional key-value parameters are stored in the HDF5 file as passed to
-    this function. Therefore, custom keys can be stored in the HDF5 file should additional
+    - *any_key* = *any_value*
+    All additional key-value parameters passed to this function are stored in the HDF5 file.
+    Therefore, custom keys can be stored in the HDF5 file should additional
     information be required for an individual neuron. E.g., calling
         add_unit_h5('my_lab_data.h5', '/path_to_kilosort_results', 1, my_note="Cool info")
     will result in a key of 'my_note' and a value of "Cool info" being stored in the HDF5 file
@@ -298,3 +205,105 @@ def add_unit_h5(h5_path, dp, unit,
     h5_file.close()
 
     return neuron_path
+
+def add_data_to_unit_h5(h5_path, dataset, unit, data, field):
+    """
+    Add data to neuron already in h5 file.
+
+    - h5_path: full path to h5 file
+    - dataset: str, neuron dataset (yy-mm-dd_mouse_probex)
+    - unit: unit index
+    - data: data to add to unit
+    - field: name of dataset to add data (id exists already, will overwrite)
+    """
+    with h5py.File(h5_path, "a") as h5_file:
+        check_dataset_format(dataset)
+        neuron_path = f"datasets/{dataset}/{unit}"
+        assert neuron_path in h5_file, f"WARNING unit {neuron_path} does not seem to be present in the file. To add it, use add_unit_h5()."
+        add_dataset_to_group(h5_file[neuron_path], field, data)
+
+def add_dataset_to_group(group, dataset, data, again=0):
+    if dataset in group:
+        if again:
+            del group[dataset]
+        else:
+            return
+    group[dataset] = data
+    return
+    
+def add_units_to_h5(h5_path, dp, **kwargs):
+    """
+    Add all units at the respective data path to an HDF5 file.
+
+    This is a high-level function designed to add all units at the
+    specified datapath to an HDF5 file. All additional key-value 
+    arguments are passed to `add_unit_h5`
+
+    Example:
+      add_units_to_h5('my_lab_data.h5', '/path/to/kilosort_results', lab_id='pi_last_name')
+    Will add all sorted units in the 'kilosort_results' directory 
+    to the HDF5 file called 'my_lab_data.h5' (in the current directory).
+    """
+    for unit_id in get_units(dp):
+        add_unit_h5(h5_path, dp, unit_id, **kwargs)
+
+def get_stim_chan(ons, min_th=20):
+    chan = -1
+    for k, v in ons.items():
+        if len(v) > min_th:
+            chan = k
+    assert chan != -1
+    return chan
+
+def visititems(group, func):
+    with h5py._hl.base.phil:
+        def proxy(name):
+            """ Call the function with the text name, not bytes """
+            name = group._d(name)
+            return func(name, group[name])
+        return group.id.links.visit(proxy)
+
+def visitor_func(name, node):
+    if isinstance(node, h5py.Dataset):
+        n=node[()]
+        if isinstance(n, bytes):
+            s=n.decode()
+        elif isinstance(n, np.ndarray):
+            s=f"ndarray {n.shape}"
+        elif assert_int(n) or assert_float(n):
+            s=n
+        else:
+            s=type(n)
+        string = f"{name}: {s}"
+    else:
+        string = name
+    print(string)
+
+def print_h5_contents(h5_path, txt_output=False):
+    """
+    h5_path: str, path to .h5 file
+    txt_output: bool, if True prints contents to file
+                      (same name as h5 name_content.txt)
+    """
+    h5_path = Path(h5_path)
+    if txt_output:
+        txt_output_path = h5_path.parent / f"{h5_path.name[:-3]}_content.txt"
+    with h5py.File(h5_path, "a") as hdf:
+        if txt_output:
+            with open(txt_output_path, "w") as txt:
+                original_stdout = sys.stdout
+                sys.stdout = txt
+                visititems(hdf, visitor_func)
+                sys.stdout = original_stdout
+        else:
+            visititems(hdf, visitor_func)
+
+def check_dataset_format(dataset):
+    """
+    Checks whether dataset name is formatted properly
+    i.e. aa-mm-dd_iiXXX_probeX (mouse can only be names )
+    """
+    warning = "WARNING last folder of path should match format: aa-mm-dd_ii[0-1000]_probe[0-9] (ii = 2 [a-z] initials)"
+    pattern = "[0-9]{2}-[0-9]{2}-[0-9]{2}_[a-z]{2}[0-9]{3}_probe[0-9]"
+    if re.match(pattern, dataset, re.IGNORECASE) is None:
+        warnings.warn(warning)

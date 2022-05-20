@@ -227,8 +227,8 @@ for i, ds in list(recs.items())[:]:
     print(ds['units'])
     spike_clusters= np.load(Path(ds['dp'], 'spike_clusters.npy'))
 
-    cell_type = str(ds['dp']).split('/')[-2]
-    rec_name = str(ds['dp']).split('/')[-1]
+    cell_type = Path(ds['dp']).parts[-2]
+    rec_name = Path(ds['dp']).parts[-1]
     features_filename = rec_name + '_' + cell_type + '.csv'
     features_file = features_folder / features_filename
     rec_feat = []
@@ -1579,8 +1579,8 @@ def gen_ss_cs(recs_fn, show = False):
                 new_json[i]['ss'] = ss_list.tolist()
                 new_json[i]['cs'] = cs_list.tolist()
     #        breakpoint()
-        except AssertionError: print(f"Recording {dp.split('/')[-1]} can't be processed")
-        except IndexError: print(f"Recording {dp.split('/')[-1]} can't be processed")
+        except AssertionError: print(f"Recording {Path(dp).parts[-1]} can't be processed")
+        except IndexError: print(f"Recording {Path(dp).parts[-1]} can't be processed")
 
     with open(recs_fn, 'w') as json_handle:
         json.dump(new_json, json_handle, indent=2)
@@ -1631,8 +1631,8 @@ def process_all(recs_fn, show = False, again = False):
 #        print(ds['units'])
         spike_clusters= np.load(Path(ds['dp'], 'spike_clusters.npy'))
 
-        cell_type = str(ds['dp']).split('/')[-2]
-        rec_name = str(ds['dp']).split('/')[-1]
+        cell_type = Path(ds['dp']).parts[-2]
+        rec_name = Path(ds['dp']).parts[-1]
         features_filename = rec_name + '_' + cell_type + '.csv'
         features_file = features_folder / features_filename
         rec_feat = []
@@ -1711,8 +1711,8 @@ def process_all(recs_fn, show = False, again = False):
 
         # get all the good units
 
-        cell_type = str(ds['dp']).split('/')[-2]
-        rec_name = str(ds['dp']).split('/')[-1]
+        cell_type = Path(ds['dp']).parts[-2]
+        rec_name = Path(ds['dp']).parts[-1]
         features_filename = rec_name + '_' + cell_type + '.csv'
         features_file = features_folder / features_filename
 
@@ -1823,8 +1823,8 @@ def process_all(recs_fn, show = False, again = False):
         # get all the good units
 
 
-        cell_type = str(ds['dp']).split('/')[-2]
-        rec_name = str(ds['dp']).split('/')[-1]
+        cell_type = Path(ds['dp']).parts[-2]
+        rec_name = Path(ds['dp']).parts[-1]
         features_filename = rec_name + '_' + cell_type + '.csv'
     #    print(features_filename)
         features_file = features_folder / features_filename
@@ -1882,8 +1882,8 @@ def process_all(recs_fn, show = False, again = False):
 
         # get all the good units
 
-        cell_type = str(ds['dp']).split('/')[-2]
-        rec_name = str(ds['dp']).split('/')[-1]
+        cell_type = Path(ds['dp']).parts[-2]
+        rec_name = Path(ds['dp']).parts[-1]
         features_filename = rec_name + '_' + cell_type + '.csv'
         features_file = features_folder / features_filename
 

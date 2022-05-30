@@ -355,6 +355,47 @@ Npyx supports Python 3.7+.
     # create your own branch from where you will be able to gracefully merge your edits with the master branch
     # after revision.
     ```
+
+### Test installation
+You can use the built-in unit testing function 'test_npyx' to make sure that npyx core functions run smoothly, all at once.
+
+```python
+from npyx.testing import test_npyx
+
+# any spike sorted recording compatible with phy
+# (e.g. kilosort output)
+dp = 'datapath/to/myrecording'
+test_npyx(dp)
+
+# if any test fails, enter interactive mode debug mode as follow:
+%pdb ON # must be in a notebook or regular ipython session
+test_npyx(dp, raise_error=True)
+```
+<span style="color:#1F45FC">
+
+--- npyx version 2.3.4 unit testing initiated, on directory /media/maxime/AnalysisSSD/test_dataset_artefact... <br>
+
+--- Successfully ran 'read_metadata' from npyx.inout. <br>
+--- Successfully ran 'get_npix_sync' from npyx.inout. <br>
+--- Successfully ran 'get_units' from npyx.gl. <br>
+--- Successfully ran 'ids' from npyx.spk_t. <br>
+--- Successfully ran 'trn' from npyx.spk_t. <br>
+--- Successfully ran 'trn_filtered' from npyx.spk_t. <br>
+--- Successfully ran 'wvf' from npyx.spk_wvf. <br>
+--- Successfully ran 'wvf_dsmatch' from npyx.spk_wvf. <br>
+--- Successfully ran 'get_peak_chan' from npyx.spk_wvf. <br>
+--- Successfully ran 'templates' from npyx.spk_wvf. <br>
+--- Successfully ran 'ccg' from npyx.corr. <br>
+--- Successfully ran 'plot_wvf' from npyx.plot. <br>
+--- Successfully ran 'plot_ccg' from npyx.plot. <br>
+--- Successfully ran 'plot_raw' from npyx.plot. <br>
+
+</span>
+
+```
+(bunch of plots...)
+```
+
 ### Known installation issues
 
 - **cannot import numba.core hence cannot import npyx** <br/>

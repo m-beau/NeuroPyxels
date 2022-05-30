@@ -114,7 +114,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     # Extract and process metadata
     dp = Path(dp)
     meta = read_metadata(dp)
-    dat_path = get_binary_file_path(dp, 'highpass')
+    dat_path = get_binary_file_path(dp, 'ap')
 
     dp_source = get_source_dp_u(dp, u)[0]
     meta=read_metadata(dp_source)
@@ -419,7 +419,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         np.save(Path(dpnm, fn_peakchan), peak_channel)
 
     if plot_debug:
-        print(f'Total averaged waveform batches ({n_waveforms_per_batch}/batch) after drift-shift matching: {batch_peak_channels.shape[0]}')
+        if verbose: print(f'Total averaged waveform batches ({n_waveforms_per_batch}/batch) after drift-shift matching: {batch_peak_channels.shape[0]}')
         fig = quickplot_n_waves(np.mean(mean_waves[np.random.randint(0, mean_waves.shape[0], batch_peak_channels.shape[0]),:,:], axis=0), '', peak_channel)
         fig = quickplot_n_waves(np.mean(drift_matched_batches, axis=0), '', peak_channel, fig=fig)
         fig = quickplot_n_waves(drift_shift_matched_mean, 'raw:blue\ndrift-matched:orange\ndrift-shift-matched:green', peak_channel, fig=fig)
@@ -475,10 +475,11 @@ def shift_match(waves, alignment_channel,
 
     # initialize array
     aligned_waves = np.zeros(waves_sort.shape)
-    template = template[:,alignment_channel-chan_range:alignment_channel+chan_range] # defined across 10 closest channels
+    chan_min, chan_max = max(0,alignment_channel-chan_range), min(alignment_channel+chan_range, template.shape[1])
+    template = template[:,chan_min:chan_max] # defined across 10 closest channels
     shifts = []
     for i, w in enumerate(waves_sort):
-        w_closestchannels = w[:,alignment_channel-chan_range:alignment_channel+chan_range]
+        w_closestchannels = w[:,chan_min:chan_max]
         xcorr_w_template = xcorr_1d_loop(template, w_closestchannels)
         # average xcorr across channels to find the optimal alignment
         # using information from all channels around peak!
@@ -501,7 +502,7 @@ def shift_match(waves, alignment_channel,
         if dynamic_template:
             template = np.mean(np.stack(
                             [template,
-                            realigned_w[:,alignment_channel-chan_range:alignment_channel+chan_range]],
+                            realigned_w[:,chan_min:chan_max]],
                             axis=2), axis=2)
 
     # discard nans (beyond max_shift_allowed) and re-sort waves properly
@@ -528,7 +529,7 @@ def get_pc(waveforms):
     peak_chan = np.argmax(max_min_wvf)
     return peak_chan
 
-def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=True):
+def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=True, periods='all'):
     '''
     Returns index of peak channel, either according to the full probe channel map (0 through 383)
                                    or according to the kilosort channel map (0 through N with N<=383)
@@ -570,7 +571,7 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
         peak_chan = cm[:,0][ks_peak_chan]
     else:
         waveforms=wvf(dp, u=unit, n_waveforms=200, t_waveforms=82,
-                      selection='regular', periods='all', spike_ids=None, again=again,
+                      selection='regular', periods=periods, spike_ids=None, again=again,
                       ignore_ks_chanfilt=True)
         probe_peak_chan = get_pc(waveforms)
         if ignore_ks_chanfilt: # absolute == relative channel index
@@ -644,10 +645,10 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
 
     return peak_chans # units, channels
 
-def get_peak_pos(dp, unit, use_template=False):
+def get_peak_pos(dp, unit, use_template=False, periods='all'):
     "Returns [x,y] relative position on the probe in um (y=0 at probe tip)."
     dp, unit = get_source_dp_u(dp, unit)
-    peak_chan=get_peak_chan(dp, unit, use_template)
+    peak_chan=get_peak_chan(dp, unit, use_template, periods=periods)
     pos = np.load(Path(dp,'channel_positions.npy'))
     cm=chan_map(dp, probe_version='local')
     return pos[cm[:,0]==peak_chan].ravel()

@@ -16,7 +16,11 @@ from tqdm.auto import tqdm
 
 from math import ceil
 import numpy as np
-import cupy as cp
+try:
+    import cupy as cp
+except ImportError:
+    print(("cupy could not be imported - "
+    "some functions dealing with the binary file (filtering, whitening...) will not work."))
 
 from npyx.utils import npa, read_pyfile, list_files
 from npyx.preprocess import apply_filter, bandpass_filter, whitening, approximated_whitening_matrix, med_substract,\

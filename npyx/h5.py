@@ -12,6 +12,25 @@ from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 from npyx.gl import get_units
 
+def print_h5_contents(h5_path, txt_output=False):
+    """
+    h5_path: str, path to .h5 file
+    txt_output: bool, if True prints contents to file
+                      (same name as h5 name_content.txt)
+    """
+    h5_path = Path(h5_path)
+    if txt_output:
+        txt_output_path = h5_path.parent / f"{h5_path.name[:-3]}_content.txt"
+    with h5py.File(h5_path, "a") as hdf:
+        if txt_output:
+            with open(txt_output_path, "w") as txt:
+                original_stdout = sys.stdout
+                sys.stdout = txt
+                visititems(hdf, visitor_func)
+                sys.stdout = original_stdout
+        else:
+            visititems(hdf, visitor_func)
+
 def label_unit_h5(h5_path, dataset, unit, label):
     """
     Add optotagged label to neuron.
@@ -278,25 +297,6 @@ def visitor_func(name, node):
     else:
         string = name
     print(string)
-
-def print_h5_contents(h5_path, txt_output=False):
-    """
-    h5_path: str, path to .h5 file
-    txt_output: bool, if True prints contents to file
-                      (same name as h5 name_content.txt)
-    """
-    h5_path = Path(h5_path)
-    if txt_output:
-        txt_output_path = h5_path.parent / f"{h5_path.name[:-3]}_content.txt"
-    with h5py.File(h5_path, "a") as hdf:
-        if txt_output:
-            with open(txt_output_path, "w") as txt:
-                original_stdout = sys.stdout
-                sys.stdout = txt
-                visititems(hdf, visitor_func)
-                sys.stdout = original_stdout
-        else:
-            visititems(hdf, visitor_func)
 
 def check_dataset_format(dataset):
     """

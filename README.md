@@ -322,31 +322,41 @@ Npyx supports Python 3.7+.
 - as a user
   - from pip (normally up to date)
   ```bash
-  conda create -n my_env python=3.7
+  conda create -n my_env python=3.8
   conda activate my_env
   pip install npyx
+  conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
   python -c 'import npyx' # should not return any error
   # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
   # and make sure that you are installing in a fresh environment.
   ```
   - from the remote repository (always up to date)
   ```bash
-  conda activate env_name
-  pip install git+https://github.com/Npix-routines/NeuroPyxels@master
+  conda create -n my_env python=3.8
+  conda activate my_env
+  pip install git+https://github.com/m-beau/NeuroPyxels@master
+  conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
+  python -c 'import npyx' # should not return any error
+  # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
+  # and make sure that you are installing in a fresh environment.
   ```
 - as a superuser (recommended if plans to work on it/regularly pull upgrades)
   > Tip: in an ipython/jupyter session, use `%load_ext autoreload` then `%autoreload` to make your local edits active in your session without having to restart your kernel. Amazing for development.
     ```bash
+    conda create -n my_env python=3.8
     conda activate my_env
     cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
-    git clone https://github.com/Npix-routines/NeuroPyxels
+    git clone https://github.com/m-beau/NeuroPyxels
     cd NeuroPyxels
     pip install -e . --user # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
     # python setup.py develop deprecated (doesn't handle dependencies, unlike pip)
+    conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
+    python -c 'import npyx' # should not return any error
+    # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
+    # and make sure that you are installing in a fresh environment.
     ```
     and pull every now and then:
     ```bash
-    conda activate env_name
     cd path/to/save_dir/NeuroPyxels
     git pull
     # And that's it, thanks to the egg link no need to reinstall the package!
@@ -355,6 +365,26 @@ Npyx supports Python 3.7+.
     # create your own branch from where you will be able to gracefully merge your edits with the master branch
     # after revision.
     ```
+
+### Dealing with cupy (GPU shenanigans)
+To run the preprocessing functions (borrowed from pykilosort), you will need NVIDIA drivers and cuda-toolkit installed on your computer. This can be the hardest part of the installation. To test if your is working OK you should be able to run the following:
+```
+nvidia-smi # Should show how much your GPU is being used right now
+nvcc # This is the CUDA compiler
+```
+Errors with the CUDA installation can sometimes be fixed by downgrading the version of cudatoolkit installed.
+To check the current version run the following:
+```
+conda activate my_env
+conda list cudatoolkit
+```
+To install version 10.0 for example run the following
+```
+conda activate my_env
+conda remove cupy, cudatoolkit
+conda install -c conda-forge cupy cudatoolkit=10.0
+```
+
 
 ### Test installation
 You can use the built-in unit testing function 'test_npyx' to make sure that npyx core functions run smoothly, all at once.

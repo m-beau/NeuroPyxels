@@ -9,12 +9,17 @@ import scipy as sp
 from scipy import signal as sgnl
 from scipy.signal import butter
 
-import cupy as cp
+try:
+    import cupy as cp
+except ImportError:
+    pass
 try:
     import cupy._core as cp_core
 except ImportError:
-    import cupy.core as cp_core
-
+    try:
+        import cupy.core as cp_core
+    except ImportError:
+        pass
 from textwrap import dedent
 from tqdm.auto import tqdm
 
@@ -723,7 +728,7 @@ def adc_realign(data, version=1):
 def fshift(w, s, axis=-1, ns=None):
     """
     Shifts a 1D or 2D signal in frequency domain, to allow for accurate non-integer shifts
-    :param w: input signal (if complex, need to provide ns too)
+    :param w: input signal (n_channels, n_samples) (if complex, need to provide ns too)
     :param s: shift in samples, positive shifts forward
     :param axis: axis along which to shift (last axis by default)
     :param axis: axis along which to shift (last axis by default)

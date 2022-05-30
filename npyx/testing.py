@@ -1,5 +1,4 @@
 import traceback
-import pdb
 
 import npyx
 from npyx.inout import get_npix_sync
@@ -24,7 +23,7 @@ def test_npyx(dp, raise_error=False):
                    (allows to enter pydebug interactive mode,
                    given that %pdb was set in notebook/ipython session)
     """
-    print(f"{prefix}npyx version {npyx.__version__} unit testing initiated, on directory {dp}.{suffix}\n")
+    print(f"{prefix}npyx version {npyx.__version__} unit testing initiated, on directory {dp}...{suffix}\n")
 
     test_function(read_metadata, raise_error, dp=dp)
 

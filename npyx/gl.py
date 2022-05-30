@@ -15,8 +15,8 @@ import pandas as pd
 
 
 def get_npyx_memory(dp):
-    dpnm = Path(dp,'npyxMemory')
-    old_dpnm =Path(dp,'routinesMemory')
+    dpnm = Path(dp) / 'npyxMemory'
+    old_dpnm = Path(dp) / 'routinesMemory'
     if old_dpnm.exists() and not dpnm.exists():
         try: # because of parallel proccessing, might have been renamed in the process!
             os.rename(str(old_dpnm), str(dpnm))

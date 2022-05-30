@@ -36,6 +36,7 @@ def whitening(x, nRange=None):
     # Compute whitening matrix
     w=whitening_matrix(x, nRange=nRange)
     # Whiten
+    x = cp.array(x)
     scales=(np.max(x, 1)-np.min(x, 1))
     x=np.dot(x.T,w).T
     W_scales=(np.max(x, 1)-np.min(x, 1))
@@ -286,7 +287,7 @@ def apply_filter(x, filt, axis=0):
     b, a = filt
     return sgnl.filtfilt(b, a, x, axis=axis)
 
-def gpufilter(buff, chanMap=None, fs=None, fslow=None, fshigh=None, order=3, car=False):
+def gpufilter(buff, fs=None, fslow=None, fshigh=None, order=3, car=False):
     # filter this batch of data after common average referencing with the
     # median
     # buff is timepoints by channels
@@ -298,8 +299,6 @@ def gpufilter(buff, chanMap=None, fs=None, fslow=None, fshigh=None, order=3, car
     assert dataRAW.flags.c_contiguous
     assert dataRAW.ndim == 2
     assert dataRAW.shape[0] > dataRAW.shape[1]
-    if chanMap is not None and len(chanMap):
-        dataRAW = dataRAW[:, chanMap]  # subsample only good channels
     assert dataRAW.ndim == 2
 
     # subtract the mean from each channel
@@ -715,11 +714,11 @@ def adc_realign(data, version=1):
     assert data.shape[1] == 384, "Only implemented for 384 channels atm."
     assert version in [1,1.,2,2.]
 
-    s = adc_shifts(version)
+    sample_shift, adc = adc_shifts(version)
 
-    w = fshift(w, s, -1, None)
+    shifted_data = fshift(data.T, sample_shift, 1, None).T
 
-    return w
+    return shifted_data
 
 def fshift(w, s, axis=-1, ns=None):
     """

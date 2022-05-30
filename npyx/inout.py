@@ -83,6 +83,8 @@ def metadata(dp):
         }
     '''
     dp = Path(dp)
+    assert dp.exists(), "Provided path does not exist!"
+    assert dp.is_dir(), f"Provided path {dp} is a filename!"
 
     probe_versions = {
         'glx':{3.0:'3A', # option 3
@@ -98,7 +100,9 @@ def metadata(dp):
         }
 
     # import params.py data
-    params=read_pyfile(dp/'params.py')
+    params_f = dp/'params.py'
+    if params_f.exists():
+        params=read_pyfile(dp/'params.py')
 
     # find meta file
     glx_ap_files = list_files(dp, "ap.meta", True)
@@ -140,17 +144,22 @@ def metadata(dp):
             filt_key_i={'highpass':0, 'lowpass':1}[filt_key]
             meta[filt_key]['sampling_rate']=int(meta_oe["continuous"][filt_key_i]['sample_rate'])
             meta[filt_key]['n_channels_binaryfile']=int(meta_oe["continuous"][filt_key_i]['num_channels'])
-            meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
-            meta[filt_key]['datatype']=params['dtype']
+            if params_f.exists():
+                meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
+                meta[filt_key]['datatype']=params['dtype']
+            else:
+                meta[filt_key]['n_channels_analysed']=meta[filt_key]['n_channels_binaryfile']
+                meta[filt_key]['datatype']='int16'
             binary_folder = './continuous/'+meta_oe["continuous"][filt_key_i]['folder_name']
             binary_file = list_files(dp/binary_folder, "dat", False)
             if any(binary_file):
                 binary_rel_path = binary_folder+binary_file[0]
                 meta[filt_key]['binary_relative_path']=binary_rel_path
                 meta[filt_key]['binary_byte_size']=os.path.getsize(dp/binary_rel_path)
-                if filt_key=='highpass' and params['dat_path']!=binary_rel_path:
-                    print((f'\033[34;1mWARNING edit dat_path in params.py '
-                    f'so that it matches relative location of high pass filtered binary file: {binary_rel_path}'))
+                if filt_key=='highpass' and params_f.exists():
+                    if params['dat_path']!=binary_rel_path:
+                        print((f'\033[34;1mWARNING edit dat_path in params.py '
+                        f'so that it matches relative location of high pass filtered binary file: {binary_rel_path}'))
             else:
                 meta[filt_key]['binary_relative_path']='not_found'
                 meta[filt_key]['binary_byte_size']='unknown'
@@ -234,8 +243,12 @@ def metadata(dp):
                 meta[filt_key]['sampling_rate']=int(meta_glx[meta_glx['typeThis'][:2]+'SampRate'])
 
             meta[filt_key]['n_channels_binaryfile']=int(meta_glx[filt_key]['nSavedChans'])
-            meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
-            meta[filt_key]['datatype']=params['dtype']
+            if params_f.exists():
+                meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
+                meta[filt_key]['datatype']=params['dtype']
+            else:
+                meta[filt_key]['n_channels_analysed']=meta[filt_key]['n_channels_binaryfile']
+                meta[filt_key]['datatype']='int16'
             meta[filt_key]={**meta[filt_key], **meta_glx[filt_key]}
 
     # Calculate length of recording
@@ -332,30 +345,48 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
 #%% Binary file I/O, including sync channel
 
 def get_binary_file_path(dp, filt_suffix='ap', absolute_path=True):
-    '''Return the path of the binary file from a directory.
+    f'''Return the path of the binary file (.bin) from a directory.
+
+    Wrapper of get_glx_file_path:
+    {get_glx_file_path.__doc__}
+    '''
+    
+    return get_glx_file_path(dp, 'bin', filt_suffix, absolute_path)
+
+def get_meta_file_path(dp, filt_suffix='ap', absolute_path=True):
+    f'''Return the path of the meta file (.meta) from a directory.
+
+    Wrapper of get_glx_file_path:
+    {get_glx_file_path.__doc__}
+    '''
+    
+    return get_glx_file_path(dp, 'meta', filt_suffix, absolute_path)
+
+def get_glx_file_path(dp, suffix, filt_suffix='ap', absolute_path=True):
+    '''Return the path of a spikeGLX file (.bin or .meta) from a directory.
 
     Parameters:
-    - dp:
+    - dp: str, directory
     - filt_suffix: 'ap' or 'lf', seek ap (highpass) or lfp (lowpass) binary file,
                    for 1.0 recordings. Always 'ap' for 2.0.
     - absolute_path: bool, whether to return path from root
                      (if False, returns relative path from dp)
 
     Returns:
-        The absolute path to the binary file with the associated filt key, 'ap' or 'lf'.
+        The absolute path to the spikeGLX file with the associated filt key, 'ap' or 'lf'.
     '''
 
-    # get metadata
     dp = Path(dp)
+    assert suffix in ['bin', 'meta']
     assert filt_suffix in ['ap','lf']
-    bin_files = list_files(dp, f"{filt_suffix}.bin", absolute_path)
-    assert len(bin_files) <= 1, f"More than one {filt_suffix}.bin files found at {dp}!\
-        If you keep several versions, store other files in a subdirectory (e.g. original_data)."
+    glx_files = list_files(dp, f"{filt_suffix}.{suffix}", absolute_path)
+    assert len(glx_files) <= 1, (f"More than one {filt_suffix}.{suffix} files found at {dp}! ",
+        "If you keep several versions, store other files in a subdirectory (e.g. original_data).")
 
-    if len(bin_files)==0:
-        bin_files = ['not_found']
+    if len(glx_files)==0:
+        glx_files = ['not_found']
     
-    return bin_files[0]
+    return glx_files[0]
 
 def unpackbits(x,num_bits = 16):
     '''
@@ -366,7 +397,7 @@ def unpackbits(x,num_bits = 16):
     to_and = 2**np.arange(num_bits).reshape([1,num_bits])
     return (x & to_and).astype(bool).astype(np.int64).reshape(xshape + [num_bits])
 
-def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds', verbose=True):
+def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds', verbose=False):
     '''Unpacks neuropixels external input data, to align spikes to events.
     Parameters:
         - dp: str, datapath
@@ -494,7 +525,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
 def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
                      whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
-                     ignore_ks_chanfilt=0, verbose=False, scale=True):
+                     ignore_ks_chanfilt=0, center_chans_on_0=False, verbose=False, scale=True, again=False):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     ## PARAMETERS
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
@@ -520,26 +551,30 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     meta = read_metadata(dp)
     fname = get_binary_file_path(dp, filt_suffix='ap', absolute_path=True)
 
-    assert len(times)==2
-    assert times[0]>0
-    assert times[1]<meta['recording_length_seconds']
-
     fs = meta[filt_key]['sampling_rate']
     Nchans=meta[filt_key]['n_channels_binaryfile']
     bytes_per_sample=2
+    whitenpad=200
+
+    assert len(times)==2
+    assert times[0]>=0
+    assert times[1]<meta['recording_length_seconds']
 
     # Format inputs
     cm=chan_map(dp, probe_version='local'); assert cm.shape[0]<=Nchans-1
     if not ignore_ks_chanfilt: channels=assert_chan_in_dataset(dp, channels) # index out of 384, should remain the same because rc initial shape is 384!
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
     if whiten:
-        whitenpad=200
+        if t1<whitenpad:
+            print(f"times[0] set to {round(whitenpad/30000, 5)}s because whitening requires a pad.")
+            t1 = whitenpad
+            times[0] = t1/30000
         t1, t2 = t1-whitenpad, t2+whitenpad
     bn = os.path.basename(fname) # binary name
     rcn = f'{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}_{whiten}_{med_sub}_{scale}.npy' # raw chunk name
-    rcp = Path(dp, 'routinesMemory', rcn)
+    rcp = get_npyx_memory(dp) / rcn
 
-    if os.path.isfile(rcp):
+    if os.path.isfile(rcp) and not again:
         return np.load(rcp)
 
     # Check that available memory is high enough to load the raw chunk
@@ -571,7 +606,8 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     rc = rc.reshape((int(t2-t1), Nchans)).T
 
     # Align signal on each channel
-    rc=rc-np.median(rc[:,:10],axis=1)[:,np.newaxis]
+    if center_chans_on_0:
+        rc=rc-np.median(rc[:,:10],axis=1)[:,np.newaxis]
 
     # Median subtraction = CAR
     if med_sub:
@@ -592,12 +628,16 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     if scale:
         rc = rc*meta['bit_uV_conv_factor'] # convert into uV
 
+    # convert from cupy to numpy array
+    rc = cp.asnumpy(rc)
+
     if save: # sync chan saved in extract_syncChan
         np.save(rcp, rc)
 
     return rc
 
 def assert_chan_in_dataset(dp, channels):
+    channels = np.array(channels)
     cm=chan_map(dp, probe_version='local')
     if not np.all(np.isin(channels, cm[:,0])):
         print("WARNING Kilosort excluded some channels that you provided for analysis \
@@ -615,7 +655,7 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
     """Creates a preprocessed copy of binary file at dp/fname_filtered.bin,
     and moves the original binary file to dp/original_data.fname.bin.
 
-    One must precise either dp (path to directory or ) or fname (absolute path to binary file)
+    One must precise either dp (path to directory or ) or fname (absolute path to binary file).
 
     Preprocessing steps:
     - optional - realigning data according to ADCs, like global demux from CatGT does
@@ -658,15 +698,27 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
     nSkipCov = 25
 
     # Fetch binary file name, define target file name
-    if fname is None:                                                                                                                                                                                                   
+    if fname is None:
         fname = get_binary_file_path(dp, filt_key, True)
     fname=Path(fname)
+    print(f"Preprocessing {fname}...")
     filter_suffix = ""
-    if ADC_realign: filter_suffix+=f"_adcshift{ADC_realign}"
+    message = ""
+    if ADC_realign:
+        filter_suffix+=f"_adcshift{ADC_realign}"
+        message+="    - shifting ADCs,\n"
     filter_suffix+=f"_tempfilt{f_low}{f_high}"
-    if whiten: filter_suffix+=f"_whit{whiten}{whiten_range}"
-    if spatial_filt: filter_suffix+=f"_spatfilt{spatial_filt}"
-    filtered_fname = Path(str(fname)[:-4]+filter_suffix+".bin")
+    low_s = 0 if f_low is None else f_low
+    message+=f"    - filtering in time (between {low_s} and {f_high} Hz),\n"
+    if whiten:
+        filter_suffix+=f"_whit{whiten}{whiten_range}"
+        message+=f"    - whitening (using {whiten_range} closest channels),\n"
+    if spatial_filt:
+        filter_suffix+=f"_spatfilt{spatial_filt}"
+        message+=f"    - filtering in space ({spatial_filt} 'Hz'),\n"
+    filtered_fname = Path(str(fname)[:-7]+filter_suffix+".ap.bin")
+    message = message[:-2]+"."
+    print(message)
 
     # fetch metadata
     fk = {'ap':'highpass', 'lf':'lowpass'}[filt_key]
@@ -681,6 +733,9 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
 
     # memory map binary file
     n_channels = meta[fk]['n_channels_binaryfile']
+    channels_to_process = np.arange(n_channels-1) # would allow in the future to process specific channels
+    chans_mask = np.isin(np.arange(n_channels), channels_to_process)
+
     dtype = meta[fk]['datatype']
     offset = 0
     item_size = np.dtype(dtype).itemsize
@@ -696,8 +751,6 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
             f_high, fs, again=again_Wrot, verbose=verbose)
 
     ## Start filtering iteratively
-    channels_to_process = np.arange(n_channels-1) # probe.chanMap
-    
     NT = 64 * 1024 + ntb
     Nbatch = ceil(n_samples / NT)
     NTbuff = NT + 3 * ntb
@@ -715,28 +768,33 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
 
             # Collect data batch
             i = max(0, NT * ibatch - ntb)
-            batch = memmap_f[i:i + NTbuff]
-            if batch.size == 0:
+            rawData = memmap_f[i:i + NTbuff]
+            if rawData.size == 0:
                 if verbose: print("Loaded buffer has an empty size!")
                 break  # this shouldn't really happen, unless we counted data batches wrong
-            nsampcurr = batch.shape[0]  # how many time samples the current batch has
+            nsampcurr = rawData.shape[0]  # how many time samples the current batch has
             if nsampcurr < NTbuff:
-                batch = np.concatenate(
-                    (batch, np.tile(batch[nsampcurr - 1], (NTbuff - nsampcurr, 1))), axis=0)
+                rawData = np.concatenate(
+                    (rawData, np.tile(rawData[nsampcurr - 1], (NTbuff - nsampcurr, 1))), axis=0)
             if i == 0:
-                bpad = np.tile(batch[0], (ntb, 1))
-                batch = np.concatenate((bpad, batch[:NTbuff - ntb]), axis=0)
-            batch = cp.asarray(batch, dtype=np.float32)
+                bpad = np.tile(rawData[0], (ntb, 1))
+                rawData = np.concatenate((bpad, rawData[:NTbuff - ntb]), axis=0)
+            rawData = cp.asarray(rawData, dtype=np.float32)
+
+            # Extract channels to use for processing
+            # at minima, removes sync channel
+            batch = rawData[:,chans_mask]
 
             # Re-alignment based on ADCs shifts (like CatGT)
             # should be the first preprocessing step,
             # it simply consists in properly realigning the data!
             if ADC_realign:
+                batch = cp.asnumpy(batch)
                 batch = adc_realign(batch, version=meta['probe_version_int'])
+                batch = cp.asarray(batch, dtype=np.float32)
 
             # CAR (optional) -> temporal filtering -> unpadding
-            # importantly, CAR should happen before filtering (because )
-            batch = gpufilter(batch, chanMap=channels_to_process, fs=fs, fshigh=f_high, fslow=f_low, order=order, car=CAR)
+            batch = gpufilter(batch, fs=fs, fshigh=f_high, fslow=f_low, order=order, car=CAR)
             assert batch.flags.c_contiguous # check that ordering is still C, not F
             batch[ntb:2*ntb] = w_edge * batch[ntb:2*ntb] + (1 - w_edge) * buff_prev
             buff_prev = batch[NT + ntb: NT + 2*ntb]
@@ -755,15 +813,20 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
             if batch.shape[0] != NT:
                 raise ValueError(f'Batch {ibatch} processed incorrectly')
 
+            # add unprocessed channels back to batch
+            # (at minima including last 16 bits for sync signal)
+            rebuilt_batch = rawData[ntb:ntb + NT, :] # remove timepoints used as buffers; includes unprocessed channels
+            rebuilt_batch[:,chans_mask] = batch
 
             # convert to int16, and gather on the CPU side
             # WARNING: transpose because "tofile" always writes in C order, whereas we want
             # to write in F order.
-            datcpu = cp.asnumpy(batch.astype(np.dtype(dtype)))
+            datcpu = cp.asnumpy(rebuilt_batch.astype(np.dtype(dtype)))
 
 
             # write this batch to binary file
-            if verbose: print(f"{filtered_fname.stat().st_size} total, {batch.size * 2} bytes written to file {datcpu.shape} array size")
+            if verbose and ibatch%(Nbatch//100)==0:
+                print(f"{filtered_fname.stat().st_size} total, {rebuilt_batch.size * 2} bytes written to file {datcpu.shape} array size")
             datcpu.tofile(fw)
         if verbose: print(f"{filtered_fname.stat().st_size} total")
 
@@ -772,6 +835,14 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
     orig_dp = fname.parent/'original_data'
     orig_dp.mkdir(exist_ok=True)
     if not (orig_dp/fname.name).exists(): fname.replace(orig_dp/fname.name)
+    meta_f = get_meta_file_path(fname.parent, filt_key, False)
+    if not (orig_dp/meta_f).exists():
+        if (fname.parent/meta_f).exists():
+            shutil.copy(fname.parent/meta_f, orig_dp/meta_f)
+        if (fname.parent/'channel_map.npy').exists():
+            shutil.copy(fname.parent/'channel_map.npy', orig_dp/'channel_map.npy')
+        if (fname.parent/'channel_positions.npy').exists():
+            shutil.copy(fname.parent/'channel_positions.npy', orig_dp/'channel_positions.npy')
 
     return filtered_fname
 
@@ -1039,5 +1110,5 @@ def paq_read(file_path):
 
 
 
-from npyx.gl import assert_multi, get_ds_table
+from npyx.gl import assert_multi, get_ds_table, get_npyx_memory
 #

@@ -654,7 +654,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     pv=None if ignore_ks_chanfilt else 'local'
     cm=chan_map(dp, y_orig='tip', probe_version=pv)
 
-    peak_chan=get_peak_chan(dp, u, use_template=True)
+    peak_chan=get_peak_chan(dp, u, use_template=True) # use get_pc(waveforms)
     peak_chan_i = int(np.argmin(np.abs(cm[:,0]-peak_chan)))
     t_waveforms_s=int(t_waveforms*(fs/1000))
 
@@ -834,8 +834,8 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 20, fig=None):
 
 def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), filt_key='highpass',
              offset=450, color='multi', lw=1, bg_alpha=0.8,
-             title=None, _format='pdf',  saveDir='~/Downloads', saveData=0, saveFig=0, figsize=(20,8),
-             whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
+             title=None, _format='pdf',  saveDir='~/Downloads', saveFig=0, figsize=(20,8), again=False,
+             whiten=False, nRangeWhiten=None, med_sub=False, center_chans_on_0=True, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
              plot_ylabels=True, show_allyticks=0, yticks_jump=50, plot_baselines=False,
              events=[], set0atEvent=1,
              ax=None, ext_data=None, ext_datachans=np.arange(384),
@@ -854,7 +854,6 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     - _format: format of the figure to save | default: pdf
     - color: color to plot all the lines. | default: multi, will use 20DistinctColors iteratively to distinguish channels by eye
     - whiten: boolean, whiten data or not
-    - pyqtgraph: boolean, whether to use pyqtgraph backend instead of matplotlib (faster to plot and interact, use to explore data before saving nice plots with matplotlib) | default 0
     - show_allyticks: boolean, whetehr to show all y ticks or not (every 50uV for each individual channel), only use if exporing data | default 0
     - events: list of times where to plot vertical lines, in seconds.
     - set0atEvent: boolean, set time=0 as the time of the first event provided in the list events, if any is provided.
@@ -869,7 +868,6 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
 
     '''
-    pyqtgraph=0
     assert filt_key in ['highpass', 'lowpass']
     fs = read_metadata(dp)[filt_key]['sampling_rate']
     assert assert_iterable(events)
@@ -877,19 +875,25 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     if ext_data is None:
         channels=assert_chan_in_dataset(dp, channels)
         if times is not None:
-            assert alignement_events is None, 'You can either provide a window of 2 times or a list of alignement_events + a single window to compute an average, but not both!'
-            rc = extract_rawChunk(dp, times, channels, filt_key, saveData, 1, whiten, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten)
+            assert alignement_events is None, 'You can either provide a window of 2 times or a list of alignement_events \
+                + a single window to compute an average, but not both!'
+            rc = extract_rawChunk(dp, times, channels, filt_key, 1,
+                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
+                     ignore_ks_chanfilt, center_chans_on_0, 0, scale=1, again=again)
         if alignement_events is not None:
             assert window is not None
             window[1]=window[1]+1*1000/fs # to make actual window[1] tick visible
-            assert times is None, 'You can either provide a window of 2 times or a list of alignement_events + a single window to compute an average, but not both!'
+            assert times is None, 'You can either provide a window of 2 times or a list of alignement_events \
+                + a single window to compute an average, but not both!'
             assert len(alignement_events)>1
-            rc = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, filt_key, saveData,
-                                  whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
+            # d = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, filt_key, 1,
+            #          whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
+            #          ignore_ks_chanfilt, center_chans_on_0, 0, scale=1, again=again)
             for e in alignement_events[1:]:
                 times=e+npa(window)/1e3
-                rc+=extract_rawChunk(dp, times, channels, filt_key, saveData,
-                                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
+                rc+=extract_rawChunk(dp, times, channels, filt_key, 1,
+                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
+                     ignore_ks_chanfilt, center_chans_on_0, 0, scale=1, again=again)
             rc/=len(alignement_events)
     else:
         channels=assert_chan_in_dataset(dp, ext_datachans)
@@ -897,7 +901,6 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
         assert window is not None, 'You must tell the plotting function to which time window the external data corresponds to!'
         times=window
         rc=ext_data.copy()
-        assert not pyqtgraph
 
     # Define y ticks
     plt_offsets = np.arange(0, rc.shape[0]*offset, offset)
@@ -919,63 +922,61 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     if alignement_events is not None:
         t=t+window[0]
         events=[0]
-    if not pyqtgraph:
-        if isinstance(color, str):
-            if color=='multi':color=None
-            else:color=to_rgb(color)
-        if as_heatmap:
-            xticklabels = get_bestticks_from_array(t, step=None)
-            xticks=xticklabels*fs/1000
-            y_ticks_labels=npa([x*10 if x%2==0 else x*10-10 for x in y_ticks_labels])
 
-            fig=imshow_cbar(im=rc, origin='top', xevents_toplot=[], events_color='k',
-                            xvalues=None, yvalues=None, xticks=xticks-xticks[0], yticks=y_ticks,
-                            xticklabels=xticklabels, yticklabels=y_ticks_labels, xlabel=None, ylabel=None,
-                            cmapstr="RdBu_r", vmin=vmin, vmax=vmax, center=center, colorseq='nonlinear',
-                            clabel='Voltage (\u03BCV)', extend_cmap='neither', cticks=None,
-                            figsize=(4,10), aspect='auto', function='imshow', ax=None)
-            ax=fig.axes[0]
-            ax.set_ylabel('Depth (\u03BCm)', size=14, weight='bold')
-        else:
-            fig, ax = plt.subplots(figsize=figsize)
-            t=np.tile(t, (rc.shape[0], 1))
-            rc+=plt_offsets[:,np.newaxis]
-            if plot_baselines:
-                for i in np.arange(rc.shape[0]):
-                    y=i*offset
-                    ax.plot([t[0,0], t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
-            ax.plot(t.T, rc.T, linewidth=lw, color=color, alpha=bg_alpha)
-            ax.set_yticks(y_ticks)
-            ax.set_yticklabels(y_ticks_labels) if plot_ylabels else ax.set_yticklabels([])
-            ax.set_ylabel('Channel', size=14, weight='bold')
+    if isinstance(color, str):
+        if color=='multi':color=None
+        else:color=to_rgb(color)
+    if as_heatmap:
+        xticklabels = get_bestticks_from_array(t, step=None)
+        xticks=xticklabels*fs/1000
+        y_ticks_labels=npa([x*10 if x%2==0 else x*10-10 for x in y_ticks_labels])
 
-        ax.set_xlabel('Time (ms)', size=14, weight='bold')
-        ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-        ax.spines['left'].set_lw(2)
-        ax.spines['bottom'].set_lw(2)
+        fig=imshow_cbar(im=rc, origin='top', xevents_toplot=[], events_color='k',
+                        xvalues=None, yvalues=None, xticks=xticks-xticks[0], yticks=y_ticks,
+                        xticklabels=xticklabels, yticklabels=y_ticks_labels, xlabel=None, ylabel=None,
+                        cmapstr="RdBu_r", vmin=vmin, vmax=vmax, center=center, colorseq='nonlinear',
+                        clabel='Voltage (\u03BCV)', extend_cmap='neither', cticks=None,
+                        figsize=(4,10), aspect='auto', function='imshow', ax=None)
+        ax=fig.axes[0]
+        ax.set_ylabel('Depth (\u03BCm)', size=14, weight='bold')
+    else:
+        fig, ax = plt.subplots(figsize=figsize)
+        t=np.tile(t, (rc.shape[0], 1))
+        rc+=plt_offsets[:,np.newaxis]
+        if plot_baselines:
+            for i in np.arange(rc.shape[0]):
+                y=i*offset
+                ax.plot([t[0,0], t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
+        ax.plot(t.T, rc.T, linewidth=lw, color=color, alpha=bg_alpha)
+        ax.set_yticks(y_ticks)
+        ax.set_yticklabels(y_ticks_labels) if plot_ylabels else ax.set_yticklabels([])
+        ax.set_ylabel('Channel', size=14, weight='bold')
 
-        if title is not None: ax.set_title(title, size=20, weight='bold', va='bottom')
+    ax.set_xlabel('Time (ms)', size=14, weight='bold')
+    ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['left'].set_lw(2)
+    ax.spines['bottom'].set_lw(2)
 
-        yl=ax.get_ylim() if as_heatmap else [min(rc[0,:])-2*offset,max(rc[-1,:])+2*offset]
-        xl=[0, (t[-1]-t[0])*fs/1000] if as_heatmap else [t[0,0], t[0,-1]]
-        for e in events:
-            if as_heatmap: e=(e-t[0])*(fs/1000)
-            ax.plot([e,e], yl, color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
-        ax.set_ylim(yl)
-        ax.set_xlim(xl)
+    if title is not None: ax.set_title(title, size=20, weight='bold', va='bottom')
 
-        # fig.tight_layout()
+    yl=ax.get_ylim() if as_heatmap else [min(rc[0,:])-2*offset,max(rc[-1,:])+2*offset]
+    xl=[0, (t[-1]-t[0])*fs/1000] if as_heatmap else [t[0,0], t[0,-1]]
+    for e in events:
+        if as_heatmap: e=(e-t[0])*(fs/1000)
+        ax.plot([e,e], yl, color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
+    ax.set_ylim(yl)
+    ax.set_xlim(xl)
 
-        if saveFig:
-            rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
-            rcn=rcn+'_whitened' if whiten else rcn+'_raw'
-            if title is not None: rcn=title
+    if saveFig:
+        rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
+        rcn=rcn+'_whitened' if whiten else rcn+'_raw'
+        if title is not None: rcn=title
 
-            save_mpl_fig(fig, rcn, saveDir, _format)
+        save_mpl_fig(fig, rcn, saveDir, _format)
 
-        return fig
+    return fig
 
 def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                    Nchan_plot=5, spk_window=82, colors='phy', bg_color='k', lw=1, bg_alpha=0.8, lw_color=1.1,

@@ -609,11 +609,11 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
              periods='all', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
              whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
              title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
-             labels=False, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
+             labels=False, show_channels=True, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf',
              ignore_ks_chanfilt = True,
              ax_edge_um_x=22, ax_edge_um_y=18, margin=0.12, figw_inch=6, figh_inch=None,
-             as_heatmap=False, use_dsmatch=False):
+             as_heatmap=False, use_dsmatch=False, verbose=False):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
     Parameters:
@@ -661,7 +661,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     # Get data
     if not use_dsmatch:
         waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s, selection='regular',
-                        periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
+                        periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, verbose=verbose, again=again,
                         whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
                         ignore_ks_chanfilt = ignore_ks_chanfilt)
         assert waveforms.shape[0]!=0,'No waveforms were found in the provided periods!'
@@ -672,7 +672,7 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         waveforms=wvf_dsmatch(dp, u, n_waveforms=n_waveforms,
                   t_waveforms=t_waveforms_s, periods=periods,
                   wvf_batch_size=wvf_batch_size, ignore_nwvf=True, spike_ids = None,
-                  save=True, verbose=True, again=again,
+                  save=True, verbose=verbose, again=again,
                   whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
                   nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub)[1]
 
@@ -776,9 +776,10 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
             ax[i].spines['top'].set_visible(False)
             ax[i].spines['left'].set_lw(ticks_lw)
             ax[i].spines['bottom'].set_lw(ticks_lw)
-            if labels:
+            if show_channels:
                 ax[i].text(0.99, 0.99, int(subcm[i,0]),
                                 size=12, weight='regular', ha='right', va='top', transform = ax[i].transAxes)
+            if labels:
                 ax[i].tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=ticks_lw, length=3*ticks_lw, labelsize=12)
                 if i==i_bottomleft:
                     ax[i].set_ylabel('Voltage (\u03bcV)', size=12, weight='bold')
@@ -833,10 +834,10 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 20, fig=None):
     return fig
 
 def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), filt_key='highpass',
-             offset=450, color='multi', lw=1, bg_alpha=0.8,
-             title=None, _format='pdf',  saveDir='~/Downloads', saveFig=0, figsize=(20,8), again=False,
+             offset=450, color='black', lw=1, bg_alpha=0.8,
+             title=None, _format='pdf',  saveDir='~/Downloads', saveFig=0, figsize=(8,10), again=False,
              whiten=False, nRangeWhiten=None, med_sub=False, center_chans_on_0=True, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
-             plot_ylabels=True, show_allyticks=0, yticks_jump=50, plot_baselines=False,
+             plot_ylabels=True, show_allyticks=0, yticks_jump=10, plot_baselines=False,
              events=[], set0atEvent=1,
              ax=None, ext_data=None, ext_datachans=np.arange(384),
              as_heatmap=False, vmin=-50,vmax=50,center=0):
@@ -852,7 +853,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     - saveData (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
     - saveFig: save the figure at saveDir
     - _format: format of the figure to save | default: pdf
-    - color: color to plot all the lines. | default: multi, will use 20DistinctColors iteratively to distinguish channels by eye
+    - color: color to plot all the lines ('multi' will use 20DistinctColors iteratively to distinguish channels by eye)
     - whiten: boolean, whiten data or not
     - show_allyticks: boolean, whetehr to show all y ticks or not (every 50uV for each individual channel), only use if exporing data | default 0
     - events: list of times where to plot vertical lines, in seconds.

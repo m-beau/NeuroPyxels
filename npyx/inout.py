@@ -167,6 +167,7 @@ def metadata(dp):
             else:
                 meta[filt_key]['binary_relative_path']='not_found'
                 meta[filt_key]['binary_byte_size']='unknown'
+                print(f"\033[91;1mWARNING {filt_key} binary file not found at {dp}\033[0m")
             meta[filt_key]={**meta[filt_key], **meta_oe["continuous"][filt_key_i]}
         meta["events"]=meta_oe["events"]
         meta["spikes"]=meta_oe["spikes"]
@@ -239,6 +240,7 @@ def metadata(dp):
             else:
                 meta[filt_key]['binary_byte_size']='unknown'
                 meta[filt_key]['binary_relative_path']=binary_rel_path
+                print(f"\033[91;1mWARNING binary file .{filt_suffix}.bin not found at {dp}\033[0m")
 
             # sampling rate
             if meta_glx[filt_key]['typeThis'] == 'imec':
@@ -656,8 +658,8 @@ def assert_chan_in_dataset(dp, channels):
 
 #%% Binary file filtering wrappers
 
-def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
-                       ADC_realign = True, CAR=True, f_low=None, f_high=300, order=3,
+def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, move_orig_data=True,
+                       ADC_realign = False, median_subtract=False, f_low=None, f_high=300, order=3,
                        spatial_filt=False, whiten = False, whiten_range=32,
                        again_Wrot=False, verbose=False):
     """Creates a preprocessed copy of binary file at dp/fname_filtered.bin,
@@ -682,6 +684,8 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
     - dp: optional str, path to binary file directory. dp/*.bin file will be found and used for filtering.
     - filt_key: str, 'ap' or 'lf' (if filtering ap.bin or lf.bin file)
     - fname: optional str, absolute path of binary file to filter (if provided, *.bin will not be guessed)
+    - target_dp: str or Path, directory to save preprocessed binary file (by default, dp)
+    - move_orig_data: bool, if true a directory is created at dp/original_data, and the original binary file is moved there.
     - ADC_realign: bool, whether to realign data based on Neuropixels ADC shifts (slow because requires FFT)
     - CAR: bool, whether to perform common average subtraction
     - f_low: optional float, lowpass filter frequency
@@ -709,12 +713,21 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
     if fname is None:
         fname = get_binary_file_path(dp, filt_key, True)
     fname=Path(fname)
+    dp = fname.parent
+    if target_dp is None:
+        target_dp = dp
+    else:
+        target_dp = Path(target_dp)
     print(f"Preprocessing {fname}...")
+
     filter_suffix = ""
     message = ""
     if ADC_realign:
         filter_suffix+=f"_adcshift{ADC_realign}"
         message+="    - shifting ADCs,\n"
+    if median_subtract:
+        filter_suffix+="_medsub"
+        message+="    - median subtraction (aka common average referencing CAR),\n"
     filter_suffix+=f"_tempfilt{f_low}{f_high}"
     low_s = 0 if f_low is None else f_low
     message+=f"    - filtering in time (between {low_s} and {f_high} Hz),\n"
@@ -724,26 +737,25 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
     if spatial_filt:
         filter_suffix+=f"_spatfilt{spatial_filt}"
         message+=f"    - filtering in space ({spatial_filt} 'Hz'),\n"
-    filtered_fname = Path(str(fname)[:-7]+filter_suffix+".ap.bin")
+    filtered_fname = str(fname.name)[:-7]+filter_suffix+".ap.bin"
     message = message[:-2]+"."
     print(message)
 
     # fetch metadata
     fk = {'ap':'highpass', 'lf':'lowpass'}[filt_key]
-    meta = read_metadata(fname.parent)
+    meta = read_metadata(dp)
     fs = meta[fk]['sampling_rate']
     binary_byte_size = meta[fk]['binary_byte_size']
 
     # Check that there is enough free memory on disk
-    free_memory = shutil.disk_usage(fname.parent)[2]
+    free_memory = shutil.disk_usage(target_dp)[2]
     assert free_memory > binary_byte_size + 2**10,\
-        f"Not enough free space on disk at {fname.parent} (need {(binary_byte_size+2**10)//2**20} MB)"
+        f"Not enough free space on disk at {target_dp} (need {(binary_byte_size+2**10)//2**20} MB)"
 
     # memory map binary file
     n_channels = meta[fk]['n_channels_binaryfile']
     channels_to_process = np.arange(n_channels-1) # would allow in the future to process specific channels
     chans_mask = np.isin(np.arange(n_channels), channels_to_process)
-
     dtype = meta[fk]['datatype']
     offset = 0
     item_size = np.dtype(dtype).itemsize
@@ -758,16 +770,14 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
             NT, Nbatch, NTbuff, ntb, nSkipCov, n_channels, channels_to_process,
             f_high, fs, again=again_Wrot, verbose=verbose)
 
-    ## Start filtering iteratively
+    # Preprocess iteratively, batch by batch
     NT = 64 * 1024 + ntb
     Nbatch = ceil(n_samples / NT)
     NTbuff = NT + 3 * ntb
-
-    # weights to combine data batches at the edge
-    w_edge = cp.linspace(0,1,ntb).reshape(-1, 1)
+    w_edge = cp.linspace(0,1,ntb).reshape(-1, 1) # weights to combine data batches at the edge
     buff_prev = cp.zeros((ntb, n_channels-1), dtype=np.int32)
     last_batch=False
-    with open(filtered_fname, 'wb') as fw:  # open for writing processed data
+    with open(target_dp / filtered_fname, 'wb') as fw:  # open for writing processed data
         for ibatch in tqdm(range(Nbatch), desc="Preprocessing"):
             # we'll create a binary file of batches of NT samples, which overlap consecutively
             # on params.ntbuff samples
@@ -805,7 +815,7 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
                 batch = cp.asarray(batch, dtype=np.float32)
 
             # CAR (optional) -> temporal filtering -> weight to combine edges -> unpadding
-            batch = gpufilter(batch, fs=fs, fshigh=f_high, fslow=f_low, order=order, car=CAR)
+            batch = gpufilter(batch, fs=fs, fshigh=f_high, fslow=f_low, order=order, car=median_subtract)
             assert batch.flags.c_contiguous # check that ordering is still C, not F
             batch[ntb:2*ntb] = w_edge * batch[ntb:2*ntb] + (1 - w_edge) * buff_prev
             buff_prev = batch[NT + ntb: NT + 2*ntb]
@@ -834,31 +844,30 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
                 rebuilt_batch = rebuilt_batch[:-n_extra_samples]
 
             # convert to int16, and gather on the CPU side
-            # WARNING: transpose because "tofile" always writes in C order, whereas we want
-            # to write in F order.
             datcpu = cp.asnumpy(rebuilt_batch.astype(np.dtype(dtype)))
 
             # write this batch to binary file
-            if verbose and ibatch%(Nbatch//50)==0 or last_batch:
-                print(f"{filtered_fname.stat().st_size} total, {rebuilt_batch.size * 2} bytes written to file {datcpu.shape} array size")
+            if verbose and (ibatch%(Nbatch//50)==0 or last_batch):
+                print(f"{(target_dp/filtered_fname).stat().st_size} total, {rebuilt_batch.size * 2} bytes written to file {datcpu.shape} array size")
             datcpu.tofile(fw)
-        if verbose: print(f"{filtered_fname.stat().st_size} total")
+        if verbose: print(f"{(target_dp/filtered_fname).stat().st_size} total")
 
     # Finally, if everything ran smoothly,
     # move original binary to new directory
-    orig_dp = fname.parent/'original_data'
-    orig_dp.mkdir(exist_ok=True)
-    if not (orig_dp/fname.name).exists(): fname.replace(orig_dp/fname.name)
-    meta_f = get_meta_file_path(fname.parent, filt_key, False)
-    if not (orig_dp/meta_f).exists():
-        if (fname.parent/meta_f).exists():
-            shutil.copy(fname.parent/meta_f, orig_dp/meta_f)
-        if (fname.parent/'channel_map.npy').exists():
-            shutil.copy(fname.parent/'channel_map.npy', orig_dp/'channel_map.npy')
-        if (fname.parent/'channel_positions.npy').exists():
-            shutil.copy(fname.parent/'channel_positions.npy', orig_dp/'channel_positions.npy')
+    if move_orig_data:
+        orig_dp = dp/'original_data'
+        orig_dp.mkdir(exist_ok=True)
+        if not (orig_dp/fname.name).exists(): fname.replace(orig_dp/fname.name)
+        meta_f = get_meta_file_path(dp, filt_key, False)
+        if not (orig_dp/meta_f).exists():
+            if (dp/meta_f).exists():
+                shutil.copy(dp/meta_f, orig_dp/meta_f)
+            if (dp/'channel_map.npy').exists():
+                shutil.copy(dp/'channel_map.npy', orig_dp/'channel_map.npy')
+            if (dp/'channel_positions.npy').exists():
+                shutil.copy(dp/'channel_positions.npy', orig_dp/'channel_positions.npy')
 
-    return filtered_fname
+    return target_dp/filtered_fname
 
 #%% paqIO file loading utilities
 

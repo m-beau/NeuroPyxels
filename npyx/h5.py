@@ -31,7 +31,7 @@ def print_h5_contents(h5_path, txt_output=False):
         else:
             visititems(hdf, visitor_func)
 
-def label_unit_h5(h5_path, dataset, unit, label):
+def label_optotagged_unit_h5(h5_path, dataset, unit, label):
     """
     Add optotagged label to neuron.
 
@@ -47,7 +47,7 @@ def label_unit_h5(h5_path, dataset, unit, label):
 def add_unit_h5(h5_path, dp, unit, lab_id,
                 unit_abolute_id=None, sync_chan_id=None,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
-                dataset=None, snr_window=[0.1, 30.1],
+                dataset=None, snr_window=[0.1, 30.1], optostims=None, optostims_threshold=None,
                 **kwargs):
     """
     Add a Kilosort sorted unit to an HDF5 file.
@@ -85,6 +85,10 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
       the dataset id is assumed to the dirname of the data directory passed as the dp argument
     - snr_window: A two item list containing the start and stop times (in seconds) for computation of the
       snr/voltage clip/waveform results
+    - optostims: an optional 2D array (n_stims, 2) containing the optostimuli times in seconds
+                 (1st column: onsets, 2nd column: offsets). By default None, will be read from sync channel (at sync_chan_id)
+    - optostims_threshold: float, time before which optostims will be ignored
+                           (handles sync signals without light at beginning of recording)
 
     Additional key-value parameteters:
     - *any_key* = *any_value*
@@ -152,18 +156,22 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
     if 'spike_indices' not in neuron_group or again:
         t = trn(dp, unit)
         add_dataset_to_group(neuron_group, 'spike_indices', t, again)
-        ons, offs = get_npix_sync(dp, verbose=False)
-        if sync_chan_id is None:
-            sync_chan_id = get_stim_chan(ons)
-        ons, offs = ons[sync_chan_id], offs[sync_chan_id]
-        if ons[0] > offs[0]:
-            ons, offs = offs, ons 
-        if len(offs) == len(ons) - 1:
-            offs = np.append(offs, meta['recording_length_seconds'])
-        optostims = np.hstack([ons[:, None], offs[:, None]])
+        if optostims is None:
+            ons, offs = get_npix_sync(dp, verbose=False)
+            if sync_chan_id is None:
+                sync_chan_id = get_stim_chan(ons)
+            ons, offs = ons[sync_chan_id], offs[sync_chan_id]
+            if ons[0] > offs[0]:
+                ons, offs = offs, ons 
+            if len(offs) == len(ons) - 1:
+                offs = np.append(offs, meta['recording_length_seconds'])
+            optostims = np.hstack([ons[:, None], offs[:, None]])
+        if optostims_threshold is not None:
+            opto_m = optostims[:,0] > optostims_threshold
+            optostims = optostims[opto_m,:]
         add_dataset_to_group(neuron_group, 'optostims', optostims, again)
-        # Only consider spikes 10s before opto onset
-        sane_spikes = (t < ons[0]-10*samp_rate)
+        # Only consider spikes 10s before first opto onset
+        sane_spikes = (t < (optostims[0,0]-10)*samp_rate)
         add_dataset_to_group(neuron_group, 'sane_spikes', sane_spikes, again)
         
     if 'fn_fp_filtered_spikes' not in neuron_group or again: 
@@ -171,7 +179,10 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
         add_dataset_to_group(neuron_group, 'fn_fp_filtered_spikes', fp_fn_good_spikes, again)
 
     # waveforms
-    if 'mean_waveform_preprocessed' not in neuron_group or again: 
+    if 'mean_waveform_preprocessed' not in neuron_group\
+        or ('amplitudes' not in neuron_group)\
+        or ('voltage_sample' not in neuron_group)\
+        or again: # must recompute chan_bottom and chan_top - suboptimal, can be rewritten
         dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples,
                                 again=again_wvf, plot_debug=plot_debug, verbose=verbose, n_waves_used_for_matching=500)
         dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
@@ -184,7 +195,6 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
         cm = chan_map(dp)
         add_dataset_to_group(neuron_group, 'channel_ids', np.arange(chan_bottom, chan_top, dtype=np.dtype('uint16')), again)
         add_dataset_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, 1:2], again)
-
 
     chunk = None
     if ('amplitudes' not in neuron_group) or ('voltage_sample' not in neuron_group) or again:
@@ -202,8 +212,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
     if 'voltage_sample' not in neuron_group or again:
         # Only store the voltage sample for the primary channel
         peak_chan = neuron_group['primary_channel']
-        I = np.argmax(neuron_group['channel_ids'] == peak_chan)
-        add_dataset_to_group(neuron_group, 'voltage_sample', chunk[I, :])
+        add_dataset_to_group(neuron_group, 'voltage_sample', chunk)
         add_dataset_to_group(neuron_group, 'voltage_sample_start_index', int(snr_window[0] * samp_rate))
         add_dataset_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor']) 
 
@@ -212,7 +221,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
     add_dataset_to_group(neuron_group, 'human_layer', 0, again)
 
     # ground truth labels
-    add_dataset_to_group(neuron_group, 'human_label', 0, again)
+    add_dataset_to_group(neuron_group, 'expert_label', 0, again)
     add_dataset_to_group(neuron_group, 'optotagged_label', 0, again)
 
     # predicted labels

@@ -423,6 +423,7 @@ def train_quality(dp, unit, period_m=[0,20],
 
     assert isinstance(dp, (str, PosixPath, WindowsPath)),\
         'Provide a string or a pathlib object as the source directory'
+    dp = Path(dp)
 
     assert assert_int(unit), 'Unit provided should be an int'
     assert assert_int(fp_n_chunks), 'fp_n_chunks provided should be an int'
@@ -652,6 +653,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
     
     {train_quality.__doc__}
     """
+    dp = Path(dp)
     t = trn(dp,unit)
     t_s=t/30000
     good_spikes_m, good_fp_start_end, good_fn_start_end = train_quality(dp, unit, period_m,

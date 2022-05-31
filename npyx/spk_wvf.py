@@ -125,9 +125,12 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     item_size = dtype.itemsize
     fileSizeBytes=meta['highpass']['binary_byte_size']
     if meta['acquisition_software']=='SpikeGLX':
-        assert meta['highpass']['fileSizeBytes'] == fileSizeBytes,\
-            f'''Mismatch between ap.meta and ap.bin file size (assumed encoding is {str(dtype)} and Nchannels is {n_channels_dat})!!
-            Prob wrong meta file - just edit fileSizeBytes in the .ap.meta file at {dp} (replace with {fileSizeBytes}) and be aware that something went wrong in your data management...'''
+        if meta['highpass']['fileSizeBytes'] != fileSizeBytes:
+            print((f"\033[91;1mMismatch between ap.meta and ap.bin file size"
+            "(assumed encoding is {str(dtype)} and Nchannels is {n_channels_dat})!! "
+            f"Probably wrong meta file - just edit fileSizeBytes in the .ap.meta file at {dp} "
+            f"(replace {int(meta['highpass']['fileSizeBytes'])} with {fileSizeBytes}) "
+            "and be aware that something went wrong in your data management...\033[0m"))
 
     # Select subset of spikes
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()

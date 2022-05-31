@@ -401,13 +401,16 @@ def unpackbits(x,num_bits = 16):
     to_and = 2**np.arange(num_bits).reshape([1,num_bits])
     return (x & to_and).astype(bool).astype(np.int64).reshape(xshape + [num_bits])
 
-def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds', verbose=False):
+def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds',
+                  verbose=False, again=False):
     '''Unpacks neuropixels external input data, to align spikes to events.
     Parameters:
         - dp: str, datapath
         - output_binary: bool, whether to output binary sync channel as 0/1s
         - filt_key: str, 'highpass' or 'lowpass' (SpikeGLX: ap/lf, OIpenEphys: Neuropix-PXI-100.0/.1)
         - unit: str, 'seconds' or 'samples', units of returned onsets/offset times
+        - verbose: bool, whether to print rich information
+        - again: bool, whether to reload sync channel from binary file.
 
     Returns:
         Dictionnaries of length n_channels = number of channels where threshold crossings were found, [0-16]
@@ -463,7 +466,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
                 return onsets, offsets
 
         # Tries to load pre-saved compressed binary
-        if sync_dp.exists():
+        if sync_dp.exists() and not again:
             if verbose: print(f"No file ending in 'on_samples.npy' with the right sampling rate ({filt_suffix}) found in sync_chan directory: extracting sync channel from binary.\n")
             npz_files = list_files(sync_dp, 'npz')
             if any(npz_files):
@@ -633,7 +636,8 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
         rc = rc*meta['bit_uV_conv_factor'] # convert into uV
 
     # convert from cupy to numpy array
-    rc = cp.asnumpy(rc)
+    if 'cp' in globals():
+        rc = cp.asnumpy(rc)
 
     if save: # sync chan saved in extract_syncChan
         np.save(rcp, rc)
@@ -762,7 +766,7 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
     # weights to combine data batches at the edge
     w_edge = cp.linspace(0,1,ntb).reshape(-1, 1)
     buff_prev = cp.zeros((ntb, n_channels-1), dtype=np.int32)
-
+    last_batch=False
     with open(filtered_fname, 'wb') as fw:  # open for writing processed data
         for ibatch in tqdm(range(Nbatch), desc="Preprocessing"):
             # we'll create a binary file of batches of NT samples, which overlap consecutively
@@ -774,12 +778,15 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
             i = max(0, NT * ibatch - ntb)
             rawData = memmap_f[i:i + NTbuff]
             if rawData.size == 0:
-                if verbose: print("Loaded buffer has an empty size!")
+                print("Loaded buffer has an empty size!")
                 break  # this shouldn't really happen, unless we counted data batches wrong
             nsampcurr = rawData.shape[0]  # how many time samples the current batch has
             if nsampcurr < NTbuff:
+                # when reaching end of file, mirror end by adding missing samples to fit in GPU
+                last_batch = True
+                n_extra_samples = NTbuff - nsampcurr
                 rawData = np.concatenate(
-                    (rawData, np.tile(rawData[nsampcurr - 1], (NTbuff - nsampcurr, 1))), axis=0)
+                    (rawData, np.tile(rawData[nsampcurr - 1], (n_extra_samples, 1))), axis=0)
             if i == 0:
                 bpad = np.tile(rawData[0], (ntb, 1))
                 rawData = np.concatenate((bpad, rawData[:NTbuff - ntb]), axis=0)
@@ -797,7 +804,7 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
                 batch = adc_realign(batch, version=meta['probe_version_int'])
                 batch = cp.asarray(batch, dtype=np.float32)
 
-            # CAR (optional) -> temporal filtering -> unpadding
+            # CAR (optional) -> temporal filtering -> weight to combine edges -> unpadding
             batch = gpufilter(batch, fs=fs, fshigh=f_high, fslow=f_low, order=order, car=CAR)
             assert batch.flags.c_contiguous # check that ordering is still C, not F
             batch[ntb:2*ntb] = w_edge * batch[ntb:2*ntb] + (1 - w_edge) * buff_prev
@@ -821,15 +828,18 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None,
             # (at minima including last 16 bits for sync signal)
             rebuilt_batch = rawData[ntb:ntb + NT, :] # remove timepoints used as buffers; includes unprocessed channels
             rebuilt_batch[:,chans_mask] = batch
+            if last_batch:
+                # remove mirrored data at the end
+                n_extra_samples = n_extra_samples - 2*ntb # account for buffers
+                rebuilt_batch = rebuilt_batch[:-n_extra_samples]
 
             # convert to int16, and gather on the CPU side
             # WARNING: transpose because "tofile" always writes in C order, whereas we want
             # to write in F order.
             datcpu = cp.asnumpy(rebuilt_batch.astype(np.dtype(dtype)))
 
-
             # write this batch to binary file
-            if verbose and ibatch%(Nbatch//100)==0:
+            if verbose and ibatch%(Nbatch//50)==0 or last_batch:
                 print(f"{filtered_fname.stat().st_size} total, {rebuilt_batch.size * 2} bytes written to file {datcpu.shape} array size")
             datcpu.tofile(fw)
         if verbose: print(f"{filtered_fname.stat().st_size} total")

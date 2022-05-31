@@ -144,7 +144,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
     # metadata
     add_dataset_to_group(neuron_group, 'lab_id', lab_id, again)
     add_dataset_to_group(neuron_group, 'dataset_id', dataset, again)
-    add_dataset_to_group(neuron_group, 'labneuron_id_id', unit, again)
+    add_dataset_to_group(neuron_group, 'neuron_id', unit, again)
     add_dataset_to_group(neuron_group, 'neuron_absolute_id', neuron_group.name, again)
     add_dataset_to_group(neuron_group, 'sampling_rate', samp_rate, again)
     
@@ -212,7 +212,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
     if 'voltage_sample' not in neuron_group or again:
         # Only store the voltage sample for the primary channel
         peak_chan = neuron_group['primary_channel']
-        add_dataset_to_group(neuron_group, 'voltage_sample', chunk)
+        add_dataset_to_group(neuron_group, 'voltage_sample', chunk[5:-5,:]) # still centered on peak channel, but half the size
         add_dataset_to_group(neuron_group, 'voltage_sample_start_index', int(snr_window[0] * samp_rate))
         add_dataset_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor']) 
 

@@ -5,7 +5,7 @@
 
 [NeuroPyxels](https://github.com/m-beau/NeuroPyxels) (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels: it features a suite of core utility functions for loading, processing and plotting Neuropixels data.
 
-There isn't any better doc atm - post an issue if you have any question, or email [Maxime Beau](maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com), channel #NeuroPyxels.
+There isn't any better doc atm - post an issue if you have any question, or email [Maxime Beau](maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com).
 
 
 - **[Documentation](https://github.com/m-beau/NeuroPyxels#documentation)**
@@ -94,7 +94,7 @@ meta = read_metadata(dp)
 
 ### Load synchronization channel
 ```python
-from npyx.io import get_npix_sync # star import is sufficient, but I like explicit imports!
+from npyx.inout import get_npix_sync # star import is sufficient, but I like explicit imports!
 
 # If SpikeGLX: slow the first time, then super fast
 onsets, offsets = get_npix_sync(dp)
@@ -102,6 +102,17 @@ onsets, offsets = get_npix_sync(dp)
 # keys: ids of sync channel where a TTL was detected,
 # values: times of up (onsets) or down (offsets) threshold crosses, in seconds.
 ```
+### Preprocess binary data
+Makes a preprocessed copy of the binary file in dp, moves original binary file at dp/original_data
+This will be as fast as literally copying your file, with a decent GPU!
+```python
+from npyx.inout import preprocess_binary_file # star import is sufficient, but I like explicit imports!
+
+# can perform bandpass filtering (butterworth 3 nodes) and median subtraction (aka common average referenceing, CAR)
+# in the future: ADC realignment (like CatGT), whitening, spatial filtering (experimental).
+filtered_fname = preprocess_binary_file(dp, filt_key='ap', median_subtract=True, f_low=None, f_high=300, order=3, verbose=True)
+```
+
 ### Get good units from dataset
 ```python
 from npyx.gl import get_units
@@ -116,7 +127,7 @@ t = trn(dp, u) # gets all spikes from unit 234, in samples
 
 ### Load waveforms from unit u
 ```python
-from npyx.io import read_spikeglx_meta
+from npyx.inout import read_spikeglx_meta
 from npyx.spk_t import ids, trn
 from npyx.spk_wvf import get_peak_chan, wvf, templates
 

@@ -1073,7 +1073,7 @@ def chan_plot(waves, peak_chan, n_chans=20):
 
 ####################################################
 # Temporal features
-def compute_isi(train, quantile = 0.02):
+def compute_isi(train, quantile = 0.02, fs=30_000):
 
     """
     Input: spike times in samples and returns ISI of spikes that pass through
@@ -1082,13 +1082,14 @@ def compute_isi(train, quantile = 0.02):
                 discarded, returning the spikes
     Returns: isi in s """
 
-    diffs = np.diff(train)
-    isi_ = np.asarray(diffs, dtype='float64')
-    if quantile:
-        isi_ = isi_[(isi_ >= np.quantile(isi_, quantile)) & (isi_ <= np.quantile(isi_, 1 - quantile))]
-        return isi_/30_000
+    isi_ = np.diff(train).astype(np.int64)
+    #isi_ = np.asarray(diffs, dtype='float64')
+    if quantile is not None:
+        m = (isi_ >= np.quantile(isi_, quantile)) & (isi_ <= np.quantile(isi_, 1 - quantile))
+        isi_ = isi_[m]
+        return isi_/fs
     else:
-        return isi_/30_000
+        return isi_/fs
 
 
 
@@ -1374,7 +1375,7 @@ def chan_spread_bp_plot(dp, unit, n_chans=20):
             to_plot = csp_x[0]-1
         chan_plot(all_waves_unit_x.T, csp_x[0], to_plot)
 
-def temporal_features(dp,all_spikes, unit):
+def temporal_features(all_spikes):
     """
     Input: spike times
     Returns: list of features
@@ -1383,11 +1384,12 @@ def temporal_features(dp,all_spikes, unit):
 
     isi_block_clipped = compute_isi(all_spikes)
 
-    mfr, mifr, med_isi, mode_isi, prct5ISI, entropy, CV2_mean, CV2_median, CV, IR, Lv, LvR, LcV, SI, skw \
-    = compute_isi_features(isi_block_clipped)
+    # mfr, mifr, med_isi, mode_isi, prct5ISI, entropy, CV2_mean, CV2_median, CV, IR, Lv, LvR, LcV, SI, skw \
+    # = compute_isi_features(isi_block_clipped)
 
-    all_recs = [dp, unit, mfr, mifr, med_isi, mode_isi, prct5ISI, entropy, CV2_mean, CV2_median, CV, IR, Lv, LvR, LcV, SI, skw]
-    return all_recs
+    # all_recs = [mfr, mifr, med_isi, mode_isi, prct5ISI, entropy, CV2_mean, CV2_median, CV, IR, Lv, LvR, LcV, SI, skw]
+    
+    return compute_isi_features(isi_block_clipped)
 
 
 def temp_feat(dp, units, use_or_operator = True, use_consecutive = False):
@@ -1417,7 +1419,9 @@ def temp_feat(dp, units, use_or_operator = True, use_consecutive = False):
 
         unit_spikes, good_spikes_m = trn_filtered(dp, unit, use_or_operator = use_or_operator, use_consecutive = use_consecutive)
         if len(unit_spikes) >1:
-            all_ft_list.append(temporal_features(dp,unit_spikes, unit))
+            tf = list(temporal_features(unit_spikes))
+            tf = [dp, unit]+tf
+            all_ft_list.append(tf)
         else:
             all_ft_list.append([dp] + [unit] + list(np.zeros(15)))
 

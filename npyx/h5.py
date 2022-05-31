@@ -16,7 +16,7 @@ def print_h5_contents(h5_path, txt_output=False):
     """
     h5_path: str, path to .h5 file
     txt_output: bool, if True prints contents to file
-                      (same name as h5 name_content.txt)
+    (same name as h5 name_content.txt)
     """
     h5_path = Path(h5_path)
     if txt_output:

@@ -16,6 +16,7 @@ from .circuitProphyler import *
 from .feat import *
 from .info import *
 from .h5 import *
+from .testing import *
 
 __doc__="""
 
@@ -35,6 +36,6 @@ npyx submodules:
  .h5
 """
 
-__version__ = '2.4.1'
+__version__ = '2.4.2'
 
 print(f'npyx version {__version__} imported.')

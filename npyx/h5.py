@@ -231,6 +231,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
     if 'voltage_sample' not in neuron_group or again:
         # Only store the voltage sample for the primary channel
         peak_chan = neuron_group['primary_channel']
+        raw_snippet_halfrange = np.clip(raw_snippet_halfrange, 0, 10)
         c1, c2 = max(0,int(chunk.shape[0]/2-raw_snippet_halfrange)), min(chunk.shape[0]-1, int(chunk.shape[0]/2+raw_snippet_halfrange+1))
         raw_snippet = chunk[c1:c2,:]
         print(raw_snippet.dtype)

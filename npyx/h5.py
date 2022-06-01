@@ -10,7 +10,7 @@ from npyx.utils import assert_int, assert_float
 from npyx.inout import get_npix_sync, chan_map, extract_rawChunk, read_metadata
 from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
-from npyx.gl import get_units
+from npyx.gl import get_units, check_periods
 
 def print_h5_contents(h5_path, txt_output=False):
     """
@@ -44,10 +44,11 @@ def label_optotagged_unit_h5(h5_path, dataset, unit, label):
     assert label in authorized_labels
     add_data_to_unit_h5(h5_path, dataset, unit, label, 'optotagged_label')
 
-def add_unit_h5(h5_path, dp, unit, lab_id,
+def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                 unit_abolute_id=None, sync_chan_id=None,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
-                dataset=None, snr_window=[0.1, 30.1], optostims=None, optostims_threshold=None,
+                dataset=None, snr_window=[0.1, 30.1], raw_snippet_halfrange=2,
+                optostims=None, optostims_threshold=None,
                 **kwargs):
     """
     Add a Kilosort sorted unit to an HDF5 file.
@@ -74,6 +75,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
     - dp: Path the Kilosort data directory
     - unit: The unit id/neuron unit index
     - lab_id: The lab/PI id to use to label the units
+    - periods: 'all' or [[t1,t2],[t3,t4],...] in seconds
 
     Key-value parameters:
     - unit_absolute_id: unit absolute id. Will increment from the last unit added to h5 file.
@@ -85,6 +87,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
       the dataset id is assumed to the dirname of the data directory passed as the dp argument
     - snr_window: A two item list containing the start and stop times (in seconds) for computation of the
       snr/voltage clip/waveform results
+    - raw_snippet_halfrange: int, range of channels around peak channel to consider for the snippet of raw data (max 10)
     - optostims: an optional 2D array (n_stims, 2) containing the optostimuli times in seconds
                  (1st column: onsets, 2nd column: offsets). By default None, will be read from sync channel (at sync_chan_id)
     - optostims_threshold: float, time before which optostims will be ignored
@@ -144,7 +147,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
     # metadata
     add_dataset_to_group(neuron_group, 'lab_id', lab_id, again)
     add_dataset_to_group(neuron_group, 'dataset_id', dataset, again)
-    add_dataset_to_group(neuron_group, 'labneuron_id_id', unit, again)
+    add_dataset_to_group(neuron_group, 'neuron_id', unit, again)
     add_dataset_to_group(neuron_group, 'neuron_absolute_id', neuron_group.name, again)
     add_dataset_to_group(neuron_group, 'sampling_rate', samp_rate, again)
     
@@ -153,8 +156,9 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
         add_dataset_to_group(neuron_group, key, value, again)
 
     # spike_times
+    periods = check_periods(periods)
     if 'spike_indices' not in neuron_group or again:
-        t = trn(dp, unit)
+        t = trn(dp, unit, periods=periods, again=again)
         add_dataset_to_group(neuron_group, 'spike_indices', t, again)
         if optostims is None:
             ons, offs = get_npix_sync(dp, verbose=False)
@@ -174,8 +178,23 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
         sane_spikes = (t < (optostims[0,0]-10)*samp_rate)
         add_dataset_to_group(neuron_group, 'sane_spikes', sane_spikes, again)
         
-    if 'fn_fp_filtered_spikes' not in neuron_group or again: 
-        fp_fn_good_spikes = trn_filtered(dp, unit, plot_debug=plot_debug)[1]
+    if 'fn_fp_filtered_spikes' not in neuron_group or again:
+        # get good spikes mask for all spikes
+        # because trn_filtered can only work on a contiguous chunk
+        if periods is 'all':
+            periods_m_range = [0, meta['recording_length_seconds']/60]
+        else:
+            periods_m_range = [periods.min()/60, periods.max()/60]
+        fp_fn_good_spikes = trn_filtered(dp, unit, plot_debug=plot_debug, again=again, period_m=periods_m_range)[1]
+
+
+        # if periods is not all, trim down the mask to spikes in periods
+        if periods is not 'all':
+            t = trn(dp, unit, periods=periods) # if again, as recomputed just above anyway, so don't pass the argument
+            t_all = trn(dp, unit) # grab all spikes
+            periods_mask = np.isin(t_all, t)
+            fp_fn_good_spikes = fp_fn_good_spikes[periods_mask]
+
         add_dataset_to_group(neuron_group, 'fn_fp_filtered_spikes', fp_fn_good_spikes, again)
 
     # waveforms
@@ -183,7 +202,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
         or ('amplitudes' not in neuron_group)\
         or ('voltage_sample' not in neuron_group)\
         or again: # must recompute chan_bottom and chan_top - suboptimal, can be rewritten
-        dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples,
+        dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples, periods=periods,
                                 again=again_wvf, plot_debug=plot_debug, verbose=verbose, n_waves_used_for_matching=500)
         dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
         add_dataset_to_group(neuron_group, 'primary_channel', peak_chan)
@@ -203,7 +222,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
 
     # quality metrics
     if 'amplitudes' not in neuron_group or again:
-        add_dataset_to_group(neuron_group, 'amplitudes', np.load(dp/'amplitudes.npy').squeeze()[ids(dp, unit)], again)
+        add_dataset_to_group(neuron_group, 'amplitudes', np.load(dp/'amplitudes.npy').squeeze()[ids(dp, unit, periods=periods)], again)
         mad = np.median(np.abs(chunk) - np.median(chunk, axis=1)[:, None], axis=1) 
         std_estimate = (mad / 0.6745) # Convert to std
         add_dataset_to_group(neuron_group, 'channel_noise_std', std_estimate, again)
@@ -212,7 +231,11 @@ def add_unit_h5(h5_path, dp, unit, lab_id,
     if 'voltage_sample' not in neuron_group or again:
         # Only store the voltage sample for the primary channel
         peak_chan = neuron_group['primary_channel']
-        add_dataset_to_group(neuron_group, 'voltage_sample', chunk)
+        raw_snippet_halfrange = np.clip(raw_snippet_halfrange, 0, 10)
+        c1, c2 = max(0,int(chunk.shape[0]/2-raw_snippet_halfrange)), min(chunk.shape[0]-1, int(chunk.shape[0]/2+raw_snippet_halfrange+1))
+        raw_snippet = chunk[c1:c2,:]
+        print(raw_snippet.dtype)
+        add_dataset_to_group(neuron_group, 'voltage_sample', raw_snippet) # still centered on peak channel, but half the size
         add_dataset_to_group(neuron_group, 'voltage_sample_start_index', int(snr_window[0] * samp_rate))
         add_dataset_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor']) 
 

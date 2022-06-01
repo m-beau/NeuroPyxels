@@ -13,6 +13,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from npyx.utils import npa
+
 
 def get_npyx_memory(dp):
     dpnm = Path(dp) / 'npyxMemory'
@@ -317,6 +319,19 @@ def get_units(dp, quality='all', chan_range=None, again=False):
 
 def get_good_units(dp):
     return get_units(dp, quality='good')
+
+def check_periods(periods):
+    err_mess = "periods can only be 'all' or a list of lists/tuples [[t1.1,t1.2], [t2.1,t2.2]...] in seconds!"
+    if isinstance(periods, str):
+        assert periods=='all', err_mess
+        return periods
+    periods = npa(periods)
+    assert periods.ndim == 2, "When feeding a single period [t1,t2], do not forget the outer brackets [[t1,t2]]!"
+    assert periods.shape[1] == 2, err_mess
+    assert np.all(np.diff(periods, axis=1)>0),\
+        "all pairs of periods must be in ascendent order (t1.1<t1.2 etc in [[t1.1,t1.2],...])!"
+    return periods
+
 
 # circular imports
 from npyx.inout import read_metadata

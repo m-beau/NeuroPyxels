@@ -74,7 +74,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
     - dp: Path the Kilosort data directory
     - unit: The unit id/neuron unit index
     - lab_id: The lab/PI id to use to label the units
-    - periods: 'all' or 
+    - periods: 'all' or [[t1,t2],[t3,t4],...] in seconds
 
     Key-value parameters:
     - unit_absolute_id: unit absolute id. Will increment from the last unit added to h5 file.

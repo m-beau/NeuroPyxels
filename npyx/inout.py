@@ -650,9 +650,9 @@ def assert_chan_in_dataset(dp, channels):
     channels = np.array(channels)
     cm=chan_map(dp, probe_version='local')
     if not np.all(np.isin(channels, cm[:,0])):
-        print("WARNING Kilosort excluded some channels that you provided for analysis \
-    because they did not display enough threshold crossings! Jumping channels:{}\
-    ".format(channels[~np.isin(channels, cm[:,0])]))
+        print(("WARNING Kilosort excluded some channels that you provided for analysis "
+               "because they did not display enough threshold crossings! Jumping channels:"
+               f"{channels[~np.isin(channels, cm[:,0])]}"))
     channels=channels[np.isin(channels, cm[:,0])]
     return channels
 
@@ -815,7 +815,8 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
                 batch = cp.asarray(batch, dtype=np.float32)
 
             # CAR (optional) -> temporal filtering -> weight to combine edges -> unpadding
-            batch = gpufilter(batch, fs=fs, fshigh=f_high, fslow=f_low, order=order, car=median_subtract)
+            batch = gpufilter(batch, fs=fs, fshigh=f_high, fslow=f_low, order=order,
+                              car=median_subtract, bidirectional=False)
             assert batch.flags.c_contiguous # check that ordering is still C, not F
             batch[ntb:2*ntb] = w_edge * batch[ntb:2*ntb] + (1 - w_edge) * buff_prev
             buff_prev = batch[NT + ntb: NT + 2*ntb]

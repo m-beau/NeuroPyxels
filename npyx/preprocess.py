@@ -292,7 +292,8 @@ def apply_filter(x, filt, axis=0):
     b, a = filt
     return sgnl.filtfilt(b, a, x, axis=axis)
 
-def gpufilter(buff, fs=None, fslow=None, fshigh=None, order=3, car=False):
+def gpufilter(buff, fs=None, fslow=None, fshigh=None, order=3,
+             car=False, bidirectional=True):
     # filter this batch of data after common average referencing with the
     # median
     # buff is timepoints by channels
@@ -321,7 +322,8 @@ def gpufilter(buff, fs=None, fslow=None, fshigh=None, order=3, car=False):
     # next four lines should be equivalent to filtfilt (which cannot be
     # used because it requires float64)
     datr = lfilter(*filter_params, dataRAW, axis=0)  # causal forward filter
-    datr = lfilter(*filter_params, datr, axis=0, reverse=True)  # backward
+    if bidirectional:
+        datr = lfilter(*filter_params, datr, axis=0, reverse=True)  # backward
     return datr
 
 def get_filter_params(fs, fshigh=None, fslow=None, order=3):

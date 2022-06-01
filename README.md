@@ -336,6 +336,8 @@ Npyx supports Python 3.7+.
   conda create -n my_env python=3.8
   conda activate my_env
   pip install npyx
+  # either 11.0 or either cuda toolkit version you have already installed
+  # find out with nvcc --version
   conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
   python -c 'import npyx' # should not return any error
   # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
@@ -346,6 +348,8 @@ Npyx supports Python 3.7+.
   conda create -n my_env python=3.8
   conda activate my_env
   pip install git+https://github.com/m-beau/NeuroPyxels@master
+  # either 11.0 or either cuda toolkit version you have already installed
+  # find out with nvcc --version
   conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
   python -c 'import npyx' # should not return any error
   # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
@@ -359,8 +363,10 @@ Npyx supports Python 3.7+.
     cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
     git clone https://github.com/m-beau/NeuroPyxels
     cd NeuroPyxels
-    pip install -e . --user # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
+    pip install -e . # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
     # python setup.py develop deprecated (doesn't handle dependencies, unlike pip)
+    # either 11.0 or either cuda toolkit version you have already installed
+    # find out with nvcc --version
     conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
     python -c 'import npyx' # should not return any error
     # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)

@@ -43,7 +43,7 @@ def test_npyx(dp, raise_error=False):
 
     test_function(wvf, raise_error, dp=dp, u=u, again=1)
 
-    test_function(wvf_dsmatch, raise_error, dp=dp, u=u, plot_debug=True, again=1)
+    test_function(wvf_dsmatch, raise_error, dp=dp, u=u, plot_debug=True, again=1, verbose=True)
 
     test_function(get_peak_chan, raise_error, dp=dp, unit=u, again=1)
 

@@ -47,7 +47,8 @@ def label_optotagged_unit_h5(h5_path, dataset, unit, label):
 def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                 unit_abolute_id=None, sync_chan_id=None,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
-                dataset=None, snr_window=[0.1, 30.1], optostims=None, optostims_threshold=None,
+                dataset=None, snr_window=[0.1, 30.1], raw_snippet_halfrange=2,
+                optostims=None, optostims_threshold=None,
                 **kwargs):
     """
     Add a Kilosort sorted unit to an HDF5 file.
@@ -86,6 +87,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
       the dataset id is assumed to the dirname of the data directory passed as the dp argument
     - snr_window: A two item list containing the start and stop times (in seconds) for computation of the
       snr/voltage clip/waveform results
+    - raw_snippet_halfrange: int, range of channels around peak channel to consider for the snippet of raw data (max 10)
     - optostims: an optional 2D array (n_stims, 2) containing the optostimuli times in seconds
                  (1st column: onsets, 2nd column: offsets). By default None, will be read from sync channel (at sync_chan_id)
     - optostims_threshold: float, time before which optostims will be ignored
@@ -229,7 +231,10 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
     if 'voltage_sample' not in neuron_group or again:
         # Only store the voltage sample for the primary channel
         peak_chan = neuron_group['primary_channel']
-        add_dataset_to_group(neuron_group, 'voltage_sample', chunk[5:-5,:]) # still centered on peak channel, but half the size
+        c1, c2 = max(0,int(chunk.shape[0]/2-raw_snippet_halfrange)), min(chunk.shape[0]-1, int(chunk.shape[0]/2+raw_snippet_halfrange+1))
+        raw_snippet = chunk[c1:c2,:]
+        print(raw_snippet.dtype)
+        add_dataset_to_group(neuron_group, 'voltage_sample', raw_snippet) # still centered on peak channel, but half the size
         add_dataset_to_group(neuron_group, 'voltage_sample_start_index', int(snr_window[0] * samp_rate))
         add_dataset_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor']) 
 

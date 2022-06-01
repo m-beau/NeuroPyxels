@@ -19,7 +19,7 @@ from scipy.stats import iqr
 from scipy.optimize import curve_fit
 from scipy.stats import norm
 from npyx.utils import smooth, thresh_consec, npa, assert_int, assert_float
-from npyx.gl import get_units, get_npyx_memory
+from npyx.gl import get_units, get_npyx_memory, check_periods
 from npyx.inout import read_metadata
 
 
@@ -73,9 +73,8 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
-    if periods!='all': # else, eq to periods=[(0, spike_samples[-1])] # in samples
-        try: periods[0][0]
-        except: raise TypeError("ERROR periods should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
+    periods = check_periods(periods)
+    if periods is not 'all': # else, eq to periods=[(0, spike_samples[-1])] # in samples
         dp_source = get_source_dp_u(dp, unit)[0]
         fs=read_metadata(dp_source)["highpass"]['sampling_rate']
         train=trn(dp, unit, again=again)
@@ -147,9 +146,8 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
-    if periods!='all': # else, eq to periods=[(0, spike_samples[-1])] (in samples)
-        try: periods[0][0]
-        except: raise TypeError("ERROR periods should be either a string or a list of format [(t1, t2), (t3, t4), ...]!!")
+    periods = check_periods(periods)
+    if periods is not 'all': # else, eq to periods=[(0, spike_samples[-1])] (in samples)
         sec_bool=np.zeros(len(train), dtype=np.bool)
         for section in periods:
             sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
@@ -357,8 +355,8 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=
 
 
 def train_quality(dp, unit, period_m=[0,20],
-                  fp_n_chunks=3, fp_chunk_size = 10,
-                  fn_n_chunks = 3, fn_chunk_size = 10,
+                  fp_chunk_span=3, fp_chunk_size = 10,
+                  fn_chunk_span = 3, fn_chunk_size = 10,
                   use_or_operator = True,
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold = 0.05,
                   again = False, save = True, verbose = False, plot_debug = False):
@@ -369,7 +367,7 @@ def train_quality(dp, unit, period_m=[0,20],
         and low number of 'extra spikes' (false positives).
         
     The recording within period_m is split in fp/fn_chunk_size seconds chunks,
-    and fp/fn_n_chunks chunks are used to estimate the fp and fn rates.
+    and fp/fn_chunk_span chunks are used to estimate the fp and fn rates.
     (e.g. 3 10s chunks means that the rates are estimated on 30s chunks, overlapping by 10s).
 
     - False negative rate estimation: for checking which sections of the recording
@@ -385,7 +383,7 @@ def train_quality(dp, unit, period_m=[0,20],
     Finally, the spikes belonging to the intersection (use_or_operator=False) or union (use_or_operator=True)
     of the chunks with low enough fp/fn rates are returned.
     
-    E.g. if fp_n_chunks=3 and fp_chunk_size=10 anf use_or_operator=False,
+    E.g. if fp_chunk_span=3 and fp_chunk_size=10 anf use_or_operator=False,
     for a given 10s "chunk_k" to be considered, ALL 3*10=30s chunk triplets
     (chunk_k-2,chunk_k-1,chunk_k), (chunk_k-1,chunk_k,chunk_k+1) AND (chunk_k,chunk_k+1,chunk_k+2)
     fp rate estimations must be below fp_threshold.
@@ -396,14 +394,14 @@ def train_quality(dp, unit, period_m=[0,20],
         - dp: str, path to dataset.
         - unit: int/float, unit index.
         - period_m: [t1, t2] list of floats in minutes, period to consider
-        - fp_n_chunks: int, number of recording chunks to concatenate to estimate fp rate.
+        - fp_chunk_span: int, number of recording chunks to concatenate to estimate fp rate.
         - fp_chunk_size: int, size of recording chunks used to estimate fp rate.
         
-        - fn_n_chunks: int, number of chunks to concatenate to estimate fp rate.
+        - fn_chunk_span: int, number of chunks to concatenate to estimate fp rate.
         - fn_chunk_size: int, size of recording chunks used to estimate fn rate.
         
         - use_or_operator: bool, whether to use the union (True) or intersection (False)
-                        of stitched chunks (fp/fn_n_chunks)
+                        of stitched chunks (fp/fn_chunk_span)
                         to state that a chunk passed the fp/fn threshold or not.
                         E.g. if 
         
@@ -419,33 +417,44 @@ def train_quality(dp, unit, period_m=[0,20],
     - goodsec, acgsec, gausssec
 
     """
-    # check that the passed values make sense
 
+    # Hard-coded parameters
+    c_bin = 0.2
+    c_win = 100
+    n_bins_acg_baseline=80 # from start and end of acg window
+    n_spikes_threshold = 300
+    fs = 30_000
+
+
+    # check that the passed values make sense
     assert isinstance(dp, (str, PosixPath, WindowsPath)),\
         'Provide a string or a pathlib object as the source directory'
     dp = Path(dp)
 
     assert assert_int(unit), 'Unit provided should be an int'
-    assert assert_int(fp_n_chunks), 'fp_n_chunks provided should be an int'
+    assert assert_int(fp_chunk_span), 'fp_chunk_span provided should be an int'
     assert assert_int(fp_chunk_size), 'fp_chunk_size provided should be an int'
-    assert assert_int(fn_n_chunks), 'fn_n_chunks provided should be an int'
+    assert assert_int(fn_chunk_span), 'fn_chunk_span provided should be an int'
     assert assert_int(fn_chunk_size), 'fn_chunk_size provided should be an int'
 
     assert fp_chunk_size >= 1, "ACG window length needs to be larger than 1 sec"
     assert fn_chunk_size >= 1, "Gaussian window length needs to be larger than 1 sec"
-    assert fp_n_chunks >= 1, "ACG chunk size needs to be larger than 1 "
-    assert fn_n_chunks >= 1, "Gaussian chunk size needs to be larger than 1 "
+    assert fp_chunk_span >= 1, "ACG chunk size needs to be larger than 1 "
+    assert fn_chunk_span >= 1, "Gaussian chunk size needs to be larger than 1 "
 
     dpnm = get_npyx_memory(dp)
     
     # Load data
     unit_ids = ids(dp, unit, again=again, verbose=verbose)
     unit_amp = np.load(dp/'amplitudes.npy')[unit_ids]
-    fs = 30_000
-    unit_train = trn(dp, unit, enforced_rp=0, again=again, verbose=verbose)
+    
+    unit_train = trn(dp, unit, enforced_rp=0, again=again, verbose=verbose)/fs
     period_s=[period_m[0]*60, period_m[1]*60]
 
-    fn=f"trn_qual_{unit}_{str(fp_n_chunks)}_{str(fp_chunk_size)}_{str(fn_n_chunks)}_{str(fn_chunk_size)}_{str(violations_ms)}_{str(fp_threshold)}_{str(fn_threshold)}.npy"
+    # Attempt to reload if precomputed
+    fn=(f"trn_qual_{unit}_{str(period_m).replace(' ','')}"
+        f"_{str(fp_chunk_span)}_{str(fp_chunk_size)}_{str(fn_chunk_span)}_{str(fn_chunk_size)}"
+        f"_{str(violations_ms)}_{str(fp_threshold)}_{str(fn_threshold)}.npy")
     fn_spikes = "spikes_"+fn
     if (dpnm/fn).exists() and (dpnm/fn_spikes).exists() and (not again):
         if verbose: print(f"File {fn} found in routines memory.")
@@ -455,24 +464,13 @@ def train_quality(dp, unit, period_m=[0,20],
         good_fp_start_end_plot=None if len(good_fp_start_end)==1 else good_fp_start_end
         good_fn_start_end_plot=None if len(good_fn_start_end)==1 else good_fn_start_end
         if plot_debug:
-            plot_fp_fn_rates(unit_train/fs, period_s, unit_amp, good_spikes_m,
+            plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                 None, None, None, None,
                 fp_threshold, fn_threshold, good_fp_start_end_plot, good_fn_start_end_plot)
         
         return good_spikes_m, good_fp_start_end.tolist(), good_fn_start_end.tolist()
-
     
-    recording_span = period_s[1]-period_s[0]
-    no_gauss_chunks =  int(recording_span / fn_chunk_size)
-    no_acg_chunks =  int(recording_span / fp_chunk_size)
-    
-    # Hard-coded parameters
-    c_bin = 0.2
-    c_win = 100
-    n_bins_acg_baseline=80 # from start and end of acg window
-    n_spikes_threshold = 300
-    
-    n_spikes = np.count_nonzero((unit_train/fs>period_s[0])&(unit_train/fs<period_s[1]))
+    n_spikes = np.count_nonzero((unit_train>period_s[0])&(unit_train<period_s[1]))
 
     # steps:
         # split into 10 second chunks
@@ -483,16 +481,21 @@ def train_quality(dp, unit, period_m=[0,20],
         # append the spike times from these consecutiv windowws
         # calculate features on this array
 
-    chunks_fp_rate = np.zeros((no_acg_chunks,3)).astype('int')
-    chunks_fn_rate = np.zeros((no_gauss_chunks,3)).astype('int')
+    recording_span = period_s[1]-period_s[0]
+    n_fn_chunks =  int(recording_span / fn_chunk_size)
+    n_fp_chunks =  int(recording_span / fp_chunk_size)
+    passed_fn = np.zeros((n_fn_chunks,3)).astype('int')
+    passed_fp = np.zeros((n_fp_chunks,3)).astype('int')
+    fn_chunks = [[period_s[0]+t*fn_chunk_size, period_s[0]+(t+fn_chunk_span)*fn_chunk_size] for t in range(n_fn_chunks)]
+    fp_chunks = [[period_s[0]+t*fp_chunk_size, period_s[0]+(t+fp_chunk_span)*fp_chunk_size] for t in range(n_fn_chunks)]
+
 
     fp_toplot, chunk_fp_t, fn_toplot, chunk_fn_t = [], [], [], []
     if len(unit_ids) > n_spikes_threshold:
         
-        fn_chunks = [[t*fn_chunk_size, (t+fn_n_chunks)*fn_chunk_size] for t in range(no_gauss_chunks)]
+        # False negative estimation
         for i, (t1,t2) in enumerate(fn_chunks):
-
-            chunk_mask = ((t1*fs) <= unit_train) & (unit_train < (t2*fs))
+            chunk_mask = (t1 <= unit_train) & (unit_train < t2)
             n_spikes_chunk=np.sum(chunk_mask)
 
             if n_spikes_chunk > 15:
@@ -503,24 +506,26 @@ def train_quality(dp, unit, period_m=[0,20],
                     fn_toplot.append(chunk_spikes_missing/100)
                     chunk_fn_t.append(t1+(t2-t1)/2)
                     if (~np.isnan(chunk_spikes_missing)) & (chunk_spikes_missing <= fn_threshold*100):
-                        chunks_fn_rate[i] = [t1, t2, 1]
+                        passed_fn[i] = [t1, t2, 1]
 
         # next loop through the chunks made for the ACG extraction
         # get the periods where the ACG filter passed
         
-        # Find ACG baseline level
+        # Compute denominator of FP on total period
         acg_tot = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[period_s])
-        x_block = np.linspace(-c_win * 1. / 2, c_win * 1. / 2, acg_tot.shape[0])
+        x_block = np.round(np.arange(-c_win/2, c_win/2 + c_bin, c_bin), 8) # round to fix binary imprecisions
         rp_mask = (x_block >= -violations_ms) & (x_block <= violations_ms)
-        egdes_m = (acg_tot*0).astype(bool)
-        egdes_m[:n_bins_acg_baseline] = True
-        egdes_m[-n_bins_acg_baseline:] = True
-        baseline_mean = np.mean(acg_tot[egdes_m])
-                
-        fp_chunks = [[t*fp_chunk_size, (t+fp_n_chunks)*fp_chunk_size] for t in range(no_gauss_chunks)]
+        baseline_mask = (acg_tot*0).astype(bool)
+        baseline_mask[:n_bins_acg_baseline] = True
+        baseline_mask[-n_bins_acg_baseline:] = True
+        baseline_mean = np.mean(acg_tot[baseline_mask])
+        
+        # False positive estimation
         for i, (t1,t2) in enumerate(fp_chunks):
-            chunk_mask = ((t1*fs) <= unit_train) & (unit_train < (t2*fs))
+
+            chunk_mask = (t1 <= unit_train) & (unit_train < t2)
             n_spikes_chunk=np.sum(chunk_mask)
+
             if n_spikes_chunk > 15:
                 ACG = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[(t1, t2)])
                 violations_mean = np.mean(ACG[rp_mask])
@@ -528,10 +533,10 @@ def train_quality(dp, unit, period_m=[0,20],
                 fp_toplot.append(rpv_ratio_acg)
                 chunk_fp_t.append(t1+(t2-t1)/2)
                 if (rpv_ratio_acg <= fp_threshold):
-                    chunks_fp_rate[i] = [t1, t2, 1]
+                    passed_fp[i] = [t1, t2, 1]
 
-    # Across all chunks, if at least 5 good for both fp and fn rate
-    if (np.sum(chunks_fp_rate[:,2])  > 5) & (np.sum(chunks_fn_rate[:,2]) > 5):
+    # Across all chunks, if at least 1 good chunk for both (else no spike can be called good)
+    if (np.sum(passed_fp[:,2])  > 1) & (np.sum(passed_fn[:,2]) > 1):
 
         # Aggregate FP and FN masks for each elemental chunks
         # e.g. for 30s chunks overlapping at 33% (3 10s chunks),
@@ -540,18 +545,19 @@ def train_quality(dp, unit, period_m=[0,20],
         # (apart from edges, where only 1 30s chunk overlaps)
         subchunks_fp = np.unique(npa(fp_chunks).flatten())
         subchunks_fp = npa([[subchunks_fp[i], subchunks_fp[i+1]] for i in range(len(subchunks_fp)-1)])
-        good_fp_bool = chunks_fp_rate[:,2].astype(bool)
-        subchunks_fp_bool = np.zeros((subchunks_fp.shape[0], fp_n_chunks))*np.nan
-        for i in range(fp_n_chunks):
-            subchunks_fp_bool[i:len(subchunks_fp_bool)-fp_n_chunks+i+1,i]=good_fp_bool
+        good_fp_bool = passed_fp[:,2].astype(bool)
+        subchunks_fp_bool = np.zeros((subchunks_fp.shape[0], fp_chunk_span))*np.nan
+        for i in range(fp_chunk_span):
+            subchunks_fp_bool[i:len(subchunks_fp_bool)-fp_chunk_span+i+1,i]=good_fp_bool
         
         subchunks_fn = np.unique(npa(fn_chunks).flatten())
         subchunks_fn = npa([[subchunks_fn[i], subchunks_fn[i+1]] for i in range(len(subchunks_fn)-1)])
-        good_fn_bool = chunks_fn_rate[:,2].astype(bool)
-        subchunks_fn_bool = np.zeros((subchunks_fn.shape[0], fn_n_chunks))*np.nan
-        for i in range(fn_n_chunks):
-            subchunks_fn_bool[i:len(subchunks_fn_bool)-fn_n_chunks+i+1,i]=good_fn_bool
+        good_fn_bool = passed_fn[:,2].astype(bool)
+        subchunks_fn_bool = np.zeros((subchunks_fn.shape[0], fn_chunk_span))*np.nan
+        for i in range(fn_chunk_span):
+            subchunks_fn_bool[i:len(subchunks_fn_bool)-fn_chunk_span+i+1,i]=good_fn_bool
         
+        # Find out if subchunks are good based on overlapping chunks 
         # (NaNs do not count in np/all/any -> decision on edges based on only 1 chunk)
         nanm_fp = np.isnan(subchunks_fp_bool)
         nanm_fn = np.isnan(subchunks_fn_bool)
@@ -563,7 +569,7 @@ def train_quality(dp, unit, period_m=[0,20],
             subchunks_fn_bool = np.any(subchunks_fn_bool, axis=1)
             subchunks_fp_bool = np.any(subchunks_fp_bool, axis=1)
         else:
-            # nans must be 1 to be ignorred by all
+            # nans must be 1 to be ignored by all
             subchunks_fn_bool[nanm_fn] = 1
             subchunks_fp_bool[nanm_fp] = 1
             
@@ -576,11 +582,11 @@ def train_quality(dp, unit, period_m=[0,20],
         ## Finally, mask spikes meeting the FP AND FN rates
         fp_m = np.zeros(unit_train.shape[0]).astype(bool)
         for subchunk in good_fp_start_end:
-            m = (unit_train/fs>subchunk[0])&(unit_train/fs<subchunk[1])
+            m = (unit_train>subchunk[0])&(unit_train<subchunk[1])
             fp_m = fp_m|m
         fn_m = np.zeros(unit_train.shape[0]).astype(bool)
         for subchunk in good_fn_start_end:
-            m = (unit_train/fs>subchunk[0])&(unit_train/fs<subchunk[1])
+            m = (unit_train>subchunk[0])&(unit_train<subchunk[1])
             fn_m = fn_m|m
         good_spikes_m=fp_m&fn_m
 
@@ -589,10 +595,10 @@ def train_quality(dp, unit, period_m=[0,20],
             np.save(dpnm/fn_spikes, good_spikes_m)
 
         if plot_debug:
-            plot_fp_fn_rates(unit_train/fs, period_s, unit_amp, good_spikes_m,
+            plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
                      fp_threshold, fn_threshold, good_fp_start_end, good_fn_start_end)
-            
+
         return good_spikes_m, good_fp_start_end, good_fn_start_end
     
     else:
@@ -602,7 +608,7 @@ def train_quality(dp, unit, period_m=[0,20],
             np.save(dpnm/fn_spikes, good_spikes_m)
             
         if plot_debug and n_spikes>0:
-            plot_fp_fn_rates(unit_train/fs, period_s, unit_amp, good_spikes_m,
+            plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
                      fp_threshold, fn_threshold)
             
@@ -627,8 +633,8 @@ def train_quality(dp, unit, period_m=[0,20],
 
 
 def trn_filtered(dp, unit, period_m=[0,20],
-                  fp_n_chunks=3, fp_chunk_size = 10,
-                  fn_n_chunks = 3, fn_chunk_size = 10,
+                  fp_chunk_span=3, fp_chunk_size = 10,
+                  fn_chunk_span = 3, fn_chunk_size = 10,
                   use_or_operator = True,
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold=0.05,
                   use_consecutive = False, consecutive_n_seconds = 180,
@@ -657,7 +663,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
     t = trn(dp,unit)
     t_s=t/30000
     good_spikes_m, good_fp_start_end, good_fn_start_end = train_quality(dp, unit, period_m,
-                    fp_n_chunks, fp_chunk_size, fn_n_chunks, fn_chunk_size, use_or_operator,
+                    fp_chunk_span, fp_chunk_size, fn_chunk_span, fn_chunk_size, use_or_operator,
                     violations_ms, fp_threshold, fn_threshold, again, save, verbose, plot_debug)
 
     # use spike times themselves to define beginning and end of good Sections

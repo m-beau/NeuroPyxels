@@ -137,7 +137,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
         # Filter out spike duplicates (spikes following an ISI shorter than enforced_rp)
         # by default, only pure duplicates (yeah they happen!!)
-        assert len(train)!=0, 'unit {unit} not found in spike_clusters.npy - probably a merger bug.'
+        assert len(train)!=0, f'unit {unit} not found in spike_clusters.npy - probably a merger bug.'
         train=train[np.append(True, np.diff(train)>=enforced_rp*fs/1000)]
 
         # Save it

@@ -81,7 +81,8 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
     dpnm = get_npyx_memory(dp)
 
     if isinstance(periods, str): assert periods=='all', "WARNING periods should either be 'all' or [[t1,t2],[t3,t4]...]."
-    fn=f"wvf{u}_{n_waveforms}-{t_waveforms}_{str(periods)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
+    per_str = str(periods)[0:50].replace(' ', '').replace('\n','')
+    fn=f"wvf{u}_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
     if os.path.exists(Path(dpnm,fn)) and (not again) and (spike_ids is None):
         if verbose: print("File {} found in routines memory.".format(fn))
         return np.load(Path(dpnm,fn))
@@ -283,10 +284,11 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
 
     dpnm = get_npyx_memory(dp)
 
-    fn=f"dsm_{u}_{n_waveforms}-{t_waveforms}_{str(periods)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
-    fn_all=f"dsm_{u}_all_waves_{n_waveforms}-{t_waveforms}_{str(periods)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
-    fn_spike_id=f"dsm_{u}_spike_id_{n_waveforms}-{t_waveforms}_{str(periods)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
-    fn_peakchan=f"dsm_{u}_peakchan_{n_waveforms}-{t_waveforms}_{str(periods)[0:10].replace(' ', '')}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
+    per_str = str(periods)[0:50].replace(' ', '').replace('\n','')
+    fn=f"dsm_{u}_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
+    fn_all=f"dsm_{u}_all_waves_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
+    fn_spike_id=f"dsm_{u}_spike_id_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
+    fn_peakchan=f"dsm_{u}_peakchan_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
 
     if Path(dpnm,fn).is_file() and (not again) and (spike_ids is None):
         if verbose: print(f"File {fn} found in routines memory.")

@@ -42,7 +42,7 @@ def label_optotagged_unit_h5(h5_path, dataset, unit, label):
     """
     authorized_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC"]
     assert label in authorized_labels
-    add_data_to_unit_h5(h5_path, dataset, unit, label, 'optotagged_label')
+    add_data_to_unit_h5(h5_path, dataset, unit, label, 'optotagged_label') 
 
 def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                 unit_abolute_id=None, sync_chan_id=None,
@@ -119,7 +119,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
     check_dataset_format(dataset)
     neuron_path = f"datasets/{dataset}/{unit}"
     if neuron_path in h5_file:
-        neuron_absolute_path=h5_file[f'{neuron_path}/neuron_absolute_id'][()]
+        neuron_absolute_path=h5_file[f'{neuron_path}/neuron_absolute_id'][()].decode()
         if again:
             del h5_file[neuron_path]
             del h5_file[neuron_absolute_path]
@@ -234,7 +234,6 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
         raw_snippet_halfrange = np.clip(raw_snippet_halfrange, 0, 10)
         c1, c2 = max(0,int(chunk.shape[0]/2-raw_snippet_halfrange)), min(chunk.shape[0]-1, int(chunk.shape[0]/2+raw_snippet_halfrange+1))
         raw_snippet = chunk[c1:c2,:]
-        print(raw_snippet.dtype)
         add_dataset_to_group(neuron_group, 'voltage_sample', raw_snippet) # still centered on peak channel, but half the size
         add_dataset_to_group(neuron_group, 'voltage_sample_start_index', int(snr_window[0] * samp_rate))
         add_dataset_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor']) 
@@ -271,9 +270,9 @@ def add_data_to_unit_h5(h5_path, dataset, unit, data, field):
         check_dataset_format(dataset)
         neuron_path = f"datasets/{dataset}/{unit}"
         assert neuron_path in h5_file, f"WARNING unit {neuron_path} does not seem to be present in the file. To add it, use add_unit_h5()."
-        add_dataset_to_group(h5_file[neuron_path], field, data)
+        add_dataset_to_group(h5_file[neuron_path], field, data, True)
 
-def add_dataset_to_group(group, dataset, data, again=0):
+def add_dataset_to_group(group, dataset, data, again=False):
     if dataset in group:
         if again:
             del group[dataset]

@@ -240,7 +240,7 @@ def metadata(dp):
             else:
                 meta[filt_key]['binary_byte_size']='unknown'
                 meta[filt_key]['binary_relative_path']=binary_rel_path
-                print(f"\033[91;1mWARNING binary file .{filt_suffix}.bin not found at {dp}\033[0m")
+                #print(f"\033[91;1mWARNING binary file .{filt_suffix}.bin not found at {dp}\033[0m")
 
             # sampling rate
             if meta_glx[filt_key]['typeThis'] == 'imec':

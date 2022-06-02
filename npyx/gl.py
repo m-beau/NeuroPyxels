@@ -13,10 +13,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from npyx.utils import npa
+
 
 def get_npyx_memory(dp):
-    dpnm = Path(dp,'npyxMemory')
-    old_dpnm =Path(dp,'routinesMemory')
+    dpnm = Path(dp) / 'npyxMemory'
+    old_dpnm = Path(dp) / 'routinesMemory'
     if old_dpnm.exists() and not dpnm.exists():
         try: # because of parallel proccessing, might have been renamed in the process!
             os.rename(str(old_dpnm), str(dpnm))
@@ -180,6 +182,10 @@ def detect_new_spikesorting(dp, print_message=True, qualities=None):
     '''
     dp=Path(dp)
     spikesorted = False
+    if not (dp/'cluster_group.tsv').exists():
+        # if first time this is ran on a merged dataset
+        return True
+    
     if qualities is None:
         assert 'merged' not in str(dp), 'this function should be ran on an original sorted dataset, not on a merged dataset.'
         last_spikesort = os.path.getmtime(dp/'spike_clusters.npy')
@@ -313,6 +319,19 @@ def get_units(dp, quality='all', chan_range=None, again=False):
 
 def get_good_units(dp):
     return get_units(dp, quality='good')
+
+def check_periods(periods):
+    err_mess = "periods can only be 'all' or a list of lists/tuples [[t1.1,t1.2], [t2.1,t2.2]...] in seconds!"
+    if isinstance(periods, str):
+        assert periods=='all', err_mess
+        return periods
+    periods = npa(periods)
+    assert periods.ndim == 2, "When feeding a single period [t1,t2], do not forget the outer brackets [[t1,t2]]!"
+    assert periods.shape[1] == 2, err_mess
+    assert np.all(np.diff(periods, axis=1)>0),\
+        "all pairs of periods must be in ascendent order (t1.1<t1.2 etc in [[t1.1,t1.2],...])!"
+    return periods
+
 
 # circular imports
 from npyx.inout import read_metadata

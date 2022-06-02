@@ -2,11 +2,13 @@
 
 import os
 from pathlib import Path
+from tracemalloc import start
 
 from numba import njit
 from numba.typed import List
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
 import warnings
+
 warnings.simplefilter("default", category=NumbaDeprecationWarning) #'ignore'
 warnings.simplefilter('default', category=NumbaPendingDeprecationWarning)#'ignore'
 
@@ -254,7 +256,7 @@ def thresh(arr, th, sgn=1, pos=1):
     assert sgn in [-1,1]
     arr=np.asarray(arr).copy()
     assert arr.ndim==1
-    arr= (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
+    arr = (arr-th)*sgn+th # Flips the array around threshold if sgn==-1
 
     i=np.nonzero(arr>=th)[0] if pos==1 else np.nonzero(arr<=th)[0]
     # If no value is above the threshold or all of them are already above the threshold
@@ -359,68 +361,83 @@ def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
     if sd==0: sd=1
     return (arr-mn)*1./sd
 
-def smooth(arr, method='gaussian_causal', sd=5, a=5, frac=0.06, it=0):
+def smooth(arr, method='gaussian_causal', sd=5, axis=1, gamma_a=5):
     '''
-    Smoothes a 1D array or a 2D array along axis 1
+    Smoothes a 1D array or a 2D array along specified axis.
     Parameters:
         - arr: ndarray/list, array to smooth
         - method: string, see methods implemented below | Default 'gaussian'
         - sd: int, gaussian window sd (in unit of array samples - e.g. use 10 for a 1ms std if bin size is 0.1ms) | Default 5
-        - a: sqrt of Gamma function rate (essentially std) | Default 5
-        - frac: lowess parameter, fraction watched ahead to perform smoothing | Default 0.06
-        - it: lowess paramater | Default 0
+        - axis: int axis along which smoothing is performed.
+        - a_gamma: sqrt of Gamma function rate (essentially std) | Default 5
 
     methods implemented:
         - gaussian
         - gaussian_causal
         - gamma (is causal)
-        - lowess
     '''
-    assert arr.ndim<=2
-    # Checks and formatting
-    assert method in ['gaussian', 'gaussian_causal', 'gamma', 'lowess']
+    assert arr.ndim<=2,\
+        "WARNING this function runs on 3D arrays but seems to shift data leftwards - not functional yet."
+    if arr.ndim==1: axis=0
+    
+    ## Checks and formatting
+    assert method in ['gaussian', 'gaussian_causal', 'gamma']
     assert type(sd) in [int, np.int]
-    arr=npa(arr).astype(float)
-    # pad with reversed CCG edges at the beginning and the end to prevnt edge effects...
-    C = arr.shape[-1]//2
-    if arr.ndim==1: padarr=np.hstack([arr[:C][::-1], arr, arr[-C:][::-1]])
-    elif arr.ndim==2: padarr=np.hstack([arr[:,:C][:,::-1], arr, arr[:,-C:][:,::-1]])
 
-    # Compute the kernel
-    if method in ['gaussian', 'gaussian_causal', 'gamma']:
-        if method in ['gaussian', 'gaussian_causal']:
-            X=np.arange(-4*sd, 4*sd+1)
-            kernel=stt.norm.pdf(X, 0, sd)
-            if method=='gaussian_causal': kernel[:len(kernel)//2]=0
-        elif method=='gamma':
-            X=np.arange(a**2//2, max((a**2)*3//2+1, 10))
-            kernel=stt.gamma.pdf(X, a**2) # a = shape, b = scale = 1/rate. std=sqrt(a)/b = sqrt(a) for b=1
-        # WARNING the maximum should be centered to prevent data shift in time!
-        # This is achieved by padding the left of the kernel with zeros.
-        mx=np.nonzero(kernel==max(kernel))[0][0]
-        if mx<len(kernel)/2:
-            kernel=np.append(np.zeros(len(kernel)-2*mx), kernel)
-        elif mx>len(kernel)/2:
-            kernel=np.append(kernel, np.zeros(mx-(len(kernel)-mx)))
-        assert len(kernel)<padarr.shape[-1], 'The kernel is longer than the array to convolved, you must decrease the standard deviation parameter.'
 
-        # Convolve array with kernel
-        kernel=kernel/sum(kernel) # normalize kernel to prevent vertical scaling
-        if arr.ndim==1: sarr = np.convolve(padarr, kernel, mode='same')
-        elif arr.ndim==2: sarr = np.apply_along_axis(lambda m:np.convolve(m, kernel, mode='same'), axis=1, arr=padarr)
-        # kernel_offset=len(kernel)//2
-        # sarr=sarr[kernel_offset:-kernel_offset]
-    elif method=='lowess':
-        if arr.ndim==1: sarr = lowess(padarr, np.arange(padarr.shape[-1]), is_sorted=True, frac=frac, it=it)[:,1].flatten()
-        elif arr.ndim==2: sarr = np.apply_along_axis(lambda m:lowess(m, np.arange(len(m)), is_sorted=True, frac=frac, it=it), axis=1, arr=padarr)
+    ## pad array at beginning and end to prevent edge artefacts
+    C = arr.shape[axis]//2
+    pad_width = [[C,C] if i==axis else [0,0] for i in range(arr.ndim)]
+    padarr=np.pad(arr, pad_width, 'symmetric')
 
-    # Remove padding
-    if arr.ndim==1: sarr = sarr[C:-C]
-    elif arr.ndim==2:  sarr = sarr[:,C:-C]
 
+    ## Compute the kernel
+    if method in ['gaussian', 'gaussian_causal']:
+        X=np.arange(-4*sd, 4*sd+1)
+        kernel=stt.norm.pdf(X, 0, sd)
+        if method=='gaussian_causal':
+            kernel[:len(kernel)//2]=0
+    elif method=='gamma':
+        # a = shape, b = scale = 1/rate. std=sqrt(a)/b = sqrt(a) for b=1
+        X=np.arange(gamma_a**2//2, max((gamma_a**2)*3//2+1, 10))
+        kernel=stt.gamma.pdf(X, gamma_a**2)
+    
+    # center the maximum to prevent data shift in time
+    # This is achieved by padding the left/right of the kernel with zeros.
+    mx=np.argmax(kernel)
+    if mx<len(kernel)/2:
+        kernel=np.append(np.zeros(len(kernel)-2*mx), kernel)
+    elif mx>len(kernel)/2:
+        kernel=np.append(kernel, np.zeros(mx-(len(kernel)-mx)))
+    assert len(kernel)<padarr.shape[axis],\
+        'The kernel is longer than the array to convolved, you must decrease sd.'
+
+    # normalize kernel to prevent vertical scaling
+    kernel=kernel/sum(kernel)
+
+
+    ## Convolve array with kernel
+    sarr = np.apply_along_axis(lambda m:np.convolve(m, kernel, mode='same'), axis=axis, arr=padarr)
+
+
+    ## Remove padding
+    sarr = sarr[slice_along_axis(C,-C,axis=axis)]
     assert np.all(sarr.shape==arr.shape)
 
+
     return sarr
+
+
+def slice_along_axis(a,b,s=1,axis=0):
+    """
+    Returns properly formatted slice to slice array/list along specified axis.
+    - a: start
+    - b: end
+    - s: step
+    """
+    slc = slice(a,b,s)
+    return (slice(None),) * axis + (slc,)
+
 
 def xcorr_axis(x, y, axis=0):
     """

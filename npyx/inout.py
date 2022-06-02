@@ -8,18 +8,27 @@ Input/output utilitaries to deal with Neuropixels files.
 """
 
 import psutil
+import shutil
 import os
 from ast import literal_eval as ale
 from pathlib import Path
+from tqdm.auto import tqdm
 
+from math import ceil
 import numpy as np
-from scipy import signal
+try:
+    import cupy as cp
+except ImportError:
+    print(("cupy could not be imported - "
+    "some functions dealing with the binary file (filtering, whitening...) will not work."))
 
 from npyx.utils import npa, read_pyfile, list_files
+from npyx.preprocess import apply_filter, bandpass_filter, whitening, approximated_whitening_matrix, med_substract,\
+                            gpufilter, cu_median, adc_realign, kfilt
 
 import json
 
-#%% Extract metadata and sync channel
+#%% Load metadata and channel map
 
 def read_metadata(dp):
     f'''
@@ -78,6 +87,8 @@ def metadata(dp):
         }
     '''
     dp = Path(dp)
+    assert dp.exists(), "Provided path does not exist!"
+    assert dp.is_dir(), f"Provided path {dp} is a filename!"
 
     probe_versions = {
         'glx':{3.0:'3A', # option 3
@@ -87,11 +98,15 @@ def metadata(dp):
         'oe':{"Neuropix-3a":'3A', # source_processor_name keys
                 "Neuropix-PXI":'1.0',
                 '?1':'2.0_singleshank', # do not know yet
-                '?2':'2.0_fourshanks'} # do not know yet
+                '?2':'2.0_fourshanks'}, # do not know yet
+        'int':{'3A':1, '1.0':1,
+               '2.0_singleshank':2, '2.0_fourshanks':2}
         }
 
     # import params.py data
-    params=read_pyfile(dp/'params.py')
+    params_f = dp/'params.py'
+    if params_f.exists():
+        params=read_pyfile(dp/'params.py')
 
     # find meta file
     glx_ap_files = list_files(dp, "ap.meta", True)
@@ -108,6 +123,7 @@ def metadata(dp):
 
     # Formatting of openephys meta file
     meta = {}
+    meta['path'] = os.path.realpath(dp)
     if oe_found:
         meta['acquisition_software']='OpenEphys'
         # Load OpenEphys metadata
@@ -120,6 +136,7 @@ def metadata(dp):
         assert oe_probe_version in probe_versions['oe'].keys(),\
             f'WARNING only probe version {oe_probe_version} not handled with openEphys - post an issue at www.github.com/m-beau/NeuroPyxels'
         meta['probe_version']=probe_versions['oe'][oe_probe_version]
+        meta['probe_version_int'] = probe_versions['int'][meta['probe_version']]
 
         # Find conversion factor
         # should be 0.19499999284744262695
@@ -131,20 +148,26 @@ def metadata(dp):
             filt_key_i={'highpass':0, 'lowpass':1}[filt_key]
             meta[filt_key]['sampling_rate']=int(meta_oe["continuous"][filt_key_i]['sample_rate'])
             meta[filt_key]['n_channels_binaryfile']=int(meta_oe["continuous"][filt_key_i]['num_channels'])
-            meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
-            meta[filt_key]['datatype']=params['dtype']
+            if params_f.exists():
+                meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
+                meta[filt_key]['datatype']=params['dtype']
+            else:
+                meta[filt_key]['n_channels_analysed']=meta[filt_key]['n_channels_binaryfile']
+                meta[filt_key]['datatype']='int16'
             binary_folder = './continuous/'+meta_oe["continuous"][filt_key_i]['folder_name']
             binary_file = list_files(dp/binary_folder, "dat", False)
             if any(binary_file):
                 binary_rel_path = binary_folder+binary_file[0]
                 meta[filt_key]['binary_relative_path']=binary_rel_path
                 meta[filt_key]['binary_byte_size']=os.path.getsize(dp/binary_rel_path)
-                if filt_key=='highpass' and params['dat_path']!=binary_rel_path:
-                    print((f'\033[34;1mWARNING edit dat_path in params.py '
-                    f'so that it matches relative location of high pass filtered binary file: {binary_rel_path}'))
+                if filt_key=='highpass' and params_f.exists():
+                    if params['dat_path']!=binary_rel_path:
+                        print((f'\033[34;1mWARNING edit dat_path in params.py '
+                        f'so that it matches relative location of high pass filtered binary file: {binary_rel_path}'))
             else:
                 meta[filt_key]['binary_relative_path']='not_found'
                 meta[filt_key]['binary_byte_size']='unknown'
+                print(f"\033[91;1mWARNING {filt_key} binary file not found at {dp}\033[0m")
             meta[filt_key]={**meta[filt_key], **meta_oe["continuous"][filt_key_i]}
         meta["events"]=meta_oe["events"]
         meta["spikes"]=meta_oe["spikes"]
@@ -185,6 +208,7 @@ def metadata(dp):
         assert glx_probe_version in probe_versions['glx'].keys(),\
             f'WARNING probe version {glx_probe_version} not handled - post an issue at www.github.com/m-beau/NeuroPyxels'
         meta['probe_version']=probe_versions['glx'][glx_probe_version]
+        meta['probe_version_int'] = probe_versions['int'][meta['probe_version']]
 
         # Based on probe version,
         # Find the voltage range, gain, encoding
@@ -209,14 +233,14 @@ def metadata(dp):
 
             # binary file
             filt_suffix={'highpass':'ap','lowpass':'lf'}[filt_key]
-            binary_file = list_files(dp, f"{filt_suffix}.bin", False)
-            if any(binary_file):
-                binary_rel_path = './'+binary_file[0]
-                meta[filt_key]['binary_relative_path']=binary_rel_path
+            binary_rel_path = get_binary_file_path(dp, filt_suffix, False)
+            if binary_rel_path!='not_found':
                 meta[filt_key]['binary_byte_size']=os.path.getsize(dp/binary_rel_path)
+                meta[filt_key]['binary_relative_path']='./'+binary_rel_path
             else:
-                meta[filt_key]['binary_relative_path']='not_found'
                 meta[filt_key]['binary_byte_size']='unknown'
+                meta[filt_key]['binary_relative_path']=binary_rel_path
+                print(f"\033[91;1mWARNING binary file .{filt_suffix}.bin not found at {dp}\033[0m")
 
             # sampling rate
             if meta_glx[filt_key]['typeThis'] == 'imec':
@@ -225,8 +249,12 @@ def metadata(dp):
                 meta[filt_key]['sampling_rate']=int(meta_glx[meta_glx['typeThis'][:2]+'SampRate'])
 
             meta[filt_key]['n_channels_binaryfile']=int(meta_glx[filt_key]['nSavedChans'])
-            meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
-            meta[filt_key]['datatype']=params['dtype']
+            if params_f.exists():
+                meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
+                meta[filt_key]['datatype']=params['dtype']
+            else:
+                meta[filt_key]['n_channels_analysed']=meta[filt_key]['n_channels_binaryfile']
+                meta[filt_key]['datatype']='int16'
             meta[filt_key]={**meta[filt_key], **meta_glx[filt_key]}
 
     # Calculate length of recording
@@ -242,6 +270,7 @@ def metadata(dp):
 
 
     return meta
+
 
 def chan_map(dp=None, y_orig='surface', probe_version=None):
     '''
@@ -319,7 +348,51 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
 
     return cm
 
-#%% Binary file I/O
+#%% Binary file I/O, including sync channel
+
+def get_binary_file_path(dp, filt_suffix='ap', absolute_path=True):
+    f'''Return the path of the binary file (.bin) from a directory.
+
+    Wrapper of get_glx_file_path:
+    {get_glx_file_path.__doc__}
+    '''
+    
+    return get_glx_file_path(dp, 'bin', filt_suffix, absolute_path)
+
+def get_meta_file_path(dp, filt_suffix='ap', absolute_path=True):
+    f'''Return the path of the meta file (.meta) from a directory.
+
+    Wrapper of get_glx_file_path:
+    {get_glx_file_path.__doc__}
+    '''
+    
+    return get_glx_file_path(dp, 'meta', filt_suffix, absolute_path)
+
+def get_glx_file_path(dp, suffix, filt_suffix='ap', absolute_path=True):
+    '''Return the path of a spikeGLX file (.bin or .meta) from a directory.
+
+    Parameters:
+    - dp: str, directory
+    - filt_suffix: 'ap' or 'lf', seek ap (highpass) or lfp (lowpass) binary file,
+                   for 1.0 recordings. Always 'ap' for 2.0.
+    - absolute_path: bool, whether to return path from root
+                     (if False, returns relative path from dp)
+
+    Returns:
+        The absolute path to the spikeGLX file with the associated filt key, 'ap' or 'lf'.
+    '''
+
+    dp = Path(dp)
+    assert suffix in ['bin', 'meta']
+    assert filt_suffix in ['ap','lf']
+    glx_files = list_files(dp, f"{filt_suffix}.{suffix}", absolute_path)
+    assert len(glx_files) <= 1, (f"More than one {filt_suffix}.{suffix} files found at {dp}! ",
+        "If you keep several versions, store other files in a subdirectory (e.g. original_data).")
+
+    if len(glx_files)==0:
+        glx_files = ['not_found']
+    
+    return glx_files[0]
 
 def unpackbits(x,num_bits = 16):
     '''
@@ -330,13 +403,16 @@ def unpackbits(x,num_bits = 16):
     to_and = 2**np.arange(num_bits).reshape([1,num_bits])
     return (x & to_and).astype(bool).astype(np.int64).reshape(xshape + [num_bits])
 
-def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds', verbose=True):
+def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds',
+                  verbose=False, again=False):
     '''Unpacks neuropixels external input data, to align spikes to events.
     Parameters:
         - dp: str, datapath
         - output_binary: bool, whether to output binary sync channel as 0/1s
         - filt_key: str, 'highpass' or 'lowpass' (SpikeGLX: ap/lf, OIpenEphys: Neuropix-PXI-100.0/.1)
         - unit: str, 'seconds' or 'samples', units of returned onsets/offset times
+        - verbose: bool, whether to print rich information
+        - again: bool, whether to reload sync channel from binary file.
 
     Returns:
         Dictionnaries of length n_channels = number of channels where threshold crossings were found, [0-16]
@@ -392,7 +468,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
                 return onsets, offsets
 
         # Tries to load pre-saved compressed binary
-        if sync_dp.exists():
+        if sync_dp.exists() and not again:
             if verbose: print(f"No file ending in 'on_samples.npy' with the right sampling rate ({filt_suffix}) found in sync_chan directory: extracting sync channel from binary.\n")
             npz_files = list_files(sync_dp, 'npz')
             if any(npz_files):
@@ -456,10 +532,9 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
         return onsets,offsets
 
-
 def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
                      whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
-                     ignore_ks_chanfilt=0, verbose=False):
+                     ignore_ks_chanfilt=0, center_chans_on_0=False, verbose=False, scale=True, again=False):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     ## PARAMETERS
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
@@ -474,7 +549,8 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     - nRangeWhiten: int, see whiten.
     - nRangeMedSub: int, see med_sub.
     - ignore_ks_chanfilt: whether to ignore the filtering made by kilosort, which only uses channels with average events rate > ops.minfr to spike sort. | Default False
-
+    - scale: A boolean variable specifying whether we should convert the resulting raw
+             A2D samples to uV. Defaults to True
     ## RETURNS
     rawChunk: numpy array of shape ((c2-c1), (t2-t1)*fs).
     rawChunk[0,:] is channel 0; rawChunk[1,:] is channel 1, etc.
@@ -482,30 +558,32 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     # Find binary file
     dp = Path(dp)
     meta = read_metadata(dp)
-    assert meta[filt_key]['binary_relative_path']!='not_found',\
-        f'No binary file (./*.ap.bin or ./continuous/Neuropix-PXI-100.0/*.dat) found in folder {dp}!!'
-    fname = dp/meta[filt_key]['binary_relative_path']
-
-    assert len(times)==2
-    assert times[0]>0
-    assert times[1]<meta['recording_length_seconds']
+    fname = get_binary_file_path(dp, filt_suffix='ap', absolute_path=True)
 
     fs = meta[filt_key]['sampling_rate']
     Nchans=meta[filt_key]['n_channels_binaryfile']
     bytes_per_sample=2
+    whitenpad=200
+
+    assert len(times)==2
+    assert times[0]>=0
+    assert times[1]<meta['recording_length_seconds']
 
     # Format inputs
     cm=chan_map(dp, probe_version='local'); assert cm.shape[0]<=Nchans-1
     if not ignore_ks_chanfilt: channels=assert_chan_in_dataset(dp, channels) # index out of 384, should remain the same because rc initial shape is 384!
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
     if whiten:
-        whitenpad=200
+        if t1<whitenpad:
+            print(f"times[0] set to {round(whitenpad/30000, 5)}s because whitening requires a pad.")
+            t1 = whitenpad
+            times[0] = t1/30000
         t1, t2 = t1-whitenpad, t2+whitenpad
     bn = os.path.basename(fname) # binary name
-    rcn = f'{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}_{whiten}_{med_sub}.npy' # raw chunk name
-    rcp = Path(dp, 'routinesMemory', rcn)
+    rcn = f'{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}_{whiten}_{med_sub}_{scale}.npy' # raw chunk name
+    rcp = get_npyx_memory(dp) / rcn
 
-    if os.path.isfile(rcp):
+    if os.path.isfile(rcp) and not again:
         return np.load(rcp)
 
     # Check that available memory is high enough to load the raw chunk
@@ -537,7 +615,8 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     rc = rc.reshape((int(t2-t1), Nchans)).T
 
     # Align signal on each channel
-    rc=rc-np.median(rc[:,:10],axis=1)[:,np.newaxis]
+    if center_chans_on_0:
+        rc=rc-np.median(rc[:,:10],axis=1)[:,np.newaxis]
 
     # Median subtraction = CAR
     if med_sub:
@@ -555,175 +634,241 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     # get the right channels range, AFTER WHITENING
     rc = rc[channels, :]
     # Scale data
-    rc = rc*meta['bit_uV_conv_factor'] # convert into uV
+    if scale:
+        rc = rc*meta['bit_uV_conv_factor'] # convert into uV
+
+    # convert from cupy to numpy array
+    if 'cp' in globals():
+        rc = cp.asnumpy(rc)
 
     if save: # sync chan saved in extract_syncChan
         np.save(rcp, rc)
 
     return rc
 
-
 def assert_chan_in_dataset(dp, channels):
+    channels = np.array(channels)
     cm=chan_map(dp, probe_version='local')
     if not np.all(np.isin(channels, cm[:,0])):
-        print("WARNING Kilosort excluded some channels that you provided for analysis \
-    because they did not display enough threshold crossings! Jumping channels:{}\
-    ".format(channels[~np.isin(channels, cm[:,0])]))
+        print(("WARNING Kilosort excluded some channels that you provided for analysis "
+               "because they did not display enough threshold crossings! Jumping channels:"
+               f"{channels[~np.isin(channels, cm[:,0])]}"))
     channels=channels[np.isin(channels, cm[:,0])]
     return channels
 
-#%% Compute stuff to preprocess data
+#%% Binary file filtering wrappers
 
-def whitening_matrix_old(x, epsilon=1e-18):
-    """
-    wmat = whitening_matrix(dat, fudge=1e-18)
-    Compute the whitening matrix.
-        - dat is a matrix nsamples x nchannels
-    Apply using np.dot(dat,wmat)
-    Adapted from phy
+def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, move_orig_data=True,
+                       ADC_realign = False, median_subtract=False, f_low=None, f_high=300, order=3,
+                       spatial_filt=False, whiten = False, whiten_range=32,
+                       again_Wrot=False, verbose=False):
+    """Creates a preprocessed copy of binary file at dp/fname_filtered.bin,
+    and moves the original binary file to dp/original_data.fname.bin.
+
+    One must precise either dp (path to directory or ) or fname (absolute path to binary file).
+
+    Preprocessing steps:
+    - optional - realigning data according to ADCs, like global demux from CatGT does
+    - optional - CAR, common average referencing (must be BEFORE filtering as filtering re-offsets each channel)
+    - necessary - high pass filtering the data, to remove DC offsets
+    - removing correlated noise across channels, using either/all of these 2 options:
+        - spatial filtering with butterworth filter
+        - whitening
+        using both is not recommended, has not been well tested.
+
+    By default, the data is ADC realigned -> CAR -> high pass filtered at 300Hz 
+    with a 3nodes butterworth filter (bidirectional to prevent phase shifting).
+
+
     Parameters:
-        - x: 2D array, rows represents a variable (time), axis 1 an observation (e.g. channel).
-              Multiplying by the whitening matrix whitens across obervations.
-        - fudge: small value added to diagonal to regularize D
-        - nRange: if integer, number of channels to locally compute whitening filter (more robust to noise) | Default None
+    - dp: optional str, path to binary file directory. dp/*.bin file will be found and used for filtering.
+    - filt_key: str, 'ap' or 'lf' (if filtering ap.bin or lf.bin file)
+    - fname: optional str, absolute path of binary file to filter (if provided, *.bin will not be guessed)
+    - target_dp: str or Path, directory to save preprocessed binary file (by default, dp)
+    - move_orig_data: bool, if true a directory is created at dp/original_data, and the original binary file is moved there.
+    - ADC_realign: bool, whether to realign data based on Neuropixels ADC shifts (slow because requires FFT)
+    - CAR: bool, whether to perform common average subtraction
+    - f_low: optional float, lowpass filter frequency
+    - f_high: float, highpass filter frequency (necessary)
+    - order: int, butterworth filter order (default 3)
+    - spatial_filt: bool, whether to high pass filter across channels at 0.1 Hz
+    - whiten: bool, whether to whiten across channels
+    - verbose: bool, whether to print extra information
     """
-    assert x.ndim == 2
-    x=x.T
-    ncols = x.shape[1]
-    x_cov = np.cov(x, rowvar=0) # get covariance matrix
-    assert x_cov.shape == (ncols, ncols)
-    d, v = np.linalg.eigh(x_cov) # covariance eigendecomposition (same as svd for positive-definite matrix)
-    d[d<0]=0 # handles calculation innacurracies leading to very tiny negative values instead of tiny positive values
-    d = np.diag(1. / np.sqrt(d + epsilon))
-    w = np.dot(np.dot(v, d), v.T) # V * D * V': ZCA transform
-    return w.T
 
-def whitening_matrix(x, epsilon=1e-18, nRange=None):
-    """
-    wmat = whitening_matrix(dat, fudge=1e-18)
-    Compute the whitening matrix.
-        - dat is a matrix nsamples x nchannels
-    Apply using np.dot(dat,wmat)
-    Adapted from phy
-    Parameters:
-        - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
-             Multiplying by the whitening matrix whitens across obervations.
-        - epsilon: small value added to diagonal to regularize D
-        - nRange: if integer, number of channels to locally compute whitening filter (more robust to noise) | Default None
-    """
-    assert x.ndim == 2
-    nrows, ncols = x.shape
-    x_cov = np.cov(x, rowvar=1) # get covariance matrix across rows (each row is an observation)
-    assert x_cov.shape == (nrows, nrows)
-    if nRange is None:
-        d, v = np.linalg.eigh(x_cov) # covariance eigendecomposition (same as svd for positive-definite matrix)
-        d[d<0]=0 # handles calculation innacurracies leading to very tiny negative values instead of tiny positive values
-        d = np.diag(1. / np.sqrt(d + epsilon))
-        w = np.dot(np.dot(v, d), v.T) # V * D * V': ZCA transform
-        return w
-    ##TODO make that fast with numba
-    rows=np.arange(nrows)
-    w=np.zeros((nrows,nrows))
-    for i in range(x_cov.shape[0]):
-        closest=np.sort(rows[np.argsort(np.abs(rows-i))[:nRange+1]])
-        span=slice(closest[0],closest[-1]+1)
-        x_cov_local=x_cov[span,span]
-        d, v = np.linalg.eigh(x_cov_local) # covariance eigendecomposition (same as svd for positive-definite matrix)
-        d[d<0]=0 # handles calculation innacurracies leading to very tiny negative values instead of tiny positive values
-        d = np.diag(1. / np.sqrt(d + epsilon))
-        w[i,span] = np.dot(np.dot(v, d), v.T)[:,0] # V * D * V': ZCA transform
-    return w
+    # Parameters check
+    assert dp is not None or fname is not None,\
+        "You must either provide a path to the binary file directory (dp)\
+            or the absolute path to the binary file (fname)."
+    assert f_low is not None or f_high is not None,\
+        "You must either provide a lowpass (low) or highpass (high) pass filter frequency."
+    assert filt_key in ['ap', 'lf']
 
-def whitening(x, nRange=None):
-    '''
-    Whitens along axis 0.
-    For instance, time should be axis 1 and channels axis 0 to whiten across channels.
-    Axis 1 must be larger than axis 0 (need enough samples to properly estimate variance, covariance).
-        - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
-    Parameters:
-        - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
-             Multiplying by the whitening matrix whitens across obervations.
-        - nRange: if integer, number of channels to locally compute whitening filter (more robust to noise) | Default None
-    '''
-    assert x.shape[1]>=x.shape[0]
-    # Compute whitening matrix
-    w=whitening_matrix(x, epsilon=1e-18, nRange=nRange)
-    # Whiten
-    scales=(np.max(x, 1)-np.min(x, 1))
-    x=np.dot(x.T,w).T
-    W_scales=(np.max(x, 1)-np.min(x, 1))
-    x=x*np.repeat((scales/W_scales).reshape(x.shape[0], 1), x.shape[1], axis=1)
+    # samples of symmetrical buffer for whitening and spike detection
+    # Must be multiple of 32 + ntbuff. This is the batch size (try decreasing if out of memory).
+    ntb = 64 # in kilosort: called ntbuff
+    nSkipCov = 25
 
-    return x
-
-def bandpass_filter(rate=None, low=None, high=None, order=1):
-    """Butterworth bandpass filter."""
-    assert low is not None or high is not None
-    if low is not None and high is not None: assert low < high
-    assert order >= 1
-    if high is not None and low is not None:
-        return signal.butter(order, (low,high), 'bandpass', fs=rate)
-    elif low is not None:
-        return signal.butter(order, low, 'lowpass', fs=rate)
-    elif high is not None:
-        return signal.butter(order, high, 'highpass', fs=rate)
-
-def apply_filter(x, filt, axis=0):
-    """Apply a filter to an array."""
-    x = np.asarray(x)
-    if x.shape[axis] == 0:
-        return x
-    b, a = filt
-    return signal.filtfilt(b, a, x, axis=axis)
-
-def med_substract(x, axis=0, nRange=None):
-    '''Median substract along axis 0
-    (for instance, channels should be axis 0 and time axis 1 to median substract across channels)'''
-    assert axis in [0,1]
-    if nRange is None:
-        return x-np.median(x, axis=axis) if axis==0 else x-np.median(x, axis=axis)[:,np.newaxis]
-    n_points=x.shape[axis]
-    x_local_med=np.zeros(x.shape)
-    points=np.arange(n_points)
-    for xi in range(n_points):
-        closest=np.sort(points[np.argsort(np.abs(points-xi))[:nRange+1]])
-        if axis==0: x_local_med[xi,:]=np.median(x[closest,:], axis=axis)
-        elif axis==1: x_local_med[:,xi]=np.median(x[:,closest], axis=axis)
-    return x-x_local_med
-
-def whiten_data(X, method='zca'):
-    """
-    Whitens the input matrix X using specified whitening method.
-    Inputs:
-        X:      Input data matrix with data examples along the first dimension
-        method: Whitening method. Must be one of 'zca', 'zca_cor', 'pca',
-                'pca_cor', or 'cholesky'.
-    """
-    X = X.reshape((-1, np.prod(X.shape[1:])))
-    X_centered = X - np.mean(X, axis=0)
-    Sigma = np.dot(X_centered.T, X_centered) / X_centered.shape[0]
-    W = None
-
-    if method in ['zca', 'pca', 'cholesky']:
-        U, Lambda, _ = np.linalg.svd(Sigma)
-        if method == 'zca':
-            W = np.dot(U, np.dot(np.diag(1.0 / np.sqrt(Lambda + 1e-5)), U.T))
-        elif method =='pca':
-            W = np.dot(np.diag(1.0 / np.sqrt(Lambda + 1e-5)), U.T)
-        elif method == 'cholesky':
-            W = np.linalg.cholesky(np.dot(U, np.dot(np.diag(1.0 / (Lambda + 1e-5)), U.T))).T
-    elif method in ['zca_cor', 'pca_cor']:
-        V_sqrt = np.diag(np.std(X, axis=0))
-        P = np.dot(np.dot(np.linalg.inv(V_sqrt), Sigma), np.linalg.inv(V_sqrt))
-        G, Theta, _ = np.linalg.svd(P)
-        if method == 'zca_cor':
-            W = np.dot(np.dot(G, np.dot(np.diag(1.0 / np.sqrt(Theta + 1e-5)), G.T)), np.linalg.inv(V_sqrt))
-        elif method == 'pca_cor':
-            W = np.dot(np.dot(np.diag(1.0/np.sqrt(Theta + 1e-5)), G.T), np.linalg.inv(V_sqrt))
+    # Fetch binary file name, define target file name
+    if fname is None:
+        fname = get_binary_file_path(dp, filt_key, True)
+    fname=Path(fname)
+    dp = fname.parent
+    if target_dp is None:
+        target_dp = dp
     else:
-        raise Exception('Whitening method not found.')
+        target_dp = Path(target_dp)
+    print(f"Preprocessing {fname}...")
 
-    return np.dot(X_centered, W.T)
+    filter_suffix = ""
+    message = ""
+    if ADC_realign:
+        filter_suffix+=f"_adcshift{ADC_realign}"
+        message+="    - shifting ADCs,\n"
+    if median_subtract:
+        filter_suffix+="_medsub"
+        message+="    - median subtraction (aka common average referencing CAR),\n"
+    filter_suffix+=f"_tempfilt{f_low}{f_high}"
+    low_s = 0 if f_low is None else f_low
+    message+=f"    - filtering in time (between {low_s} and {f_high} Hz),\n"
+    if whiten:
+        filter_suffix+=f"_whit{whiten}{whiten_range}"
+        message+=f"    - whitening (using {whiten_range} closest channels),\n"
+    if spatial_filt:
+        filter_suffix+=f"_spatfilt{spatial_filt}"
+        message+=f"    - filtering in space ({spatial_filt} 'Hz'),\n"
+    filtered_fname = str(fname.name)[:-7]+filter_suffix+".ap.bin"
+    message = message[:-2]+"."
+    print(message)
+
+    # fetch metadata
+    fk = {'ap':'highpass', 'lf':'lowpass'}[filt_key]
+    meta = read_metadata(dp)
+    fs = meta[fk]['sampling_rate']
+    binary_byte_size = meta[fk]['binary_byte_size']
+
+    # Check that there is enough free memory on disk
+    free_memory = shutil.disk_usage(target_dp)[2]
+    assert free_memory > binary_byte_size + 2**10,\
+        f"Not enough free space on disk at {target_dp} (need {(binary_byte_size+2**10)//2**20} MB)"
+
+    # memory map binary file
+    n_channels = meta[fk]['n_channels_binaryfile']
+    channels_to_process = np.arange(n_channels-1) # would allow in the future to process specific channels
+    chans_mask = np.isin(np.arange(n_channels), channels_to_process)
+    dtype = meta[fk]['datatype']
+    offset = 0
+    item_size = np.dtype(dtype).itemsize
+    n_samples = (binary_byte_size - offset) // (item_size * n_channels)
+    memmap_f = np.memmap(fname, dtype=dtype, offset=offset, shape=(n_samples, n_channels), mode='r+')
+
+
+    # fetch whitening matrix (estimate covariance over a few batches)
+    if whiten:
+        Wrot_path = dp / 'whitening_matrix.npy'
+        Wrot = approximated_whitening_matrix(memmap_f, Wrot_path, whiten_range,
+            NT, Nbatch, NTbuff, ntb, nSkipCov, n_channels, channels_to_process,
+            f_high, fs, again=again_Wrot, verbose=verbose)
+
+    # Preprocess iteratively, batch by batch
+    NT = 64 * 1024 + ntb
+    Nbatch = ceil(n_samples / NT)
+    NTbuff = NT + 3 * ntb
+    w_edge = cp.linspace(0,1,ntb).reshape(-1, 1) # weights to combine data batches at the edge
+    buff_prev = cp.zeros((ntb, n_channels-1), dtype=np.int32)
+    last_batch=False
+    with open(target_dp / filtered_fname, 'wb') as fw:  # open for writing processed data
+        for ibatch in tqdm(range(Nbatch), desc="Preprocessing"):
+            # we'll create a binary file of batches of NT samples, which overlap consecutively
+            # on params.ntbuff samples
+            # in addition to that, we'll read another params.ntbuff samples from before and after,
+            # to have as buffers for filtering
+
+            # Collect data batch
+            i = max(0, NT * ibatch - ntb)
+            rawData = memmap_f[i:i + NTbuff]
+            if rawData.size == 0:
+                print("Loaded buffer has an empty size!")
+                break  # this shouldn't really happen, unless we counted data batches wrong
+            nsampcurr = rawData.shape[0]  # how many time samples the current batch has
+            if nsampcurr < NTbuff:
+                # when reaching end of file, mirror end by adding missing samples to fit in GPU
+                last_batch = True
+                n_extra_samples = NTbuff - nsampcurr
+                rawData = np.concatenate(
+                    (rawData, np.tile(rawData[nsampcurr - 1], (n_extra_samples, 1))), axis=0)
+            if i == 0:
+                bpad = np.tile(rawData[0], (ntb, 1))
+                rawData = np.concatenate((bpad, rawData[:NTbuff - ntb]), axis=0)
+            rawData = cp.asarray(rawData, dtype=np.float32)
+
+            # Extract channels to use for processing
+            # at minima, removes sync channel
+            batch = rawData[:,chans_mask]
+
+            # Re-alignment based on ADCs shifts (like CatGT)
+            # should be the first preprocessing step,
+            # it simply consists in properly realigning the data!
+            if ADC_realign:
+                batch = cp.asnumpy(batch)
+                batch = adc_realign(batch, version=meta['probe_version_int'])
+                batch = cp.asarray(batch, dtype=np.float32)
+
+            # CAR (optional) -> temporal filtering -> weight to combine edges -> unpadding
+            batch = gpufilter(batch, fs=fs, fshigh=f_high, fslow=f_low, order=order,
+                              car=median_subtract, bidirectional=False)
+            assert batch.flags.c_contiguous # check that ordering is still C, not F
+            batch[ntb:2*ntb] = w_edge * batch[ntb:2*ntb] + (1 - w_edge) * buff_prev
+            buff_prev = batch[NT + ntb: NT + 2*ntb]
+            batch = batch[ntb:ntb + NT, :]  # remove timepoints used as buffers
+
+            # Spatial filtering (replaces whitening)
+            if spatial_filt:
+                batch = kfilt(batch.T, butter_kwargs = {'N': 3, 'Wn': 0.1, 'btype': 'highpass'}).T
+
+            # whiten the data and scale by 200 for int16 range
+            if whiten:
+                print("Whitening not implemented yet.")
+                batch = cp.dot(batch, Wrot)
+            
+            assert batch.flags.c_contiguous  # check that ordering is still C, not F
+            if batch.shape[0] != NT:
+                raise ValueError(f'Batch {ibatch} processed incorrectly')
+
+            # add unprocessed channels back to batch
+            # (at minima including last 16 bits for sync signal)
+            rebuilt_batch = rawData[ntb:ntb + NT, :] # remove timepoints used as buffers; includes unprocessed channels
+            rebuilt_batch[:,chans_mask] = batch
+            if last_batch:
+                # remove mirrored data at the end
+                n_extra_samples = n_extra_samples - 2*ntb # account for buffers
+                rebuilt_batch = rebuilt_batch[:-n_extra_samples]
+
+            # convert to int16, and gather on the CPU side
+            datcpu = cp.asnumpy(rebuilt_batch.astype(np.dtype(dtype)))
+
+            # write this batch to binary file
+            if verbose and (ibatch%(Nbatch//50)==0 or last_batch):
+                print(f"{(target_dp/filtered_fname).stat().st_size} total, {rebuilt_batch.size * 2} bytes written to file {datcpu.shape} array size")
+            datcpu.tofile(fw)
+        if verbose: print(f"{(target_dp/filtered_fname).stat().st_size} total")
+
+    # Finally, if everything ran smoothly,
+    # move original binary to new directory
+    if move_orig_data:
+        orig_dp = dp/'original_data'
+        orig_dp.mkdir(exist_ok=True)
+        if not (orig_dp/fname.name).exists(): fname.replace(orig_dp/fname.name)
+        meta_f = get_meta_file_path(dp, filt_key, False)
+        if not (orig_dp/meta_f).exists():
+            if (dp/meta_f).exists():
+                shutil.copy(dp/meta_f, orig_dp/meta_f)
+            if (dp/'channel_map.npy').exists():
+                shutil.copy(dp/'channel_map.npy', orig_dp/'channel_map.npy')
+            if (dp/'channel_positions.npy').exists():
+                shutil.copy(dp/'channel_positions.npy', orig_dp/'channel_positions.npy')
+
+    return target_dp/filtered_fname
 
 #%% paqIO file loading utilities
 
@@ -806,158 +951,158 @@ def paq_read(file_path):
 
 #%% I/O array functions from phy
 
-def _start_stop(item):
-    """Find the start and stop indices of a __getitem__ item.
+# def _start_stop(item):
+#     """Find the start and stop indices of a __getitem__ item.
 
-    This is used only by ConcatenatedArrays.
+#     This is used only by ConcatenatedArrays.
 
-    Only two cases are supported currently:
+#     Only two cases are supported currently:
 
-    * Single integer.
-    * Contiguous slice in the first dimension only.
+#     * Single integer.
+#     * Contiguous slice in the first dimension only.
 
-    """
-    if isinstance(item, tuple):
-        item = item[0]
-    if isinstance(item, slice):
-        # Slice.
-        if item.step not in (None, 1):
-            raise NotImplementedError()
-        return item.start, item.stop
-    elif isinstance(item, (list, np.ndarray)):
-        # List or array of indices.
-        return np.min(item), np.max(item)
-    else:
-        # Integer.
-        return item, item + 1
+#     """
+#     if isinstance(item, tuple):
+#         item = item[0]
+#     if isinstance(item, slice):
+#         # Slice.
+#         if item.step not in (None, 1):
+#             raise NotImplementedError()
+#         return item.start, item.stop
+#     elif isinstance(item, (list, np.ndarray)):
+#         # List or array of indices.
+#         return np.min(item), np.max(item)
+#     else:
+#         # Integer.
+#         return item, item + 1
 
-def _fill_index(arr, item):
-    if isinstance(item, tuple):
-        item = (slice(None, None, None),) + item[1:]
-        return arr[item]
-    else:
-        return arr
+# def _fill_index(arr, item):
+#     if isinstance(item, tuple):
+#         item = (slice(None, None, None),) + item[1:]
+#         return arr[item]
+#     else:
+#         return arr
 
-class ConcatenatedArrays(object):
-    """This object represents a concatenation of several memory-mapped
-    arrays. Coming from phy.io.array.py"""
-    def __init__(self, arrs, cols=None, scaling=None):
-        assert isinstance(arrs, list)
-        self.arrs = arrs
-        # Reordering of the columns.
-        self.cols = cols
-        self.offsets = np.concatenate([[0], np.cumsum([arr.shape[0]
-                                                       for arr in arrs])],
-                                      axis=0)
-        self.dtype = arrs[0].dtype if arrs else None
-        self.scaling = scaling
+# class ConcatenatedArrays(object):
+#     """This object represents a concatenation of several memory-mapped
+#     arrays. Coming from phy.io.array.py"""
+#     def __init__(self, arrs, cols=None, scaling=None):
+#         assert isinstance(arrs, list)
+#         self.arrs = arrs
+#         # Reordering of the columns.
+#         self.cols = cols
+#         self.offsets = np.concatenate([[0], np.cumsum([arr.shape[0]
+#                                                        for arr in arrs])],
+#                                       axis=0)
+#         self.dtype = arrs[0].dtype if arrs else None
+#         self.scaling = scaling
 
-    @property
-    def shape(self):
-        if self.arrs[0].ndim == 1:
-            return (self.offsets[-1],)
-        ncols = (len(self.cols) if self.cols is not None
-                 else self.arrs[0].shape[1])
-        return (self.offsets[-1], ncols)
+#     @property
+#     def shape(self):
+#         if self.arrs[0].ndim == 1:
+#             return (self.offsets[-1],)
+#         ncols = (len(self.cols) if self.cols is not None
+#                  else self.arrs[0].shape[1])
+#         return (self.offsets[-1], ncols)
 
-    def _get_recording(self, index):
-        """Return the recording that contains a given index."""
-        assert index >= 0
-        recs = np.nonzero((index - self.offsets[:-1]) >= 0)[0]
-        if len(recs) == 0:  # pragma: no cover
-            # If the index is greater than the total size,
-            # return the last recording.
-            return len(self.arrs) - 1
-        # Return the last recording such that the index is greater than
-        # its offset.
-        return recs[-1]
+#     def _get_recording(self, index):
+#         """Return the recording that contains a given index."""
+#         assert index >= 0
+#         recs = np.nonzero((index - self.offsets[:-1]) >= 0)[0]
+#         if len(recs) == 0:  # pragma: no cover
+#             # If the index is greater than the total size,
+#             # return the last recording.
+#             return len(self.arrs) - 1
+#         # Return the last recording such that the index is greater than
+#         # its offset.
+#         return recs[-1]
 
-    def _get(self, item):
-        cols = self.cols if self.cols is not None else slice(None, None, None)
-        # Get the start and stop indices of the requested item.
-        start, stop = _start_stop(item)
-        # Return the concatenation of all arrays.
-        if start is None and stop is None:
-            return np.concatenate(self.arrs, axis=0)[..., cols]
-        if start is None:
-            start = 0
-        if stop is None:
-            stop = self.offsets[-1]
-        if stop < 0:
-            stop = self.offsets[-1] + stop
-        # Get the recording indices of the first and last item.
-        rec_start = self._get_recording(start)
-        rec_stop = self._get_recording(stop)
-        assert 0 <= rec_start <= rec_stop < len(self.arrs)
-        # Find the start and stop relative to the arrays.
-        start_rel = start - self.offsets[rec_start]
-        stop_rel = stop - self.offsets[rec_stop]
-        # Single array case.
-        if rec_start == rec_stop:
-            # Apply the rest of the index.
-            out = _fill_index(self.arrs[rec_start][start_rel:stop_rel], item)
-            out = out[..., cols]
-            return out
-        chunk_start = self.arrs[rec_start][start_rel:]
-        chunk_stop = self.arrs[rec_stop][:stop_rel]
-        # Concatenate all chunks.
-        l = [chunk_start]
-        if rec_stop - rec_start >= 2:
-            print("Loading a full virtual array: this might be slow "
-                        "and something might be wrong.")
-            l += [self.arrs[r][...] for r in range(rec_start + 1,
-                                                   rec_stop)]
-        l += [chunk_stop]
-        # Apply the rest of the index.
-        return _fill_index(np.concatenate(l, axis=0), item)[..., cols]
+#     def _get(self, item):
+#         cols = self.cols if self.cols is not None else slice(None, None, None)
+#         # Get the start and stop indices of the requested item.
+#         start, stop = _start_stop(item)
+#         # Return the concatenation of all arrays.
+#         if start is None and stop is None:
+#             return np.concatenate(self.arrs, axis=0)[..., cols]
+#         if start is None:
+#             start = 0
+#         if stop is None:
+#             stop = self.offsets[-1]
+#         if stop < 0:
+#             stop = self.offsets[-1] + stop
+#         # Get the recording indices of the first and last item.
+#         rec_start = self._get_recording(start)
+#         rec_stop = self._get_recording(stop)
+#         assert 0 <= rec_start <= rec_stop < len(self.arrs)
+#         # Find the start and stop relative to the arrays.
+#         start_rel = start - self.offsets[rec_start]
+#         stop_rel = stop - self.offsets[rec_stop]
+#         # Single array case.
+#         if rec_start == rec_stop:
+#             # Apply the rest of the index.
+#             out = _fill_index(self.arrs[rec_start][start_rel:stop_rel], item)
+#             out = out[..., cols]
+#             return out
+#         chunk_start = self.arrs[rec_start][start_rel:]
+#         chunk_stop = self.arrs[rec_stop][:stop_rel]
+#         # Concatenate all chunks.
+#         l = [chunk_start]
+#         if rec_stop - rec_start >= 2:
+#             print("Loading a full virtual array: this might be slow "
+#                         "and something might be wrong.")
+#             l += [self.arrs[r][...] for r in range(rec_start + 1,
+#                                                    rec_stop)]
+#         l += [chunk_stop]
+#         # Apply the rest of the index.
+#         return _fill_index(np.concatenate(l, axis=0), item)[..., cols]
 
-    def __getitem__(self, item):
-        out = self._get(item)
-        assert out is not None
-        if self.scaling is not None and self.scaling != 1:
-            out = out * self.scaling
-        return out
+#     def __getitem__(self, item):
+#         out = self._get(item)
+#         assert out is not None
+#         if self.scaling is not None and self.scaling != 1:
+#             out = out * self.scaling
+#         return out
 
-    def __len__(self):
-        return self.shape[0]
+#     def __len__(self):
+#         return self.shape[0]
 
-def _pad(arr, n, dir='right'):
-    """Pad an array with zeros along the first axis.
+# def _pad(arr, n, dir='right'):
+#     """Pad an array with zeros along the first axis.
 
-    Parameters
-    ----------
+#     Parameters
+#     ----------
 
-    n : int
-        Size of the returned array in the first axis.
-    dir : str
-        Direction of the padding. Must be one 'left' or 'right'.
+#     n : int
+#         Size of the returned array in the first axis.
+#     dir : str
+#         Direction of the padding. Must be one 'left' or 'right'.
 
-    """
-    assert dir in ('left', 'right')
-    if n < 0:
-        raise ValueError("'n' must be positive: {0}.".format(n))
-    elif n == 0:
-        return np.zeros((0,) + arr.shape[1:], dtype=arr.dtype)
-    n_arr = arr.shape[0]
-    shape = (n,) + arr.shape[1:]
-    if n_arr == n:
-        assert arr.shape == shape
-        return arr
-    elif n_arr < n:
-        out = np.zeros(shape, dtype=arr.dtype)
-        if dir == 'left':
-            out[-n_arr:, ...] = arr
-        elif dir == 'right':
-            out[:n_arr, ...] = arr
-        assert out.shape == shape
-        return out
-    else:
-        if dir == 'left':
-            out = arr[-n:, ...]
-        elif dir == 'right':
-            out = arr[:n, ...]
-        assert out.shape == shape
-        return out
+#     """
+#     assert dir in ('left', 'right')
+#     if n < 0:
+#         raise ValueError("'n' must be positive: {0}.".format(n))
+#     elif n == 0:
+#         return np.zeros((0,) + arr.shape[1:], dtype=arr.dtype)
+#     n_arr = arr.shape[0]
+#     shape = (n,) + arr.shape[1:]
+#     if n_arr == n:
+#         assert arr.shape == shape
+#         return arr
+#     elif n_arr < n:
+#         out = np.zeros(shape, dtype=arr.dtype)
+#         if dir == 'left':
+#             out[-n_arr:, ...] = arr
+#         elif dir == 'right':
+#             out[:n_arr, ...] = arr
+#         assert out.shape == shape
+#         return out
+#     else:
+#         if dir == 'left':
+#             out = arr[-n:, ...]
+#         elif dir == 'right':
+#             out = arr[:n, ...]
+#         assert out.shape == shape
+#         return out
 
 # def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
 #     """Convert a slice to an array of integers."""
@@ -989,5 +1134,5 @@ def _pad(arr, n, dir='right'):
 
 
 
-from npyx.gl import assert_multi, get_ds_table
+from npyx.gl import assert_multi, get_ds_table, get_npyx_memory
 #

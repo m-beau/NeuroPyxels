@@ -20,6 +20,8 @@ num_cores = multiprocessing.cpu_count()
 import numpy as np
 import pandas as pd
 
+from collections import Counter
+
 from scipy.interpolate import interp1d
 from tqdm.notebook import tqdm #from tqdm import tqdm
 
@@ -74,7 +76,7 @@ def make_matrix_2xNevents(dic):
     return m
 
 def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
-                           periods='all', verbose=False, trains=None, enforced_rp=0):
+                           periods='all', verbose=False, trains=None, enforced_rp=0, log_window_end=None, n_log_bins=10):
     '''Returns the crosscorrelation function of two spike trains.
        - dp: (string): DataPath to the Neuropixels dataset.
        - win_size (float): window size, in milliseconds
@@ -89,9 +91,10 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
 
     spike_times, spike_clusters = make_phy_like_spikeClustersTimes(dp, U, periods=periods, verbose=verbose, trains=trains, enforced_rp=enforced_rp)
 
-    return crosscorr_cyrille(spike_times, spike_clusters, win_size, bin_size, fs, symmetrize)
+    return crosscorr_cyrille(spike_times, spike_clusters, win_size, bin_size, fs, symmetrize, log_window_end, n_log_bins)
 
-def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=True):
+def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=True,
+                      log_window_end=None, n_log_bins=10):
     '''Returns the crosscorrelation function of two spike trains.
        - times: array of concatenated times of all neurons, sorted in time, in samples.
        - clusters: corresponding array of neuron indices
@@ -100,80 +103,89 @@ def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=
        - U (list of integers): list of units indices.
        - fs: sampling rate (Hertz). Default 30000.
        - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-       - trains: dictionnary of trains, to calculate the CCG of an arbitrary list of trains in SAMPLES for fs=30kHz.'''
-    #### Troubleshooting
-    assert fs > 0.
-    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
-    binsize = int(np.ceil(fs * bin_size*1./1000))  # in samples
-    assert binsize >= 1 # Cannot be smaller than a sample time
-
-    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
-    winsize_bins = 2 * int(.5 * win_size *1./ bin_size) + 1 # Both in millisecond
-    assert winsize_bins >= 1
-    assert winsize_bins % 2 == 1
-
+       - log_window_end: float, end of CCG window in ms (will yield a series of n_log_bins log10 bins between 0 and log_window_end)
+       - n_log_bins: int, number of log bins'''
     phy_ss, spike_clusters = times, clusters
     units = _unique(spike_clusters)#_as_array(U) # Order of the correlogram: order of the inputted list U (replaced by its indices - see make_phy_like_spikeClustersTimes)
     n_units = len(units)
 
-    #### Compute crosscorrelograms
-    # Shift between the two copies of the spike trains.
-    shift = 1 # in indices of the spike times array... RESOLUTION OF 1 SAMPLE!
+    # Parameter check
+    assert fs > 0.
+    if log_window_end is None:
+        bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
+        win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
+        winsize_bins = 2 * int(.5 * win_size *1./ bin_size) + 1 # Both in millisecond
+        assert winsize_bins >= 1
+        assert winsize_bins % 2 == 1
 
-    # At a given shift, the mask precises which spikes have matching spikes
-    # within the correlogram time window.
+        samples_per_bin = int(np.ceil(fs * bin_size*1./1000))  # in samples
+        assert samples_per_bin >= 1 # Cannot be smaller than a sample time
 
+        correlograms = np.zeros((n_units, n_units, winsize_bins // 2 + 1), dtype=np.int32)
+
+    else:
+        log_bins = get_log_bins_samples(log_window_end, n_log_bins, fs)
+        assert np.all(log_bins>=1), "log bins can only be superior to 1 (positive half of CCG window)"
+        correlograms = np.zeros((n_units, n_units, len(log_bins)), dtype=np.int32)
+
+    # Iterate over spikes
+    # starting from the smallest time differences (the neighbouring spike, shift=1)
+    # working the way up until no neighbouring spike
+    # is close enough to to be included in the CCG window
+    # (stops when mask is only False because of mask[:-shift][spike_diff_b > (winsize_bins // 2)] = False)
+    shift = 1
     mask = np.ones_like(phy_ss, dtype=np.bool)
-
-    correlograms = np.zeros((n_units, n_units, winsize_bins // 2 + 1), dtype=np.int32) # Only computes semi correlograms (//2)
-    #print(" - CCG bins: ", winsize_bins)
-
-    # The loop continues as long as there is at least one spike with
-    # a matching (neighbouring) spike.
-    # Mask is updated at each iteration,
-    # shift is incremented at each iteration.
     while mask[:-shift].any():
 
-        # Number of time samples between spike i and spike i+shift.
+        # Compute delta_Ts between each spike and the closest spike in the past
+        # (so delta_Ts are always positive integers)
+        # no need to do the same looking in the future
+        # as these would be the same delta_Ts, but negative
         phy_ss = _as_array(phy_ss)
-        spike_diff = phy_ss[shift:] - phy_ss[:-shift] #phy_ss[:len(phy_ss) - shift]
+        spike_diff = phy_ss[shift:] - phy_ss[:-shift]
+        # convert delta from samples to number of CCG bins
+        # and naturally 'bin' by using integer division (floats rounded down to int)
+        # if bins are linear, simple division.
+        # if bins are log or anything else, no other option but to compare to bin edges
+        # (conveniently, can be computed analytically if bins are linear)
+        if log_window_end is None:
+            spike_diff_b = spike_diff // samples_per_bin
+        else:
+            bin_position = spike_diff<log_bins[:,None]
+            outside_of_win = ~np.any(bin_position, axis=0)
+            spike_diff_b = np.argmax(bin_position, axis=0)-1
+            # on log scale 0s (same time) do not have a bin.
+            # we artificially put them in the smallest bin.
+            spike_diff_b[spike_diff_b==-1] = 0 
 
-        # Binarize the delays between spike i and spike i+shift.
-        # Spike diff is populated with time differences is samples for an overlap of shift.
-        # max: conversion of spike to spike differences from samples to correlogram bins.
-        # "How many bins away are neighbouring spikes"
-        spike_diff_b = spike_diff // binsize # binsize is in samples.
-        # DELTA_Ts ARE ALWAYS POSITIVE
-
-        # Spikes with no matching spikes in the window are masked.
-        # spike_diff_b has the size of phy_ss[:-shift] hence mask[:-shift]
-        # max: i.e. spikes which do not have neighbouring spikes are masked
-        # (further than half the correlogram window winsize_bins // 2).
-        # -->> THIS IS WHERE OUTLYER DELTA_Ts IN BINS ARE EXCLUDED,
-        # THE ONLY REMAINING ONES ARE STRICTLY WITHIN THE CORRELOGRAM WINDOW
-        mask[:-shift][spike_diff_b > (winsize_bins // 2)] = False
-
-        # Cache the masked spike delays.
+        # Mask out spikes whose the closest spike in the past
+        # is further than the correlogram half window.
+        # This works because shift starts from the lowest possible delta_t (1 sample)
+        # and because spikes are sorted
+        # so spikes with no close spike for shift = 1 will never have a close spike for future shifts
+        if log_window_end is None:
+            mask[:-shift][spike_diff_b > (winsize_bins // 2)] = False
+        else:
+            # (because using argmax, cannot be larger than window edge)
+            mask[:-shift][outside_of_win] = False
         m = mask[:-shift].copy()
-        delta_t_bins_filtered = spike_diff_b[m] # remove the spike diffs calculated from spikes with no neighbouring spike
 
-        # Find the indices in the raveled correlograms array that need
-        # to be incremented, taking into account the spike units.
+        # Extract delta_Ts within half CCG window
+        delta_t_bins_filtered = spike_diff_b[m]
+
+        # Find units indices matching the delta_ts
         spike_clusters_i = _index_of(spike_clusters, units)
         end_units_i=spike_clusters_i[:-shift][m]
         start_units_i=spike_clusters_i[+shift:][m]
-        # numpy ravel_nulti_index -> PROPERLY INDEX THE DELTA_Ts IN BINS TO THEIR PAIRS OF UNITS
-        # first argument: one array for each dimension
-        # second argument: size of each dimension (NunitsxNunitsxWindow/binsize)
         indices = np.ravel_multi_index((end_units_i, start_units_i, delta_t_bins_filtered), correlograms.shape)
+        indices = _as_array(indices)
+
+        # Count histogram of delta_Ts for this set of neighbours (shift), binwise
+        # bbins becomes a 3D array, Nunits x Nunits x Nbins
+        bbins = np.bincount(indices) # would turn [0,5,2,2,3]ms into [1,0,2,1,0,1]
 
         # Increment the matching spikes in the correlograms array.
-        # arr, indices shapes are NunitsxNunitsxNbins
-        # bbins shape is NunitsxNunitsx:len(bbins) where bbins[2] goes from 0 to <=Nbins
-        arr = correlograms.ravel() # Alias -> modif of arr will apply to correlograms
-        arr = _as_array(arr)
-        indices = _as_array(indices)
-        bbins = np.bincount(indices) # would turn [0,2,3,5]ms into [1,0,1,1,0,1]
+        arr = _as_array(correlograms.ravel()) # Alias -> modif of arr will apply to correlograms
         arr[:len(bbins)] += bbins # increments the NunitsxNunits histograms at the same time
 
         shift += 1
@@ -200,9 +212,16 @@ def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=
 
     return correlograms
 
+def get_log_bins_samples(log_window_end, n_log_bins, fs):
+    "log_window_end in ms, fs is sampling rate - output in samples."
+    log_window_end = log_window_end * fs/1000 # convert to samples
+    assert assert_int(n_log_bins), "n_log_bins must be an integer!"
+    log_bins = np.logspace(np.log10(1),np.log10(log_window_end), n_log_bins+1)
+    return log_bins
+
 def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
        ret=True, sav=True, verbose=False, periods='all', again=False,
-       trains=None, enforced_rp=0):
+       trains=None, enforced_rp=0, log_window_end=None, n_log_bins=10):
     '''
     ********
     computes crosscorrelogram (1, window/bin_size) - int64, in Hertz
@@ -222,10 +241,16 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
       - sav (bool - default True): if True, by definition of the routine, saves the file in dp.
       - trains: [array, array...]: list of trains fed to the function in SAMPLES (not seconds).
                 (the U can be any ints/floats, but it is still necessary)
+     - enforced_rp: float, enforced refractory period (in ms).
+                    If provided, any spikes closer than enforced_rp ms will be removed (nd spike of any pair)
+     - log_window_end: float, end of CCG window in ms (if provided, bins will be logarithmic,
+                       between 1 and log_window_end - default None, linear scale)
+     - n_log_bins: int, number of log bins to use if log_window_end is provided.
 
       returns numpy array (Nunits, Nunits, win_size/bin_size)
 
     '''
+    assert assert_int(fs), "sampling rate fs must be an integer."
     assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore'], \
         "WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore']."
 
@@ -253,11 +278,18 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
     dpnm = get_npyx_memory(dp)
 
     ep_str='' if enforced_rp==0 else str(enforced_rp)
-    fn='ccg{}_{}_{}_{}({}){}.npy'.format(
-        str(sortedU).replace(" ", ""), bin_size,
-        int(win_size), normalize,
-        str(periods)[0:50].replace(' ', '').replace('\n',''),
-        ep_str)
+    if log_window_end is None:
+        fn='ccg{}_{}_{}_{}({}){}.npy'.format(
+            str(sortedU).replace(" ", ""), bin_size,
+            int(win_size), normalize,
+            str(periods)[0:50].replace(' ', '').replace('\n',''),
+            ep_str)
+    else:
+        fn='ccglog{}_{}_{}_{}({}){}.npy'.format(
+            str(sortedU).replace(" ", ""), n_log_bins,
+            log_window_end, normalize,
+            str(periods)[0:50].replace(' ', '').replace('\n',''),
+            ep_str)
     if os.path.exists(Path(dpnm,fn)) and not again and trains is None:
         if verbose: print("File {} found in routines memory.".format(fn))
         try:  # handling of weird allow_picke=True error
@@ -269,7 +301,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
     if 'crosscorrelograms' not in locals(): # handling of weird allow_picke=True error
         if verbose: print("File {} not found in routines memory.".format(fn))
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True,
-                                                   periods=periods, verbose=verbose, trains=trains, enforced_rp=enforced_rp)
+                                                   periods, verbose, trains, enforced_rp,
+                                                   log_window_end, n_log_bins)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
         if crosscorrelograms.shape[0]<len(U): # no spikes were found in this period
             # Maybe if not any(crosscorrelograms.ravel()!=0):
@@ -312,7 +345,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
     return sortedC
 
 def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz',
-        ret=True, sav=True, verbose=False, periods='all', again=False, train=None):
+        ret=True, sav=True, verbose=False, periods='all', again=False,
+        train=None, enforced_rp=0, log_window_end=None, n_log_bins=10):
     '''
     ********
     computes autocorrelogram (1, window/bin_size) - int64, in Hertz
@@ -328,6 +362,11 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz',
      - periods: [[t1,t2], [t3,t4...]], windows of time (in seconds) to use to comput acg
      - again: bool, whether to recompute array rather than loading it from npyxMemory
      - train: array (nspikes,), externally fed spike train (in SAMPLES, not seconds)
+     - enforced_rp: float, enforced refractory period (in ms).
+                    If provided, any spikes closer than enforced_rp ms will be removed (nd spike of any pair)
+     - log_window_end: float, end of CCG window in ms (if provided, bins will be logarithmic,
+                       between 1 and log_window_end - default None, linear scale)
+     - n_log_bins: int, number of log bins to use if log_window_end is provided.
 
       returns numpy array (win_size/bin_size)
       '''
@@ -336,7 +375,8 @@ def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz',
 
     # NEVER save as acg..., uses the function ccg() which pulls out the acg from files stored as ccg[...].
     if train is not None: train = [train]
-    return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, verbose, periods, again, trains=train)[0,0,:]
+    return ccg(dp, [u,u], bin_size, win_size, fs, normalize, ret, sav, verbose,
+               periods, again, train, enforced_rp, log_window_end, n_log_bins)[0,0,:]
 
 def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
             min_sec = 180, again = False, first_n_minutes = 20,
@@ -2029,3 +2069,4 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
 #%% Circular imports
 from npyx.plot import plot_pval_borders
 from npyx.spk_wvf import get_depthSort_peakChans
+from npyx.behav import get_processed_ifr

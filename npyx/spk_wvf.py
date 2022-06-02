@@ -21,7 +21,7 @@ from math import ceil
 import matplotlib.pyplot as plt
 
 from npyx.utils import npa, split, xcorr_1d_loop
-from npyx.inout import read_metadata, chan_map, whitening, bandpass_filter, apply_filter, med_substract
+from npyx.inout import read_metadata, get_binary_file_path, chan_map, whitening, bandpass_filter, apply_filter, med_substract
 from npyx.gl import get_units, get_npyx_memory
 
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', periods='all',
@@ -114,9 +114,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     # Extract and process metadata
     dp = Path(dp)
     meta = read_metadata(dp)
-    assert meta['highpass']['binary_relative_path']!='not_found',\
-        f'No binary file (./*.ap.bin or ./continuous/Neuropix-PXI-100.0/*.dat) found in folder {dp}!!'
-    dat_path = dp/meta['highpass']['binary_relative_path']
+    dat_path = get_binary_file_path(dp, 'ap')
 
     dp_source = get_source_dp_u(dp, u)[0]
     meta=read_metadata(dp_source)
@@ -127,9 +125,12 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     item_size = dtype.itemsize
     fileSizeBytes=meta['highpass']['binary_byte_size']
     if meta['acquisition_software']=='SpikeGLX':
-        assert meta['highpass']['fileSizeBytes'] == fileSizeBytes,\
-            f'''Mismatch between ap.meta and ap.bin file size (assumed encoding is {str(dtype)} and Nchannels is {n_channels_dat})!!
-            Prob wrong meta file - just edit fileSizeBytes in the .ap.meta file at {dp} (replace with {fileSizeBytes}) and be aware that something went wrong in your data management...'''
+        if meta['highpass']['fileSizeBytes'] != fileSizeBytes:
+            print((f"\033[91;1mMismatch between ap.meta and ap.bin file size"
+            "(assumed encoding is {str(dtype)} and Nchannels is {n_channels_dat})!! "
+            f"Probably wrong meta file - just edit fileSizeBytes in the .ap.meta file at {dp} "
+            f"(replace {int(meta['highpass']['fileSizeBytes'])} with {fileSizeBytes}) "
+            "and be aware that something went wrong in your data management...\033[0m"))
 
     # Select subset of spikes
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
@@ -329,11 +330,10 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     spike_ids_split = spike_ids_split.reshape(-1,n_waveforms_per_batch)
     raw_waves = raw_waves.reshape(spike_ids_split.shape[0], n_waveforms_per_batch, t_waveforms, -1)
     mean_waves = np.mean(raw_waves, axis = 1)
-
     ## Find peak channel (and store amplitude) of every batch
     # only consider amplitudes on channels around original peak channel
     original_peak_chan = get_peak_chan(dp, u)
-    c_left, c_right = original_peak_chan-peakchan_allowed_range, original_peak_chan+peakchan_allowed_range
+    c_left, c_right = max(0, original_peak_chan-peakchan_allowed_range), min(original_peak_chan+peakchan_allowed_range, mean_waves.shape[2])
     # calculate amplitudes ("peak-to-peak"), but ONLY using 2ms (-30,30) in the middle
     t1, t2 = max(0,mean_waves.shape[1]//2-30), min(mean_waves.shape[1]//2+30, mean_waves.shape[1])
     amplitudes = np.ptp(mean_waves[:,t1:t2,c_left:c_right], axis=1)
@@ -377,14 +377,16 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         nbatches_hist = batch_peak_channels.shape[0]
         fig = hist_MB(batch_peak_channels[:,2], a=10, b=max_amp_hist, s=5, color='grey', alpha=0.7)
 
-    # if less than n_driftmatched_subset batches below 99th percentile,
+    # if less than n_driftmatched_subset batches below 95th percentile,
     # use all up to n_driftmatched_subset batches
-    prct_99_i = int(batch_peak_channels.shape[0]*0.99)
-    if prct_99_i<n_driftmatched_subset: 
+    ## TODO only perform the following if distribution is unimodal
+    # (Hartigan Dip-test of Unimodality)
+    prct_95_i = int(batch_peak_channels.shape[0]*0.95)
+    if prct_95_i<n_driftmatched_subset: 
         batch_peak_channels = batch_peak_channels[0:n_driftmatched_subset]
     else:
-        i_left = max(prct_99_i - n_driftmatched_subset, 0) # should never be negative given if statement, but precaution
-        batch_peak_channels = batch_peak_channels[i_left:prct_99_i]
+        i_left = max(prct_95_i - n_driftmatched_subset, 0) # should never be negative given if statement, but precaution
+        batch_peak_channels = batch_peak_channels[i_left:prct_95_i]
     drift_matched_spike_ids = np.sort(batch_peak_channels[:,0])
 
     if plot_debug:
@@ -405,8 +407,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         drift_shift_matched_batches = shift_match(drift_matched_batches, peak_channel, max_allowed_shift, recenter_spikes, plot_debug)
     else:
         drift_shift_matched_batches = drift_matched_batches
-    # Get the mean of the drift and shift matched waves
-    drift_shift_matched_mean = np.mean(drift_shift_matched_batches, axis=0)
+    # Get the median of the drift and shift matched waves (not sensitive to outliers)
+    drift_shift_matched_mean = np.median(drift_shift_matched_batches, axis=0)
     drift_shift_matched_mean_peak = drift_shift_matched_mean[:,peak_channel]
     # recenter spike absolute maximum
     shift = (np.argmax(np.abs(drift_shift_matched_mean_peak)) - drift_shift_matched_mean_peak.shape[0]//2)%drift_shift_matched_mean_peak.shape[0]
@@ -420,7 +422,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         np.save(Path(dpnm, fn_peakchan), peak_channel)
 
     if plot_debug:
-        print(f'Total averaged waveform batches ({n_waveforms_per_batch}/batch) after drift-shift matching: {batch_peak_channels.shape[0]}')
+        if verbose: print(f'Total averaged waveform batches ({n_waveforms_per_batch}/batch) after drift-shift matching: {batch_peak_channels.shape[0]}')
         fig = quickplot_n_waves(np.mean(mean_waves[np.random.randint(0, mean_waves.shape[0], batch_peak_channels.shape[0]),:,:], axis=0), '', peak_channel)
         fig = quickplot_n_waves(np.mean(drift_matched_batches, axis=0), '', peak_channel, fig=fig)
         fig = quickplot_n_waves(drift_shift_matched_mean, 'raw:blue\ndrift-matched:orange\ndrift-shift-matched:green', peak_channel, fig=fig)
@@ -462,10 +464,10 @@ def shift_match(waves, alignment_channel,
     amplitudes = np.ptp(waves[:,:,alignment_channel], axis=1)
     amplitudes_i = np.argsort(amplitudes, axis=0)
     waves_sort = waves[amplitudes_i[::-1],:,:]
-    # use 10 waves of highest amplitude as template
+    # use median of 50 waves of highest amplitude as template
     # most arbitrary decision 0 but seems reasonable and empirically works
-    n_waveforms_template=10
-    template = np.mean(waves_sort[:n_waveforms_template,:,:], axis=0)
+    n_waveforms_template=50
+    template = np.median(waves_sort[:n_waveforms_template,:,:], axis=0)
     if recenter_spikes:
         shift = (np.argmax(np.abs(template[:,alignment_channel])) - template.shape[0]//2)%template.shape[0]
         if plot_debug:
@@ -476,10 +478,11 @@ def shift_match(waves, alignment_channel,
 
     # initialize array
     aligned_waves = np.zeros(waves_sort.shape)
-    template = template[:,alignment_channel-chan_range:alignment_channel+chan_range] # defined across 10 closest channels
+    chan_min, chan_max = max(0,alignment_channel-chan_range), min(alignment_channel+chan_range, template.shape[1])
+    template = template[:,chan_min:chan_max] # defined across 10 closest channels
     shifts = []
     for i, w in enumerate(waves_sort):
-        w_closestchannels = w[:,alignment_channel-chan_range:alignment_channel+chan_range]
+        w_closestchannels = w[:,chan_min:chan_max]
         xcorr_w_template = xcorr_1d_loop(template, w_closestchannels)
         # average xcorr across channels to find the optimal alignment
         # using information from all channels around peak!
@@ -502,7 +505,7 @@ def shift_match(waves, alignment_channel,
         if dynamic_template:
             template = np.mean(np.stack(
                             [template,
-                            realigned_w[:,alignment_channel-chan_range:alignment_channel+chan_range]],
+                            realigned_w[:,chan_min:chan_max]],
                             axis=2), axis=2)
 
     # discard nans (beyond max_shift_allowed) and re-sort waves properly
@@ -529,7 +532,7 @@ def get_pc(waveforms):
     peak_chan = np.argmax(max_min_wvf)
     return peak_chan
 
-def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=True):
+def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=True, periods='all'):
     '''
     Returns index of peak channel, either according to the full probe channel map (0 through 383)
                                    or according to the kilosort channel map (0 through N with N<=383)
@@ -571,7 +574,7 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
         peak_chan = cm[:,0][ks_peak_chan]
     else:
         waveforms=wvf(dp, u=unit, n_waveforms=200, t_waveforms=82,
-                      selection='regular', periods='all', spike_ids=None, again=again,
+                      selection='regular', periods=periods, spike_ids=None, again=again,
                       ignore_ks_chanfilt=True)
         probe_peak_chan = get_pc(waveforms)
         if ignore_ks_chanfilt: # absolute == relative channel index
@@ -645,10 +648,10 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
 
     return peak_chans # units, channels
 
-def get_peak_pos(dp, unit, use_template=False):
+def get_peak_pos(dp, unit, use_template=False, periods='all'):
     "Returns [x,y] relative position on the probe in um (y=0 at probe tip)."
     dp, unit = get_source_dp_u(dp, unit)
-    peak_chan=get_peak_chan(dp, unit, use_template)
+    peak_chan=get_peak_chan(dp, unit, use_template, periods=periods)
     pos = np.load(Path(dp,'channel_positions.npy'))
     cm=chan_map(dp, probe_version='local')
     return pos[cm[:,0]==peak_chan].ravel()

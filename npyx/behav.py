@@ -121,7 +121,7 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
                 paqdic['CameraFrames_ON_npix']=paqdic['CameraFrames_ON_npix'][mon]
                 paqdic['CameraFrames_OFF_npix']=paqdic['CameraFrames_OFF_npix'][mof]
             frames_npix=paqdic['CameraFrames_ON_npix']/paqdic['npix_fs']
-            nframes=[get_nframes(v) for v in videos]
+            nframes=[get_nframes(str(v)) for v in videos]
             print(f'Videos nframes:{nframes} -> {np.sum(nframes)} frames in video files.')
             print(f'{frames_npix.shape[0]} triggers in paqIO file')
             print(f'PaqIO inter-trigger intervals below 1ms: {sum(np.diff(frames_npix)<0.001)}.')
@@ -160,6 +160,15 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
             swings_onof_i=np.load(swings_fn)
             paqdic['swing_ON_npix']=paqdic['CameraFrames_ON_npix'][swings_onof_i[:,0].ravel()]
             paqdic['swing_OFF_npix']=paqdic['CameraFrames_ON_npix'][swings_onof_i[:,1].ravel()]
+
+        swings_fn = dp.parent/'behavior'/'swing_onsets_phasethreshold.npy'
+        if swings_fn.exists():
+            print('Loaded swing phase onsets from deeplabcut data.')
+            swing_on = np.load(swings_fn)
+            stance_on = np.load(swings_fn.parent/'stance_onsets_phasethreshold.npy')
+            paqdic['swing_phase_ON_npix'] = paqdic['CameraFrames_ON_npix'][swing_on]
+            paqdic['stance_phase_ON_npix'] = paqdic['CameraFrames_ON_npix'][stance_on]
+            paqdic['deeplabcut_df'] = pd.read_csv(swings_fn.parent/'locomotion_processed.csv')
 
 
     # Process cues and rewards - only engaged events are considered!
@@ -674,7 +683,9 @@ def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remov
         if np.any(ts_win) or not remove_empty_trials:
             aligned_t[e]=ts_win.tolist()
             tscb = np.histogram(ts_win*1000, bins=tbins, weights=variable_win)[0] # tscb: tsc binned
-            binned_variable[i,:] = tscb
+            tscb_n = np.histogram(ts_win*1000, bins=tbins)[0]
+            tscb_n[tscb_n==0]=1 # no 0 div
+            binned_variable[i,:] = tscb/tscb_n
         else:
             binned_variable[i,:] = np.nan
     binned_variable=binned_variable[~np.isnan(binned_variable).any(axis=1)]
@@ -714,6 +725,10 @@ def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=Fal
     if not np.any(aligned_tb): aligned_tb = np.zeros((len(events), len(tbins)))
 
     return aligned_t, aligned_tb
+
+def time_to_phase():
+
+    return
 
 def align_times_manyevents(times, events, b=2, window=[-1000,1000], fs=30000):
     '''
@@ -915,6 +930,115 @@ def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_tri
                       bsl_subtract, process_y)
 
     return x, y, y_p, y_p_var
+
+
+def get_processed_BTN_matrix(b, w,
+                    trains=None, events=None, BT_matrices=None,
+                    convolve=False, sd=2, kernel='gaussian_causal',
+                    return_poisson=False, remove_empty_trials=True, return_trials_mask=False):
+    """
+    Returns a matrix M of shape (B,T,N) = (n bins, n trials, n neurons).
+
+    If desired, alongside its random Poisson counterpart (return_poisson = True).
+    """
+
+    M = get_BTN_matrix(b, w, trains, events, BT_matrices)
+    B, T, N = M.shape
+
+    if remove_empty_trials:
+        M, all_active_mask, active_masks = filter_allneurons_active(M, p=0, return_masks=True)
+        print(f"{N} Neurons commonly active on {all_active_mask.sum()}/{T} trials.")
+
+    if return_poisson:
+        Mo = get_poisson_BTN_matrix(M)
+
+    if convolve:
+        sd=int(sd/b) # convert from ms to bins
+        sd=max(1,sd) # cap to 1
+        for n in range(N):
+            M[:,:,n] = smooth(M[:,:,n], kernel, sd=sd, axis=0)
+        if return_poisson:
+            for n in range(N):
+                Mo[:,:,n] = smooth(Mo[:,:,n], kernel, sd=sd, axis=0)
+    ret = [M]
+    if return_poisson:
+        ret.append(Mo)
+    if return_trials_mask:
+        if not remove_empty_trials:
+            all_active_mask = np.ones(T).astype(bool)
+        ret.append(all_active_mask)
+
+    return tuple(ret)
+
+
+def get_BTN_matrix(b, w, trains=None, events=None, BT_matrices=None):
+    """
+    B: n bins, T: n trials, N: n neurons
+    - trains: list of N arrays, in seconds
+    - events: (T,) array, in seconds
+    """
+
+    assert (trains is not None and events is not None)|(BT_matrices is not None),\
+        "You must provide either trains and events or BT_matrices."
+
+    if BT_matrices is None:
+        BT_matrices = []
+        for t in trains:
+            x, y, y_p, y_p_var = get_processed_ifr(t, events, b, w)
+            BT_matrices.append((y.T*b/1000).astype(np.int32))
+
+    B, T = BT_matrices[0].shape
+    N = len(BT_matrices)
+    assert B == len(np.arange(w[0], w[1], b)), \
+        "WARNING mismatch between provided BT_matrice and expected bin and window size."
+
+    M = np.zeros((B, T, N))
+    for i,y in enumerate(BT_matrices):
+        M[:,:,i] = y
+    
+    return M
+
+
+def get_poisson_BTN_matrix(M):
+
+    B, T, N = M.shape
+
+    # subselect trials with spikes to make finer estimation
+    M_active, all_active_mask, active_masks = filter_allneurons_active(M, p=0, return_masks=True)
+
+    Mo = M.copy()
+    for n in range(N):
+        active_mask = active_masks[:,n]
+        lam = np.mean(M[:, active_mask, n], 1)
+        P_lam = np.random.poisson(np.tile(lam[None, :], (active_mask.sum(), 1)))
+        Mo[:,active_mask,n] = P_lam.T
+
+    return Mo
+
+
+def filter_allneurons_active(M, p=0, return_masks=False):
+    """
+    - M: BxTxN matrix
+    - p: [0-1], proportion of mean firing rate above which a trial must be 
+                for the neuron to be considered active. Default 0 (there must be a tleast 1 spike in the trial)."""
+    
+    B, T, N = M.shape
+
+    active_masks = np.zeros((T,N)).astype(np.bool)
+    for n in range(N):
+        mean_T = np.mean(M[:,:,n], axis=0)
+        non0_mask = mean_T > 0
+        mean_firing_rate = np.mean(M[:,non0_mask,n].ravel())
+        active_mask = np.mean(M[:,:,n], axis=0) > p*mean_firing_rate
+        active_masks[:,n] = active_mask.astype(np.bool)
+    
+    all_active_mask = np.logical_and.reduce(active_masks, axis=1)
+
+    if return_masks:
+        return M[:,all_active_mask,:], all_active_mask, active_masks
+
+    return M[:,all_active_mask,:]
+
 
 def get_processed_popsync(trains, events, psthb=10, window=[-1000,1000],
                           events_tiling_frac=0.1, sync_win=2, fs=30000, t_end=None,

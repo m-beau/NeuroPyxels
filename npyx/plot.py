@@ -13,6 +13,7 @@ import pickle as pkl
 from tqdm.notebook import tqdm #from tqdm import tqdm
 
 import numpy as np
+from math import floor, log10
 
 import matplotlib
 import matplotlib as mpl
@@ -181,10 +182,10 @@ def mplp(fig=None, ax=None, figsize=None,
          xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=False, reset_yticks=False,
          xtickrot=0, ytickrot=0, xtickha='center', xtickva='top', ytickha='right', ytickva='center',
          axlab_w='bold', axlab_s=16,
-         ticklab_w='regular', ticklab_s=14, ticks_direction='out', lw=2,
+         ticklab_w='regular', ticklab_s=14, ticks_direction='out', lw=1,
          title=None, title_w='bold', title_s=16,
          hide_top_right=True, hide_axis=False,
-         tight_layout=True, hspace=None, wspace=None):
+         tight_layout=False, hspace=None, wspace=None, hide_legend=False):
     '''
     make plots pretty
     matplotlib plots
@@ -270,7 +271,26 @@ def mplp(fig=None, ax=None, figsize=None,
     fig.align_ylabels(axis_to_align)
     fig.align_xlabels(axis_to_align)
 
+    if hide_legend: plt.legend([],[], frameon=False)
+
     return fig, ax
+
+def sci_notation(num, decimal_digits=1, precision=None, exponent=None):
+    """
+    Returns a string representation of the scientific
+    notation of the given number formatted for use with
+    LaTeX or Mathtext, with specified number of significant
+    decimal digits and precision (number of decimal digits
+    to show). The exponent to be used can also be specified
+    explicitly.
+    """
+    if exponent is None:
+        exponent = int(floor(log10(abs(num))))
+    coeff = round(num / float(10**exponent), decimal_digits)
+    if precision is None:
+        precision = decimal_digits
+
+    return r"${0:.{2}f}\cdot10^{{{1:d}}}$".format(coeff, exponent, precision)
 
 def get_all_mpl_colors():
     mpl_colors=get_mpl_css_colors(sort=True, aslist=False)
@@ -444,6 +464,8 @@ def set_ax_size(ax,w,h):
     figh = float(h)/(t-b)
     ax.figure.set_size_inches(figw, figh)
 
+#%% Exploratory plots
+
 def hist_MB(arr, a=None, b=None, s=None,
             title='Histogram', xlabel='', ylabel='',
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
@@ -469,6 +491,36 @@ def hist_MB(arr, a=None, b=None, s=None,
     if saveFig: save_mpl_fig(fig, title, saveDir, _format)
       
     return fig
+
+def paired_plot(df, cats, ylabel=None, xlabel=None, color="grey",
+               dodge=True, dodge_range=0.1,
+               figsize=(3,5)):
+    """
+    df: pandas dataframe
+    cats: list of str, columns of dataframe df
+    """
+
+    plt.figure()
+
+    x0=df[cats[0]]*0
+    l=len(x0)
+
+    lines_x = np.zeros((len(cats), l))
+    lines = np.zeros((len(cats), l))
+    for i, cat in enumerate(cats):
+        x = x0+i
+        if dodge: x += np.random.uniform(-dodge_range, dodge_range, l)
+        y = df[cat]
+        assert len(y) == l
+        plt.scatter(x, y, color=color, edgecolor='k')
+
+        lines_x[i,:]=x
+        lines[i,:]=y
+
+    plt.plot(lines_x, lines, color=color, alpha=0.5, zorder=-1)
+
+    mplp(figsize=figsize, ylabel=ylabel, xlabel=xlabel,
+         xlim=[-0.5, i+0.5], xticks=np.arange(i+1), xtickslabels=cats)
 
 
 #%% Stats plots ##############################################################################################
@@ -557,11 +609,11 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
              periods='all', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
              whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
              title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
-             labels=False, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
+             labels=False, show_channels=True, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf',
              ignore_ks_chanfilt = True,
              ax_edge_um_x=22, ax_edge_um_y=18, margin=0.12, figw_inch=6, figh_inch=None,
-             as_heatmap=False):
+             as_heatmap=False, use_dsmatch=False, verbose=False):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
     Parameters:
@@ -589,6 +641,9 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         - ax_edge_um_y: float, height of subplot.
         - margin: [0-1], figure margin (in proportion of figure)
         - figw_inch: float, figure width in inches (height is derived from width, in inches)
+        - figh_inch: float, specify figure height instead of width
+        - as_heatmap: bool, whether to display waveform as heatmap instead of collection of 2D plots
+        - use_dsmatch: bool, whether to use drift-shift-matched waveform
     Returns:
         - matplotlib figure with Nchannels subplots, plotting the mean
     '''
@@ -599,28 +654,30 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     pv=None if ignore_ks_chanfilt else 'local'
     cm=chan_map(dp, y_orig='tip', probe_version=pv)
 
-    peak_chan=get_peak_chan(dp, u, use_template=True)
+    peak_chan=get_peak_chan(dp, u, use_template=True) # use get_pc(waveforms)
     peak_chan_i = int(np.argmin(np.abs(cm[:,0]-peak_chan)))
     t_waveforms_s=int(t_waveforms*(fs/1000))
 
     # Get data
-    use_dsmatch=False ##TODO make sure that ds_match returns the waveforms std
     if not use_dsmatch:
         waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s, selection='regular',
-                        periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, again=again,
+                        periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, verbose=verbose, again=again,
                         whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
                         ignore_ks_chanfilt = ignore_ks_chanfilt)
+        assert waveforms.shape[0]!=0,'No waveforms were found in the provided periods!'
+        assert waveforms.shape[1:]==(t_waveforms_s, cm.shape[0])
     else:
+        plot_std=False
+        sample_lines=0
         waveforms=wvf_dsmatch(dp, u, n_waveforms=n_waveforms,
                   t_waveforms=t_waveforms_s, periods=periods,
                   wvf_batch_size=wvf_batch_size, ignore_nwvf=True, spike_ids = None,
-                  save=True, verbose=False, again=again,
+                  save=True, verbose=verbose, again=again,
                   whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
                   nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub)[1]
-    assert waveforms.shape[0]!=0,'No waveforms were found in the provided periods!'
-    assert waveforms.shape[1:]==(t_waveforms_s, cm.shape[0])
+
     tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
-    assert tplts.shape[2]==waveforms.shape[2]==cm.shape[0]
+    assert tplts.shape[2]==waveforms.shape[-1]==cm.shape[0]
 
     # Filter the right channels
     if chStart is None:
@@ -630,14 +687,19 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         chStart_i = int(max(int(np.argmin(np.abs(cm[:,0]-chStart))), 0)) # finds closest chStart given kilosort chanmap
         chStart=cm[chStart_i,0] # Should remain the same, unless chStart was capped to 384 or is a channel ignored to kilosort
 
-    chStart_i=int(min(chStart_i, waveforms.shape[2]-Nchannels-1))
+    chStart_i=int(min(chStart_i, waveforms.shape[-1]-Nchannels-1))
     chEnd_i = int(chStart_i+Nchannels) # no lower capping needed as
-    assert chEnd_i <= waveforms.shape[2]-1
+    assert chEnd_i <= waveforms.shape[-1]-1
 
-    data = waveforms[:, :, chStart_i:chEnd_i]
-    data=data[~np.isnan(data[:,0,0]),:,:] # filter out nan waveforms
-    datam = np.mean(data,0).T
-    datastd = np.std(data,0).T
+    if not use_dsmatch:
+        data = waveforms[:, :, chStart_i:chEnd_i]
+        data=data[~np.isnan(data[:,0,0]),:,:] # filter out nan waveforms
+        datam = np.mean(data,0).T
+        datastd = np.std(data,0).T
+    else:
+        datam = waveforms[:, chStart_i:chEnd_i].T
+        datastd = datam*0
+
     tplts=tplts[:, :, chStart_i:chEnd_i]
     subcm=cm[chStart_i:chEnd_i,:].copy().astype(np.float32)
 
@@ -652,8 +714,8 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         color=to_rgb(color)
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
     ylim1, ylim2 = (np.nanmin(datam-datastd)-50, np.nanmax(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
-    x = np.linspace(0, data.shape[1]/(fs/1000), data.shape[1]) # Plot t datapoints between 0 and t/30 ms
-    x_tplts = x[(data.shape[1]-tplts.shape[1])//2:(data.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
+    x = np.linspace(0, datam.shape[1]/(fs/1000), datam.shape[1]) # Plot t datapoints between 0 and t/30 ms
+    x_tplts = x[(datam.shape[1]-tplts.shape[1])//2:(datam.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
 
     #Plot
     if as_heatmap:
@@ -714,9 +776,10 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
             ax[i].spines['top'].set_visible(False)
             ax[i].spines['left'].set_lw(ticks_lw)
             ax[i].spines['bottom'].set_lw(ticks_lw)
-            if labels:
+            if show_channels:
                 ax[i].text(0.99, 0.99, int(subcm[i,0]),
                                 size=12, weight='regular', ha='right', va='top', transform = ax[i].transAxes)
+            if labels:
                 ax[i].tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=ticks_lw, length=3*ticks_lw, labelsize=12)
                 if i==i_bottomleft:
                     ax[i].set_ylabel('Voltage (\u03bcV)', size=12, weight='bold')
@@ -771,10 +834,10 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 20, fig=None):
     return fig
 
 def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), filt_key='highpass',
-             offset=450, color='multi', lw=1, bg_alpha=0.8,
-             title=None, _format='pdf',  saveDir='~/Downloads', saveData=0, saveFig=0, figsize=(20,8),
-             whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
-             plot_ylabels=True, show_allyticks=0, yticks_jump=50, plot_baselines=False,
+             offset=450, color='black', lw=1, bg_alpha=0.8,
+             title=None, _format='pdf',  saveDir='~/Downloads', saveFig=0, figsize=(8,10), again=False,
+             whiten=False, nRangeWhiten=None, med_sub=False, center_chans_on_0=True, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
+             plot_ylabels=True, show_allyticks=0, yticks_jump=10, plot_baselines=False,
              events=[], set0atEvent=1,
              ax=None, ext_data=None, ext_datachans=np.arange(384),
              as_heatmap=False, vmin=-50,vmax=50,center=0):
@@ -790,9 +853,8 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     - saveData (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
     - saveFig: save the figure at saveDir
     - _format: format of the figure to save | default: pdf
-    - color: color to plot all the lines. | default: multi, will use 20DistinctColors iteratively to distinguish channels by eye
+    - color: color to plot all the lines ('multi' will use 20DistinctColors iteratively to distinguish channels by eye)
     - whiten: boolean, whiten data or not
-    - pyqtgraph: boolean, whether to use pyqtgraph backend instead of matplotlib (faster to plot and interact, use to explore data before saving nice plots with matplotlib) | default 0
     - show_allyticks: boolean, whetehr to show all y ticks or not (every 50uV for each individual channel), only use if exporing data | default 0
     - events: list of times where to plot vertical lines, in seconds.
     - set0atEvent: boolean, set time=0 as the time of the first event provided in the list events, if any is provided.
@@ -807,7 +869,6 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
 
     '''
-    pyqtgraph=0
     assert filt_key in ['highpass', 'lowpass']
     fs = read_metadata(dp)[filt_key]['sampling_rate']
     assert assert_iterable(events)
@@ -815,19 +876,25 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     if ext_data is None:
         channels=assert_chan_in_dataset(dp, channels)
         if times is not None:
-            assert alignement_events is None, 'You can either provide a window of 2 times or a list of alignement_events + a single window to compute an average, but not both!'
-            rc = extract_rawChunk(dp, times, channels, filt_key, saveData, 1, whiten, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten)
+            assert alignement_events is None, 'You can either provide a window of 2 times or a list of alignement_events \
+                + a single window to compute an average, but not both!'
+            rc = extract_rawChunk(dp, times, channels, filt_key, 1,
+                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
+                     ignore_ks_chanfilt, center_chans_on_0, 0, scale=1, again=again)
         if alignement_events is not None:
             assert window is not None
             window[1]=window[1]+1*1000/fs # to make actual window[1] tick visible
-            assert times is None, 'You can either provide a window of 2 times or a list of alignement_events + a single window to compute an average, but not both!'
+            assert times is None, 'You can either provide a window of 2 times or a list of alignement_events \
+                + a single window to compute an average, but not both!'
             assert len(alignement_events)>1
-            rc = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, filt_key, saveData,
-                                  whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
+            # d = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, filt_key, 1,
+            #          whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
+            #          ignore_ks_chanfilt, center_chans_on_0, 0, scale=1, again=again)
             for e in alignement_events[1:]:
                 times=e+npa(window)/1e3
-                rc+=extract_rawChunk(dp, times, channels, filt_key, saveData,
-                                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
+                rc+=extract_rawChunk(dp, times, channels, filt_key, 1,
+                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
+                     ignore_ks_chanfilt, center_chans_on_0, 0, scale=1, again=again)
             rc/=len(alignement_events)
     else:
         channels=assert_chan_in_dataset(dp, ext_datachans)
@@ -835,7 +902,6 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
         assert window is not None, 'You must tell the plotting function to which time window the external data corresponds to!'
         times=window
         rc=ext_data.copy()
-        assert not pyqtgraph
 
     # Define y ticks
     plt_offsets = np.arange(0, rc.shape[0]*offset, offset)
@@ -857,63 +923,61 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     if alignement_events is not None:
         t=t+window[0]
         events=[0]
-    if not pyqtgraph:
-        if isinstance(color, str):
-            if color=='multi':color=None
-            else:color=to_rgb(color)
-        if as_heatmap:
-            xticklabels = get_bestticks_from_array(t, step=None)
-            xticks=xticklabels*fs/1000
-            y_ticks_labels=npa([x*10 if x%2==0 else x*10-10 for x in y_ticks_labels])
 
-            fig=imshow_cbar(im=rc, origin='top', xevents_toplot=[], events_color='k',
-                            xvalues=None, yvalues=None, xticks=xticks-xticks[0], yticks=y_ticks,
-                            xticklabels=xticklabels, yticklabels=y_ticks_labels, xlabel=None, ylabel=None,
-                            cmapstr="RdBu_r", vmin=vmin, vmax=vmax, center=center, colorseq='nonlinear',
-                            clabel='Voltage (\u03BCV)', extend_cmap='neither', cticks=None,
-                            figsize=(4,10), aspect='auto', function='imshow', ax=None)
-            ax=fig.axes[0]
-            ax.set_ylabel('Depth (\u03BCm)', size=14, weight='bold')
-        else:
-            fig, ax = plt.subplots(figsize=figsize)
-            t=np.tile(t, (rc.shape[0], 1))
-            rc+=plt_offsets[:,np.newaxis]
-            if plot_baselines:
-                for i in np.arange(rc.shape[0]):
-                    y=i*offset
-                    ax.plot([t[0,0], t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
-            ax.plot(t.T, rc.T, linewidth=lw, color=color, alpha=bg_alpha)
-            ax.set_yticks(y_ticks)
-            ax.set_yticklabels(y_ticks_labels) if plot_ylabels else ax.set_yticklabels([])
-            ax.set_ylabel('Channel', size=14, weight='bold')
+    if isinstance(color, str):
+        if color=='multi':color=None
+        else:color=to_rgb(color)
+    if as_heatmap:
+        xticklabels = get_bestticks_from_array(t, step=None)
+        xticks=xticklabels*fs/1000
+        y_ticks_labels=npa([x*10 if x%2==0 else x*10-10 for x in y_ticks_labels])
 
-        ax.set_xlabel('Time (ms)', size=14, weight='bold')
-        ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-        ax.spines['left'].set_lw(2)
-        ax.spines['bottom'].set_lw(2)
+        fig=imshow_cbar(im=rc, origin='top', xevents_toplot=[], events_color='k',
+                        xvalues=None, yvalues=None, xticks=xticks-xticks[0], yticks=y_ticks,
+                        xticklabels=xticklabels, yticklabels=y_ticks_labels, xlabel=None, ylabel=None,
+                        cmapstr="RdBu_r", vmin=vmin, vmax=vmax, center=center, colorseq='nonlinear',
+                        clabel='Voltage (\u03BCV)', extend_cmap='neither', cticks=None,
+                        figsize=(4,10), aspect='auto', function='imshow', ax=None)
+        ax=fig.axes[0]
+        ax.set_ylabel('Depth (\u03BCm)', size=14, weight='bold')
+    else:
+        fig, ax = plt.subplots(figsize=figsize)
+        t=np.tile(t, (rc.shape[0], 1))
+        rc+=plt_offsets[:,np.newaxis]
+        if plot_baselines:
+            for i in np.arange(rc.shape[0]):
+                y=i*offset
+                ax.plot([t[0,0], t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
+        ax.plot(t.T, rc.T, linewidth=lw, color=color, alpha=bg_alpha)
+        ax.set_yticks(y_ticks)
+        ax.set_yticklabels(y_ticks_labels) if plot_ylabels else ax.set_yticklabels([])
+        ax.set_ylabel('Channel', size=14, weight='bold')
 
-        if title is not None: ax.set_title(title, size=20, weight='bold', va='bottom')
+    ax.set_xlabel('Time (ms)', size=14, weight='bold')
+    ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['left'].set_lw(2)
+    ax.spines['bottom'].set_lw(2)
 
-        yl=ax.get_ylim() if as_heatmap else [min(rc[0,:])-2*offset,max(rc[-1,:])+2*offset]
-        xl=[0, (t[-1]-t[0])*fs/1000] if as_heatmap else [t[0,0], t[0,-1]]
-        for e in events:
-            if as_heatmap: e=(e-t[0])*(fs/1000)
-            ax.plot([e,e], yl, color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
-        ax.set_ylim(yl)
-        ax.set_xlim(xl)
+    if title is not None: ax.set_title(title, size=20, weight='bold', va='bottom')
 
-        # fig.tight_layout()
+    yl=ax.get_ylim() if as_heatmap else [min(rc[0,:])-2*offset,max(rc[-1,:])+2*offset]
+    xl=[0, (t[-1]-t[0])*fs/1000] if as_heatmap else [t[0,0], t[0,-1]]
+    for e in events:
+        if as_heatmap: e=(e-t[0])*(fs/1000)
+        ax.plot([e,e], yl, color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
+    ax.set_ylim(yl)
+    ax.set_xlim(xl)
 
-        if saveFig:
-            rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
-            rcn=rcn+'_whitened' if whiten else rcn+'_raw'
-            if title is not None: rcn=title
+    if saveFig:
+        rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
+        rcn=rcn+'_whitened' if whiten else rcn+'_raw'
+        if title is not None: rcn=title
 
-            save_mpl_fig(fig, rcn, saveDir, _format)
+        save_mpl_fig(fig, rcn, saveDir, _format)
 
-        return fig
+    return fig
 
 def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                    Nchan_plot=5, spk_window=82, colors='phy', bg_color='k', lw=1, bg_alpha=0.8, lw_color=1.1,
@@ -1154,7 +1218,7 @@ def raster_plot(times, events, window=[-1000, 1000], events_toplot=[0], events_c
         - window: list/array of shape (2,): the raster will be plotted from events-window[0] to events-window[1] | Default: [-1000,1000]
         - remove_empty_trials: boolean, if True does not use empty trials to compute psth
         - title: string, title of the plot + if saved file name will be raster_title._format.
-        - color: string or list of strings of size
+        - color: string or list of strings of same size as times (in cases with several cells)
         - figsize: tuple, (x,y) figure size
         - saveDir: save directory to save data and figure
         - saveFig: boolean, if 1 saves figure with name raster_title._format at saveDir
@@ -2048,11 +2112,24 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     if tight_layout: fig.tight_layout(rect=[0,0,0.8,1])
 
     # Add colorbar, nicely formatted
+    fig = add_colorbar(fig, ax, axim, vmin, vmax,
+                 0.01, cmap_h, clabel, cticks, extend_cmap)
+
+    return fig
+
+def add_colorbar(fig, ax, mappable, vmin, vmax,
+                 width=0.01, height=0.5, clabel=None, cticks=None, extend_cmap=False):
+    """
+    Add colorbar to figure with a predefined axis.
+    
+    Makes sure that the size of the predefined axis does not change, but that the figure extends.
+    """
     axpos=ax.get_position()
     cbaraxx0,cbaraxy0 = float(axpos.x1+0.005), float(axpos.y0) #float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
-    cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, .01, cmap_h])
-    if cticks is None: cticks=get_bestticks_from_array(np.arange(vmin,vmax+(vmax-vmin)/10,(vmax-vmin)/10), light=True)
-    fig.colorbar(axim, cax=cbar_ax, ax=ax,
+    cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, width, height])
+    if cticks is None:
+        cticks=get_bestticks_from_array(np.arange(vmin,vmax+(vmax-vmin)/10,(vmax-vmin)/10), light=True)
+    fig.colorbar(mappable, cax=cbar_ax, ax=ax,
              orientation='vertical', label=clabel,
              extend=extend_cmap, ticks=cticks, use_gridspec=True)
     if clabel is not None:
@@ -2068,6 +2145,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     cbar_ax.yaxis.set_tick_params(pad=5, labelsize=12)
 
     return fig
+
 
 # Plot correlation matrix of variables x observations 2D array
 

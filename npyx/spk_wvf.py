@@ -197,7 +197,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
                 whiten=False,  hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
                 n_waves_used_for_matching = 50000, peakchan_allowed_range=10,
                 use_average_peakchan = False, max_allowed_amplitude = 1800, max_allowed_shift=3,
-                n_waves_to_average=5000, plot_debug=False, do_shift_match=True, n_waveforms_per_batch=10):
+                n_waves_to_average=5000, plot_debug=False, do_shift_match=True, n_waveforms_per_batch=10,
+                subselect_max_template=False):
     """
     ********
     Extract the drift and shift matched mean waveforms of the specified unit.
@@ -267,6 +268,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         - n_waveforms_per_batch: int, number of waveforms to use per batch for drift matching
                                  (in an ideal world 1, but too noisy - we assume that
                                   n_waveforms_per_batch consecutive waveforms have the same drift state)
+        - subselect_max_template: bool, whether to only use the kilosort template with the largest amount of spikes to compute the waveform
+                                  (less likely to average together waveforms looking different)
 
     Returns:
         - peak_dsmatched_waveform: (n_samples,) array (t_waveforms samples) storing the peak channel waveform
@@ -301,6 +304,16 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
 
     ## Extract spike ids so we can extract consecutive waveforms
     spike_ids_all = ids(dp, u, periods=periods)
+    # make sure to only select waveforms from 1 cluster if there was a merge
+    # (arbitrary decision: the cluster with the largest amount of spikes)
+    if subselect_max_template:
+        spike_templates=np.load(Path(dp,'spike_templates.npy')).squeeze()[spike_ids_all]
+        template_ids, template_ns = np.unique(spike_templates, return_counts=True)
+        template_to_use = template_ids[np.argmax(template_ns)]
+        spike_ids_all = spike_ids_all[spike_templates==template_to_use]
+        if verbose: print((f"Used 1/{len(template_ids)} templates (had {template_ns[template_ids==template_to_use]} spikes, "
+                          f"others {template_ns[template_ids!=template_to_use]} respectively."))
+    # group in batches
     spike_ids_split_all = split(spike_ids_all, n_waveforms_per_batch, return_last = False).astype(np.int64)
     
     ## Subsample waveforms based on available RAM
@@ -358,7 +371,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
 
     if plot_debug:
         fig = hist_MB(batch_peak_channels[:,1], a=peak_channel-20, b=peak_channel+20, s=1,
-        title=f'Z drift matching:\ndistribution of peak channel across spike batches\n({n_waveforms_per_batch} spikes/batch - mode: chan {peak_channel})')
+        title=f'{u} Z drift matching:\ndistribution of peak channel across spike batches\n({n_waveforms_per_batch} spikes/batch - mode: chan {peak_channel})',
+        xlabel="Channel")
         ylim = fig.get_axes()[0].get_ylim()
         fig.get_axes()[0].plot([peak_channel,peak_channel], ylim, color='red', ls='--')
         fig.get_axes()[0].set_ylim(ylim)
@@ -377,7 +391,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         max_amp_hist = np.max(batch_peak_channels[:,2])
         max_amp_hist += 10-max_amp_hist%10
         nbatches_hist = batch_peak_channels.shape[0]
-        fig = hist_MB(batch_peak_channels[:,2], a=10, b=max_amp_hist, s=5, color='grey', alpha=0.7)
+        fig = hist_MB(batch_peak_channels[:,2], a=10, b=max_amp_hist, s=5, color='grey', alpha=0.7,
+                    xlabel="Amplitude (uV)")
 
     # if less than n_driftmatched_subset batches below 95th percentile,
     # use all up to n_driftmatched_subset batches
@@ -393,7 +408,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
 
     if plot_debug:
         fig = hist_MB(batch_peak_channels[:,2], a=10, b=max_amp_hist, s=5, ax=fig.get_axes()[0], color='orange', alpha=0.7,
-        title=(f'XY drift matching:\ndistribution of amplitude on peak channel across spike batches\n'
+        title=(f'{u} XY drift matching:\ndistribution of amplitude on peak channel across spike batches\n'
                f'({n_waveforms_per_batch} spikes/batch - {batch_peak_channels.shape[0]}/{nbatches_hist} batches)'))
 
 
@@ -425,9 +440,11 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
 
     if plot_debug:
         if verbose: print(f'Total averaged waveform batches ({n_waveforms_per_batch}/batch) after drift-shift matching: {batch_peak_channels.shape[0]}')
-        fig = quickplot_n_waves(np.mean(mean_waves[np.random.randint(0, mean_waves.shape[0], batch_peak_channels.shape[0]),:,:], axis=0), '', peak_channel)
-        fig = quickplot_n_waves(np.mean(drift_matched_batches, axis=0), '', peak_channel, fig=fig)
-        fig = quickplot_n_waves(drift_shift_matched_mean, 'raw:blue\ndrift-matched:orange\ndrift-shift-matched:green', peak_channel, fig=fig)
+        wave_baseline_toplot = wvf(dp, u)
+        # mean_waves[np.random.randint(0, mean_waves.shape[0], batch_peak_channels.shape[0]),:,:]
+        fig = quickplot_n_waves(np.mean(wave_baseline_toplot, axis=0), '', peak_channel, color='k')
+        fig = quickplot_n_waves(np.mean(drift_matched_batches, axis=0), '', peak_channel, fig=fig, color='darkgreen')
+        fig = quickplot_n_waves(drift_shift_matched_mean, 'raw:blue\ndrift-matched:orange\ndrift-shift-matched:green', peak_channel, fig=fig, color='red')
         #breakpoint()
 
     return drift_shift_matched_mean_peak, drift_shift_matched_mean, drift_matched_spike_ids, peak_channel
@@ -454,7 +471,7 @@ def shift_match(waves, alignment_channel,
         - chan_range: int, range of channels around alignment channel used for template matching
                       (3 corresponds to 6 channels, 5 to 10 etc)
         - recenter_spikes: bool, whether to align the maximum of template to 0
-        - dynamic_template: bool, whether to update the template by averaging it with the aligned spike
+        - dynamic_template: bool, whether to update the template by averaging it with the aligned spike (actually bad idea)
         - max_shift_allowed: int, maximum shift allowed (half window) - other waveforms are discarded (if need to shift more, they must be way too noisy)
 
     Returns:
@@ -495,10 +512,10 @@ def shift_match(waves, alignment_channel,
         realigned_w = np.concatenate([w[-shift:,:], w[:-shift,:]], axis=0)
         if abs(relative_shift)>max_shift_allowed:
             realigned_w=realigned_w*np.nan
-        if plot_debug and i==0:
-            fig=imshow_cbar(template)
-            fig=imshow_cbar(w_closestchannels)
-            fig=imshow_cbar(xcorr_w_template)
+        # if plot_debug and i==0:
+        #     fig=imshow_cbar(template)
+        #     fig=imshow_cbar(w_closestchannels)
+        #     fig=imshow_cbar(xcorr_w_template)
         # store realigned_wave in array
         aligned_waves[i,:,:] = realigned_w
 

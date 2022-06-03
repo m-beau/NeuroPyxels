@@ -808,7 +808,8 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
 
     return fig
 
-def quickplot_n_waves(w, title='', peak_channel=None, nchans = 20, fig=None):
+def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
+                     fig=None, color=None):
     "w is a (n_samples, n_channels) array"
     if peak_channel is None:
         pk = np.argmax(np.ptp(w, axis=0))
@@ -825,7 +826,8 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 20, fig=None):
             ax.spines['top'].set_color('red')
             ax.spines['bottom'].set_color('red')
         ax.text(0.05, 0.7, f'{chans[i]}', fontsize=8, transform = ax.transAxes)
-        ax.plot(np.arange(-w.shape[0]//2/30, w.shape[0]//2/30, 1/30), w[:,chans[i]], alpha=0.5, lw=2)
+        ax.plot(np.arange(-w.shape[0]//2/30, w.shape[0]//2/30, 1/30), w[:,chans[i]],
+                alpha=0.8, lw=1, color=color)
         ax.set_ylim(ylim)
         if i%2==1: ax.set_yticklabels([])
         if i<nchans-2: ax.set_xticklabels([])

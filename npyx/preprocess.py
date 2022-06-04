@@ -46,6 +46,9 @@ def whitening(x, nRange=None):
     x=np.dot(x.T,w).T
     W_scales=(np.max(x, 1)-np.min(x, 1))
     x=x*np.repeat((scales/W_scales).reshape(x.shape[0], 1), x.shape[1], axis=1)
+    
+    if 'cp' in globals():
+        x = cp.asnumpy(x)
 
     return x
 

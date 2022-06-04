@@ -16,7 +16,7 @@ def print_h5_contents(h5_path, txt_output=False):
     """
     h5_path: str, path to .h5 file
     txt_output: bool, if True prints contents to file
-                      (same name as h5 name_content.txt)
+    (same name as h5 name_content.txt)
     """
     h5_path = Path(h5_path)
     if txt_output:
@@ -48,7 +48,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                 unit_abolute_id=None, sync_chan_id=None,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
                 dataset=None, snr_window=[0.1, 30.1], raw_snippet_halfrange=2,
-                optostims=None, optostims_threshold=None,
+                optostims=None, optostims_threshold=None, n_waveforms_for_matching=5000,
                 **kwargs):
     """
     Add a Kilosort sorted unit to an HDF5 file.
@@ -92,6 +92,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                  (1st column: onsets, 2nd column: offsets). By default None, will be read from sync channel (at sync_chan_id)
     - optostims_threshold: float, time before which optostims will be ignored
                            (handles sync signals without light at beginning of recording)
+    - n_waveforms_for_matching: int, number of waveforms to subsample for drift-shift matching
 
     Additional key-value parameteters:
     - *any_key* = *any_value*
@@ -203,7 +204,8 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
         or ('voltage_sample' not in neuron_group)\
         or again: # must recompute chan_bottom and chan_top - suboptimal, can be rewritten
         dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples, periods=periods,
-                                again=again_wvf, plot_debug=plot_debug, verbose=verbose, n_waves_used_for_matching=500)
+                                again=again_wvf, plot_debug=plot_debug, verbose=verbose,
+                                n_waves_used_for_matching=n_waveforms_for_matching)
         dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
         add_dataset_to_group(neuron_group, 'primary_channel', peak_chan)
         chan_bottom = max(0, peak_chan-11)

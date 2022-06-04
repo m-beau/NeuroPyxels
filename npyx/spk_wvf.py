@@ -195,9 +195,9 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
                 wvf_batch_size=10, ignore_nwvf=True, med_sub = False, spike_ids = None,
                 save=True, verbose=False, again=False,
                 whiten=False,  hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
-                n_waves_used_for_matching = 50000, peakchan_allowed_range=10,
+                n_waves_used_for_matching = 5000, peakchan_allowed_range=6,
                 use_average_peakchan = False, max_allowed_amplitude = 1800, max_allowed_shift=3,
-                n_waves_to_average=5000, plot_debug=False, do_shift_match=True, n_waveforms_per_batch=10,
+                n_waves_to_average=800, plot_debug=False, do_shift_match=True, n_waveforms_per_batch=10,
                 subselect_max_template=False):
     """
     ********
@@ -255,13 +255,14 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         - nRangeMedSub:       int, number of channels to use to compute the local median. | Default None
         - ignore_ks_chanfilt: bool, whether to ignore kilosort channel filtering
                                     (if False, output shape will always be n_waveforms x t_waveforms x 384) | Default False
-        - n_waves_used_for_matching:   int, how many spikes to subsample to perform matching (default 50000 waveforms)
-        - peakchan_allowed_range: int (channel id), maximum allowed distance between original pek channel and ds-matched drift channel
+        - n_waves_used_for_matching:   int, how many spikes to subsample to perform matching (default 5000 waveforms)
+        - peakchan_allowed_range: int (channel id), maximum allowed distance between original peak channel and ds-matched drift channel
         - use_average_peakchan: bool, if True simply use the channel with highest average amplitude across spikes as peak channel
                                        instead of using the channel where the most spikes peak on
         - max_allowed_amplitude: float, maximum amplitude in uV (peak to trough) that a spike average can have to be considered (above, must be artefactual)
         - max_allowed_shift: int (samples), maximum allowed temporal shift during shift-matching (see Shift-matching explanation above)
-        - n_waves_to_average: int, maximum number of waveforms averaged together (5000 waveforms = 500 batches)
+        - n_waves_to_average: int, maximum number of waveforms averaged together (500 waveforms = 50 batches).
+                              Do not confuse with n_waves_used_for matching, which is the initial distribution of waveforms to pick from.
         - plot_debug: bool, whether to plot informative histograms displaying the distribution of peak channels (Z drift matching),
                       amplitudes on this peak channel (XY drift matching) and shifts (shift matching)
         - do_shift_match: bool, whether to perform shift matching
@@ -322,6 +323,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     single_w_size = wvf(dp, None, t_waveforms=t_waveforms, spike_ids=[0]).nbytes
     max_n_waveforms = available_RAM//single_w_size-100 # -100 to be safe
     n_waves_used_for_matching = min(n_waves_used_for_matching, max_n_waveforms)
+    if n_waves_used_for_matching<1000 and verbose:
+        print(f"WARNING using less than 1000 waveforms for drift matching. This can lead to noisy output.")
     
     # now subsample ids based on the RAM-safe n_waves_used_for_matching
     if n_waves_used_for_matching<len(spike_ids_all):
@@ -350,7 +353,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     original_peak_chan = get_peak_chan(dp, u)
     c_left, c_right = max(0, original_peak_chan-peakchan_allowed_range), min(original_peak_chan+peakchan_allowed_range, mean_waves.shape[2])
     # calculate amplitudes ("peak-to-peak"), but ONLY using 2ms (-30,30) in the middle
-    t1, t2 = max(0,mean_waves.shape[1]//2-30), min(mean_waves.shape[1]//2+30, mean_waves.shape[1])
+    amp_t_span = 20 #samples
+    t1, t2 = max(0,mean_waves.shape[1]//2-amp_t_span), min(mean_waves.shape[1]//2+amp_t_span, mean_waves.shape[1])
     amplitudes = np.ptp(mean_waves[:,t1:t2,c_left:c_right], axis=1)
     batch_peak_channels = np.zeros(shape=(spike_ids_split_indices.shape[0], 3))
     batch_peak_channels[:,0] = spike_ids_split_indices # store batch indices (batch = averaged 10 spikes)
@@ -411,7 +415,6 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         title=(f'{u} XY drift matching:\ndistribution of amplitude on peak channel across spike batches\n'
                f'({n_waveforms_per_batch} spikes/batch - {batch_peak_channels.shape[0]}/{nbatches_hist} batches)'))
 
-
     #### shift matching ####
     # extract drift-matched raw waveforms
     dsmatch_batch_ids = batch_peak_channels[:,0].astype(np.int64)
@@ -440,7 +443,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
 
     if plot_debug:
         if verbose: print(f'Total averaged waveform batches ({n_waveforms_per_batch}/batch) after drift-shift matching: {batch_peak_channels.shape[0]}')
-        wave_baseline_toplot = wvf(dp, u)
+        wave_baseline_toplot = wvf(dp, u, t_waveforms=t_waveforms)
         # mean_waves[np.random.randint(0, mean_waves.shape[0], batch_peak_channels.shape[0]),:,:]
         fig = quickplot_n_waves(np.mean(wave_baseline_toplot, axis=0), '', peak_channel, color='k')
         fig = quickplot_n_waves(np.mean(drift_matched_batches, axis=0), '', peak_channel, fig=fig, color='darkgreen')

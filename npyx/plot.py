@@ -654,8 +654,8 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     pv=None if ignore_ks_chanfilt else 'local'
     cm=chan_map(dp, y_orig='tip', probe_version=pv)
 
-    peak_chan=get_peak_chan(dp, u, use_template=True) # use get_pc(waveforms)
-    peak_chan_i = int(np.argmin(np.abs(cm[:,0]-peak_chan)))
+    #peak_chan=get_peak_chan(dp, u, use_template=False, again=again) # use get_pc(waveforms)
+    #peak_chan_i = int(np.argmin(np.abs(cm[:,0]-peak_chan)))
     t_waveforms_s=int(t_waveforms*(fs/1000))
 
     # Get data
@@ -669,15 +669,22 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     else:
         plot_std=False
         sample_lines=0
+        plot_debug=True if verbose else False
         waveforms=wvf_dsmatch(dp, u, n_waveforms=n_waveforms,
                   t_waveforms=t_waveforms_s, periods=periods,
                   wvf_batch_size=wvf_batch_size, ignore_nwvf=True, spike_ids = None,
                   save=True, verbose=verbose, again=again,
                   whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
-                  nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub)[1]
+                  nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub, plot_debug=plot_debug)[1]
 
     tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
     assert tplts.shape[2]==waveforms.shape[-1]==cm.shape[0]
+    
+    if not use_dsmatch:
+        peak_chan_i = np.argmax(np.ptp(waveforms.mean(0), axis=0))
+    else:
+        peak_chan_i = np.argmax(np.ptp(waveforms, axis=0))
+    print(peak_chan_i)
 
     # Filter the right channels
     if chStart is None:

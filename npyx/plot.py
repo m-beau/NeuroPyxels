@@ -676,9 +676,6 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
                   save=True, verbose=verbose, again=again,
                   whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
                   nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub, plot_debug=plot_debug)[1]
-
-    tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
-    assert tplts.shape[2]==waveforms.shape[-1]==cm.shape[0]
     
     if not use_dsmatch:
         peak_chan_i = np.argmax(np.ptp(waveforms.mean(0), axis=0))
@@ -706,8 +703,6 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     else:
         datam = waveforms[:, chStart_i:chEnd_i].T
         datastd = datam*0
-
-    tplts=tplts[:, :, chStart_i:chEnd_i]
     subcm=cm[chStart_i:chEnd_i,:].copy().astype(np.float32)
 
     # Format plotting parameters
@@ -722,9 +717,15 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
     ylim1, ylim2 = (np.nanmin(datam-datastd)-50, np.nanmax(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
     x = np.linspace(0, datam.shape[1]/(fs/1000), datam.shape[1]) # Plot t datapoints between 0 and t/30 ms
-    x_tplts = x[(datam.shape[1]-tplts.shape[1])//2:(datam.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
+    
+    # eventually load templates
+    if plot_templates:
+        tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
+        assert tplts.shape[2]==waveforms.shape[-1]==cm.shape[0]
+        tplts=tplts[:, :, chStart_i:chEnd_i]
+        x_tplts = x[(datam.shape[1]-tplts.shape[1])//2:(datam.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
 
-    #Plot
+    # Plot
     if as_heatmap:
         hm_yticks=get_bestticks_from_array(subcm[:,0], step=None)[::-1]
         hm_xticks=get_bestticks_from_array(x, step=None)
@@ -1724,7 +1725,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                      ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore'):
 
     ## Instanciate figure and format x axis/channels
-    l=len(units)
+    l=CCGs.shape[0]
     if figsize is None: figsize=(4.5*l/2,4*l/2)
     fig = plt.figure(figsize=figsize)
 

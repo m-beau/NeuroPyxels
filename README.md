@@ -219,8 +219,8 @@ w_preprocessed = wvf_dsmatch(dp, u, plot_debug=True)
 # defined as chunks with too high FP OR FN rates (5% and 5% by default)
 t_preprocessed = trn_filtered(dp, u, plot_debug=True)
 ```
-<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1_driftmatch.png" width="200"/>
-<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1.png" width="200"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1_driftmatch.png" width="400"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1.png" width="300"/>
 
 
 ### Plot chunk of raw data with overlaid units

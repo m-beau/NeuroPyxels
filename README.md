@@ -200,6 +200,28 @@ fig = plot_ccg(dp, [u,92], cbin=0.2, cwin=80, as_grid=True)
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ccg.png" width="400"/>
 
+### Preprocess your waveforms (drift-shft-matching) and spike trains (detect periods with few false positive/negative)
+```python
+# all plotting functions return matplotlib figures
+from npyx.spk_wvf import wvf_dsmatch
+from npyx.spk_t import trn_filtered
+
+# wvf_dsmatch subselect 'best looking' waveforms
+# by first matching them by drift state (Z, peak channel and XY, amplitude on peak channel)
+# then shifting them around to realign them (using the crosscorr of its whole spatial footprint)
+# on the plot, black is the original waveform as it would be plotted in phy,
+# green is drift-matched, red is drift-shift matched
+w_preprocessed = wvf_dsmatch(dp, u, plot_debug=True)
+
+# trn_filtered clips the recording in 10s (default) chunks
+# and estimates the false positive/false negative spike sporting rates on such chunks
+# before masking out spikes occurring inside 'bad chunks',
+# defined as chunks with too high FP OR FN rates (5% and 5% by default)
+t_preprocessed = trn_filtered(dp, u, plot_debug=True)
+```
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1_driftmatch.png" width="200"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1.png" width="200"/>
+
 
 ### Plot chunk of raw data with overlaid units
 ```python

@@ -580,7 +580,9 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
             times[0] = t1/30000
         t1, t2 = t1-whitenpad, t2+whitenpad
     bn = os.path.basename(fname) # binary name
-    rcn = f'{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}_{whiten}_{med_sub}_{scale}.npy' # raw chunk name
+    rcn = (f"{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}"
+          f"_{whiten}{nRangeWhiten}_{med_sub}{nRangeMedSub}_{hpfilt}{hpfiltf}"
+          f"_{ignore_ks_chanfilt}_{center_chans_on_0}_{scale}.npy") # raw chunk name
     rcp = get_npyx_memory(dp) / rcn
 
     if os.path.isfile(rcp) and not again:
@@ -614,10 +616,6 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     rc = np.frombuffer(bData, dtype=np.int16) # 16bits decoding
     rc = rc.reshape((int(t2-t1), Nchans)).T
 
-    # Align signal on each channel
-    if center_chans_on_0:
-        rc=rc-np.median(rc[:,:10],axis=1)[:,np.newaxis]
-
     # Median subtraction = CAR
     if med_sub:
         rc=med_substract(rc, 0, nRange=nRangeMedSub)
@@ -630,6 +628,10 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     if whiten:
         rc=whitening(rc, nRange=nRangeWhiten)
         rc=rc[:, whitenpad:-whitenpad]
+
+    # Align signal on each channel
+    if center_chans_on_0:
+        rc=rc-np.median(rc[:,:10],axis=1)[:,np.newaxis]
 
     # get the right channels range, AFTER WHITENING
     rc = rc[channels, :]

@@ -447,7 +447,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         # mean_waves[np.random.randint(0, mean_waves.shape[0], batch_peak_channels.shape[0]),:,:]
         fig = quickplot_n_waves(np.mean(wave_baseline_toplot, axis=0), '', peak_channel, color='k')
         fig = quickplot_n_waves(np.mean(drift_matched_batches, axis=0), '', peak_channel, fig=fig, color='darkgreen')
-        fig = quickplot_n_waves(drift_shift_matched_mean, 'raw:blue\ndrift-matched:orange\ndrift-shift-matched:green', peak_channel, fig=fig, color='red')
+        fig = quickplot_n_waves(drift_shift_matched_mean, 'raw:black\ndrift-matched:green\ndrift-shift-matched:red', peak_channel, fig=fig, color='red')
         #breakpoint()
 
     return drift_shift_matched_mean_peak, drift_shift_matched_mean, drift_matched_spike_ids, peak_channel

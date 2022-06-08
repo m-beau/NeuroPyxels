@@ -26,7 +26,7 @@ from tqdm.auto import tqdm
 
 #%% Whitening
 
-def whitening(x, nRange=None):
+def whitening(x, nRange=None, use_ks_matrix=True, dp=None):
     '''
     Whitens along axis 0.
     For instance, time should be axis 1 and channels axis 0 to whiten across channels.
@@ -36,10 +36,14 @@ def whitening(x, nRange=None):
         - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
              Multiplying by the whitening matrix whitens across obervations.
         - nRange: if integer, number of channels to locally compute whitening filter (more robust to noise) | Default None
+        - use_ks_matrix: bool, whether to use kilosort's original whitening matrix to perform the whitening
+                     (rather than recomputing it from the data at hand)
+        - dp: str/Path, kilosort path with whitening matrix whiten_mat.npy
     '''
     assert x.shape[1]>=x.shape[0]
     # Compute whitening matrix
-    w=whitening_matrix(x, nRange=nRange)
+    w=whitening_matrix(x, nRange, use_ks_matrix, dp)
+    w_nans = np.isnan(w)
     # Whiten
     x = cp.array(x)
     scales=(np.max(x, 1)-np.min(x, 1))
@@ -52,25 +56,66 @@ def whitening(x, nRange=None):
 
     return x
 
-def whitening_matrix(x, nRange=None):
+def whitening_matrix(x, nRange=None, use_ks_matrix=True, dp=None):
     """
-    wmat = whitening_matrix(dat, fudge=1e-18)
     Compute the whitening matrix using ZCA.
-        - dat is a matrix nsamples x nchannels
-    Apply using np.dot(dat,wmat)
-    Adapted from phy
+
     Parameters:
         - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
              Multiplying by the whitening matrix whitens across obervations.
         - epsilon: small value added to diagonal to regularize D
         - nRange: if integer, number of channels to locally compute whitening filter (more robust to noise) | Default None
+        - use_ks_matrix: bool, whether to return kilosort's original whitening matrix
+                     (rather than recomputing it from the data at hand)
+        - dp: str/Path, kilosort path with whitening matrix whiten_mat.npy
     """
     assert x.ndim == 2
     nrows, ncols = x.shape
 
+    if use_ks_matrix:
+        if nRange is not None:
+            print(("WARNING you instructed to use kilosort's original whitening matrix,"
+                  " so nRange is not taken into account (kilosort uses nRange=32 by default)"))
+        assert dp is not None, "You must provide a datapath when instructing to use kilosort's whitening matrix."
+        return cp.array(load_ks_whitening_matrix(dp))
+
     # get covariance matrix across rows (each row is an observation)
     x_cov = cp.cov(x, rowvar=1) 
     return cov_to_whitening_matrix(x_cov, nRange)
+
+def load_ks_whitening_matrix(dp, return_full=True):
+    """
+    Return kilosort whitening matrix
+    if return_full: also with missing channels (not preprocessed) replaced with 0s.
+
+    Parameters:
+    - dp: str/Path, datapath
+    - return_full: bool, whether to return full whitening matrix
+                   (adding arrays of 0s off-diagonal and 1 on-diagonal for channels skipped by kilosort)
+
+    Returns:
+    - kilosort whitening matrix (nchans, nchans) with nchans <= 384
+    """
+
+    local_Wrot = np.load(Path(dp) / 'whitening_mat.npy')
+
+    if not return_full:
+        return local_Wrot
+
+    probe_version = read_metadata(dp)['probe_version']
+    local_cm = chan_map(dp, probe_version='local')[:,0]
+    full_cm = chan_map(dp, probe_version=probe_version)[:,0]
+
+    channels_mask = np.isin(full_cm, local_cm)
+    channels_2D_mask = channels_mask[:,None] & channels_mask[None,:]
+
+    full_Wrot = np.zeros((full_cm.shape[0], full_cm.shape[0])) # * np.nan
+    full_Wrot[np.nonzero(channels_2D_mask)] = local_Wrot.ravel()
+    full_Wrot[np.nonzero(~channels_mask)[0], np.nonzero(~channels_mask)[0]] = 1
+
+    return full_Wrot
+
+
 
 def approximated_whitening_matrix(memmap_f, Wrot_path, whiten_range,
         NT, Nbatch, NTbuff, ntb, nSkipCov, n_channels, channels_to_process,
@@ -914,3 +959,6 @@ def ns_optim_fft(ns):
     p2, p3 = np.meshgrid(2 ** np.arange(25), 3 ** np.arange(15))
     sz = np.unique((p2 * p3).flatten())
     return sz[np.searchsorted(sz, ns)]
+
+
+from npyx.inout import chan_map, read_metadata

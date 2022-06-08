@@ -533,7 +533,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
         return onsets,offsets
 
 def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
-                     whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
+                     whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=True,
                      ignore_ks_chanfilt=0, center_chans_on_0=False, verbose=False, scale=True, again=False):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     ## PARAMETERS
@@ -542,13 +542,18 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     - channels (default: np.arange(384)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
     - filt_key: 'ap' or 'lf', whether to exxtract from the high-pass or low-pass filtered binary file
     - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
-    - whiten: whether to whiten the data across channels. If nRangeWhiten is not None, whitening matrix is computed with the nRangeWhiten closest channels.
-    - med_sub: whether to median-subtract the data across channels. If nRangeMedSub is not none, median of each channel is computed using the nRangeMedSub closest channels.
+    - whiten: whether to whiten the data across channels. If nRangeWhiten is not None,
+              whitening matrix is computed with the nRangeWhiten closest channels.
+    - med_sub: whether to median-subtract the data across channels. If nRangeMedSub is not none,
+               median of each channel is computed using the nRangeMedSub closest channels.
     - hpfilt: whether to high-pass filter the data, using a 3 nodes butterworth filter of cutoff frequency hpfiltf.
     - hpfiltf: see hpfilt
     - nRangeWhiten: int, see whiten.
     - nRangeMedSub: int, see med_sub.
-    - ignore_ks_chanfilt: whether to ignore the filtering made by kilosort, which only uses channels with average events rate > ops.minfr to spike sort. | Default False
+    - use_ks_w_matrix: bool, whether to use kilosort's original whitening matrix to perform the whitening
+                     (rather than recomputing it from the data at hand)
+    - ignore_ks_chanfilt: whether to ignore the filtering made by kilosort,
+                          which only uses channels with average events rate > ops.minfr to spike sort.
     - scale: A boolean variable specifying whether we should convert the resulting raw
              A2D samples to uV. Defaults to True
     ## RETURNS
@@ -571,7 +576,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
 
     # Format inputs
     cm=chan_map(dp, probe_version='local'); assert cm.shape[0]<=Nchans-1
-    if not ignore_ks_chanfilt: channels=assert_chan_in_dataset(dp, channels) # index out of 384, should remain the same because rc initial shape is 384!
+    channels=assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt) # index out of 384, should remain the same because rc initial shape is 384!
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
     if whiten:
         if t1<whitenpad:
@@ -615,6 +620,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     assert len(bData)%2==0
     rc = np.frombuffer(bData, dtype=np.int16) # 16bits decoding
     rc = rc.reshape((int(t2-t1), Nchans)).T
+    rc = rc[:-1,:] # remove sync channel
 
     # Median subtraction = CAR
     if med_sub:
@@ -626,7 +632,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
 
     # Whiten data
     if whiten:
-        rc=whitening(rc, nRange=nRangeWhiten)
+        rc=whitening(rc, nRangeWhiten, use_ks_w_matrix, dp)
         rc=rc[:, whitenpad:-whitenpad]
 
     # Align signal on each channel
@@ -648,9 +654,13 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
 
     return rc
 
-def assert_chan_in_dataset(dp, channels):
+def assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt=False):
     channels = np.array(channels)
-    cm=chan_map(dp, probe_version='local')
+    if ignore_ks_chanfilt:
+        probe_version = read_metadata(dp)['probe_version']
+        cm=chan_map(dp, probe_version=probe_version)
+    else:
+        cm=chan_map(dp, probe_version='local')
     if not np.all(np.isin(channels, cm[:,0])):
         print(("WARNING Kilosort excluded some channels that you provided for analysis "
                "because they did not display enough threshold crossings! Jumping channels:"
@@ -869,6 +879,8 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
                 shutil.copy(dp/'channel_map.npy', orig_dp/'channel_map.npy')
             if (dp/'channel_positions.npy').exists():
                 shutil.copy(dp/'channel_positions.npy', orig_dp/'channel_positions.npy')
+            if (dp/'whitening_mat.npy').exists():
+                shutil.copy(dp/'whitening_mat.npy', orig_dp/'whitening_mat.npy')
 
     return target_dp/filtered_fname
 

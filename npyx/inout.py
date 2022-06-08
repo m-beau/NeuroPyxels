@@ -24,7 +24,7 @@ except ImportError:
 
 from npyx.utils import npa, read_pyfile, list_files
 from npyx.preprocess import apply_filter, bandpass_filter, whitening, approximated_whitening_matrix, med_substract,\
-                            gpufilter, cu_median, adc_realign, kfilt
+                            gpufilter, adc_realign, kfilt
 
 import json
 
@@ -533,10 +533,11 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
         return onsets,offsets
 
 def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
-                     whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=True,
+                     whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, filter_forward=True, filter_backward=True,
+                     nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=True,
                      ignore_ks_chanfilt=0, center_chans_on_0=False, verbose=False, scale=True, again=False):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
-    ## PARAMETERS
+    Parameters:
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
     - times: list of boundaries of the time window, in seconds [t1, t2].
     - channels (default: np.arange(384)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
@@ -546,8 +547,10 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
               whitening matrix is computed with the nRangeWhiten closest channels.
     - med_sub: whether to median-subtract the data across channels. If nRangeMedSub is not none,
                median of each channel is computed using the nRangeMedSub closest channels.
-    - hpfilt: whether to high-pass filter the data, using a 3 nodes butterworth filter of cutoff frequency hpfiltf.
+    - hpfilt: whether to high-pass filter the data, using a 3 nodes butterworth filter of cutoff frequency hpfiltf, bidirectionally.
     - hpfiltf: see hpfilt
+    - filter_forward: bool, filter the data forward (also set filter_backward to True for bidirectional filtering)
+    - filter_backward: bool, filter the data backward (also set filter_forward to True for bidirectional filtering)
     - nRangeWhiten: int, see whiten.
     - nRangeMedSub: int, see med_sub.
     - use_ks_w_matrix: bool, whether to use kilosort's original whitening matrix to perform the whitening
@@ -556,9 +559,10 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
                           which only uses channels with average events rate > ops.minfr to spike sort.
     - scale: A boolean variable specifying whether we should convert the resulting raw
              A2D samples to uV. Defaults to True
-    ## RETURNS
-    rawChunk: numpy array of shape ((c2-c1), (t2-t1)*fs).
-    rawChunk[0,:] is channel 0; rawChunk[1,:] is channel 1, etc.
+    Returns:
+    - rawChunk: numpy array of shape ((c2-c1), (t2-t1)*fs).
+                rawChunk[0,:] is channel 0; rawChunk[1,:] is channel 1, etc.
+                dtype: int16 if scale=False, float64 if scale=True.
     '''
     # Find binary file
     dp = Path(dp)
@@ -627,8 +631,11 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
         rc=med_substract(rc, 0, nRange=nRangeMedSub)
 
     # Highpass filter with a 3rd order butterworth filter, like in kilosort2
+    # bidirectionally
     if hpfilt:
-        rc=apply_filter(rc, bandpass_filter(rate=fs, low=None, high=hpfiltf, order=3), axis=1)
+        rc_t = cp.asarray(rc.T)
+        rc = gpufilter(rc_t, fs=fs, fslow=None, fshigh=hpfiltf, order=3,
+             car=False, forward=filter_forward, backward=filter_backward, ret_numpy=True).T
 
     # Whiten data
     if whiten:
@@ -641,11 +648,13 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
 
     # get the right channels range, AFTER WHITENING
     rc = rc[channels, :]
+
     # Scale data
     if scale:
-        rc = rc*meta['bit_uV_conv_factor'] # convert into uV
+        rc *= meta['bit_uV_conv_factor'] # convert into uV
 
-    # convert from cupy to numpy array
+    # eventually convert from cupy to numpy array
+    # (necessary if whitened on GPU)
     if 'cp' in globals():
         rc = cp.asnumpy(rc)
 
@@ -672,6 +681,7 @@ def assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt=False):
 
 def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, move_orig_data=True,
                        ADC_realign = False, median_subtract=False, f_low=None, f_high=300, order=3,
+                       filter_forward=True, filter_backward=False,
                        spatial_filt=False, whiten = False, whiten_range=32,
                        again_Wrot=False, verbose=False):
     """Creates a preprocessed copy of binary file at dp/fname_filtered.bin,
@@ -703,6 +713,8 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
     - f_low: optional float, lowpass filter frequency
     - f_high: float, highpass filter frequency (necessary)
     - order: int, butterworth filter order (default 3)
+    - filter_forward: bool, filter the data forward (also set filter_backward to True for bidirectional filtering)
+    - filter_backward: bool, filter the data backward (also set filter_forward to True for bidirectional filtering)
     - spatial_filt: bool, whether to high pass filter across channels at 0.1 Hz
     - whiten: bool, whether to whiten across channels
     - verbose: bool, whether to print extra information
@@ -828,7 +840,7 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
 
             # CAR (optional) -> temporal filtering -> weight to combine edges -> unpadding
             batch = gpufilter(batch, fs=fs, fshigh=f_high, fslow=f_low, order=order,
-                              car=median_subtract, bidirectional=False)
+                              car=median_subtract, forward=filter_forward, backward=filter_backward)
             assert batch.flags.c_contiguous # check that ordering is still C, not F
             batch[ntb:2*ntb] = w_edge * batch[ntb:2*ntb] + (1 - w_edge) * buff_prev
             buff_prev = batch[NT + ntb: NT + 2*ntb]

@@ -217,10 +217,19 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
         add_dataset_to_group(neuron_group, 'channel_ids', np.arange(chan_bottom, chan_top, dtype=np.dtype('uint16')), again)
         add_dataset_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, 1:2], again)
 
-    chunk = None
-    if ('amplitudes' not in neuron_group) or ('voltage_sample' not in neuron_group) or again:
+    # Extract voltage snippets
+    if ('amplitudes' not in neuron_group)\
+       or ('voltage_sample' not in neuron_group)\
+       or again:
         chunk = extract_rawChunk(dp, snr_window, channels=np.arange(chan_bottom, chan_top), 
-                                 scale=False, whiten=False, hpfilt=False, verbose=False)
+                                 scale=False, med_sub=False, whiten=False,
+                                 hpfilt=False, verbose=False)
+
+    if ('whitened_voltage_sample' not in neuron_group) or again:
+        chunk = extract_rawChunk(dp, snr_window, channels=np.arange(chan_bottom, chan_top), 
+                                 scale=False, med_sub=False, whiten=True, use_ks_w_matrix=True,
+                                 hpfilt=False, verbose=False)
+                                 
 
     # quality metrics
     if 'amplitudes' not in neuron_group or again:

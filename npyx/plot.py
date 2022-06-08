@@ -849,6 +849,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
              title=None, _format='pdf',  saveDir='~/Downloads', saveFig=0, figsize=(8,10), again=False,
              center_chans_on_0=True, whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
              nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=False, ignore_ks_chanfilt=True,
+             filter_forward=True, filter_backward=True,
              plot_ylabels=True, show_allyticks=0, yticks_jump=10, plot_baselines=False,
              events=[], set0atEvent=1,
              ax=None, ext_data=None, ext_datachans=np.arange(384),
@@ -918,7 +919,8 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
             assert alignement_events is None, 'You can either provide a window of 2 times or a list of alignement_events \
                 + a single window to compute an average, but not both!'
             rc = extract_rawChunk(dp, times, channels, filt_key, 1,
-                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, use_ks_w_matrix,
+                     whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
+                     nRangeWhiten, nRangeMedSub, use_ks_w_matrix,
                      ignore_ks_chanfilt, center_chans_on_0, 0, 1, again)
 
         if alignement_events is not None:
@@ -933,7 +935,8 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
             for e in alignement_events[1:]:
                 times=e+npa(window)/1e3
                 rc+=extract_rawChunk(dp, times, channels, filt_key, 1,
-                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, use_ks_w_matrix,
+                     whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
+                     nRangeWhiten, nRangeMedSub, use_ks_w_matrix,
                      ignore_ks_chanfilt, center_chans_on_0, 0, 1, again)
             rc/=len(alignement_events)
     else:

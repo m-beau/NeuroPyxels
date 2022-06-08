@@ -41,15 +41,27 @@ def whitening(x, nRange=None, use_ks_matrix=True, dp=None):
         - dp: str/Path, kilosort path with whitening matrix whiten_mat.npy
     '''
     assert x.shape[1]>=x.shape[0]
+
     # Compute whitening matrix
-    w=whitening_matrix(x, nRange, use_ks_matrix, dp)
-    w_nans = np.isnan(w)
-    # Whiten
+    if use_ks_matrix:
+        w, unprocessed_channels = whitening_matrix(x, nRange, use_ks_matrix, dp)
+        unprocessed_traces = x[unprocessed_channels,:]
+        x = x[~unprocessed_channels,:]
+    else:
+        w = whitening_matrix(x, nRange, use_ks_matrix, dp)
+    
+    # Whiten and re-scale to match original microvolts
     x = cp.array(x)
     scales=(np.max(x, 1)-np.min(x, 1))
     x=np.dot(x.T,w).T
     W_scales=(np.max(x, 1)-np.min(x, 1))
     x=x*np.repeat((scales/W_scales).reshape(x.shape[0], 1), x.shape[1], axis=1)
+
+    # re-plug in unprocessed channels
+    if use_ks_matrix:
+        x_full = cp.zeros((unprocessed_channels.shape[0], x.shape[1]))
+        x_full[~unprocessed_channels] = x
+        x_full[unprocessed_channels] = unprocessed_traces
     
     if 'cp' in globals():
         x = cp.asnumpy(x)
@@ -77,13 +89,14 @@ def whitening_matrix(x, nRange=None, use_ks_matrix=True, dp=None):
             print(("WARNING you instructed to use kilosort's original whitening matrix,"
                   " so nRange is not taken into account (kilosort uses nRange=32 by default)"))
         assert dp is not None, "You must provide a datapath when instructing to use kilosort's whitening matrix."
-        return cp.array(load_ks_whitening_matrix(dp))
+        w, unprocessed_channels = load_ks_whitening_matrix(dp)
+        return cp.array(w), unprocessed_channels
 
     # get covariance matrix across rows (each row is an observation)
     x_cov = cp.cov(x, rowvar=1) 
     return cov_to_whitening_matrix(x_cov, nRange)
 
-def load_ks_whitening_matrix(dp, return_full=True):
+def load_ks_whitening_matrix(dp, return_full=False):
     """
     Return kilosort whitening matrix
     if return_full: also with missing channels (not preprocessed) replaced with 0s.
@@ -95,12 +108,8 @@ def load_ks_whitening_matrix(dp, return_full=True):
 
     Returns:
     - kilosort whitening matrix (nchans, nchans) with nchans <= 384
+    - channels_mask: bool array, channels not processed by kilosort
     """
-
-    local_Wrot = np.load(Path(dp) / 'whitening_mat.npy')
-
-    if not return_full:
-        return local_Wrot
 
     probe_version = read_metadata(dp)['probe_version']
     local_cm = chan_map(dp, probe_version='local')[:,0]
@@ -109,11 +118,16 @@ def load_ks_whitening_matrix(dp, return_full=True):
     channels_mask = np.isin(full_cm, local_cm)
     channels_2D_mask = channels_mask[:,None] & channels_mask[None,:]
 
+    local_Wrot = np.load(Path(dp) / 'whitening_mat.npy')
+
+    if not return_full:
+        return local_Wrot, ~channels_mask
+
     full_Wrot = np.zeros((full_cm.shape[0], full_cm.shape[0])) # * np.nan
     full_Wrot[np.nonzero(channels_2D_mask)] = local_Wrot.ravel()
     full_Wrot[np.nonzero(~channels_mask)[0], np.nonzero(~channels_mask)[0]] = 1
 
-    return full_Wrot
+    return full_Wrot, ~channels_mask
 
 
 
@@ -332,16 +346,28 @@ def bandpass_filter(rate=None, low=None, high=None, order=1):
     elif high is not None:
         return sgnl.butter(order, high, 'highpass', fs=rate)
 
-def apply_filter(x, filt, axis=0):
-    """Apply a filter to an array."""
+def apply_filter(x, filt, axis=0, forward=True, backward=True):
+    """Apply a filter to an array, bidirectionally."""
     x = np.asarray(x)
     if x.shape[axis] == 0:
         return x
     b, a = filt
-    return sgnl.filtfilt(b, a, x, axis=axis)
+
+    if forward and backward:
+        # probably faster to use filtfilt than lfilter twice
+        return sgnl.filtfilt(b, a, x, axis=axis)
+
+    elif forward:
+        return sgnl.lfilter(b, a, x, axis=axis)
+
+    else:
+        assert backward and not forward # precaution
+        x = np.flip(x, axis)
+        x = sgnl.lfilter(b, a, x, axis=axis)
+        return np.flip(x, axis)
 
 def gpufilter(buff, fs=None, fslow=None, fshigh=None, order=3,
-             car=False, bidirectional=True):
+             car=False, forward=True, backward=True, ret_numpy=False):
     # filter this batch of data after common average referencing with the
     # median
     # buff is timepoints by channels
@@ -354,9 +380,11 @@ def gpufilter(buff, fs=None, fslow=None, fshigh=None, order=3,
     assert dataRAW.ndim == 2
     assert dataRAW.shape[0] > dataRAW.shape[1]
     assert dataRAW.ndim == 2
+    assert forward or backward, "You should either filter forward or backward."
 
     # subtract the mean from each channel
-    dataRAW = dataRAW - cp.mean(dataRAW, axis=0)  # subtract mean of each channel
+    # Maxime: I would use the median, but kilosort uses the mean
+    dataRAW = dataRAW - cp.mean(dataRAW, axis=0)
     assert dataRAW.ndim == 2
 
     # CAR, common average referencing by median
@@ -369,10 +397,17 @@ def gpufilter(buff, fs=None, fslow=None, fshigh=None, order=3,
 
     # next four lines should be equivalent to filtfilt (which cannot be
     # used because it requires float64)
-    datr = lfilter(*filter_params, dataRAW, axis=0)  # causal forward filter
-    if bidirectional:
-        datr = lfilter(*filter_params, datr, axis=0, reverse=True)  # backward
-    return datr
+    if forward:
+        dataRAW = lfilter(*filter_params, dataRAW, axis=0)  # causal forward filter
+    if backward:
+        # Maxime note: I do not understand why pykilosort folks
+        # did not do the same as MATLAB kilosort (i.e. simply revesing dataRAW)
+        dataRAW = lfilter(*filter_params, dataRAW, axis=0, reverse=True)  # backward
+    
+    if ret_numpy:
+        dataRAW = cp.asnumpy(dataRAW)
+
+    return dataRAW
 
 def get_filter_params(fs, fshigh=None, fslow=None, order=3):
     if fslow and fslow < fs / 2:

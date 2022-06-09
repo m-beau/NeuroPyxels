@@ -88,6 +88,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
       the dataset id is assumed to the dirname of the data directory passed as the dp argument
     - snr_window: A two item list containing the start and stop times (in seconds) for computation of the
       snr/voltage clip/waveform results
+    - center_snw_window_on_spikes: bool, whether to roughly center the raw voltage snippets window (snr_window) on neuron's first spike
     - raw_snippet_halfrange: int, range of channels around peak channel to consider for the snippet of raw data (max 10)
     - optostims: an optional 2D array (n_stims, 2) containing the optostimuli times in seconds
                  (1st column: onsets, 2nd column: offsets). By default None, will be read from sync channel (at sync_chan_id)
@@ -222,6 +223,11 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
     if ('amplitudes' not in neuron_group)\
        or ('voltage_sample' not in neuron_group)\
        or again:
+       if center_snw_window_on_spikes:
+            t = h5_file[neuron_path+'/spike_indices'][...]/samp_rate
+            if snr_window[1]>t[0]: # spike starting after end of original window
+                snr_window = np.array(snr_window)+t[0]
+                snr_window[1]=min(snr_window[1], t[-1])
         chunk = extract_rawChunk(dp, snr_window, channels=np.arange(chan_bottom, chan_top), 
                                  scale=False, med_sub=False, whiten=False, center_chans_on_0=False,
                                  hpfilt=False, verbose=False)
@@ -245,6 +251,11 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
         add_dataset_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor'])
         
     if 'whitened_voltage_sample' not in neuron_group or again:
+        if center_snw_window_on_spikes:
+            t = h5_file[neuron_path+'/spike_indices'][...]/samp_rate
+            if snr_window[1]>t[0]: # spike starting after end of original window
+                snr_window = np.array(snr_window)+t[0]
+                snr_window[1]=min(snr_window[1], t[-1])
         white_chunk = extract_rawChunk(dp, snr_window, channels=np.arange(chan_bottom, chan_top), 
                                 scale=True, med_sub=False, hpfilt=True, filter_forward=False, filter_backward=True,
                                 whiten=True, use_ks_w_matrix=True,

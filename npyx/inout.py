@@ -23,8 +23,6 @@ except ImportError:
     "some functions dealing with the binary file (filtering, whitening...) will not work."))
 
 from npyx.utils import npa, read_pyfile, list_files
-from npyx.preprocess import apply_filter, bandpass_filter, whitening, approximated_whitening_matrix, med_substract,\
-                            gpufilter, adc_realign, kfilt
 
 import json
 
@@ -535,7 +533,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
                      whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, filter_forward=True, filter_backward=True,
                      nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=True,
-                     ignore_ks_chanfilt=0, center_chans_on_0=False, verbose=False, scale=True, again=False):
+                     ignore_ks_chanfilt=True, center_chans_on_0=False, verbose=False, scale=True, again=False):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     Parameters:
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
@@ -579,8 +577,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     assert times[1]<meta['recording_length_seconds']
 
     # Format inputs
-    cm=chan_map(dp, probe_version='local'); assert cm.shape[0]<=Nchans-1
-    channels=assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt) # index out of 384, should remain the same because rc initial shape is 384!
+    channels=assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt)
     t1, t2 = int(np.round(times[0]*fs)), int(np.round(times[1]*fs))
     if whiten:
         if t1<whitenpad:
@@ -630,28 +627,36 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     if med_sub:
         rc=med_substract(rc, 0, nRange=nRangeMedSub)
 
-    # Highpass filter with a 3rd order butterworth filter, like in kilosort2
-    # bidirectionally
+    # get the right channels range,
+    # after median subtraction
+    if (whiten and use_ks_w_matrix) or not whiten:
+        # saves computation time to preselect channels
+        rc = rc[channels, :]
+
+    # Highpass filter with a 3rd order butterworth filter
     if hpfilt:
-        rc_t = cp.asarray(rc.T)
+        rc_t = np.ascontiguousarray(rc.T)
+        rc_t = cp.asarray(rc_t)
         rc = gpufilter(rc_t, fs=fs, fslow=None, fshigh=hpfiltf, order=3,
              car=False, forward=filter_forward, backward=filter_backward, ret_numpy=True).T
 
     # Whiten data
     if whiten:
-        rc=whitening(rc, nRangeWhiten, use_ks_w_matrix, dp)
+        channels_mask = np.isin(np.arange(Nchans-1), channels)
+        rc=whitening(rc, nRangeWhiten, use_ks_w_matrix, dp, channels_mask)
         rc=rc[:, whitenpad:-whitenpad]
 
-    # Align signal on each channel
-    if center_chans_on_0:
-        rc=rc-np.median(rc[:,:10],axis=1)[:,np.newaxis]
-
     # get the right channels range, AFTER WHITENING
-    rc = rc[channels, :]
+    if whiten and not use_ks_w_matrix:
+        rc = rc[channels, :]
 
     # Scale data
     if scale:
-        rc *= meta['bit_uV_conv_factor'] # convert into uV
+        rc = rc * meta['bit_uV_conv_factor'] # convert into uV
+
+    # Align signal on each channel, option convenient for plotting
+    if center_chans_on_0:
+        rc=rc-np.median(rc[:,:10],axis=1)[:,np.newaxis]
 
     # eventually convert from cupy to numpy array
     # (necessary if whitened on GPU)
@@ -789,6 +794,7 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
 
     # fetch whitening matrix (estimate covariance over a few batches)
     if whiten:
+        raise ImplementationError("Whitening here is still experimental - cannot be used for now.")
         Wrot_path = dp / 'whitening_matrix.npy'
         Wrot = approximated_whitening_matrix(memmap_f, Wrot_path, whiten_range,
             NT, Nbatch, NTbuff, ntb, nSkipCov, n_channels, channels_to_process,
@@ -851,9 +857,9 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
                 batch = kfilt(batch.T, butter_kwargs = {'N': 3, 'Wn': 0.1, 'btype': 'highpass'}).T
 
             # whiten the data and scale by 200 for int16 range
-            if whiten:
-                print("Whitening not implemented yet.")
-                batch = cp.dot(batch, Wrot)
+            ## TODO implement whitening here
+            # if whiten:
+            #     batch = cp.dot(batch, Wrot)
             
             assert batch.flags.c_contiguous  # check that ordering is still C, not F
             if batch.shape[0] != NT:
@@ -975,190 +981,9 @@ def paq_read(file_path):
             "units": units,
             "rate": rate}
 
-#%% I/O array functions from phy
-
-# def _start_stop(item):
-#     """Find the start and stop indices of a __getitem__ item.
-
-#     This is used only by ConcatenatedArrays.
-
-#     Only two cases are supported currently:
-
-#     * Single integer.
-#     * Contiguous slice in the first dimension only.
-
-#     """
-#     if isinstance(item, tuple):
-#         item = item[0]
-#     if isinstance(item, slice):
-#         # Slice.
-#         if item.step not in (None, 1):
-#             raise NotImplementedError()
-#         return item.start, item.stop
-#     elif isinstance(item, (list, np.ndarray)):
-#         # List or array of indices.
-#         return np.min(item), np.max(item)
-#     else:
-#         # Integer.
-#         return item, item + 1
-
-# def _fill_index(arr, item):
-#     if isinstance(item, tuple):
-#         item = (slice(None, None, None),) + item[1:]
-#         return arr[item]
-#     else:
-#         return arr
-
-# class ConcatenatedArrays(object):
-#     """This object represents a concatenation of several memory-mapped
-#     arrays. Coming from phy.io.array.py"""
-#     def __init__(self, arrs, cols=None, scaling=None):
-#         assert isinstance(arrs, list)
-#         self.arrs = arrs
-#         # Reordering of the columns.
-#         self.cols = cols
-#         self.offsets = np.concatenate([[0], np.cumsum([arr.shape[0]
-#                                                        for arr in arrs])],
-#                                       axis=0)
-#         self.dtype = arrs[0].dtype if arrs else None
-#         self.scaling = scaling
-
-#     @property
-#     def shape(self):
-#         if self.arrs[0].ndim == 1:
-#             return (self.offsets[-1],)
-#         ncols = (len(self.cols) if self.cols is not None
-#                  else self.arrs[0].shape[1])
-#         return (self.offsets[-1], ncols)
-
-#     def _get_recording(self, index):
-#         """Return the recording that contains a given index."""
-#         assert index >= 0
-#         recs = np.nonzero((index - self.offsets[:-1]) >= 0)[0]
-#         if len(recs) == 0:  # pragma: no cover
-#             # If the index is greater than the total size,
-#             # return the last recording.
-#             return len(self.arrs) - 1
-#         # Return the last recording such that the index is greater than
-#         # its offset.
-#         return recs[-1]
-
-#     def _get(self, item):
-#         cols = self.cols if self.cols is not None else slice(None, None, None)
-#         # Get the start and stop indices of the requested item.
-#         start, stop = _start_stop(item)
-#         # Return the concatenation of all arrays.
-#         if start is None and stop is None:
-#             return np.concatenate(self.arrs, axis=0)[..., cols]
-#         if start is None:
-#             start = 0
-#         if stop is None:
-#             stop = self.offsets[-1]
-#         if stop < 0:
-#             stop = self.offsets[-1] + stop
-#         # Get the recording indices of the first and last item.
-#         rec_start = self._get_recording(start)
-#         rec_stop = self._get_recording(stop)
-#         assert 0 <= rec_start <= rec_stop < len(self.arrs)
-#         # Find the start and stop relative to the arrays.
-#         start_rel = start - self.offsets[rec_start]
-#         stop_rel = stop - self.offsets[rec_stop]
-#         # Single array case.
-#         if rec_start == rec_stop:
-#             # Apply the rest of the index.
-#             out = _fill_index(self.arrs[rec_start][start_rel:stop_rel], item)
-#             out = out[..., cols]
-#             return out
-#         chunk_start = self.arrs[rec_start][start_rel:]
-#         chunk_stop = self.arrs[rec_stop][:stop_rel]
-#         # Concatenate all chunks.
-#         l = [chunk_start]
-#         if rec_stop - rec_start >= 2:
-#             print("Loading a full virtual array: this might be slow "
-#                         "and something might be wrong.")
-#             l += [self.arrs[r][...] for r in range(rec_start + 1,
-#                                                    rec_stop)]
-#         l += [chunk_stop]
-#         # Apply the rest of the index.
-#         return _fill_index(np.concatenate(l, axis=0), item)[..., cols]
-
-#     def __getitem__(self, item):
-#         out = self._get(item)
-#         assert out is not None
-#         if self.scaling is not None and self.scaling != 1:
-#             out = out * self.scaling
-#         return out
-
-#     def __len__(self):
-#         return self.shape[0]
-
-# def _pad(arr, n, dir='right'):
-#     """Pad an array with zeros along the first axis.
-
-#     Parameters
-#     ----------
-
-#     n : int
-#         Size of the returned array in the first axis.
-#     dir : str
-#         Direction of the padding. Must be one 'left' or 'right'.
-
-#     """
-#     assert dir in ('left', 'right')
-#     if n < 0:
-#         raise ValueError("'n' must be positive: {0}.".format(n))
-#     elif n == 0:
-#         return np.zeros((0,) + arr.shape[1:], dtype=arr.dtype)
-#     n_arr = arr.shape[0]
-#     shape = (n,) + arr.shape[1:]
-#     if n_arr == n:
-#         assert arr.shape == shape
-#         return arr
-#     elif n_arr < n:
-#         out = np.zeros(shape, dtype=arr.dtype)
-#         if dir == 'left':
-#             out[-n_arr:, ...] = arr
-#         elif dir == 'right':
-#             out[:n_arr, ...] = arr
-#         assert out.shape == shape
-#         return out
-#     else:
-#         if dir == 'left':
-#             out = arr[-n:, ...]
-#         elif dir == 'right':
-#             out = arr[:n, ...]
-#         assert out.shape == shape
-#         return out
-
-# def _range_from_slice(myslice, start=None, stop=None, step=None, length=None):
-#     """Convert a slice to an array of integers."""
-#     assert isinstance(myslice, slice)
-#     # Find 'step'.
-#     step = myslice.step if myslice.step is not None else step
-#     if step is None:
-#         step = 1
-#     # Find 'start'.
-#     start = myslice.start if myslice.start is not None else start
-#     if start is None:
-#         start = 0
-#     # Find 'stop' as a function of length if 'stop' is unspecified.
-#     stop = myslice.stop if myslice.stop is not None else stop
-#     if length is not None:
-#         stop_inferred = floor(start + step * length)
-#         if stop is not None and stop < stop_inferred:
-#             raise ValueError("'stop' ({stop}) and ".format(stop=stop) +
-#                              "'length' ({length}) ".format(length=length) +
-#                              "are not compatible.")
-#         stop = stop_inferred
-#     if stop is None and length is None:
-#         raise ValueError("'stop' and 'length' cannot be both unspecified.")
-#     myrange = np.arange(start, stop, step)
-#     # Check the length if it was specified.
-#     if length is not None:
-#         assert len(myrange) == length
-#     return myrange
-
-
+class ImplementationError(Exception):
+    pass
 
 from npyx.gl import assert_multi, get_ds_table, get_npyx_memory
-#
+from npyx.preprocess import whitening, approximated_whitening_matrix, med_substract,\
+                            gpufilter, adc_realign, kfilt

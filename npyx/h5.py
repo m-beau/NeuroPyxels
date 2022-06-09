@@ -222,14 +222,9 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
        or ('voltage_sample' not in neuron_group)\
        or again:
         chunk = extract_rawChunk(dp, snr_window, channels=np.arange(chan_bottom, chan_top), 
-                                 scale=False, med_sub=False, whiten=False,
+                                 scale=False, med_sub=False, whiten=False, center_chans_on_0=False,
                                  hpfilt=False, verbose=False)
 
-    if ('whitened_voltage_sample' not in neuron_group) or again:
-        chunk = extract_rawChunk(dp, snr_window, channels=np.arange(chan_bottom, chan_top), 
-                                 scale=False, med_sub=False, whiten=True, use_ks_w_matrix=True,
-                                 hpfilt=False, verbose=False)
-                                 
 
     # quality metrics
     if 'amplitudes' not in neuron_group or again:
@@ -247,7 +242,17 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
         raw_snippet = chunk[c1:c2,:]
         add_dataset_to_group(neuron_group, 'voltage_sample', raw_snippet) # still centered on peak channel, but half the size
         add_dataset_to_group(neuron_group, 'voltage_sample_start_index', int(snr_window[0] * samp_rate))
-        add_dataset_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor']) 
+        add_dataset_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor'])
+        
+    if 'whitened_voltage_sample' not in neuron_group or again:
+        white_chunk = extract_rawChunk(dp, snr_window, channels=np.arange(chan_bottom, chan_top), 
+                                scale=True, med_sub=False, hpfilt=True, filter_forward=False, filter_backward=True,
+                                whiten=True, use_ks_w_matrix=True,
+                                verbose=False)
+        raw_snippet_halfrange = np.clip(raw_snippet_halfrange, 0, 10)
+        c1, c2 = max(0,int(chunk.shape[0]/2-raw_snippet_halfrange)), min(chunk.shape[0]-1, int(chunk.shape[0]/2+raw_snippet_halfrange+1))
+        raw_snippet = white_chunk[c1:c2,:].astype(np.float32)
+        add_dataset_to_group(neuron_group, 'whitened_voltage_sample', raw_snippet)
 
     # layer
     add_dataset_to_group(neuron_group, 'phyllum_layer', 0, again)

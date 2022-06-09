@@ -26,7 +26,8 @@ from tqdm.auto import tqdm
 
 #%% Whitening
 
-def whitening(x, nRange=None, use_ks_matrix=True, dp=None):
+def whitening(x, nRange=None, use_ks_matrix=True,
+             dp=None, channels_mask=None):
     '''
     Whitens along axis 0.
     For instance, time should be axis 1 and channels axis 0 to whiten across channels.
@@ -39,29 +40,53 @@ def whitening(x, nRange=None, use_ks_matrix=True, dp=None):
         - use_ks_matrix: bool, whether to use kilosort's original whitening matrix to perform the whitening
                      (rather than recomputing it from the data at hand)
         - dp: str/Path, kilosort path with whitening matrix whiten_mat.npy
+        - channels_mask: boolean array, matches channels to whiten (important to save memory on large arrays)
     '''
     assert x.shape[1]>=x.shape[0]
 
     # Compute whitening matrix
     if use_ks_matrix:
         w, unprocessed_channels = whitening_matrix(x, nRange, use_ks_matrix, dp)
-        unprocessed_traces = x[unprocessed_channels,:]
-        x = x[~unprocessed_channels,:]
+        
+        if channels_mask is None:
+            unprocessed_traces = x[unprocessed_channels,:]
+            x = x[~unprocessed_channels,:]
+        else:
+            # only subselect some channels for whitening if instructed
+            # can only work when loading precomputed whitening matrix
+            assert np.sum(channels_mask) == x.shape[0],\
+                "WARNING inconsistency between provided channel_mask and partial array to whiten!"
+            unprocessed_channels_masked = unprocessed_channels[channels_mask]
+            channels_mask = channels_mask[~unprocessed_channels]
+            channels_2D_mask = channels_mask[:,None] & channels_mask[None,:]
+            w = w[np.nonzero(channels_2D_mask)]
+            w = w.reshape((channels_mask.sum(), channels_mask.sum()))
+
+            unprocessed_traces = x[unprocessed_channels_masked,:]
+            x = x[~unprocessed_channels_masked, :]
     else:
         w = whitening_matrix(x, nRange, use_ks_matrix, dp)
+
     
     # Whiten and re-scale to match original microvolts
     x = cp.array(x)
     scales=(np.max(x, 1)-np.min(x, 1))
-    x=np.dot(x.T,w).T
+    x = np.dot(x.T,w).T
     W_scales=(np.max(x, 1)-np.min(x, 1))
     x=x*np.repeat((scales/W_scales).reshape(x.shape[0], 1), x.shape[1], axis=1)
 
     # re-plug in unprocessed channels
     if use_ks_matrix:
-        x_full = cp.zeros((unprocessed_channels.shape[0], x.shape[1]))
-        x_full[~unprocessed_channels] = x
-        x_full[unprocessed_channels] = unprocessed_traces
+        if channels_mask is not None:
+            x_full = cp.zeros((unprocessed_channels_masked.shape[0], x.shape[1]))
+            x_full[~unprocessed_channels_masked] = x
+            x_full[unprocessed_channels_masked] = unprocessed_traces
+        else:
+            x_full = cp.zeros((unprocessed_channels.shape[0], x.shape[1]))
+            x_full[~unprocessed_channels] = x
+            x_full[unprocessed_channels] = unprocessed_traces
+        
+        x = x_full
     
     if 'cp' in globals():
         x = cp.asnumpy(x)

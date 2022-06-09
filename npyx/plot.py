@@ -385,6 +385,7 @@ def get_bounded_cmap(cmap_str, vmin, center, vmax, colorseq='linear'):
     cmap = get_cmap(cmap_str)
 
     vrange = max(vmax - center, center - vmin)
+    if vrange==0: vrange=1
     if colorseq=='linear':
         vrange=[-vrange,vrange]
         cmin, cmax = (vmin-vrange[0])/(vrange[1]-vrange[0]), (vmax-vrange[0])/(vrange[1]-vrange[0])
@@ -846,37 +847,66 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
 def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), filt_key='highpass',
              offset=450, color='black', lw=1, bg_alpha=0.8,
              title=None, _format='pdf',  saveDir='~/Downloads', saveFig=0, figsize=(8,10), again=False,
-             whiten=False, nRangeWhiten=None, med_sub=False, center_chans_on_0=True, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
+             center_chans_on_0=True, whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
+             nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=False, ignore_ks_chanfilt=True,
+             filter_forward=True, filter_backward=True,
              plot_ylabels=True, show_allyticks=0, yticks_jump=10, plot_baselines=False,
              events=[], set0atEvent=1,
              ax=None, ext_data=None, ext_datachans=np.arange(384),
              as_heatmap=False, vmin=-50,vmax=50,center=0):
     '''
-    ## PARAMETERS
-    - bp: binary path (files must ends in .bin, typically ap.bin)
+    Plot raw data over a specified window of time, over a specified range of channels.
+
+    Parameters:
+    - dp: binary path (files must ends in .bin, typically ap.bin)
     - times: list of boundaries of the time window, in seconds [t1, t2].
     - alignement_events: list of events to align the stimulus to compute an average, in seconds
     - window: [w1,w2], boundaries of mean raw trace if alignement_events is provides (ms) | Default: [-10,10]
     - channels (default: np.arange(0, 385)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
-    - offset: graphical offset between channels, in uV
+    - filt_key: 'highpass' or 'lowpass', whether to plot high or low pass filtered file (ap or lf)
+    - offset: graphical offset between channels, in uV (ise to scale up/down in y)
+
+
+    - color: color to plot all the lines ('multi' will use 20DistinctColors iteratively to distinguish channels by eye)
+    - lw: float, linewidth of traces
+    - bg_alpha: float [0-1], background alpha
+    - title: str, figure title
+
     - saveDir: directory where to save either the figure or the data (default: ~/Downloads)
-    - saveData (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
     - saveFig: save the figure at saveDir
     - _format: format of the figure to save | default: pdf
-    - color: color to plot all the lines ('multi' will use 20DistinctColors iteratively to distinguish channels by eye)
-    - whiten: boolean, whiten data or not
-    - show_allyticks: boolean, whetehr to show all y ticks or not (every 50uV for each individual channel), only use if exporing data | default 0
+    - figsize: (x_inches, y_inches) figure size
+    - again: bool, whether to recompute data rather than loading it from disc
+
+    - center_chans_on_0: bool, whether to median subtract in time to reccenter channels on 0
+    - whiten: whether to whiten the data across channels. If nRangeWhiten is not None, whitening matrix is computed with the nRangeWhiten closest channels.
+    - med_sub: whether to median-subtract the data across channels. If nRangeMedSub is not none, median of each channel is computed using the nRangeMedSub closest channels.
+    - hpfilt: whether to high-pass filter the data, using a 3 nodes butterworth filter of cutoff frequency hpfiltf.
+    - hpfiltf: see hpfilt
+    - nRangeWhiten: int, see whiten.
+    - nRangeMedSub: int, see med_sub.
+    - use_ks_w_matrix: bool, whether to use kilosort's original whitening matrix to perform the whitening
+                     (rather than recomputing it from the data at hand)
+    - ignore_ks_chanfilt: whether to ignore the filtering made by kilosort,
+                          which only uses channels with average events rate > ops.minfr to spike sort.
+
+    - plot_ylabels: bool, whether to plot y labels
+    - show_allyticks: bool, whetehr to show all y ticks or not (every 50uV for each individual channel),
+                      only use if exporing data
+    - yticks_jump: int, plot ytick label every yticks_jump ticks
+    - plot_baselines: bool, whether to plot dotted lines at 0 for every channel
+
     - events: list of times where to plot vertical lines, in seconds.
     - set0atEvent: boolean, set time=0 as the time of the first event provided in the list events, if any is provided.
-    - figsize: figure size
-    - plot_ylabels
-    - ax
-    - title
-    - data: array of shape (N channels, N time samples), externally porovided data to plot | Default: None
-    -
-    PS: if you wish to center the plot on the event, ensure that the event is exactly between times[0] and times[1].
-    ## RETURNS
-    fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
+    - ax: matplotlib axes, where plot will be plotted if provided
+    - ext_data: array of shape (N channels, N time samples), externally porovided data to plot
+    - ext_datachans: array matching the number of channels of ext_data to plot the proper y labels
+
+    - as_heatmap: whether to plot data as heatmap rather than 2D lines
+    - vmin, vmax, center: float, values of heatmap colorbar
+
+    Returns:
+    - fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
 
     '''
     assert filt_key in ['highpass', 'lowpass']
@@ -884,13 +914,15 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     assert assert_iterable(events)
     # Get data
     if ext_data is None:
-        channels=assert_chan_in_dataset(dp, channels)
+        channels=assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt)
         if times is not None:
             assert alignement_events is None, 'You can either provide a window of 2 times or a list of alignement_events \
                 + a single window to compute an average, but not both!'
             rc = extract_rawChunk(dp, times, channels, filt_key, 1,
-                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
-                     ignore_ks_chanfilt, center_chans_on_0, 0, scale=1, again=again)
+                     whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
+                     nRangeWhiten, nRangeMedSub, use_ks_w_matrix,
+                     ignore_ks_chanfilt, center_chans_on_0, 0, 1, again)
+
         if alignement_events is not None:
             assert window is not None
             window[1]=window[1]+1*1000/fs # to make actual window[1] tick visible
@@ -903,11 +935,12 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
             for e in alignement_events[1:]:
                 times=e+npa(window)/1e3
                 rc+=extract_rawChunk(dp, times, channels, filt_key, 1,
-                     whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
-                     ignore_ks_chanfilt, center_chans_on_0, 0, scale=1, again=again)
+                     whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
+                     nRangeWhiten, nRangeMedSub, use_ks_w_matrix,
+                     ignore_ks_chanfilt, center_chans_on_0, 0, 1, again)
             rc/=len(alignement_events)
     else:
-        channels=assert_chan_in_dataset(dp, ext_datachans)
+        channels=assert_chan_in_dataset(dp, ext_datachans, ignore_ks_chanfilt)
         assert len(channels)==ext_data.shape[0]
         assert window is not None, 'You must tell the plotting function to which time window the external data corresponds to!'
         times=window
@@ -951,7 +984,10 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
         ax=fig.axes[0]
         ax.set_ylabel('Depth (\u03BCm)', size=14, weight='bold')
     else:
-        fig, ax = plt.subplots(figsize=figsize)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=figsize)
+        else:
+            fig = ax.get_figure()
         t=np.tile(t, (rc.shape[0], 1))
         rc+=plt_offsets[:,np.newaxis]
         if plot_baselines:
@@ -994,33 +1030,34 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                    title=None, saveDir='~/Downloads', saveData=0, saveFig=0, _format='pdf', figsize=(20,8),
                    whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
                    show_allyticks=0, yticks_jump=50, plot_ylabels=True, events=[], set0atEvent=1):
-    '''
-    ## PARAMETERS
-    - bp: binary path (files must ends in .bin, typically ap.bin)
-    - times: list of boundaries of the time window, in seconds [t1, t2]. If 'all', whole recording.
-    - channels (default: np.arange(0, 385)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
-    - offset: graphical offset between channels, in uV
-    - saveDir: directory where to save either the figure or the data (default: ~/Downloads)
-    - saveData (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
-    - saveFig: save the figure at saveDir
-    - _format: format of the figure to save | default: pdf
-    - color: color to plot all the lines. | default: multi, will use 20DistinctColors iteratively to distinguish channels by eye
-    ## RETURNS
-    fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
+    f'''
+    Plot raw traces with colored overlaid spike times of specified units.
 
+    Parameters:
+    - most parameters from plot_raw (see below)
+    - units: list/array of units (if they do not spike within 'times', will be ignored)
+    - Nchan_plot: int, number of channels over which to plot colored unit spikes
+    - spk_window: int, width of plotted unit spikes (in samples)
+    - colors: list of colors, same length as 'units' (or 'phy' to use phy colorscheme)
+    - bg_color: str, color of background raw traces
+
+    Returns:
+    - fig: a matplotlib figure with channel 0 being plotted at the bottom and channel 384 at the top.
+
+    plot_raw docstring:
+    {plot_raw.__doc__}
     '''
     pyqtgraph=0
     # if channels is None:
     #     peakChan=get_peak_chan(dp,units[0])
     #     channels=np.arange(peakChan-Nchan_plot//2-1, peakChan+Nchan_plot//2+2)
-    channels=assert_chan_in_dataset(dp, channels)
+    channels=assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt)
     rc = extract_rawChunk(dp, times, channels, 'ap', saveData,
                           whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
     # Offset data
     plt_offsets = np.arange(0, len(channels)*offset, offset)
     plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rc.shape[1]))
     rc+=plt_offsets
-
 
     fig=plot_raw(dp, times, None, None, channels,
              filt_key='highpass', offset=450, saveDir=saveDir, saveData=saveData, saveFig=0,
@@ -1029,7 +1066,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
              show_allyticks=show_allyticks, yticks_jump=yticks_jump, events=events, set0atEvent=set0atEvent, figsize=figsize,
              plot_ylabels=plot_ylabels, ax=None, title=title, lw=lw, bg_alpha=bg_alpha)
 
-    if not pyqtgraph: ax=fig.get_axes()[0]
+    ax=fig.get_axes()[0]
     assert assert_iterable(units)
     assert len(units)>=1
     fs=read_metadata(dp)['highpass']['sampling_rate']
@@ -1054,7 +1091,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
         if set0atEvent:
             tx_ms=tx_ms-events[0]*1000
             events=[e-events[0] for e in events]
-    if pyqtgraph:fig[1].disableAutoRange()
+
     for iu, u in enumerate(units):
         print('plotting unit {}...'.format(u))
         peakChan=get_peak_chan(dp,u, use_template=False)
@@ -1077,13 +1114,12 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                 #ax.plot(tx_ms[peakChan_rel, spk_id].T, rc[peakChan_rel, spk_id].T, lw=1.5, color=color)
                 fig.tight_layout()
 
-    if saveFig and not pyqtgraph:
+    if saveFig:
         rcn = '{}_{}_t{}-{}_ch{}-{}'.format(op.basename(dp), list(units), times[0], times[1], channels[0], channels[-1]) # raw chunk name
         rcn=rcn+'_whitened' if whiten else rcn+'_raw'
         if title is not None: rcn=title
         save_mpl_fig(fig, rcn, saveDir, _format)
 
-    if pyqtgraph:fig[1].autoRange()
     return fig
 
 #%% Peri-event plots ##############################################################################################
@@ -1487,6 +1523,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
         if overlap_events: plt.legend()
 
         if saveFig:save_mpl_fig(fig, title, saveDir, _format)
+
         return fig
 
     # Plot as heatmaps
@@ -2064,6 +2101,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
 
     minimum=im.min() if vmin is None else vmin
     maximum=im.max() if vmax is None else vmax
+    if minimum==maximum: maximum = minimum + 1
     rng=maximum-minimum
     if vmin is None: vmin = minimum+0.1*rng if center is None else min(minimum+0.1*rng,center-0.01*rng)
     if vmax is None: vmax = maximum-0.1*rng if center is None else max(maximum-0.1*rng, center+0.01*rng)
@@ -2123,7 +2161,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
 
     # Add colorbar, nicely formatted
     fig = add_colorbar(fig, ax, axim, vmin, vmax,
-                 0.01, cmap_h, clabel, cticks, extend_cmap)
+                0.01, cmap_h, clabel, cticks, extend_cmap)
 
     return fig
 
@@ -2134,6 +2172,7 @@ def add_colorbar(fig, ax, mappable, vmin, vmax,
     
     Makes sure that the size of the predefined axis does not change, but that the figure extends.
     """
+    assert vmin < vmax, "Make sure that vmin < vmax (cannot make a 0-range colorbar...)."
     axpos=ax.get_position()
     cbaraxx0,cbaraxy0 = float(axpos.x1+0.005), float(axpos.y0) #float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
     cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, width, height])

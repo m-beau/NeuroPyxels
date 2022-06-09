@@ -223,14 +223,14 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
     if ('amplitudes' not in neuron_group)\
        or ('voltage_sample' not in neuron_group)\
        or again:
-       if center_snw_window_on_spikes:
+        if center_snw_window_on_spikes:
             t = h5_file[neuron_path+'/spike_indices'][...]/samp_rate
             if snr_window[1]>t[0]: # spike starting after end of original window
                 snr_window = np.array(snr_window)+t[0]
                 snr_window[1]=min(snr_window[1], t[-1])
         chunk = extract_rawChunk(dp, snr_window, channels=np.arange(chan_bottom, chan_top), 
-                                 scale=False, med_sub=False, whiten=False, center_chans_on_0=False,
-                                 hpfilt=False, verbose=False)
+                                    scale=False, med_sub=False, whiten=False, center_chans_on_0=False,
+                                    hpfilt=False, verbose=False)
 
     # quality metrics
     if 'amplitudes' not in neuron_group or again:

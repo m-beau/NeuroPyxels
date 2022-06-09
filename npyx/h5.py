@@ -47,7 +47,8 @@ def label_optotagged_unit_h5(h5_path, dataset, unit, label):
 def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                 unit_abolute_id=None, sync_chan_id=None,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
-                dataset=None, snr_window=[0.1, 30.1], raw_snippet_halfrange=2,
+                dataset=None, snr_window=[0.1, 30.1], center_snw_window_on_spikes=True,
+                raw_snippet_halfrange=2,
                 optostims=None, optostims_threshold=None, n_waveforms_for_matching=5000,
                 **kwargs):
     """
@@ -225,7 +226,6 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                                  scale=False, med_sub=False, whiten=False, center_chans_on_0=False,
                                  hpfilt=False, verbose=False)
 
-
     # quality metrics
     if 'amplitudes' not in neuron_group or again:
         add_dataset_to_group(neuron_group, 'amplitudes', np.load(dp/'amplitudes.npy').squeeze()[ids(dp, unit, periods=periods)], again)
@@ -250,7 +250,8 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                                 whiten=True, use_ks_w_matrix=True,
                                 verbose=False)
         raw_snippet_halfrange = np.clip(raw_snippet_halfrange, 0, 10)
-        c1, c2 = max(0,int(chunk.shape[0]/2-raw_snippet_halfrange)), min(chunk.shape[0]-1, int(chunk.shape[0]/2+raw_snippet_halfrange+1))
+        c1 = max(0,int(white_chunk.shape[0]/2-raw_snippet_halfrange))
+        c2 = min(white_chunk.shape[0]-1, int(white_chunk.shape[0]/2+raw_snippet_halfrange+1))
         raw_snippet = white_chunk[c1:c2,:].astype(np.float32)
         add_dataset_to_group(neuron_group, 'whitened_voltage_sample', raw_snippet)
 

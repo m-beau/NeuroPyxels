@@ -685,7 +685,7 @@ def assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt=False):
 #%% Binary file filtering wrappers
 
 def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, move_orig_data=True,
-                       ADC_realign = False, median_subtract=False, f_low=None, f_high=300, order=3,
+                       ADC_realign = False, median_subtract=True, f_low=None, f_high=300, order=3,
                        filter_forward=True, filter_backward=False,
                        spatial_filt=False, whiten = False, whiten_range=32,
                        again_Wrot=False, verbose=False):
@@ -749,25 +749,10 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
         target_dp = Path(target_dp)
     print(f"Preprocessing {fname}...")
 
-    filter_suffix = ""
-    message = ""
-    if ADC_realign:
-        filter_suffix+=f"_adcshift{ADC_realign}"
-        message+="    - shifting ADCs,\n"
-    if median_subtract:
-        filter_suffix+="_medsub"
-        message+="    - median subtraction (aka common average referencing CAR),\n"
-    filter_suffix+=f"_tempfilt{f_low}{f_high}"
-    low_s = 0 if f_low is None else f_low
-    message+=f"    - filtering in time (between {low_s} and {f_high} Hz),\n"
-    if whiten:
-        filter_suffix+=f"_whit{whiten}{whiten_range}"
-        message+=f"    - whitening (using {whiten_range} closest channels),\n"
-    if spatial_filt:
-        filter_suffix+=f"_spatfilt{spatial_filt}"
-        message+=f"    - filtering in space ({spatial_filt} 'Hz'),\n"
-    filtered_fname = str(fname.name)[:-7]+filter_suffix+".ap.bin"
-    message = message[:-2]+"."
+    filtered_fname, message = \
+        make_preprocessing_fname(fname, ADC_realign, median_subtract,
+                            f_low, f_high, filter_forward, filter_backward,
+                            whiten, whiten_range, spatial_filt)
     print(message)
 
     # fetch metadata
@@ -789,7 +774,7 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
     offset = 0
     item_size = np.dtype(dtype).itemsize
     n_samples = (binary_byte_size - offset) // (item_size * n_channels)
-    memmap_f = np.memmap(fname, dtype=dtype, offset=offset, shape=(n_samples, n_channels), mode='r+')
+    memmap_f = np.memmap(fname, dtype=dtype, offset=offset, shape=(n_samples, n_channels), mode='r')
 
 
     # fetch whitening matrix (estimate covariance over a few batches)
@@ -807,6 +792,8 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
     w_edge = cp.linspace(0,1,ntb).reshape(-1, 1) # weights to combine data batches at the edge
     buff_prev = cp.zeros((ntb, n_channels-1), dtype=np.int32)
     last_batch=False
+    assert not (target_dp / filtered_fname).exists(),\
+        f"WARNING file {target_dp / filtered_fname} exists already - to process again, delete or move it."
     with open(target_dp / filtered_fname, 'wb') as fw:  # open for writing processed data
         for ibatch in tqdm(range(Nbatch), desc="Preprocessing"):
             # we'll create a binary file of batches of NT samples, which overlap consecutively
@@ -882,6 +869,11 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
                 print(f"{(target_dp/filtered_fname).stat().st_size} total, {rebuilt_batch.size * 2} bytes written to file {datcpu.shape} array size")
             datcpu.tofile(fw)
         if verbose: print(f"{(target_dp/filtered_fname).stat().st_size} total")
+    
+    # Apparently Windows is unhappy if memory mapped files
+    # aren't explicitely closed if trying to rename/move them
+    # so... close the memory mapped file o_o
+    memmap_f._mmap.close()
 
     # Finally, if everything ran smoothly,
     # move original binary to new directory
@@ -901,6 +893,33 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
                 shutil.copy(dp/'whitening_mat.npy', orig_dp/'whitening_mat.npy')
 
     return target_dp/filtered_fname
+
+def make_preprocessing_fname(fname, ADC_realign, median_subtract,
+                            f_low, f_high, filter_forward, filter_backward,
+                            whiten, whiten_range, spatial_filt):
+
+    filter_suffix = ""
+    message = ""
+    if ADC_realign:
+        filter_suffix+=f"_adcshift{ADC_realign}"
+        message+="    - shifting ADCs,\n"
+    if median_subtract:
+        filter_suffix+="_medsub"
+        message+="    - median subtraction (aka common average referencing CAR),\n"
+    filter_suffix+=f"_tempfilt{f_low}{f_high}{filter_forward}{filter_backward}"
+    low_s = 0 if f_low is None else f_low
+    message+=(f"    - filtering in time (between {low_s} and {f_high} Hz)"
+              f" forward:{filter_forward}, backward:{filter_backward},\n")
+    if whiten:
+        filter_suffix+=f"_whit{whiten}{whiten_range}"
+        message+=f"    - whitening (using {whiten_range} closest channels),\n"
+    if spatial_filt:
+        filter_suffix+=f"_spatfilt{spatial_filt}"
+        message+=f"    - filtering in space ({spatial_filt} 'Hz'),\n"
+    filtered_fname = str(fname.name)[:-7]+filter_suffix+".ap.bin"
+    message = message[:-2]+"."
+
+    return filtered_fname, message
 
 #%% paqIO file loading utilities
 

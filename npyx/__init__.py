@@ -36,6 +36,6 @@ npyx submodules:
  .h5
 """
 
-__version__ = '2.5.0'
+__version__ = '2.5.2'
 
 print(f'npyx version {__version__} imported.')

@@ -15,8 +15,9 @@ There isn't any better doc atm - post an issue if you have any question, or emai
   - [Load waveforms from unit u](https://github.com/m-beau/NeuroPyxels#load-waveforms-from-unit-u)
   - [Compute auto/crosscorrelogram between 2 units](https://github.com/m-beau/NeuroPyxels#compute-autocrosscorrelogram-between-2-units)
   - [Plot waveform and crosscorrelograms of unit u](https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u)
+  - [Preprocess your waveforms and spike trains](https://github.com/m-beau/NeuroPyxels#preprocess-your-waveforms-drift-shift-matching-and-spike-trains-detect-periods-with-few-false-positivenegative)
   - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
-  - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels/tree/m-beau#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
+  - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
   - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
 - **[Installation](https://github.com/m-beau/NeuroPyxels#installation)**
 - **[Acknowledgement](https://github.com/m-beau/NeuroPyxels#acknowledgement)**
@@ -191,7 +192,7 @@ fig = plot_wvf(dp, u, Nchannels=16, t_waveforms=2.8)
 # But if you wished to get it, simply run
 peakchannel = get_peak_chan(dp, u)
 ```
-<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/wvf.png" width="200"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/wvf.png" width="300"/>
 
 ```python
 # plot ccg between 234 and 92
@@ -200,7 +201,7 @@ fig = plot_ccg(dp, [u,92], cbin=0.2, cwin=80, as_grid=True)
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ccg.png" width="400"/>
 
-### Preprocess your waveforms (drift-shft-matching) and spike trains (detect periods with few false positive/negative)
+### Preprocess your waveforms (drift-shift-matching) and spike trains (detect periods with few false positive/negative)
 ```python
 # all plotting functions return matplotlib figures
 from npyx.spk_wvf import wvf_dsmatch
@@ -212,15 +213,18 @@ from npyx.spk_t import trn_filtered
 # on the plot, black is the original waveform as it would be plotted in phy,
 # green is drift-matched, red is drift-shift matched
 w_preprocessed = wvf_dsmatch(dp, u, plot_debug=True)
+```
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1_driftmatch.png" width="500"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1.png" width="350"/>
 
+```python
 # trn_filtered clips the recording in 10s (default) chunks
 # and estimates the false positive/false negative spike sporting rates on such chunks
 # before masking out spikes occurring inside 'bad chunks',
 # defined as chunks with too high FP OR FN rates (5% and 5% by default)
 t_preprocessed = trn_filtered(dp, u, plot_debug=True)
 ```
-<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1_driftmatch.png" width="400"/>
-<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1.png" width="300"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/trnfiltered_example1.png" width="600"/>
 
 
 ### Plot chunk of raw data with overlaid units

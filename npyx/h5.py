@@ -115,7 +115,8 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
     waveform_samples = int(waveform_samples*samp_rate/1000)
 
     # open file in append mode
-    assert h5_path[-3:] == '.h5', "WARNING you must feed in a .h5 file as h5_path!"
+    h5_path = Path(h5_path)
+    assert h5_path.name[-3:] == '.h5', "WARNING you must feed in a .h5 file as h5_path!"
     with h5py.File(h5_path, "a") as h5_file:
 
         # check whether neuron already exists in dataset

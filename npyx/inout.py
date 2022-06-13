@@ -792,7 +792,7 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
     w_edge = cp.linspace(0,1,ntb).reshape(-1, 1) # weights to combine data batches at the edge
     buff_prev = cp.zeros((ntb, n_channels-1), dtype=np.int32)
     last_batch=False
-    assert not (target_dp / filtered_fname),\
+    assert not (target_dp / filtered_fname).exists(),\
         f"WARNING file {target_dp / filtered_fname} exists already - to process again, delete or move it."
     with open(target_dp / filtered_fname, 'wb') as fw:  # open for writing processed data
         for ibatch in tqdm(range(Nbatch), desc="Preprocessing"):

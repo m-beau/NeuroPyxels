@@ -115,6 +115,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
     waveform_samples = int(waveform_samples*samp_rate/1000)
 
     # open file in append mode
+    assert h5_path[-3:] == '.h5', "WARNING you must feed in a .h5 file as h5_path!"
     with h5py.File(h5_path, "a") as h5_file:
 
         # check whether neuron already exists in dataset
@@ -259,10 +260,11 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                     snr_window[1]=min(snr_window[1], t[-1])
             # check that file filtered properly
             bin_f = get_binary_file_path(dp)
-            if 'medsub' not in bin_f:
-                warnings.warn(f"WARNING file {bin_f} is expected to have been median subtracted but its file name does not contain medsub...")
-            if 'tempfiltNone300' not in bin_f:
-                warnings.warn(f"WANRING file {bin_f} ")
+            if 'medsub' not in bin_f.name:
+                warnings.warn(f"WARNING file {bin_f.name} is expected to have been median subtracted, but its file name does not contain medsub...")
+            if 'tempfiltNone300TrueFalse' not in bin_f.name:
+                warnings.warn((f"WARNING file {bin_f.name} is expected to have been highpass filtered forward only at 300Hz,"
+                                " but its file name does not contain tempfiltNone300TrueFalse..."))
             # reprocess it
             white_chunk = extract_rawChunk(dp, snr_window, channels=np.arange(chan_bottom, chan_top), 
                                     scale=True, med_sub=False, hpfilt=True, filter_forward=False, filter_backward=True,

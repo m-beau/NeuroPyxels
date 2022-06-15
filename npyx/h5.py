@@ -44,6 +44,29 @@ def label_optotagged_unit_h5(h5_path, dataset, unit, label):
     assert label in authorized_labels
     add_data_to_unit_h5(h5_path, dataset, unit, label, 'optotagged_label') 
 
+def add_units_to_h5(h5_path, dp, units=None, **kwargs):
+    f"""
+    Add all or specified units at the respective data path to an HDF5 file.
+
+    This is a high-level function designed to add many units at the
+    specified datapath to an HDF5 file. All additional key-value 
+    arguments are passed to `add_unit_h5`
+
+    Example:
+      add_units_to_h5('my_lab_data.h5', '/path/to/dataset_id', lab_id='pi_last_name')
+    Will add all sorted units in the 'kilosort_results' directory 
+    to the HDF5 file called 'my_lab_data.h5' (in the current directory).
+
+    Other arguments from add_unit_h5:
+    {add_unit_h5.__doc__}
+    """
+
+    if units is None:
+        units = get_units(dp)
+    
+    for u in units:
+        add_unit_h5(h5_path, dp, u, **kwargs)
+
 def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                 unit_abolute_id=None, sync_chan_id=None,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
@@ -316,22 +339,6 @@ def add_dataset_to_group(group, dataset, data, again=False):
             return
     group[dataset] = data
     return
-    
-def add_units_to_h5(h5_path, dp, **kwargs):
-    """
-    Add all units at the respective data path to an HDF5 file.
-
-    This is a high-level function designed to add all units at the
-    specified datapath to an HDF5 file. All additional key-value 
-    arguments are passed to `add_unit_h5`
-
-    Example:
-      add_units_to_h5('my_lab_data.h5', '/path/to/kilosort_results', lab_id='pi_last_name')
-    Will add all sorted units in the 'kilosort_results' directory 
-    to the HDF5 file called 'my_lab_data.h5' (in the current directory).
-    """
-    for unit_id in get_units(dp):
-        add_unit_h5(h5_path, dp, unit_id, **kwargs)
 
 def get_stim_chan(ons, min_th=20):
     chan = -1

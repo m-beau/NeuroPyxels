@@ -564,7 +564,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
                      fp=None, fn=None, fp_t=None, fn_t=None, fp_threshold=0.05, fn_threshold=0.05,
-                     good_fp_periods=None, good_fn_periods=None):
+                     good_fp_periods=None, good_fn_periods=None, title=None):
     """
     - train: seconds
     """
@@ -601,6 +601,9 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
     axs[axi].set_xlabel("Time (s)")
     axs[axi].set_ylabel("Amplitudes (a.u.)")
     axs[axi].set_xlim(period_s)
+    
+    if title is not None:
+        fig.suptitle(title)
     
     return fig
 

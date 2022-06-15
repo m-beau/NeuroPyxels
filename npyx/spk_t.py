@@ -417,6 +417,8 @@ def train_quality(dp, unit, period_m=[0,20],
     - goodsec, acgsec, gausssec
 
     """
+    
+    dp = Path(dp)
 
     # Hard-coded parameters
     c_bin = 0.2
@@ -424,13 +426,12 @@ def train_quality(dp, unit, period_m=[0,20],
     n_bins_acg_baseline=80 # from start and end of acg window
     n_spikes_threshold = 300
     fs = 30_000
+    title = f"{unit}, {dp.name}" # for plot_debug
 
 
     # check that the passed values make sense
     assert isinstance(dp, (str, PosixPath, WindowsPath)),\
         'Provide a string or a pathlib object as the source directory'
-    dp = Path(dp)
-
     assert assert_int(unit), 'Unit provided should be an int'
     assert assert_int(fp_chunk_span), 'fp_chunk_span provided should be an int'
     assert assert_int(fp_chunk_size), 'fp_chunk_size provided should be an int'
@@ -465,8 +466,9 @@ def train_quality(dp, unit, period_m=[0,20],
         good_fn_start_end_plot=None if len(good_fn_start_end)==1 else good_fn_start_end
         if plot_debug:
             plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
-                None, None, None, None,
-                fp_threshold, fn_threshold, good_fp_start_end_plot, good_fn_start_end_plot)
+                     None, None, None,None,
+                     fp_threshold, fn_threshold,
+                     good_fp_start_end_plot, good_fn_start_end_plot, title)
         
         return good_spikes_m, good_fp_start_end.tolist(), good_fn_start_end.tolist()
     
@@ -597,7 +599,8 @@ def train_quality(dp, unit, period_m=[0,20],
         if plot_debug:
             plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
-                     fp_threshold, fn_threshold, good_fp_start_end, good_fn_start_end)
+                     fp_threshold, fn_threshold,
+                     good_fp_start_end, good_fn_start_end, title)
 
         return good_spikes_m, good_fp_start_end, good_fn_start_end
     
@@ -610,7 +613,8 @@ def train_quality(dp, unit, period_m=[0,20],
         if plot_debug and n_spikes>0:
             plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
-                     fp_threshold, fn_threshold)
+                     fp_threshold, fn_threshold,
+                     None, None, title)
             
         return good_spikes_m, [0], [0]
 

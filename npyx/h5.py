@@ -12,25 +12,9 @@ from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 from npyx.gl import get_units, check_periods
 
-def print_h5_contents(h5_path, txt_output=False):
-    """
-    h5_path: str, path to .h5 file
-    txt_output: bool, if True prints contents to file
-    (same name as h5 name_content.txt)
-    """
-    h5_path = Path(h5_path)
-    if txt_output:
-        txt_output_path = h5_path.parent / f"{h5_path.name[:-3]}_content.txt"
-    with h5py.File(h5_path, "a") as hdf:
-        if txt_output:
-            with open(txt_output_path, "w") as txt:
-                original_stdout = sys.stdout
-                sys.stdout = txt
-                visititems(hdf, visitor_func)
-                sys.stdout = original_stdout
-        else:
-            visititems(hdf, visitor_func)
 
+
+# High level C4 functions
 def label_optotagged_unit_h5(h5_path, dataset, unit, label):
     """
     Add optotagged label to neuron.
@@ -43,6 +27,14 @@ def label_optotagged_unit_h5(h5_path, dataset, unit, label):
     authorized_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC"]
     assert label in authorized_labels
     add_data_to_unit_h5(h5_path, dataset, unit, label, 'optotagged_label') 
+
+def reset_optotagged_labels(h5_path):
+    """Resets all optotagged labels to 0"""
+    with h5py.File(h5_path, "a") as h5_f:
+        for neuron in h5_f.keys():
+            if 'hausser_neuron' not in neuron: continue
+            data_path = f"{neuron}/optotagged_label"
+            write_to_dataset(h5_f, data_path, 0, overwrite=True)
 
 def add_units_to_h5(h5_path, dp, units=None, **kwargs):
     f"""
@@ -139,7 +131,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
 
     # open file in append mode
     h5_path = Path(h5_path)
-    assert h5_path.name[-3:] == '.h5', "WARNING you must feed in a .h5 file as h5_path!"
+    assert_h5_file(h5_path)
     with h5py.File(h5_path, "a") as h5_file:
 
         # check whether neuron already exists in dataset
@@ -174,21 +166,21 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
             print(f"Adding data at {neuron_path} ({neuron_absolute_path})...")
 
         # metadata
-        add_dataset_to_group(neuron_group, 'lab_id', lab_id, again)
-        add_dataset_to_group(neuron_group, 'dataset_id', dataset, again)
-        add_dataset_to_group(neuron_group, 'neuron_id', unit, again)
-        add_dataset_to_group(neuron_group, 'neuron_absolute_id', neuron_group.name, again)
-        add_dataset_to_group(neuron_group, 'sampling_rate', samp_rate, again)
+        write_to_group(neuron_group, 'lab_id', lab_id, again)
+        write_to_group(neuron_group, 'dataset_id', dataset, again)
+        write_to_group(neuron_group, 'neuron_id', unit, again)
+        write_to_group(neuron_group, 'neuron_absolute_id', neuron_group.name, again)
+        write_to_group(neuron_group, 'sampling_rate', samp_rate, again)
         
         # add any additional keys passed to this function
         for key, value in kwargs.items():
-            add_dataset_to_group(neuron_group, key, value, again)
+            write_to_group(neuron_group, key, value, again)
 
         # spike_times
         periods = check_periods(periods)
         if 'spike_indices' not in neuron_group or again:
             t = trn(dp, unit, periods=periods, again=again)
-            add_dataset_to_group(neuron_group, 'spike_indices', t, again)
+            write_to_group(neuron_group, 'spike_indices', t, again)
             if optostims is None:
                 ons, offs = get_npix_sync(dp, verbose=False)
                 if sync_chan_id is None:
@@ -202,10 +194,10 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
             if optostims_threshold is not None:
                 opto_m = optostims[:,0] > optostims_threshold
                 optostims = optostims[opto_m,:]
-            add_dataset_to_group(neuron_group, 'optostims', optostims, again)
+            write_to_group(neuron_group, 'optostims', optostims, again)
             # Only consider spikes 10s before first opto onset
             sane_spikes = (t < (optostims[0,0]-10)*samp_rate)
-            add_dataset_to_group(neuron_group, 'sane_spikes', sane_spikes, again)
+            write_to_group(neuron_group, 'sane_spikes', sane_spikes, again)
             
         if 'fn_fp_filtered_spikes' not in neuron_group or again:
             # get good spikes mask for all spikes
@@ -224,7 +216,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                 periods_mask = np.isin(t_all, t)
                 fp_fn_good_spikes = fp_fn_good_spikes[periods_mask]
 
-            add_dataset_to_group(neuron_group, 'fn_fp_filtered_spikes', fp_fn_good_spikes, again)
+            write_to_group(neuron_group, 'fn_fp_filtered_spikes', fp_fn_good_spikes, again)
 
         # waveforms
         if 'mean_waveform_preprocessed' not in neuron_group\
@@ -235,15 +227,15 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
                                     again=again_wvf, plot_debug=plot_debug, verbose=verbose,
                                     n_waves_used_for_matching=n_waveforms_for_matching)
             dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
-            add_dataset_to_group(neuron_group, 'primary_channel', peak_chan)
+            write_to_group(neuron_group, 'primary_channel', peak_chan)
             chan_bottom = max(0, peak_chan-11)
             chan_top = min(383, peak_chan+11)
             dsm_waveform_chunk = dsm_waveform[:, chan_bottom:chan_top]
-            add_dataset_to_group(neuron_group, 'mean_waveform_preprocessed', dsm_waveform_chunk.T, again)
-            add_dataset_to_group(neuron_group, 'consensus_waveform', dsm_waveform_chunk.T*np.nan, again)
+            write_to_group(neuron_group, 'mean_waveform_preprocessed', dsm_waveform_chunk.T, again)
+            write_to_group(neuron_group, 'consensus_waveform', dsm_waveform_chunk.T*np.nan, again)
             cm = chan_map(dp)
-            add_dataset_to_group(neuron_group, 'channel_ids', np.arange(chan_bottom, chan_top, dtype=np.dtype('uint16')), again)
-            add_dataset_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, 1:2], again)
+            write_to_group(neuron_group, 'channel_ids', np.arange(chan_bottom, chan_top, dtype=np.dtype('uint16')), again)
+            write_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, 1:2], again)
 
         # Extract voltage snippets
         if ('amplitudes' not in neuron_group)\
@@ -260,10 +252,10 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
 
         # quality metrics
         if 'amplitudes' not in neuron_group or again:
-            add_dataset_to_group(neuron_group, 'amplitudes', np.load(dp/'amplitudes.npy').squeeze()[ids(dp, unit, periods=periods)], again)
+            write_to_group(neuron_group, 'amplitudes', np.load(dp/'amplitudes.npy').squeeze()[ids(dp, unit, periods=periods)], again)
             mad = np.median(np.abs(chunk) - np.median(chunk, axis=1)[:, None], axis=1) 
             std_estimate = (mad / 0.6745) # Convert to std
-            add_dataset_to_group(neuron_group, 'channel_noise_std', std_estimate, again)
+            write_to_group(neuron_group, 'channel_noise_std', std_estimate, again)
         
         # voltage snippets
         if 'voltage_sample' not in neuron_group or again and include_raw_snippets:
@@ -272,9 +264,9 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
             raw_snippet_halfrange = np.clip(raw_snippet_halfrange, 0, 10)
             c1, c2 = max(0,int(chunk.shape[0]/2-raw_snippet_halfrange)), min(chunk.shape[0]-1, int(chunk.shape[0]/2+raw_snippet_halfrange+1))
             raw_snippet = chunk[c1:c2,:]
-            add_dataset_to_group(neuron_group, 'voltage_sample', raw_snippet) # still centered on peak channel, but half the size
-            add_dataset_to_group(neuron_group, 'voltage_sample_start_index', int(snr_window[0] * samp_rate))
-            add_dataset_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor'])
+            write_to_group(neuron_group, 'voltage_sample', raw_snippet) # still centered on peak channel, but half the size
+            write_to_group(neuron_group, 'voltage_sample_start_index', int(snr_window[0] * samp_rate))
+            write_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor'])
             
         if 'whitened_voltage_sample' not in neuron_group or again and include_raw_snippets:
             if center_snw_window_on_spikes:
@@ -298,20 +290,20 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods=[[0,20*60]],
             c1 = max(0,int(white_chunk.shape[0]/2-raw_snippet_halfrange))
             c2 = min(white_chunk.shape[0]-1, int(white_chunk.shape[0]/2+raw_snippet_halfrange+1))
             raw_snippet = white_chunk[c1:c2,:].astype(np.float32)
-            add_dataset_to_group(neuron_group, 'whitened_voltage_sample', raw_snippet)
+            write_to_group(neuron_group, 'whitened_voltage_sample', raw_snippet)
 
         # layer
-        add_dataset_to_group(neuron_group, 'phyllum_layer', 0, again)
-        add_dataset_to_group(neuron_group, 'human_layer', 0, again)
+        write_to_group(neuron_group, 'phyllum_layer', 0, again)
+        write_to_group(neuron_group, 'human_layer', 0, again)
 
         # ground truth labels
-        add_dataset_to_group(neuron_group, 'expert_label', 0, again)
-        add_dataset_to_group(neuron_group, 'optotagged_label', 0, again)
+        write_to_group(neuron_group, 'expert_label', 0, again)
+        write_to_group(neuron_group, 'optotagged_label', 0, again)
 
         # predicted labels
-        add_dataset_to_group(neuron_group, 'lisberger_label', 0, again)
-        add_dataset_to_group(neuron_group, 'hausser_label', 0, again)
-        add_dataset_to_group(neuron_group, 'medina_label', 0, again)
+        write_to_group(neuron_group, 'lisberger_label', 0, again)
+        write_to_group(neuron_group, 'hausser_label', 0, again)
+        write_to_group(neuron_group, 'medina_label', 0, again)
 
     return neuron_path
 
@@ -325,28 +317,31 @@ def add_data_to_unit_h5(h5_path, dataset, unit, data, field):
     - data: data to add to unit
     - field: name of dataset to add data (id exists already, will overwrite)
     """
+    check_dataset_format(dataset)
+    neuron_path = f"datasets/{dataset}/{unit}"
     with h5py.File(h5_path, "a") as h5_file:
-        check_dataset_format(dataset)
-        neuron_path = f"datasets/{dataset}/{unit}"
         assert neuron_path in h5_file, f"WARNING unit {neuron_path} does not seem to be present in the file. To add it, use add_unit_h5()."
-        add_dataset_to_group(h5_file[neuron_path], field, data, True)
+        write_to_group(h5_file[neuron_path], field, data, True)
 
-def add_dataset_to_group(group, dataset, data, again=False):
-    if dataset in group:
-        if again:
-            del group[dataset]
+# h5 vizualisattion functions
+def print_h5_contents(h5_path, txt_output=False):
+    """
+    h5_path: str, path to .h5 file
+    txt_output: bool, if True prints contents to file
+    (same name as h5 name_content.txt)
+    """
+    h5_path = Path(h5_path)
+    if txt_output:
+        txt_output_path = h5_path.parent / f"{h5_path.name[:-3]}_content.txt"
+    with h5py.File(h5_path, "a") as hdf:
+        if txt_output:
+            with open(txt_output_path, "w") as txt:
+                original_stdout = sys.stdout
+                sys.stdout = txt
+                visititems(hdf, visitor_func)
+                sys.stdout = original_stdout
         else:
-            return
-    group[dataset] = data
-    return
-
-def get_stim_chan(ons, min_th=20):
-    chan = -1
-    for k, v in ons.items():
-        if len(v) > min_th:
-            chan = k
-    assert chan != -1
-    return chan
+            visititems(hdf, visitor_func)
 
 def visititems(group, func):
     with h5py._hl.base.phil:
@@ -355,8 +350,12 @@ def visititems(group, func):
             name = group._d(name)
             return func(name, group[name])
         return group.id.links.visit(proxy)
-
+       
 def visitor_func(name, node):
+    """
+    prints name followed by a meangingful description of an hdf5 node.
+    Node is either an h5 dataset (array, string...) or a group.
+    """
     if isinstance(node, h5py.Dataset):
         n=node[()]
         if isinstance(n, bytes):
@@ -381,3 +380,81 @@ def check_dataset_format(dataset):
     pattern = "[0-9]{2}-[0-9]{2}-[0-9]{2}_[a-z]{2}[0-9]{3}_probe[0-9]"
     if re.match(pattern, dataset, re.IGNORECASE) is None:
         warnings.warn(warning)
+
+def assert_h5_file(h5_path):
+    assert check_h5_file(h5_path), f"WARNING file at {h5_path} is not a .h5 file."
+
+def check_h5_file(h5_path):
+    """
+    Check whether h5_path indeed points to h5
+    returns True or False
+    """
+    return h5_path.name[-3:] == '.h5'
+
+# h5 writing functions
+def write_to_h5(h5_path, data_path, data,
+                overwrite=False, must_exist=False):
+    """
+    Writes data at data_path to .h5 file at h5_path
+    (creates non existing groups and datasets).
+    """
+    assert_h5_file(h5_path)
+    with h5py.File(h5_path, "a") as h5_file:
+        write_to_group(h5_file, data_path, data,
+                       overwrite, must_exist)
+
+def write_to_group(group, dataset, data,
+                         overwrite=True, must_exist=False):
+    """Write data to hdf5 group
+    i.e. create a dataset +/- groups on the path to dataset
+    and write data to this dataset.
+    Parameters:
+    - group: h5py group
+    - dataset: str, name of dataset
+    - data: data to add to dataset
+    - overwrite: bool, whether to overwrite pre-existing dataset
+    - must_exist: bool, whether to raise an error if dataset does not pre-exist
+    """
+    if dataset in group:
+        if overwrite:
+            del group[dataset]
+        else:
+            return
+    elif must_exist:
+        raise KeyError(f"Dataset {dataset} does not exist in group {group.name}!")
+    group[dataset] = data
+
+def write_to_dataset(group, dataset, data, overwrite=True):
+    """write_to_groupwrite_to_group
+    Write data to pre-existing dataset in group.
+    Will crash if dataset does not exist in group.
+    """
+    write_to_group(group, dataset, data,
+                         overwrite, True)
+
+# h5 reading functions
+def read_h5(h5_path, datapath):
+    """
+    Returns data at datapath from h5 file at h5_path
+    """
+    
+    assert_h5_file(h5_path)
+    with h5py.File(h5_path) as h5_file:
+        assert datapath in h5_file, f"WARNING {datapath} not found in {h5_path}"
+        return h5_file[datapath][()]
+    
+def h5_group_keys(group):
+    """
+    Returns list of keys of h5 file group
+    to allow easy overview of group content.
+    """
+    return list(group.keys())
+
+# C4 utilities
+def get_stim_chan(ons, min_th=20):
+    chan = -1
+    for k, v in ons.items():
+        if len(v) > min_th:
+            chan = k
+    assert chan != -1
+    return chan

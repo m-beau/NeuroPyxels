@@ -843,7 +843,7 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
     if ret_values:
         sig_pvals=thresh_consec(pvals, p_th/2, sgn=-1, n_consec=n_consec, only_max=only_max)
         poisson_zscore=(CCG-pred)/np.sqrt(pred)
-        for sp in sig_pvals: sp[1,:]=poisson_zscore[sp[0,:].astype(np.int)]
+        for sp in sig_pvals: sp[1,:]=poisson_zscore[sp[0,:].astype(np.int64)]
         return sig_pvals
 
     comp = (pvals<=p_th/2)

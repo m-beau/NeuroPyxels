@@ -77,13 +77,13 @@ mark_dict = {
 
 #%% Utils
 
-_ACCEPTED_ARRAY_DTYPES = (np.float, np.float32, np.float64,
+_ACCEPTED_ARRAY_DTYPES = (np.float32, np.float64,
                           np.int8, np.int16, np.uint8, np.uint16,
                           np.int32, np.int64, np.uint32, np.uint64,
                           np.bool)
 
 def assert_float(x):
-    return isinstance(x, (float, np.float,
+    return isinstance(x, (float,
                           np.float16, np.float32, np.float64))
 
 def assert_int(x):

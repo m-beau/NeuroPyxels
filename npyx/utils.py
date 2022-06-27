@@ -177,7 +177,7 @@ def any_n_consec(X, n_consec, where=False):
         - n_consec: int, number of consecutive True/False values to find
         - where: bool, returns array of indices if True
     '''
-    X=npa(X).astype(np.int)
+    X=npa(X).astype(np.int64)
     assert np.all((X==0)|(X==1)), 'X array should be only 0s and 1s!'
     for i in range(n_consec-1):
         X = X[:-1]+X[1:]
@@ -382,7 +382,7 @@ def smooth(arr, method='gaussian_causal', sd=5, axis=1, gamma_a=5):
     
     ## Checks and formatting
     assert method in ['gaussian', 'gaussian_causal', 'gamma']
-    assert type(sd) in [int, np.int]
+    assert type(sd) in [int, np.int32, np.int64]
 
 
     ## pad array at beginning and end to prevent edge artefacts
@@ -788,7 +788,7 @@ def _index_of(arr, lookup):
     # Equivalent of np.digitize(arr, lookup) - 1, but much faster.
     lookup = np.asarray(lookup, dtype=np.int32)
     m = (lookup.max() if len(lookup) else 0) + 1
-    tmp = np.zeros(m + 1, dtype=np.int)
+    tmp = np.zeros(m + 1, dtype=np.int64)
     # Ensure that -1 values are kept.
     tmp[-1] = -1
     if len(lookup):

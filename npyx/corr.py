@@ -1348,7 +1348,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         u1,u2=sfc.loc[i,'uSrc':'uTrg']
         assert (u1 in gu) and (u2 in gu), f'WARNING units {u1},{u2} from precomputed sfc not found in dataset units - must be respikesorted. Re-run with again=True.'
         ui1,ui2=np.nonzero(gu==u1)[0][0], np.nonzero(gu==u2)[0][0] # ORDER OF gu MATTERS
-        v=sfc.loc[i, metric]
+        v=np.float64(sfc.loc[i, metric])
         # If showing all main modulations or all connections,
         # plotting inhibitions top right corner and excitations bottom left corner
         if corr_type in ['main', 'connections']:

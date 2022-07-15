@@ -7,6 +7,7 @@ from IPython.core.debugger import set_trace as breakpoint
 import os.path as op
 opj=op.join
 from pathlib import Path, PosixPath, WindowsPath
+import traceback
 
 # from itertools import groupby
 # from operator import itemgetter
@@ -74,7 +75,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
     periods = check_periods(periods)
-    if periods is not 'all': # else, eq to periods=[(0, spike_samples[-1])] # in samples
+    if not isinstance(periods, str): # else, eq to periods=[(0, spike_samples[-1])] # in samples
         dp_source = get_source_dp_u(dp, unit)[0]
         fs=read_metadata(dp_source)["highpass"]['sampling_rate']
         train=trn(dp, unit, again=again)
@@ -147,7 +148,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
     periods = check_periods(periods)
-    if periods is not 'all': # else, eq to periods=[(0, spike_samples[-1])] (in samples)
+    if not isinstance(periods, str): # else, eq to periods=[(0, spike_samples[-1])] (in samples)
         sec_bool=np.zeros(len(train), dtype=np.bool)
         for section in periods:
             sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples

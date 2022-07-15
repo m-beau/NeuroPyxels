@@ -108,7 +108,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
     - dataset: A unique ID for this dataset. By default this value is None, in which case
       the dataset id is assumed to the dirname of the data directory passed as the dp argument
       
-    - raw_window: A two item list containing the start and stop times (in seconds) of the snippet of raw data used for
+    - raw_window: A two item list containing the start and stop times (in SECONDS) of the snippet of raw data used for
                   1) computing noise RMS (-> SNR)
                   2) extracting representative examples of raw data (raw, and whitened).
     - center_raw_window_on_spikes: bool, whether to roughly center the raw voltage snippets window (raw_window) on neuron's first spike
@@ -490,7 +490,10 @@ def read_h5(h5_path, datapath):
     assert_h5_file(h5_path)
     with h5py.File(h5_path) as h5_file:
         assert datapath in h5_file, f"WARNING {datapath} not found in {h5_path}"
-        return h5_file[datapath][()]
+        data = h5_file[datapath][()]
+        if isinstance(data, bytes):
+            data = data.decode() # for strings
+    return data
     
 def h5_group_keys(group):
     """

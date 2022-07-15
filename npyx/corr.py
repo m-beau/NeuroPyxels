@@ -7,6 +7,7 @@ import os
 import os.path as op; opj=op.join
 from pathlib import Path
 import psutil
+import traceback
 
 import warnings
 warnings.simplefilter('ignore', category=RuntimeWarning)
@@ -250,6 +251,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
       returns numpy array (Nunits, Nunits, win_size/bin_size)
 
     '''
+
     assert assert_int(fs), "sampling rate fs must be an integer."
     assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore'], \
         "WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore']."
@@ -302,8 +304,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
     if 'crosscorrelograms' not in locals(): # handling of weird allow_picke=True error
         if verbose: print("File {} not found in routines memory.".format(fn))
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True,
-                                                   periods, verbose, trains, enforced_rp,
-                                                   log_window_end, n_log_bins)
+                                                periods, verbose, trains, enforced_rp,
+                                                log_window_end, n_log_bins)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
         if crosscorrelograms.shape[0]<len(U): # no spikes were found in this period
             # Maybe if not any(crosscorrelograms.ravel()!=0):
@@ -525,7 +527,8 @@ def get_ccgstack_fullname(name=None, cbin=0.2, cwin=80,
     return fn, fnu
 
 
-def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all_to_all=False, name=None, sav=True, again=False, periods='all'):
+def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts',
+                all_to_all=False, name=None, sav=True, again=False, periods='all', parallel=True):
     '''
     Routine generating a stack of correlograms for faster subsequent analysis,
     between all U_src and U_trg units.
@@ -584,8 +587,8 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                         ccg_ids.append([i1, u1, i2, u2])
                         ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 0, None))
 
-            ccg_results=Parallel(n_jobs=num_cores)(\
-                delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
+            ccg_results = compute_ccgs_bulk(ccg_inputs, parallel)
+            
             for ((i1, u1, i2, u2), CCG) in zip(ccg_ids,ccg_results):
                 if i1==i2:
                     stack[i1, i2, :]=CCG.squeeze()
@@ -600,8 +603,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                     ccg_ids.append([i1, u1, i2, u2])
                     ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 0, None))
 
-            ccg_results=Parallel(n_jobs=num_cores)(\
-                delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
+            ccg_results = compute_ccgs_bulk(ccg_inputs, parallel)
             for ((i1, u1, i2, u2), CCG) in zip(ccg_ids,ccg_results):
                 stack[i1, i2, :]=CCG[0,1,:]
 
@@ -615,8 +617,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
             ccg_ids.append([i, u1, u2])
             ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 0, None))
 
-        ccg_results=Parallel(n_jobs=num_cores)(\
-            delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
+        ccg_results = compute_ccgs_bulk(ccg_inputs, parallel)
         for ((i, u1, u2), CCG) in zip(ccg_ids,ccg_results):
             ustack[i, :]=[u1,u2]
             stack[i, :]=CCG[0,1,:]
@@ -626,6 +627,18 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
         np.save(dpnm/fnu, ustack)
 
     return stack, ustack
+
+def compute_ccgs_bulk(ccg_inputs, parallel=True):
+
+    if parallel:
+        return Parallel(n_jobs=num_cores)(\
+               delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)),\
+               desc=f'Computing ccgs over {num_cores} cores'))
+    ccg_results = []
+    for i in tqdm(range(len(ccg_inputs))):
+        ccg_results.append(ccg(*ccg_inputs[i]))
+
+    return ccg_results
 
 def get_ustack_i(U, ustack):
     '''

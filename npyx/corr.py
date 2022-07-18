@@ -1088,6 +1088,40 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 
     return sigstack, sigustack
 
+def acg_3D(dp, u, cbin, cwin, normalize='Probability',
+            verbose=False, periods='all', again=False,
+            train=None, enforced_rp=0, num_firing_rate_bins=10, smooth=250):
+    f"""
+    Wrapper for 3D acg.
+    
+    See doc of crosscorr_vs_firing_rate:
+    {crosscorr_vs_firing_rate.__doc__}"""
+
+    dp = get_source_dp_u(dp, u)[0]
+    fs = read_metadata(dp)['highpass']['sampling_rate']
+    dpnm = get_npyx_memory(dp)
+
+    periods_str = str(periods)[0:50].replace(' ', '').replace('\n','')
+    fn = f"acg3d_{u}_{cbin}_{cwin}_{normalize}_{periods_str}_{enforced_rp}.npy"
+    if (dpnm/fn).exists() and not again:
+        bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
+        bins_f = np.load(dpnm/("f_"+fn))
+        acg_3d =  np.load(dpnm/fn)
+        return acg_3d, bins_t, bins_f
+
+    sav = False
+    if train is None:
+        train = trn(dp, u, 1, verbose, periods, again, enforced_rp)
+        sav = True
+    bins_f, acg_3d = crosscorr_vs_firing_rate(train, train, cwin, cbin, fs, num_firing_rate_bins, smooth)
+    bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
+
+    if sav:
+        np.save(dpnm/("f_"+fn), bins_f)
+        np.save(dpnm/fn, acg_3d)
+
+    return acg_3d, bins_t, bins_f
+
 def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num_firing_rate_bins=10, smooth=250):
     """
     Computes a "three dimensional" cross-correlogram that shows firing regularity when the neuron is

@@ -556,6 +556,7 @@ def train_quality(dp, unit, period_m=[0,20],
             n_spikes_chunk=np.sum(chunk_mask)
 
             if n_spikes_chunk > 15:
+                print(t1,t2)
                 ACG = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[(t1, t2)])
                 violations_mean = np.mean(ACG[rp_mask])
                 rpv_ratio_acg = round(violations_mean / baseline_mean, 4)

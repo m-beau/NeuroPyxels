@@ -1083,7 +1083,7 @@ def compute_isi_features(isint):
     # Instantaneous frequencies were calculated for each interspike interval as the reciprocal of the isi;
     # mean instantaneous frequency as the arithmetic mean of all values.
     mfr = 1 / np.mean(isint)
-    mifr = np.mean(1.0 / np.clip(isint, 1e-3, None)) #! Discuss this
+    mifr = np.mean(1.0 / isint)
 
     # Median inter-spike interval distribution
     # medISI = np.median(isint)
@@ -1169,14 +1169,21 @@ def compute_isi_features(isint):
     )
 
 
-def healthy_waveform():
+def healthy_waveform(waveform_2d, peaks_values):
     '''define if waveform looks healthy
-    works for somatic nd dendritic waveforms, and also complex spikes... hard one
+    works for somatic nd dendritic waveforms, and also fat spikes
     - at least 1 waveform amplitude > 30uV
     - maybe flt baseline, but doesn't work for compelx spikes
     - count peaks from peak detect - should be between 2 and 4. Anything lower or larger -> looks dodgy
     '''
-    pass
+    
+    if len(peaks_values) < 2 or len(peaks_values) > 4:
+        return False
+    
+    if np.max(np.ptp(waveform_2d, axis=1)) < 30:
+        return False
+    
+    return True
 
 
 def is_somatic():
@@ -1187,7 +1194,7 @@ def is_somatic():
     pass
     
     
-def find_relevant_waveform():
+def find_relevant_waveform(waveform_2d):
     """
     Input:
         - 2D waveform (t samples x n channels)
@@ -1206,13 +1213,34 @@ def find_relevant_waveform():
     3bis - among waveforms detected as non somatic, take channel with max amplitude
     4bis - flip 1D waveform vertically
     5bis - set boolean as False
-
-    
     
     Returns:
     - 1D waveform on relevant channel (either somatic or dendritic)
     - boolean, True if somatic, False if dendritic
     """
+    any_somatic = False
+    candidate_idx_somatic = []
+    candidate_idx_dendritic = []
+    
+    waveform_2d = waveform_2d[np.ptp(waveform_2d, axis=1) > 30]
+    
+    for i, wf in enumerate(waveform_2d):
+        peak_t, peak_v = detect_peaks(wf)
+        if healthy_waveform(wf, peak_v):
+            if is_somatic(wf):
+                any_somatic = True
+                candidate_idx_somatic.append(i)
+            else:
+                candidate_idx_dendritic.append(i)
+    
+    if any_somatic:
+        
+        return waveform_2d[candidate_idx_somatic[np.argmax(np.ptp(waveform_2d[candidate_idx_somatic], axis=1))]], True
+    
+    elif not any_somatic and len(candidate_idx_dendritic) > 0:
+        
+        return -waveform_2d[candidate_idx_dendritic[np.argmax(np.ptp(waveform_2d[candidate_idx_dendritic], axis=1))]], False
+    
     pass
 
 

@@ -24,7 +24,7 @@ import pandas as pd
 from collections import Counter
 
 from scipy.interpolate import interp1d
-from tqdm.notebook import tqdm #from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \

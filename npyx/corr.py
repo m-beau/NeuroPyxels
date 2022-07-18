@@ -7,6 +7,7 @@ import os
 import os.path as op; opj=op.join
 from pathlib import Path
 import psutil
+import traceback
 
 import warnings
 warnings.simplefilter('ignore', category=RuntimeWarning)
@@ -23,7 +24,7 @@ import pandas as pd
 from collections import Counter
 
 from scipy.interpolate import interp1d
-from tqdm.notebook import tqdm #from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \
@@ -250,6 +251,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
       returns numpy array (Nunits, Nunits, win_size/bin_size)
 
     '''
+
     assert assert_int(fs), "sampling rate fs must be an integer."
     assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore'], \
         "WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore']."
@@ -302,8 +304,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
     if 'crosscorrelograms' not in locals(): # handling of weird allow_picke=True error
         if verbose: print("File {} not found in routines memory.".format(fn))
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True,
-                                                   periods, verbose, trains, enforced_rp,
-                                                   log_window_end, n_log_bins)
+                                                periods, verbose, trains, enforced_rp,
+                                                log_window_end, n_log_bins)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
         if crosscorrelograms.shape[0]<len(U): # no spikes were found in this period
             # Maybe if not any(crosscorrelograms.ravel()!=0):
@@ -525,7 +527,8 @@ def get_ccgstack_fullname(name=None, cbin=0.2, cwin=80,
     return fn, fnu
 
 
-def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all_to_all=False, name=None, sav=True, again=False, periods='all'):
+def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts',
+                all_to_all=False, name=None, sav=True, again=False, periods='all', parallel=True):
     '''
     Routine generating a stack of correlograms for faster subsequent analysis,
     between all U_src and U_trg units.
@@ -584,8 +587,8 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                         ccg_ids.append([i1, u1, i2, u2])
                         ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 0, None))
 
-            ccg_results=Parallel(n_jobs=num_cores)(\
-                delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
+            ccg_results = compute_ccgs_bulk(ccg_inputs, parallel)
+            
             for ((i1, u1, i2, u2), CCG) in zip(ccg_ids,ccg_results):
                 if i1==i2:
                     stack[i1, i2, :]=CCG.squeeze()
@@ -600,8 +603,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
                     ccg_ids.append([i1, u1, i2, u2])
                     ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 0, None))
 
-            ccg_results=Parallel(n_jobs=num_cores)(\
-                delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
+            ccg_results = compute_ccgs_bulk(ccg_inputs, parallel)
             for ((i1, u1, i2, u2), CCG) in zip(ccg_ids,ccg_results):
                 stack[i1, i2, :]=CCG[0,1,:]
 
@@ -615,8 +617,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
             ccg_ids.append([i, u1, u2])
             ccg_inputs.append((dp, [u1, u2], cbin, cwin, 30000, normalize, 1, 1, 0, periods, 0, None))
 
-        ccg_results=Parallel(n_jobs=num_cores)(\
-            delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)), desc=f'Computing ccgs over {num_cores} cores'))
+        ccg_results = compute_ccgs_bulk(ccg_inputs, parallel)
         for ((i, u1, u2), CCG) in zip(ccg_ids,ccg_results):
             ustack[i, :]=[u1,u2]
             stack[i, :]=CCG[0,1,:]
@@ -626,6 +627,18 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts', all
         np.save(dpnm/fnu, ustack)
 
     return stack, ustack
+
+def compute_ccgs_bulk(ccg_inputs, parallel=True):
+
+    if parallel:
+        return Parallel(n_jobs=num_cores)(\
+               delayed(ccg)(*ccg_inputs[i]) for i in tqdm(range(len(ccg_inputs)),\
+               desc=f'Computing ccgs over {num_cores} cores'))
+    ccg_results = []
+    for i in tqdm(range(len(ccg_inputs))):
+        ccg_results.append(ccg(*ccg_inputs[i]))
+
+    return ccg_results
 
 def get_ustack_i(U, ustack):
     '''
@@ -1075,6 +1088,100 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 
     return sigstack, sigustack
 
+def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num_firing_rate_bins=10, smooth=250):
+    """
+    Computes a "three dimensional" cross-correlogram that shows firing regularity when the neuron is
+    firing at different firing rates. The output is a 2D matrix
+    where the first dimensions is the number of bins specified (defaults to 10)
+    and the second dimension is the time axis. This function all returns
+    the binning used for the first dimension.
+    By default, we calculate the firing rate using a box-car smoothing
+    kernel, which provides a better estimate of the average firing rate.
+    This can be disabled by passing `smooth=None`.
+
+    Parameters:
+    - times_1: vector of spike indices for neuron 1 (samples)
+    - times_2: vector of spike indices for neuron 2 (samples)
+    - clusters: corresponding array of neuron indices
+    - win_size (float): window size, in milliseconds
+    - bin_size (float): bin size, in milliseconds
+    - U (list of integers): list of units indices.
+    - fs: sampling rate (Hertz). Default 30000.
+    - num_firing_rate_bins (integer): number of quantiles to use across firing rate, default = 10
+    - smooth (float): width of the boxcar filter to use for smoothing (in milliseconds). Default=250.
+
+    Returns:
+    - The bins of firing rate used for the first dimension
+    - 2D array with dimension (num_firing_rate_bins x num_timepoints), each point is
+      the probability of observing a spike for neuron 2 given a spike for neuron 1 
+      at t=0 and neuron 2's current firing rate (e.g., Pr(s_2(t) | s_1(0), fr_2(t))))
+
+       :Authors:
+       David J. Herzfeld <herzfeldd@gmail.com>
+    """
+    assert fs > 0.
+    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
+    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
+    winsize_bins = 2 * int(.5 * win_size *1./ bin_size) + 1 # Both in millisecond
+    assert winsize_bins >= 1
+    assert winsize_bins % 2 == 1
+    time_axis = np.linspace(-win_size / 2, win_size / 2, num=winsize_bins)
+    spike_counts = np.zeros((num_firing_rate_bins, len(time_axis))) # Counts number of occurences of spikes in a given bin in time axis
+    times = np.zeros(num_firing_rate_bins, dtype=np.int64) # total occurence 
+
+    # Samples per bin
+    samples_per_bin = int(np.ceil(fs / (1000 / bin_size)))
+
+    # Convert times_1 and times_2 (which are in units of fs to units of bin_size)
+    times_1 = np.floor(times_1 / samples_per_bin).astype(np.int64)
+    times_2 = np.floor(times_2 / samples_per_bin).astype(np.int64)
+
+    # Convert times_1 into a binary spike train
+    max_indices = int(np.ceil(max(times_1[-1], times_2[-1]) + 1))
+    spiketrain = np.zeros(max_indices, dtype=np.bool)
+    spiketrain[times_2] = True
+
+    # Convert neuron_2 spikes to firing rate using the inverse ISI method
+    num_samples = times_2[-1]
+    firing_rate = np.zeros(num_samples)
+    for i in range(0, len(times_2)-1):
+        current_firing_rate = 1.0 / ((times_2[i+1] - times_2[i]) * (bin_size / 1000))
+        firing_rate[times_2[i]:times_2[i+1]] = current_firing_rate
+        if i == 0:
+            firing_rate[0:times_2[i]] = current_firing_rate
+        if i == len(times_2) - 1:
+            firing_rate[times_2[i+1]:] = current_firing_rate
+    # Smooth the firing rates if requested
+    if smooth is not None:
+        smooth_half_num_indices = int(np.ceil(smooth / bin_size / 2))
+        smoothed_firing_rate = np.copy(firing_rate)
+        for i in range(0, len(smoothed_firing_rate)):
+            start = max(0, i - smooth_half_num_indices)
+            stop = min(len(smoothed_firing_rate), i + smooth_half_num_indices)
+            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
+        firing_rate = smoothed_firing_rate
+
+    # Get firing rate quantiles
+    quantile_bins = np.linspace(0, 1, num_firing_rate_bins + 2)[1:-1]
+    firing_rate_bins = np.quantile(firing_rate, quantile_bins)
+    for (i, spike_index) in enumerate(times_1):
+        start = spike_index + int(np.ceil(time_axis[0] / bin_size))
+        stop = start + len(time_axis)
+        if (start < 0) or (stop >= len(spiketrain)) or spike_index < times_2[0] or spike_index >= times_2[-1]:
+            continue # Skip these spikes to avoid edge artifacts
+        current_firing_rate = firing_rate[spike_index] # Firing of neuron 2 at neuron 1's spike index
+        current_firing_rate_bin_number = np.argmax(firing_rate_bins >= current_firing_rate)
+        if current_firing_rate_bin_number == 0 and current_firing_rate > firing_rate_bins[0]:
+            current_firing_rate_bin_number = len(firing_rate_bins) - 1
+        spike_counts[current_firing_rate_bin_number, :] += spiketrain[start:stop]
+        times[current_firing_rate_bin_number] += 1
+
+    # remove bin 0, which will always be 1
+    acg_3d = spike_counts / (np.ones((len(time_axis), num_firing_rate_bins)) * times).T
+    acg_3d[:,acg_3d.shape[1]//2] = 0
+
+    return firing_rate_bins, acg_3d
+
 def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
             again=False, againCCG=False, drop_seq=['sign', 'time', 'max_amplitude'],
@@ -1246,7 +1353,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         u1,u2=sfc.loc[i,'uSrc':'uTrg']
         assert (u1 in gu) and (u2 in gu), f'WARNING units {u1},{u2} from precomputed sfc not found in dataset units - must be respikesorted. Re-run with again=True.'
         ui1,ui2=np.nonzero(gu==u1)[0][0], np.nonzero(gu==u2)[0][0] # ORDER OF gu MATTERS
-        v=sfc.loc[i, metric]
+        v=np.float64(sfc.loc[i, metric])
         # If showing all main modulations or all connections,
         # plotting inhibitions top right corner and excitations bottom left corner
         if corr_type in ['main', 'connections']:

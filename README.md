@@ -37,6 +37,8 @@ Importantly, **`dp`** can also be the path to a **merged dataset**, generated wi
 
 More precisely, every function requires the files `myrecording.ap.meta`/`myrecording.oebin` (metadata from SpikeGLX/OpenEphys), `params.py`, `spike_times.npy` and `spike_clusters.npy`. If you have started spike sorting, `cluster_groups.tsv` will also be required obviously (will be created filled with 'unsorted' groups if none is found). Then particular functions will require particular files: loading waveforms with `npyx.spk_wvf.wvf` or extracting your sync channel with `npyx.io.get_npix_sync` require the raw data `myrecording.ap.bin``myrecording.dat`, `npyx.spk_wvf.templates` the files `templates.npy` and `spike_templates.npy`, and so on. This allows you to only transfer the strictly necassary files for your use case from a machine to the next: for instance, if you only want to make behavioural analysis of spike trains but do not care about the waveforms, you can run `get_npix_sync` on a first machine (which will generate a `sync_chan` folder containing extracted onsets/offsets from the sync channel(s)), then exclusively transfer the `sync_chan` folder along with `spike_times.npy` and `spike_clusters.npy` (all very light files) on another computer and analyze your data there seemlessly.
 
+DISCLAIMER: some parts of the code (in particular contents of feat.py) are experimental - use at your own risk!
+
 ### Directory structure
 
 The **`dp`** parameter of all npyx functions must be the **absolute path to `myrecording`** below.

@@ -30,7 +30,7 @@ mpl.rcParams['ps.fonttype'] = 42
 from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable
 from npyx.stats import fractile_normal, fractile_poisson
 
-from npyx.inout import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map
+from npyx.inout import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map, predefined_chanmap
 from npyx.gl import get_units
 from npyx.merger import assert_multi, get_ds_ids
 from npyx.spk_wvf import get_depthSort_peakChans, wvf, wvf_dsmatch, get_peak_chan, templates
@@ -609,10 +609,10 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
 
 #%% Waveforms or raw data ##############################################################################################
 
-def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms=2.8,
+def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=300, t_waveforms=2.8,
              periods='all', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
              whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
-             title = '', plot_std=True, plot_mean=True, plot_templates=False, color=phyColorsDic[0],
+             title = '', plot_std=True, plot_mean=True, plot_templates=False, color='dodgerblue',
              labels=False, show_channels=True, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf',
              ignore_ks_chanfilt = True,
@@ -680,12 +680,14 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
                   save=True, verbose=verbose, again=again,
                   whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
                   nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub, plot_debug=plot_debug)[1]
+    n_samples = waveforms.shape[-2]
+    n_channels = waveforms.shape[-1]
+    assert (n_samples, n_channels)==(t_waveforms_s, cm.shape[0])
     
     if not use_dsmatch:
         peak_chan_i = np.argmax(np.ptp(waveforms.mean(0), axis=0))
     else:
         peak_chan_i = np.argmax(np.ptp(waveforms, axis=0))
-    print(peak_chan_i)
 
     # Filter the right channels
     if chStart is None:
@@ -695,39 +697,95 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         chStart_i = int(max(int(np.argmin(np.abs(cm[:,0]-chStart))), 0)) # finds closest chStart given kilosort chanmap
         chStart=cm[chStart_i,0] # Should remain the same, unless chStart was capped to 384 or is a channel ignored to kilosort
 
-    chStart_i=int(min(chStart_i, waveforms.shape[-1]-Nchannels-1))
+    chStart_i=int(min(chStart_i, n_channels-Nchannels-1))
     chEnd_i = int(chStart_i+Nchannels) # no lower capping needed as
-    assert chEnd_i <= waveforms.shape[-1]-1
+    assert chEnd_i <= n_channels-1
 
     if not use_dsmatch:
         data = waveforms[:, :, chStart_i:chEnd_i]
         data=data[~np.isnan(data[:,0,0]),:,:] # filter out nan waveforms
-        datam = np.mean(data,0).T
-        datastd = np.std(data,0).T
+        datam = np.mean(data,0)
+        datastd = np.std(data,0)
     else:
-        datam = waveforms[:, chStart_i:chEnd_i].T
+        datam = waveforms[:, chStart_i:chEnd_i]
+        data = datam # place holder
         datastd = datam*0
     subcm=cm[chStart_i:chEnd_i,:].copy().astype(np.float32)
 
-    # Format plotting parameters
-    if type(sample_lines) is str:
-        assert sample_lines=='all'
-        sample_lines=min(waveforms.shape[0],n_waveforms)
-    elif type(sample_lines) in [int, float]:
-        sample_lines=min(waveforms.shape[0],sample_lines, n_waveforms)
-
-    if isinstance(color, str):
-        color=to_rgb(color)
-    color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
-    ylim1, ylim2 = (np.nanmin(datam-datastd)-50, np.nanmax(datam+datastd)+50) if ylim==[0,0] else (ylim[0], ylim[1])
-    x = np.linspace(0, datam.shape[1]/(fs/1000), datam.shape[1]) # Plot t datapoints between 0 and t/30 ms
-    
     # eventually load templates
     if plot_templates:
         tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
         assert tplts.shape[2]==waveforms.shape[-1]==cm.shape[0]
         tplts=tplts[:, :, chStart_i:chEnd_i]
-        x_tplts = x[(datam.shape[1]-tplts.shape[1])//2:(datam.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
+        x = np.linspace(0, n_samples/(fs/1000), n_samples) # Plot t datapoints between 0 and t/30 ms
+        x_tplts = x[(n_samples-tplts.shape[1])//2:(n_samples-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
+        tplt_chani_rel=peak_chan_i-chStart_i if chStart is None else np.argmax(np.max(datam, 1)-np.min(datam, 1))
+    else:
+        x_tplts = None
+        tplts = None
+        tplt_chani_rel = None
+
+    return plt_wvf(data, subcm, datastd,
+             x_tplts, tplts, tplt_chani_rel, fs,
+             title, plot_std, plot_mean, plot_templates,
+             color, labels, show_channels,
+             scalebar_w, ticks_lw, sample_lines, ylim,
+             saveDir, saveFig, saveData, _format,
+             ax_edge_um_x, ax_edge_um_y, margin,
+             figw_inch, figh_inch, as_heatmap)
+
+def plt_wvf(waveforms, subcm=None, waveforms_std=None,
+            x_tplts=None, tplts=None, tplt_chani_rel=None, fs=30000,
+            title = '', plot_std=True, plot_mean=True, plot_templates=False,
+            color='dodgerblue', labels=False, show_channels=True,
+            scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
+             saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf',
+             ax_edge_um_x=22, ax_edge_um_y=18, margin=0.12,
+             figw_inch=6, figh_inch=None, as_heatmap=False):
+    """
+    Waveform plotting utility function.
+
+    - waveforms: (n_waves, n_samples, n_channels) or (n_samples, n_channels) array, waveforms in uV
+    - subcm: (n_channels, 3) or (n_channels, 1) array ((channel_id, x, y) or (channel_id)), subest of channel map
+    """
+    # formatting
+    if waveforms_std is None:
+        plot_std=False
+    else:
+        waveforms_std = waveforms_std.T
+    if waveforms.ndim == 3:
+        n_waveforms = waveforms.shape[0]
+        datam = waveforms.mean(0).T
+        if type(sample_lines) is str:
+            assert sample_lines=='all'
+            sample_lines=min(waveforms.shape[0], n_waveforms)
+        elif type(sample_lines) in [int, float]:
+            sample_lines=min(waveforms.shape[0], sample_lines, n_waveforms)
+    elif waveforms.ndim == 2:
+        sample_lines = 0
+        datam = waveforms.T
+    
+    # channels and channelmap
+    if subcm is None:
+        # make up channel map
+        subcm=predefined_chanmap(probe_version='1.0')
+        subcm = subcm[datam.shape[-1],:]
+    else:
+        if subcm.ndim==1:
+            subcm_madeup = predefined_chanmap(probe_version='1.0')
+            subcm = np.vstack(subcm[:,None], subcm_madeup[datam.shape[-1],1:])
+        else:
+            assert subcm.shape[0]==datam.shape[0]
+
+    if isinstance(color, str):
+        color=to_rgb(color)
+    color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
+    if plot_std:
+        datamin, datamax = np.nanmin(datam-waveforms_std)-50, np.nanmax(datam+waveforms_std)+50
+    else:
+        datamin, datamax = np.nanmin(datam)-50, np.nanmax(datam)+50
+    ylim1, ylim2 = (datamin, datamax) if ylim==[0,0] else (ylim[0], ylim[1])
+    x = np.linspace(0, datam.shape[1]/(fs/1000), datam.shape[1]) # Plot t datapoints between 0 and t/30 ms
 
     # Plot
     if as_heatmap:
@@ -767,10 +825,14 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
         # Plot on subplots
         for i in range(subcm.shape[0]):
             for j in range(sample_lines):
-                ax[i].plot(x, data[j,:, i], linewidth=0.3, alpha=0.3, color=color)
+                assert waveforms.ndim==3
+                ax[i].plot(x, waveforms[j,:, i], linewidth=0.3, alpha=0.3, color=color)
             if plot_templates:
-                pci_rel=peak_chan_i-chStart_i if chStart is None else np.argmax(np.max(datam, 1)-np.min(datam, 1))
-                tpl_scalings=[(max(datam[pci_rel, :])-min(datam[pci_rel, :]))/(max(tpl[:,pci_rel])-min(tpl[:,pci_rel])) for tpl in tplts]
+                tpl_scalings=[]
+                for tpl in tplts:
+                    num = max(datam[tplt_chani_rel, :])-min(datam[tplt_chani_rel, :])
+                    denom = max(tpl[:,tplt_chani_rel])-min(tpl[:,tplt_chani_rel])
+                    tpl_scalings.append(num/denom)
                 if np.inf in tpl_scalings:
                     tpl_scalings[tpl_scalings==np.inf]=1
                     print('WARNING manually selected channel range does not comprise template (all zeros).')
@@ -779,9 +841,9 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=100, t_waveforms
             if plot_mean:
                 ax[i].plot(x, datam[i, :], linewidth=2, color=color_dark, alpha=1)
             if plot_std:
-                ax[i].plot(x, datam[i, :]+datastd[i,:], linewidth=1, color=color, alpha=0.5)
-                ax[i].plot(x, datam[i, :]-datastd[i,:], linewidth=1, color=color, alpha=0.5)
-                ax[i].fill_between(x, datam[i, :]-datastd[i,:], datam[i, :]+datastd[i,:], facecolor=color, interpolate=True, alpha=0.2)
+                ax[i].plot(x, datam[i, :]+waveforms_std[i,:], linewidth=1, color=color, alpha=0.5)
+                ax[i].plot(x, datam[i, :]-waveforms_std[i,:], linewidth=1, color=color, alpha=0.5)
+                ax[i].fill_between(x, datam[i, :]-waveforms_std[i,:], datam[i, :]+waveforms_std[i,:], facecolor=color, interpolate=True, alpha=0.2)
             ax[i].set_ylim([ylim1, ylim2])
             ax[i].set_xlim([x[0], x[-1]])
             ax[i].spines['right'].set_visible(False)
@@ -1055,19 +1117,24 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
     #     peakChan=get_peak_chan(dp,units[0])
     #     channels=np.arange(peakChan-Nchan_plot//2-1, peakChan+Nchan_plot//2+2)
     channels=assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt)
-    rc = extract_rawChunk(dp, times, channels, 'ap', saveData,
+    rc = extract_rawChunk(dp, times, channels, 'highpass', saveData,
                           whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
     # Offset data
     plt_offsets = np.arange(0, len(channels)*offset, offset)
     plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rc.shape[1]))
     rc+=plt_offsets
 
-    fig=plot_raw(dp, times, None, None, channels,
-             filt_key='highpass', offset=450, saveDir=saveDir, saveData=saveData, saveFig=0,
-             _format=_format, color=bg_color,
-             whiten=whiten, nRangeWhiten=nRangeWhiten, med_sub=med_sub, nRangeMedSub=nRangeMedSub, hpfilt=hpfilt, hpfiltf=hpfiltf, ignore_ks_chanfilt=ignore_ks_chanfilt,
-             show_allyticks=show_allyticks, yticks_jump=yticks_jump, events=events, set0atEvent=set0atEvent, figsize=figsize,
-             plot_ylabels=plot_ylabels, ax=None, title=title, lw=lw, bg_alpha=bg_alpha)
+    fig=plot_raw(dp, times, None, None, channels, filt_key='highpass',
+             offset=450, color=bg_color, lw=lw, bg_alpha=bg_alpha,
+             title=title, _format='pdf',  saveDir=saveDir, saveFig=0, figsize=(8,10), again=False,
+             center_chans_on_0=True, whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
+             nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub, use_ks_w_matrix=False, ignore_ks_chanfilt=ignore_ks_chanfilt,
+             filter_forward=True, filter_backward=True,
+             plot_ylabels=plot_ylabels, show_allyticks=show_allyticks, yticks_jump=yticks_jump, plot_baselines=False,
+             events=events, set0atEvent=set0atEvent,
+             ax=None, ext_data=None, ext_datachans=np.arange(384),
+             as_heatmap=False, vmin=-50,vmax=50,center=0)
+        
 
     ax=fig.get_axes()[0]
     assert assert_iterable(units)

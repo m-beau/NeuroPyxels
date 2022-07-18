@@ -717,8 +717,8 @@ def plot_wvf(dp, u=None, Nchannels=8, chStart=None, n_waveforms=300, t_waveforms
         tplts=templates(dp, u, ignore_ks_chanfilt=ignore_ks_chanfilt)
         assert tplts.shape[2]==waveforms.shape[-1]==cm.shape[0]
         tplts=tplts[:, :, chStart_i:chEnd_i]
-        x = np.linspace(0, waveforms.shape[-2]/(fs/1000), waveforms.shape[-2]) # Plot t datapoints between 0 and t/30 ms
-        x_tplts = x[(datam.shape[1]-tplts.shape[1])//2:(datam.shape[1]-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
+        x = np.linspace(0, n_samples/(fs/1000), n_samples) # Plot t datapoints between 0 and t/30 ms
+        x_tplts = x[(n_samples-tplts.shape[1])//2:(n_samples-tplts.shape[1])//2+tplts.shape[1]] # Plot 82 datapoints between 0 and 82/30 ms
         tplt_chani_rel=peak_chan_i-chStart_i if chStart is None else np.argmax(np.max(datam, 1)-np.min(datam, 1))
     else:
         x_tplts = None
@@ -749,7 +749,10 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
     - subcm: (n_channels, 3) or (n_channels, 1) array ((channel_id, x, y) or (channel_id)), subest of channel map
     """
     # formatting
-    if waveforms_std is None: plot_std=False
+    if waveforms_std is None:
+        plot_std=False
+    else:
+        waveforms_std = waveforms_std.T
     if waveforms.ndim == 3:
         n_waveforms = waveforms.shape[0]
         datam = waveforms.mean(0).T
@@ -772,13 +775,16 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
             subcm_madeup = predefined_chanmap(probe_version='1.0')
             subcm = np.vstack(subcm[:,None], subcm_madeup[datam.shape[-1],1:])
         else:
-            assert subcm.shape[0]==datam.shape[-1]
+            assert subcm.shape[0]==datam.shape[0]
 
-    breakpoint()
     if isinstance(color, str):
         color=to_rgb(color)
     color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
-    ylim1, ylim2 = (np.nanmin(datam-waveforms_std)-50, np.nanmax(datam+waveforms_std)+50) if ylim==[0,0] else (ylim[0], ylim[1])
+    if plot_std:
+        datamin, datamax = np.nanmin(datam-waveforms_std)-50, np.nanmax(datam+waveforms_std)+50
+    else:
+        datamin, datamax = np.nanmin(datam)-50, np.nanmax(datam)+50
+    ylim1, ylim2 = (datamin, datamax) if ylim==[0,0] else (ylim[0], ylim[1])
     x = np.linspace(0, datam.shape[1]/(fs/1000), datam.shape[1]) # Plot t datapoints between 0 and t/30 ms
 
     # Plot

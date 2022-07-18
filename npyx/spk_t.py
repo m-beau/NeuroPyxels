@@ -24,7 +24,7 @@ from npyx.gl import get_units, get_npyx_memory, check_periods
 from npyx.inout import read_metadata
 
 
-def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
+def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=-1):
     '''
     ********
     routine from routines_spikes
@@ -38,6 +38,8 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - periods = 'all' or [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
     - again: boolean, if True recomputes data from source files without checking routines memory.
+    - enforced_rp: float, enforced refractory period - if 2 spikes are separated by less than enforced_rp ms, the first one only is kept.
+                   By default -1, does not remove any spikes (unlike trn).
     '''
 
     dp = Path(dp)
@@ -45,7 +47,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
     # Search if the variable is already saved in dp/routinesMemory
     dpnm = get_npyx_memory(dp)
 
-    fn='ids{}.npy'.format(unit)
+    fn=f'ids{unit}_{enforced_rp}.npy'
     if op.exists(Path(dpnm,fn)) and not again:
         if verbose: print("File {} found in routines memory.".format(fn))
         indices = np.asarray(np.load(Path(dpnm,fn)), dtype='int64')
@@ -71,6 +73,14 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
         # Save it
         if sav:
             np.save(dpnm/fn, indices)
+            
+    # Optional selection of spies without duplicates
+    dp_source = get_source_dp_u(dp, unit)[0]
+    fs=read_metadata(dp_source)["highpass"]['sampling_rate']
+    train = trn(dp, unit, again=again, enforced_rp=-1)
+    duplicates_m = duplicates_mask(train, enforced_rp, fs)
+    train = train[~duplicates_m]
+    indices = indices[~duplicates_m]
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
@@ -86,6 +96,17 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False):
 
     return indices
 
+def load_amplitudes(dp, unit, verbose=False, periods='all', again=False, enforced_rp=-1):
+    f'''Load unit amplitudes
+    i.e. kilosort template scaling factor for each spike.
+    
+    for parameters see doc of ids:
+    {ids.__doc__}'''
+    dp = Path(dp)
+    unit_ids = ids(dp, unit, True, verbose, periods, again, enforced_rp)
+    amps = np.load(dp/'amplitudes.npy')[unit_ids]
+    
+    return amps
 
 def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=0):
     '''
@@ -101,7 +122,8 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - periods: list [[t1,t2], [t3,t4],...] (in seconds) or 'all' for all periods.
     - again: boolean, if True recomputes data from source files without checking routines memory.
-    - enforced_rp: enforced refractory period, in millisecond. 0 by default (only pure duplicates are removed)
+    - enforced_rp: float, enforced refractory period - if 2 spikes are separated by less than enforced_rp ms, the first one only is kept.
+                   By default 0, only removed pure duplicates (they happen!).
     '''
 
     # Search if the variable is already saved in dp/routinesMemory
@@ -109,7 +131,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     dp_source = get_source_dp_u(dp, unit)[0]
     fs=read_metadata(dp_source)['highpass']['sampling_rate']
 
-    fn=f'trn{unit}_{enforced_rp}.npy'
+    fn=f'trn{unit}_{enforced_rp}+.npy'
     if (dpnm/fn).exists() and not again:
         if verbose: print("File {} found in routines memory.".format(fn))
         try: train = np.load(dpnm/fn) # handling of weird allow_picke=True error
@@ -139,8 +161,8 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
         # Filter out spike duplicates (spikes following an ISI shorter than enforced_rp)
         # by default, only pure duplicates (yeah they happen!!)
         assert len(train)!=0, f'unit {unit} not found in spike_clusters.npy - probably a merger bug.'
-        train=train[np.append(True, np.diff(train)>=enforced_rp*fs/1000)]
-
+        duplicates_m = duplicates_mask(train, enforced_rp, fs)
+        train=train[~duplicates_m]
         # Save it
         if sav:
             np.save(dpnm/fn, train)
@@ -155,6 +177,13 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
         train=train[sec_bool]
 
     return train
+
+def duplicates_mask(t, enforced_rp=0, fs=30000):
+    '''
+    - t: in samples,sampled at fs Hz
+    - enforced_rp: in ms'''
+    duplicate_m = np.append([False], np.diff(t)<=enforced_rp*fs/1000)
+    return duplicate_m
 
 def isi(dp, unit, enforced_rp=0, sav=True, verbose=False, periods='all', again=False):
     '''
@@ -360,7 +389,8 @@ def train_quality(dp, unit, period_m=[0,20],
                   fn_chunk_span = 3, fn_chunk_size = 10,
                   use_or_operator = True,
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold = 0.05,
-                  again = False, save = True, verbose = False, plot_debug = False):
+                  again = False, save = True, verbose = False, plot_debug = False,
+                  enforced_rp = 0):
 
     """
     Subselect spike times which meet two criteria:
@@ -413,6 +443,7 @@ def train_quality(dp, unit, period_m=[0,20],
         - again: bool, whether to recompute trn_filtered or simply load it from npyxMemory
         - save: bool, whether to save result to npyxMemory for future fast reloading
         - verbose: bool, whether to print extra information for debugging purposes.
+        - enforced_rp: float, enforced refractory period in ms (if 2 spikes are closer than enforced_rp ms, only the first one  is kept.)
     
     Returns:
     - goodsec, acgsec, gausssec
@@ -447,16 +478,15 @@ def train_quality(dp, unit, period_m=[0,20],
     dpnm = get_npyx_memory(dp)
     
     # Load data
-    unit_ids = ids(dp, unit, again=again, verbose=verbose)
-    unit_amp = np.load(dp/'amplitudes.npy')[unit_ids]
+    unit_amp = load_amplitudes(dp, unit, verbose, 'all', again, enforced_rp)
     
-    unit_train = trn(dp, unit, enforced_rp=0, again=again, verbose=verbose)/fs
+    unit_train = trn(dp, unit, enforced_rp=enforced_rp, again=again, verbose=verbose)/fs
     period_s=[period_m[0]*60, period_m[1]*60]
 
     # Attempt to reload if precomputed
     fn=(f"trn_qual_{unit}_{str(period_m).replace(' ','')}"
         f"_{str(fp_chunk_span)}_{str(fp_chunk_size)}_{str(fn_chunk_span)}_{str(fn_chunk_size)}"
-        f"_{str(violations_ms)}_{str(fp_threshold)}_{str(fn_threshold)}.npy")
+        f"_{str(violations_ms)}_{str(fp_threshold)}_{str(fn_threshold)}_{enforced_rp}.npy")
     fn_spikes = "spikes_"+fn
     if (dpnm/fn).exists() and (dpnm/fn_spikes).exists() and (not again):
         if verbose: print(f"File {fn} found in routines memory.")
@@ -494,7 +524,7 @@ def train_quality(dp, unit, period_m=[0,20],
 
 
     fp_toplot, chunk_fp_t, fn_toplot, chunk_fn_t = [], [], [], []
-    if len(unit_ids) > n_spikes_threshold:
+    if len(unit_amp) > n_spikes_threshold:
         
         # False negative estimation
         for i, (t1,t2) in enumerate(fn_chunks):
@@ -632,8 +662,7 @@ def train_quality(dp, unit, period_m=[0,20],
 
 #         # get the start and end times of these section
 #         for good_section in sec_all:
-#             start_end.append([good_section[0], good_section[-1]])
-
+#             start_end.append([good_section[0], good_sectienforced_rp
 #         return start_end
 
 
@@ -643,7 +672,8 @@ def trn_filtered(dp, unit, period_m=[0,20],
                   use_or_operator = True,
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold=0.05,
                   use_consecutive = False, consecutive_n_seconds = 180,
-                  again = False, save = True, verbose = False, plot_debug = False):
+                  again = False, save = True, verbose = False, plot_debug = False,
+                  enforced_rp=0):
     f"""
     Returns spike times (in sample) meeting the false positive and false negative criteria.
     Mainly wrapper of train_quality().
@@ -665,11 +695,12 @@ def trn_filtered(dp, unit, period_m=[0,20],
     {train_quality.__doc__}
     """
     dp = Path(dp)
-    t = trn(dp,unit)
+    t = trn(dp,unit, enforced_rp=enforced_rp)
     t_s=t/30000
     good_spikes_m, good_fp_start_end, good_fn_start_end = train_quality(dp, unit, period_m,
                     fp_chunk_span, fp_chunk_size, fn_chunk_span, fn_chunk_size, use_or_operator,
-                    violations_ms, fp_threshold, fn_threshold, again, save, verbose, plot_debug)
+                    violations_ms, fp_threshold, fn_threshold, again, save, verbose, plot_debug,
+                    enforced_rp=enforced_rp)
 
     # use spike times themselves to define beginning and end of good Sections
     # as the FP and FN sections do not necessarily overlap

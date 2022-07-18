@@ -77,17 +77,17 @@ mark_dict = {
 
 #%% Utils
 
-_ACCEPTED_ARRAY_DTYPES = (np.float, np.float32, np.float64,
-                          np.int, np.int8, np.int16, np.uint8, np.uint16,
+_ACCEPTED_ARRAY_DTYPES = (np.float32, np.float64,
+                          np.int8, np.int16, np.uint8, np.uint16,
                           np.int32, np.int64, np.uint32, np.uint64,
-                          np.bool)
+                          bool)
 
 def assert_float(x):
-    return isinstance(x, (float, np.float,
+    return isinstance(x, (float,
                           np.float16, np.float32, np.float64))
 
 def assert_int(x):
-    return isinstance(x, (int, np.int, np.int8, np.int16,
+    return isinstance(x, (int, np.int8, np.int16,
                           np.uint8, np.uint16, np.int32,
                           np.int64, np.uint32, np.uint64))
 
@@ -177,7 +177,7 @@ def any_n_consec(X, n_consec, where=False):
         - n_consec: int, number of consecutive True/False values to find
         - where: bool, returns array of indices if True
     '''
-    X=npa(X).astype(np.int)
+    X=npa(X).astype(np.int64)
     assert np.all((X==0)|(X==1)), 'X array should be only 0s and 1s!'
     for i in range(n_consec-1):
         X = X[:-1]+X[1:]
@@ -382,7 +382,7 @@ def smooth(arr, method='gaussian_causal', sd=5, axis=1, gamma_a=5):
     
     ## Checks and formatting
     assert method in ['gaussian', 'gaussian_causal', 'gamma']
-    assert type(sd) in [int, np.int]
+    assert type(sd) in [int, np.int32, np.int64]
 
 
     ## pad array at beginning and end to prevent edge artefacts
@@ -788,7 +788,7 @@ def _index_of(arr, lookup):
     # Equivalent of np.digitize(arr, lookup) - 1, but much faster.
     lookup = np.asarray(lookup, dtype=np.int32)
     m = (lookup.max() if len(lookup) else 0) + 1
-    tmp = np.zeros(m + 1, dtype=np.int)
+    tmp = np.zeros(m + 1, dtype=np.int64)
     # Ensure that -1 values are kept.
     tmp[-1] = -1
     if len(lookup):
@@ -812,16 +812,14 @@ __all__ = [
 
 
 def _datacheck_peakdetect(x_axis, y_axis):
+    y_axis = np.array(y_axis).ravel()
     if x_axis is None:
-        x_axis = range(len(y_axis))
+        x_axis = np.arange(0, len(y_axis))
 
     if len(y_axis) != len(x_axis):
         raise ValueError(
                 "Input vectors y_axis and x_axis must have same length")
 
-    #needs to be a numpy array
-    y_axis = np.array(y_axis)
-    x_axis = np.array(x_axis)
     return x_axis, y_axis
 
 

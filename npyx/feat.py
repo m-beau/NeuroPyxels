@@ -1736,8 +1736,6 @@ def process_all(recs_fn, show=False, again=False):
     # acg
     # wvf
 
-    all_units = []
-
     all_feat = []
     for i, ds in list(recs.items())[:]:
         print(f"/nProcessing dataset {ds['dp']}...")
@@ -1755,7 +1753,6 @@ def process_all(recs_fn, show=False, again=False):
         ds["dp"] = Path(ds["dp"])
         good_units = get_units(ds["dp"], quality="good")
 
-        all_units.append(good_units)
         #    good_units= ds['units']
         #        print(ds['units'])
         spike_clusters = np.load(Path(ds["dp"], "spike_clusters.npy"))

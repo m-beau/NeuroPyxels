@@ -92,6 +92,17 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
     return indices
 
+def load_amplitudes(dp, unit, verbose=False, periods='all', again=False, enforced_rp=-1):
+    f'''Load unit amplitudes
+    i.e. kilosort template scaling factor for each spike.
+    
+    for parameters see doc of ids:
+    {ids.__doc__}'''
+    dp = Path(dp)
+    unit_ids = ids(dp, unit, True, verbose, periods, again, enforced_rp)
+    amps = np.load(dp/'amplitudes.npy')[unit_ids]
+    
+    return amps
 
 def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=0):
     '''
@@ -463,8 +474,7 @@ def train_quality(dp, unit, period_m=[0,20],
     dpnm = get_npyx_memory(dp)
     
     # Load data
-    unit_ids = ids(dp, unit, again=again, verbose=verbose, enforced_rp=enforced_rp)
-    unit_amp = np.load(dp/'amplitudes.npy')[unit_ids]
+    unit_amp = load_amplitudes(dp, unit, verbose, 'all', again, enforced_rp)
     
     unit_train = trn(dp, unit, enforced_rp=enforced_rp, again=again, verbose=verbose)/fs
     period_s=[period_m[0]*60, period_m[1]*60]
@@ -510,7 +520,7 @@ def train_quality(dp, unit, period_m=[0,20],
 
 
     fp_toplot, chunk_fp_t, fn_toplot, chunk_fn_t = [], [], [], []
-    if len(unit_ids) > n_spikes_threshold:
+    if len(unit_amp) > n_spikes_threshold:
         
         # False negative estimation
         for i, (t1,t2) in enumerate(fn_chunks):
@@ -648,8 +658,7 @@ def train_quality(dp, unit, period_m=[0,20],
 
 #         # get the start and end times of these section
 #         for good_section in sec_all:
-#             start_end.append([good_section[0], good_section[-1]])
-
+#             start_end.append([good_section[0], good_sectienforced_rp
 #         return start_end
 
 

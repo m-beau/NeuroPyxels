@@ -1490,8 +1490,8 @@ def temp_feat(dp, units, use_or_operator=True, use_consecutive=False):
     for unit in units:
 
         unit_spikes, good_spikes_m = trn_filtered(
-            dp, unit, use_or_operator=use_or_operator, use_consecutive=use_consecutive
-        )
+            dp, unit, use_or_operator=use_or_operator, use_consecutive=use_consecutive,
+            enforced_rp=0.2)
         if len(unit_spikes) > 1:
             tf = list(temporal_features(unit_spikes))
             tf = [dp, unit] + tf

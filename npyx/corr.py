@@ -1175,7 +1175,12 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
             current_firing_rate_bin_number = len(firing_rate_bins) - 1
         spike_counts[current_firing_rate_bin_number, :] += spiketrain[start:stop]
         times[current_firing_rate_bin_number] += 1
-    return firing_rate_bins, spike_counts / (np.ones((len(time_axis), num_firing_rate_bins)) * times).T
+
+    # remove bin 0, which will always be 1
+    acg_3d = spike_counts / (np.ones((len(time_axis), num_firing_rate_bins)) * times).T
+    acg_3d[:,acg_3d.shape[1]//2] = 0
+
+    return firing_rate_bins, acg_3d
 
 def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',

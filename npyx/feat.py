@@ -166,7 +166,7 @@ def cross_times(waves, peak_time, trough_time):
 #    return crossing1[0], waves[0,crossing1+1][0]
 
 
-def detect_peaks(wvf, margin = 0.5, onset = 0.2, plot_debug = False):
+def detect_peaks(wvf, margin=0.5, onset=0.2, plot_debug=False):
     """Custom peak detection algorithm. Based on scipy.signal.find_peaks.
     Args:
         wvf (np.array): Waveform to detect peaks in.
@@ -193,18 +193,25 @@ def detect_peaks(wvf, margin = 0.5, onset = 0.2, plot_debug = False):
     sorting_idx = np.argsort(all_idxes)
     all_idxes = all_idxes[sorting_idx]
     all_values = all_values[sorting_idx]
-    
-    mask = (all_idxes < len(wvf) // (1 / onset)) | (all_idxes > int(len(wvf) * (1 - onset)))
+
+    mask = (all_idxes < len(wvf) // (1 / onset)) | (
+        all_idxes > int(len(wvf) * (1 - onset))
+    )
     all_idxes = all_idxes[~mask]
     all_values = all_values[~mask]
-    
+
     if plot_debug:
         plt.plot(wvf)
-        plt.fill_between(np.arange(len(wvf)), np.zeros_like(wvf) + margin*np.std(wvf), np.zeros_like(wvf) - margin*np.std(wvf), alpha = 0.4)
+        plt.fill_between(
+            np.arange(len(wvf)),
+            np.zeros_like(wvf) + margin * np.std(wvf),
+            np.zeros_like(wvf) - margin * np.std(wvf),
+            alpha=0.4,
+        )
         for i, _ in enumerate(all_idxes):
-            plt.plot(all_idxes[i], all_values[i], "x", color = "red")
-            plt.axvspan(0, len(wvf) // (1/onset), alpha = 0.2)
-            plt.axvspan(int(len(wvf) * (1 - onset)), len(wvf), alpha = 0.2)
+            plt.plot(all_idxes[i], all_values[i], "x", color="red")
+            plt.axvspan(0, len(wvf) // (1 / onset), alpha=0.2)
+            plt.axvspan(int(len(wvf) * (1 - onset)), len(wvf), alpha=0.2)
         plt.show()
 
     return all_idxes, all_values
@@ -311,9 +318,9 @@ def onset_amp_time(waves, peak_time, trough_time):
     """
 
     onset_v = waves[trough_time] * 0.05
-    
+
     # now we find the last crossing of this value before the peak
-    before_peak = waves[: trough_time]
+    before_peak = waves[:trough_time]
     crossings = np.where(np.diff(np.sign(before_peak - onset_v)))
 
     # if there are no crossings, this means the recording was always above
@@ -338,7 +345,7 @@ def end_amp_time(waves, peak_time, trough_time):
 
     # now we find the last crossing of this value
     # get section after the last peak
-    after_peak = waves[peak_time :]
+    after_peak = waves[peak_time:]
     # now we have list of crossings where
     crossings = np.where(np.diff(np.sign(after_peak - onset_v)))
 
@@ -369,7 +376,6 @@ def pos_10_90(waves, peak_time, trough_time):
     # get the most negative peak
     #    min_amp_arg = np.argmin(peak_v)
     # get the peak following it
-
 
     prev_peak_t = trough_time
     curr_peak_t = peak_time
@@ -445,7 +451,6 @@ def neg_10_90(waves, peak_time, trough_time):
 
     through_value = waves[trough_time]
     prev_peak_t = onset_amp_time(waves, peak_time, trough_time)[0]
-    
 
     perc_10 = 0.1 * through_value
     perc_90 = 0.9 * through_value
@@ -478,6 +483,35 @@ def neg_decay_t(wave, peak_time, trough_time):
     perc_10_t = neg_10_90(wave)[0][0]
 
     return trough_time - perc_10_t
+
+
+def depol_slope(waves, peak_time, trough_time):
+    """
+    regression fitted from the first 30 observations before the negative peak
+
+    - find the negative peak
+    - fit regression to the previous  10% of dots between this and the baseline
+    """
+
+    trough_value = waves[trough_time]
+
+    # find number of points between negative and positive peaks
+
+    all_dots_peak = waves.shape[0] - trough_time
+    dots_pos_neg_20 = (0.1 * all_dots_peak).astype(np.int64)
+    fit_slope = waves[trough_time - dots_pos_neg_20 : trough_time]
+    coeff = np.polyfit(
+        np.linspace(0, dots_pos_neg_20 - 1, dots_pos_neg_20), fit_slope, deg=1
+    )
+    # fit a slope with the new parameters
+    # all data points between two peaks
+    # multiply by first coeff and add the second one
+    return (
+        coeff,
+        coeff[0] * np.linspace(0, dots_pos_neg_20, dots_pos_neg_20 + 1) + coeff[1],
+        trough_time,
+        trough_value,
+    )
 
 
 # def peaks_order(waves):
@@ -639,13 +673,12 @@ def interp_wave(wave, multi=100, axis=-1):
         wvf_len = wave.shape[1]
     else:
         wvf_len = wave.shape[0]
-        
+
     interp_fn = interp1d(np.linspace(0, wvf_len - 1, wvf_len), wave, axis=axis)
 
     new_wave = interp_fn(np.linspace(0, wvf_len - 1, wvf_len * multi))
 
     return new_wave
-
 
 
 def repol_slope(waves, peak_time, trough_time):
@@ -655,7 +688,6 @@ def repol_slope(waves, peak_time, trough_time):
     - find the negative peak
     - fit regression to the next  10% of dots between this and the next peak
     """
-
 
     trough_value = waves[trough_time]
 
@@ -682,7 +714,7 @@ def recovery_slope(waves, peak_time, trough_time):
     """
     fit a regression to observations after the last pos peak
     """
-    
+
     peak_value = waves[peak_time]
 
     #    peak_time = peak_t[np.argmax(peak_v)].astype(np.int64)
@@ -1187,8 +1219,8 @@ def is_somatic(peaks_v):
 
     peak_signs = np.sign(peaks_v).astype(np.int32).tolist()
     peak_signs = str(peak_signs)
-    pattern = '-1, 1'
-    
+    pattern = "-1, 1"
+
     return pattern in peak_signs
 
 
@@ -1280,36 +1312,34 @@ def find_relevant_peaks(peak_t, peak_v):
         - relevant_trough_t: time of relevant trough
         - relevant_peak_t: time of the relevant peak
     """
-    
+
     if len(peak_t) == 2:
         return peak_t[0], peak_t[1]
-    
+
     signs = np.sign(peak_v).astype(np.int32)
     trough_mask = signs == -1
     first_trough_idx = np.where(trough_mask)[0][0]
     first_trough_t = peak_t[first_trough_idx]
     first_peak_t = peak_t[first_trough_idx + 1]
-    
+
     return first_trough_t, first_peak_t
 
 
 def extract_peak_channel_features(relevant_waveform):
     # use all old functions from extract_waveform_features
-    
+
     # First interpolates the waveform for higher precision
     relevant_waveform = interp_wave(relevant_waveform)
-    
+
     peak_times, peak_values = detect_peaks(relevant_waveform)
-    
+
     first_trough_t, first_peak_t = find_relevant_peaks(peak_times, peak_values)
-    
+
     neg_v = relevant_waveform[first_trough_t]
     neg_t = first_trough_t
 
     pos_v = relevant_waveform[first_peak_t]
     pos_t = first_peak_t
-    
-    
 
     # pos 10-90
     _, _, pos_10_90_t = pos_10_90(relevant_waveform, first_peak_t, first_trough_t)
@@ -1410,7 +1440,7 @@ def new_waveform_features(dp, unit, plot_debug=False):
     spatial_features = extract_spatial_features(waveform_2d.T, somatic, dp, unit)
 
     return np.array(
-        [dp, unit, relevant_channel, *peak_channel_features, *spatial_features]
+        [str(dp), unit, relevant_channel, *peak_channel_features, *spatial_features]
     )
 
 
@@ -1490,37 +1520,40 @@ def waveform_features(all_waves, dpath, peak_chan, unit):
     return ret_arr
 
 
-def plot_all(one_wave, cell_type="MLI"):
+def plot_all(one_wave, dp=None, unit=None, label=None):
     #    one_wave = one_wave[0]
-    one_wave -= np.mean(one_wave[:2000])
-    one_wave = one_wave.T
-    peaks = detect_peaks(one_wave)
-    onset = onset_amp_time(one_wave)
-    offset = end_amp_time(one_wave)
-    one_wave = one_wave.flatten()
-    positive_line = pos_10_90(one_wave)
-    negative_line = neg_10_90(one_wave)
-    zero_time = cross_times(one_wave)
-    pos_hw = pos_half_width(one_wave)
-    neg_hw = neg_half_width(one_wave)
-    end_slope, mse_fit, tau = tau_end_slope(one_wave)
-    rec_slope = recovery_slope(one_wave)
-    rep_slope = repol_slope(one_wave)
-    wvf_dur = wvf_width(one_wave)
-    ptrat = pt_ratio(one_wave)
+    wvf = interp_wave(one_wave)
+    wvf -= np.mean(wvf[:2000])
+    peak_t, peak_v = detect_peaks(wvf)
+
+    trough_time, peak_time = find_relevant_peaks(peak_t, peak_v)
+
+    onset = onset_amp_time(wvf, peak_time, trough_time)
+    offset = end_amp_time(wvf, peak_time, trough_time)
+    positive_line = pos_10_90(wvf, peak_time, trough_time)
+    negative_line = neg_10_90(wvf, peak_time, trough_time)
+    zero_time = cross_times(wvf, peak_time, trough_time)
+    pos_hw = pos_half_width(wvf, peak_time, trough_time)
+    neg_hw = neg_half_width(wvf, peak_time, trough_time)
+    end_slope, mse_fit, tau = tau_end_slope(wvf, peak_time, trough_time)
+    rec_slope = recovery_slope(wvf, peak_time, trough_time)
+    rep_slope = repol_slope(wvf, peak_time, trough_time)
+    dep_slope = depol_slope(wvf, peak_time, trough_time)
+    wvf_dur = wvf_width(wvf, peak_time, trough_time)
+    ptrat = pt_ratio(wvf, peak_time, trough_time)
 
     # get the negative and positive peaks for the PtR
-    neg_t = np.argmin(peaks[1])
-    neg_v = peaks[1][neg_t]
-    pos_v = peaks[1][neg_t + 1]
-    pos_t = peaks[0][neg_t + 1]
+    neg_t = trough_time
+    neg_v = wvf[trough_time]
+    pos_v = wvf[peak_time]
+    pos_t = peak_time
 
     #    print(tau)
     #    print(ptrat)
     plt.ion()
-    fig, ax = plt.subplots(1)
-    ax.plot(one_wave)
-    ax.plot(peaks[0], peaks[1], "rx")
+    fig, ax = plt.subplots(1, figsize=(10, 8))
+    ax.plot(wvf, linewidth=2, alpha=0.8)
+    ax.plot(peak_t, peak_v, "*", color="red", markersize=10)
     ax.plot(onset[0], onset[1], "rx")
     ax.plot(offset[0], offset[1], "rx")
     ax.plot([pos_t, pos_t], [0, neg_v], linewidth=3, c="black")
@@ -1535,13 +1568,28 @@ def plot_all(one_wave, cell_type="MLI"):
         [negative_line[1][1], negative_line[1][1]],
     )
     ax.plot(zero_time[0], 0, "rx")
-    print(rec_slope[2])
+    # print(rec_slope[2])
     #    print(rec_slope[1]/rec_slope[0][0],rec_slope[0][0])
     ax.plot(
-        rec_slope[2] + np.arange(0, rec_slope[1].shape[0]), rec_slope[1], linewidth=3
+        rec_slope[2] + np.arange(0, rec_slope[1].shape[0]),
+        rec_slope[1],
+        linewidth=3,
+        linestyle="dotted",
+        color="red",
     )
     ax.plot(
-        rep_slope[2] + np.arange(0, rep_slope[1].shape[0]), rep_slope[1], linewidth=3
+        rep_slope[2] + np.arange(0, rep_slope[1].shape[0]),
+        rep_slope[1],
+        linewidth=3,
+        linestyle="dotted",
+        color="red",
+    )
+    ax.plot(
+        (dep_slope[2] + np.arange(0, dep_slope[1].shape[0])) - dep_slope[1].shape[0],
+        dep_slope[1],
+        linewidth=3,
+        linestyle="dotted",
+        color="red",
     )
     #    ax.plot(rec_slope[2] +( rec_slope[1]/rec_slope[0][0]), rec_slope[1],linewidth=3)
     # ax.plot(np.linspace(peaks[0][-1]+100, peaks[0][-1]+1600,1500 ), end_slope,linewidth=3)
@@ -1552,21 +1600,30 @@ def plot_all(one_wave, cell_type="MLI"):
         np.linspace(wvf_dur[3], wvf_dur[3], wvf_dur[0] + 1),
     )
     ax.text(
-        wvf_dur[2] + 100, wvf_dur[3], f"wvf duration: {np.round(wvf_dur[0]/3000, 2)}"
+        wvf_dur[2] - 500,
+        wvf_dur[3] - 20,
+        f"wvf duration: {np.round(wvf_dur[0]/3000, 2)}",
     )
     ax.text(
-        rec_slope[2], rec_slope[3] + 30, f"rec slope: {np.round(rec_slope[0][0],2)}"
+        rec_slope[2] + 500, rec_slope[3], f"rec slope: {np.round(rec_slope[0][0],2)}"
     )
     ax.text(
-        rep_slope[2] + 300, rep_slope[3], f"rep slope: {np.round(rep_slope[0][0],2)}"
+        rep_slope[2] - 1300,
+        rep_slope[3] - 20,
+        f"rep slope: {np.round(rep_slope[0][0],2)}",
     )
     # ax.text(peaks[0][-1]+500, peaks[1][-1]-15, f"MSE of fit is {np.round(mse_fit,2)} \n tau: {np.round(tau, 2)}")
-    ax.text(zero_time[0] + 500, -30, f"Peak/trough ration: {np.abs(np.round(ptrat,2))}")
+    ax.text(pos_t + 150, -100, f"Peak/trough ratio: {np.abs(np.round(ptrat,2))}")
+    ylim = ax.get_ylim()
+    ax.set_ylim(ylim[0] + 0.1 * ylim[0], ylim[1] + 0.1 * ylim[1])
     ax.set_xlabel("ms")
     ax.set_ylabel(r"$\mu$ V")
-    ax.set_xticks([0, 4000, 8200])
-    ax.set_xticklabels([-1.365, 0, 1.365])
-    fig.suptitle(f"Wvf features for a {cell_type} unit ")
+    # ax.set_xticks([0, 4000, 8200])
+    # ax.set_xticklabels([-1.365, 0, 1.365])
+    if dp is None:
+        pass
+    else:
+        fig.suptitle(f"{dp} cell {unit}. {label}.")
     fig.tight_layout()
 
 

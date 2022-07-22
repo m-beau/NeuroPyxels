@@ -166,7 +166,7 @@ def cross_times(waves, peak_time, trough_time):
 #    return crossing1[0], waves[0,crossing1+1][0]
 
 
-def detect_peaks(wvf, margin=0.5, onset=0.2, plot_debug=False):
+def detect_peaks(wvf, margin=0.8, onset=0.2, plot_debug=False):
     """Custom peak detection algorithm. Based on scipy.signal.find_peaks.
     Args:
         wvf (np.array): Waveform to detect peaks in.
@@ -497,8 +497,8 @@ def depol_slope(waves, peak_time, trough_time):
 
     # find number of points between negative and positive peaks
 
-    all_dots_peak = waves.shape[0] - trough_time
-    dots_pos_neg_20 = (0.1 * all_dots_peak).astype(np.int64)
+    all_dots_peak = np.abs((trough_time - waves.shape[0]//10) - trough_time)
+    dots_pos_neg_20 = (0.2 * all_dots_peak).astype(np.int64)
     fit_slope = waves[trough_time - dots_pos_neg_20 : trough_time]
     coeff = np.polyfit(
         np.linspace(0, dots_pos_neg_20 - 1, dots_pos_neg_20), fit_slope, deg=1
@@ -1530,12 +1530,12 @@ def plot_all(one_wave, dp=None, unit=None, label=None):
 
     onset = onset_amp_time(wvf, peak_time, trough_time)
     offset = end_amp_time(wvf, peak_time, trough_time)
-    positive_line = pos_10_90(wvf, peak_time, trough_time)
-    negative_line = neg_10_90(wvf, peak_time, trough_time)
+    # positive_line = pos_10_90(wvf, peak_time, trough_time)
+    # negative_line = neg_10_90(wvf, peak_time, trough_time)
     zero_time = cross_times(wvf, peak_time, trough_time)
     pos_hw = pos_half_width(wvf, peak_time, trough_time)
     neg_hw = neg_half_width(wvf, peak_time, trough_time)
-    end_slope, mse_fit, tau = tau_end_slope(wvf, peak_time, trough_time)
+    # end_slope, mse_fit, tau = tau_end_slope(wvf, peak_time, trough_time)
     rec_slope = recovery_slope(wvf, peak_time, trough_time)
     rep_slope = repol_slope(wvf, peak_time, trough_time)
     dep_slope = depol_slope(wvf, peak_time, trough_time)
@@ -1556,20 +1556,21 @@ def plot_all(one_wave, dp=None, unit=None, label=None):
     ax.plot(peak_t, peak_v, "*", color="red", markersize=10)
     ax.plot(onset[0], onset[1], "rx")
     ax.plot(offset[0], offset[1], "rx")
-    ax.plot([pos_t, pos_t], [0, neg_v], linewidth=3, c="black")
-    ax.plot([pos_t + 100, pos_t + 100], [0, -pos_v], linewidth=3, c="black")
-    # ax.plot(positive_line[0], positive_line[1],linewidth=3)
-    ax.plot(
-        [positive_line[0][0], positive_line[0][1]],
-        [positive_line[1][1], positive_line[1][1]],
-    )
-    ax.plot(
-        [negative_line[0][0], negative_line[0][1]],
-        [negative_line[1][1], negative_line[1][1]],
-    )
+    
     ax.plot(zero_time[0], 0, "rx")
-    # print(rec_slope[2])
-    #    print(rec_slope[1]/rec_slope[0][0],rec_slope[0][0])
+    ax.plot([neg_t, neg_t], [0, neg_v], linewidth=1, c="black", linestyle='dotted')
+    ax.plot([pos_t, pos_t], [0, pos_v], linewidth=1, c="black", linestyle='dotted')
+    ax.plot([neg_t, pos_t], [0,0], linewidth=1, c="black", linestyle='dotted')
+
+    # ax.plot(
+    #     [positive_line[0][0], positive_line[0][1]],
+    #     [positive_line[1][1], positive_line[1][1]],
+    # )
+    # ax.plot(
+    #     [negative_line[0][0], negative_line[0][1]],
+    #     [negative_line[1][1], negative_line[1][1]],
+    # )
+
     ax.plot(
         rec_slope[2] + np.arange(0, rec_slope[1].shape[0]),
         rec_slope[1],
@@ -1591,30 +1592,37 @@ def plot_all(one_wave, dp=None, unit=None, label=None):
         linestyle="dotted",
         color="red",
     )
-    #    ax.plot(rec_slope[2] +( rec_slope[1]/rec_slope[0][0]), rec_slope[1],linewidth=3)
-    # ax.plot(np.linspace(peaks[0][-1]+100, peaks[0][-1]+1600,1500 ), end_slope,linewidth=3)
-    ax.plot([pos_hw[0], pos_hw[1]], [pos_hw[2], pos_hw[2]])
-    ax.plot([neg_hw[0], neg_hw[1]], [neg_hw[2], neg_hw[2]])
+
+    ax.plot([pos_hw[0], pos_hw[1]], [pos_hw[2], pos_hw[2]], color = 'purple')
+    ax.plot([neg_hw[0], neg_hw[1]], [neg_hw[2], neg_hw[2]], color = 'purple')
     ax.plot(
         np.linspace(wvf_dur[1], wvf_dur[2], wvf_dur[0] + 1),
         np.linspace(wvf_dur[3], wvf_dur[3], wvf_dur[0] + 1),
     )
+        
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    
     ax.text(
-        wvf_dur[2] - 500,
-        wvf_dur[3] - 20,
+        wvf_dur[2] + 0.01 * xlim[1],
+        wvf_dur[3] + 0.01 * ylim[0],
         f"wvf duration: {np.round(wvf_dur[0]/3000, 2)}",
     )
     ax.text(
-        rec_slope[2] + 500, rec_slope[3], f"rec slope: {np.round(rec_slope[0][0],2)}"
+        rec_slope[2] + 0.1 * xlim[1], rec_slope[3], f"rec slope: {np.round(rec_slope[0][0],2)}"
     )
     ax.text(
-        rep_slope[2] - 1300,
-        rep_slope[3] - 20,
+        rep_slope[2] + 0.1 * xlim[1],
+        rep_slope[3] - 0.1 * ylim[0],
         f"rep slope: {np.round(rep_slope[0][0],2)}",
-    )
+    )   
+    ax.text(
+        dep_slope[2] - 0.2 * xlim[1],
+        dep_slope[3] - 0.1 * ylim[0],
+        f"dep slope: {np.round(dep_slope[0][0],2)}",
+    )   
     # ax.text(peaks[0][-1]+500, peaks[1][-1]-15, f"MSE of fit is {np.round(mse_fit,2)} \n tau: {np.round(tau, 2)}")
-    ax.text(pos_t + 150, -100, f"Peak/trough ratio: {np.abs(np.round(ptrat,2))}")
-    ylim = ax.get_ylim()
+    ax.text(pos_t + 0.05 * xlim[1], 0.3*ylim[0], f"Peak/trough ratio: {np.abs(np.round(ptrat,2))}")
     ax.set_ylim(ylim[0] + 0.1 * ylim[0], ylim[1] + 0.1 * ylim[1])
     ax.set_xlabel("ms")
     ax.set_ylabel(r"$\mu$ V")

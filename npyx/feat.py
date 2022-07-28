@@ -36,6 +36,7 @@ from psutil import virtual_memory as vmem
 
 import pandas as pd
 import json
+import matplotlib.ticker as ticker
 from npyx.inout import chan_map, read_metadata
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
@@ -497,7 +498,7 @@ def depol_slope(waves, peak_time, trough_time):
 
     # find number of points between negative and positive peaks
 
-    all_dots_peak = np.abs((trough_time - waves.shape[0]//10) - trough_time)
+    all_dots_peak = np.abs((trough_time - waves.shape[0] // 10) - trough_time)
     dots_pos_neg_20 = (0.2 * all_dots_peak).astype(np.int64)
     fit_slope = waves[trough_time - dots_pos_neg_20 : trough_time]
     coeff = np.polyfit(
@@ -694,7 +695,7 @@ def repol_slope(waves, peak_time, trough_time):
     # find number of points between negative and positive peaks
 
     all_dots_peak = np.abs(peak_time - trough_time)
-    dots_pos_neg_20 = (0.3 * all_dots_peak).astype(np.int64)
+    dots_pos_neg_20 = (0.5 * all_dots_peak).astype(np.int64)
     fit_slope = waves[trough_time : trough_time + dots_pos_neg_20]
     coeff = np.polyfit(
         np.linspace(0, dots_pos_neg_20 - 1, dots_pos_neg_20), fit_slope, deg=1
@@ -1556,11 +1557,11 @@ def plot_all(one_wave, dp=None, unit=None, label=None):
     ax.plot(peak_t, peak_v, "*", color="red", markersize=10)
     ax.plot(onset[0], onset[1], "rx")
     ax.plot(offset[0], offset[1], "rx")
-    
+
     ax.plot(zero_time[0], 0, "rx")
-    ax.plot([neg_t, neg_t], [0, neg_v], linewidth=1, c="black", linestyle='dotted')
-    ax.plot([pos_t, pos_t], [0, pos_v], linewidth=1, c="black", linestyle='dotted')
-    ax.plot([neg_t, pos_t], [0,0], linewidth=1, c="black", linestyle='dotted')
+    ax.plot([neg_t, neg_t], [0, neg_v], linewidth=1, c="black", linestyle="dotted")
+    ax.plot([pos_t, pos_t], [0, pos_v], linewidth=1, c="black", linestyle="dotted")
+    ax.plot([neg_t, pos_t], [0, 0], linewidth=1, c="black", linestyle="dotted")
 
     # ax.plot(
     #     [positive_line[0][0], positive_line[0][1]],
@@ -1593,41 +1594,48 @@ def plot_all(one_wave, dp=None, unit=None, label=None):
         color="red",
     )
 
-    ax.plot([pos_hw[0], pos_hw[1]], [pos_hw[2], pos_hw[2]], color = 'purple')
-    ax.plot([neg_hw[0], neg_hw[1]], [neg_hw[2], neg_hw[2]], color = 'purple')
+    ax.plot([pos_hw[0], pos_hw[1]], [pos_hw[2], pos_hw[2]], color="purple")
+    ax.plot([neg_hw[0], neg_hw[1]], [neg_hw[2], neg_hw[2]], color="purple")
     ax.plot(
         np.linspace(wvf_dur[1], wvf_dur[2], wvf_dur[0] + 1),
         np.linspace(wvf_dur[3], wvf_dur[3], wvf_dur[0] + 1),
     )
-        
+
     xlim = ax.get_xlim()
     ylim = ax.get_ylim()
-    
+
     ax.text(
         wvf_dur[2] + 0.01 * xlim[1],
         wvf_dur[3] + 0.01 * ylim[0],
         f"wvf duration: {np.round(wvf_dur[0]/3000, 2)}",
     )
     ax.text(
-        rec_slope[2] + 0.1 * xlim[1], rec_slope[3], f"rec slope: {np.round(rec_slope[0][0],2)}"
+        rec_slope[2] + 0.1 * xlim[1],
+        rec_slope[3],
+        f"rec slope: {np.round(rec_slope[0][0],2)}",
     )
     ax.text(
         rep_slope[2] + 0.1 * xlim[1],
         rep_slope[3] - 0.1 * ylim[0],
         f"rep slope: {np.round(rep_slope[0][0],2)}",
-    )   
+    )
     ax.text(
         dep_slope[2] - 0.2 * xlim[1],
         dep_slope[3] - 0.1 * ylim[0],
         f"dep slope: {np.round(dep_slope[0][0],2)}",
-    )   
+    )
     # ax.text(peaks[0][-1]+500, peaks[1][-1]-15, f"MSE of fit is {np.round(mse_fit,2)} \n tau: {np.round(tau, 2)}")
-    ax.text(pos_t + 0.05 * xlim[1], 0.3*ylim[0], f"Peak/trough ratio: {np.abs(np.round(ptrat,2))}")
+    ax.text(
+        pos_t + 0.05 * xlim[1],
+        0.3 * ylim[0],
+        f"Peak/trough ratio: {np.abs(np.round(ptrat,2))}",
+    )
     ax.set_ylim(ylim[0] + 0.1 * ylim[0], ylim[1] + 0.1 * ylim[1])
     ax.set_xlabel("ms")
     ax.set_ylabel(r"$\mu$ V")
-    # ax.set_xticks([0, 4000, 8200])
-    # ax.set_xticklabels([-1.365, 0, 1.365])
+
+    ticks = ticker.FuncFormatter(lambda x, pos: "{0:.2f}".format(x / 3000))
+    ax.xaxis.set_major_formatter(ticks)
     if dp is None:
         pass
     else:

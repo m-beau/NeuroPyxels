@@ -2570,7 +2570,7 @@ def feature_extraction(json_path, check_json=True, save_path=None):
 
     feat_df = pd.DataFrame(columns=columns)
 
-    for ds in json_f.values():
+    for ds in tqdm(json_f.values(), desc="Extracting features", position=0, leave=True):
         dp = Path(ds["dp"])
         optolabel = ds["ct"]
         if optolabel == "PkC":
@@ -2585,7 +2585,6 @@ def feature_extraction(json_path, check_json=True, save_path=None):
                 label = "PkC_ss"
             elif u in cs:
                 label = "PkC_cs"
-            print(f"Doing cell {u} in {dp}")
             wvf_features = new_waveform_features(dp, u).tolist()
             tmp_features = temp_feat(dp, u)[0]
             curr_feat = [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]

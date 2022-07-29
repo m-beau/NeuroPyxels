@@ -1391,7 +1391,7 @@ def extract_peak_channel_features(relevant_waveform):
     coeff3, _, _, _ = depol_slope(relevant_waveform, first_peak_t, first_trough_t)
 
     # Multiply slope coefficients by 100 to undo interpolation effect and obtain meaningful values
-    coeff1, coeff2, coeff3 = np.array([coeff1, coeff2, coeff3]) * 100
+    coeff1, coeff2, coeff3 = coeff1 * 100, coeff2 * 100, coeff3 * 100
 
     return [
         neg_v,
@@ -1476,9 +1476,13 @@ def new_waveform_features(dp, unit, plot_debug=False):
     peak_channel_features = extract_peak_channel_features(relevant_waveform)
     spatial_features = extract_spatial_features(waveform_2d.T, somatic, dp, unit)
 
-    return np.array(
-        [str(dp), unit, relevant_channel, *peak_channel_features, *spatial_features]
-    )
+    return [
+        str(dp),
+        unit,
+        int(relevant_channel),
+        *peak_channel_features,
+        *spatial_features,
+    ]
 
 
 def waveform_features(all_waves, dpath, peak_chan, unit):
@@ -2585,7 +2589,7 @@ def feature_extraction(json_path, check_json=True, save_path=None):
                 label = "PkC_ss"
             elif u in cs:
                 label = "PkC_cs"
-            wvf_features = new_waveform_features(dp, u).tolist()
+            wvf_features = new_waveform_features(dp, u)
             tmp_features = temp_feat(dp, u)[0]
             curr_feat = [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]
             feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)

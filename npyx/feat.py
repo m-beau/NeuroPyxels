@@ -33,6 +33,7 @@ from itertools import compress
 from sklearn.metrics import mean_squared_error
 from scipy import ndimage
 from psutil import virtual_memory as vmem
+from datetime import date
 
 import pandas as pd
 import json
@@ -285,7 +286,7 @@ def wvf_width(wave, peak_time, trough_time):
         np.abs(peak_time - trough_time),
         trough_time,
         peak_time,
-        wave[trough_time] - 30,
+        wave[trough_time],
     )
 
 
@@ -496,6 +497,9 @@ def depol_slope(waves, peak_time, trough_time):
 
     trough_value = waves[trough_time]
 
+    # Normalise the waveform to correct for amplitude effects!
+    waves = waves / np.max(np.abs(waves))
+
     # find number of points between negative and positive peaks
 
     all_dots_peak = np.abs((trough_time - waves.shape[0] // 10) - trough_time)
@@ -692,6 +696,9 @@ def repol_slope(waves, peak_time, trough_time):
 
     trough_value = waves[trough_time]
 
+    # Normalise the waveform to correct for amplitude effects!
+    waves = waves / np.max(np.abs(waves))
+
     # find number of points between negative and positive peaks
 
     all_dots_peak = np.abs(peak_time - trough_time)
@@ -717,6 +724,9 @@ def recovery_slope(waves, peak_time, trough_time):
     """
 
     peak_value = waves[peak_time]
+
+    # Normalise the waveform to correct for amplitude effects!
+    waves = waves / np.max(np.abs(waves))
 
     #    peak_time = peak_t[np.argmax(peak_v)].astype(np.int64)
     #    peak_value = np.max(peak_v).astype(np.int64)
@@ -1327,7 +1337,15 @@ def find_relevant_peaks(peak_t, peak_v):
 
 
 def extract_peak_channel_features(relevant_waveform):
-    # use all old functions from extract_waveform_features
+    """
+    It takes a waveform and returns a list of features that describe the waveform
+    
+    Args:
+        relevant_waveform: the waveform to be analyzed
+    
+    Returns:
+        The return is a list of the features that are being extracted from the waveform.
+    """
 
     # First interpolates the waveform for higher precision
     relevant_waveform = interp_wave(relevant_waveform)
@@ -1363,11 +1381,17 @@ def extract_peak_channel_features(relevant_waveform):
     # pt ratio
     ptr = pt_ratio(relevant_waveform, first_peak_t, first_trough_t)
 
-    # rec slope
+    # recovery slope
     coeff1, _, _, _ = recovery_slope(relevant_waveform, first_peak_t, first_trough_t)
 
-    # repol slope
+    # repolarisation slope
     coeff2, _, _, _ = repol_slope(relevant_waveform, first_peak_t, first_trough_t)
+
+    # depolarisation slope
+    coeff3, _, _, _ = depol_slope(relevant_waveform, first_peak_t, first_trough_t)
+
+    # Multiply slope coefficients by 100 to undo interpolation effect and obtain meaningful values
+    coeff1, coeff2, coeff3 = np.array([coeff1, coeff2, coeff3]) * 100
 
     return [
         neg_v,
@@ -1384,6 +1408,7 @@ def extract_peak_channel_features(relevant_waveform):
         ptr,
         coeff1[0],
         coeff2[0],
+        coeff3[0],
     ]
 
 
@@ -1401,7 +1426,18 @@ def extract_spatial_features(waveform_2d, somatic, dp, unit):
 
 
 def new_waveform_features(dp, unit, plot_debug=False):
-    """TODO docsting"""
+    """
+    It takes a datapoint and unit, finds the relevant waveform, and extracts features from it
+    
+    Args:
+      dp: the datapoint
+      unit: the unit number
+      plot_debug: If True, plots the waveforms and the relevant channel. Defaults to False
+    
+    Returns:
+      A numpy array of the following:
+        [dp, unit, relevant_channel, *peak_channel_features, *spatial_features]
+    """
 
     _, waveform_2d, _, peak_channel = wvf_dsmatch(
         dp, unit, verbose=False, again=False, save=True,
@@ -1525,6 +1561,7 @@ def plot_all(one_wave, dp=None, unit=None, label=None):
     #    one_wave = one_wave[0]
     wvf = interp_wave(one_wave)
     wvf -= np.mean(wvf[:2000])
+    wvf = wvf / np.max(np.abs(wvf))
     peak_t, peak_v = detect_peaks(wvf)
 
     trough_time, peak_time = find_relevant_peaks(peak_t, peak_v)
@@ -1594,45 +1631,53 @@ def plot_all(one_wave, dp=None, unit=None, label=None):
         color="red",
     )
 
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+
     ax.plot([pos_hw[0], pos_hw[1]], [pos_hw[2], pos_hw[2]], color="purple")
     ax.plot([neg_hw[0], neg_hw[1]], [neg_hw[2], neg_hw[2]], color="purple")
     ax.plot(
         np.linspace(wvf_dur[1], wvf_dur[2], wvf_dur[0] + 1),
-        np.linspace(wvf_dur[3], wvf_dur[3], wvf_dur[0] + 1),
+        np.linspace(
+            wvf_dur[3] + 0.1 * ylim[0], wvf_dur[3] + 0.1 * ylim[0], wvf_dur[0] + 1
+        ),
     )
-
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
 
     ax.text(
         wvf_dur[2] + 0.01 * xlim[1],
-        wvf_dur[3] + 0.01 * ylim[0],
+        wvf_dur[3] + 0.1 * ylim[0],
         f"wvf duration: {np.round(wvf_dur[0]/3000, 2)}",
     )
+
+    # NOTE: we are multiplying the slope values by 100 to undo the interpolation effect and obtain meaningful values!
+
     ax.text(
         rec_slope[2] + 0.1 * xlim[1],
         rec_slope[3],
-        f"rec slope: {np.round(rec_slope[0][0],2)}",
+        f"rec slope: {np.round(rec_slope[0][0]* 100,2)}",
     )
     ax.text(
         rep_slope[2] + 0.1 * xlim[1],
         rep_slope[3] - 0.1 * ylim[0],
-        f"rep slope: {np.round(rep_slope[0][0],2)}",
+        f"rep slope: {np.round(rep_slope[0][0]* 100,2)}",
     )
     ax.text(
         dep_slope[2] - 0.2 * xlim[1],
         dep_slope[3] - 0.1 * ylim[0],
-        f"dep slope: {np.round(dep_slope[0][0],2)}",
+        f"dep slope: {np.round(dep_slope[0][0] * 100,2)}",
     )
+
     # ax.text(peaks[0][-1]+500, peaks[1][-1]-15, f"MSE of fit is {np.round(mse_fit,2)} \n tau: {np.round(tau, 2)}")
+
     ax.text(
         pos_t + 0.05 * xlim[1],
         0.3 * ylim[0],
         f"Peak/trough ratio: {np.abs(np.round(ptrat,2))}",
     )
     ax.set_ylim(ylim[0] + 0.1 * ylim[0], ylim[1] + 0.1 * ylim[1])
+
     ax.set_xlabel("ms")
-    ax.set_ylabel(r"$\mu$ V")
+    ax.set_ylabel("Arbitrary units")
 
     ticks = ticker.FuncFormatter(lambda x, pos: "{0:.2f}".format(x / 3000))
     ax.xaxis.set_major_formatter(ticks)
@@ -2437,3 +2482,117 @@ def filter_df(dfram):
     )
 
     return dfram[~all_conds]
+
+
+def feature_extraction(json_path, check_json=True, save_path=None):
+    """
+    It takes a json file containing paths to all the recordings and extracts the features.
+    
+    Params:
+    
+        json_path:  path to the json file that contains the data
+        check_json: if True, will check that the files in the json file exist and that the units in
+            the json file can all be found.
+        save_path: where to save the csv file
+    
+    Returns:
+    
+        A dataframe with all the features for all the cells in the json file.
+        This will include:
+            - neuron information (optolabel, data_path, unit)
+            - temporal features (15)
+            - waveform features (18)
+    """
+
+    with open(json_path) as f:
+        json_f = json.load(f)
+
+    DSs = {}
+    any_not_found = False
+    if check_json:
+        for ds in tqdm(
+            json_f.values(), desc="Checking provided json file", position=0, leave=True
+        ):
+            dp = Path(ds["dp"])
+            DSs[dp.name] = ds
+            if not dp.exists():
+                print(f"\033[31;1m{dp} doesn't exist!!\033[0m")
+                any_not_found = True
+                continue
+            units = ds["units"]
+            units_m = np.isin(units, get_units(dp))
+            if not all(units_m):
+                print(
+                    f"\033[31;1m{np.array(units)[~units_m]} not found in {dp}!\033[0m"
+                )
+                any_not_found = True
+    if any_not_found:
+        raise ValueError("Some files were not found")
+
+    columns = [
+        "label",
+        "dp",
+        "unit",
+        "mfr",
+        "mifr",
+        "med_isi",
+        "mode_isi",
+        "prct5ISI",
+        "entropy",
+        "CV2_mean",
+        "CV2_median",
+        "CV",
+        "IR",
+        "Lv",
+        "LvR",
+        "LcV",
+        "SI",
+        "SKW",
+        "relevant_channel",
+        "trough_voltage",
+        "trough_t",
+        "peak_voltage",
+        "peak_t",
+        "repolarisation_t",
+        "depolarisation_t",
+        "peak_50_width",
+        "trough_50_width",
+        "onset_t",
+        "onset_amp",
+        "wvf_width",
+        "peak_trough_ratio",
+        "recovery_slope",
+        "repolarisation_slope",
+        "depolarisation_slope",
+        "spatial_decay_24um",
+        "dendritic_comp_amp",
+    ]
+
+    feat_df = pd.DataFrame(columns=columns)
+
+    for ds in json_f.values():
+        dp = Path(ds["dp"])
+        optolabel = ds["ct"]
+        if optolabel == "PkC":
+            optolabel = "PkC_ss"
+        units = ds["units"]
+        ss = ds["ss"]
+        cs = ds["cs"]
+        for u in units + ss + cs:
+            if u in units:
+                label = optolabel
+            elif u in ss:
+                label = "PkC_ss"
+            elif u in cs:
+                label = "PkC_cs"
+            print(f"Doing cell {u} in {dp}")
+            wvf_features = new_waveform_features(dp, u).tolist()
+            tmp_features = temp_feat(dp, u)[0]
+            curr_feat = [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]
+            feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
+
+    if save_path is not None:
+        today = date.today().strftime("%b-%d-%Y")
+        feat_df.to_csv(f"{save_path}{today}_all_features.csv")
+
+    return feat_df

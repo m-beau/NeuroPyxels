@@ -199,7 +199,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
                 n_waves_used_for_matching = 5000, peakchan_allowed_range=6,
                 use_average_peakchan = False, max_allowed_amplitude = 1800, max_allowed_shift=3,
                 n_waves_to_average=800, plot_debug=False, do_shift_match=True, n_waveforms_per_batch=10,
-                subselect_max_template=False):
+                subselect_max_template=False, amp_max_percentile=0.95):
     """
     ********
     Extract the drift and shift matched mean waveforms of the specified unit.
@@ -272,6 +272,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
                                   n_waveforms_per_batch consecutive waveforms have the same drift state)
         - subselect_max_template: bool, whether to only use the kilosort template with the largest amount of spikes to compute the waveform
                                   (less likely to average together waveforms looking different)
+        - amp_max_percentile: float, percentile of the amplitude distribution to use as the maximum amplitude for X-Y drift matching 
 
     Returns:
         - peak_dsmatched_waveform: (n_samples,) array (t_waveforms samples) storing the peak channel waveform
@@ -316,7 +317,12 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         if verbose: print((f"Used 1/{len(template_ids)} templates (had {template_ns[template_ids==template_to_use]} spikes, "
                           f"others {template_ns[template_ids!=template_to_use]} respectively."))
     # group in batches
-    spike_ids_split_all = split(spike_ids_all, n_waveforms_per_batch, return_last = False).astype(np.int64)
+    if n_waveforms_per_batch>1:
+        spike_ids_split_all = split(spike_ids_all, n_waveforms_per_batch, return_last = False).astype(np.int64)
+    elif n_waveforms_per_batch == 1:
+        spike_ids_split_all = spike_ids_all
+    else:
+        raise ValueError("n_waveforms_per_batch must be >=1!")
     
     ## Subsample waveforms based on available RAM
     vmem=dict(psutil.virtual_memory()._asdict())
@@ -403,12 +409,12 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     # use all up to n_driftmatched_subset batches
     ## TODO only perform the following if distribution is unimodal
     # (Hartigan Dip-test of Unimodality)
-    prct_95_i = int(batch_peak_channels.shape[0]*0.95)
-    if prct_95_i<n_driftmatched_subset: 
+    prct_i = int(batch_peak_channels.shape[0]*amp_max_percentile)
+    if prct_i<n_driftmatched_subset: 
         batch_peak_channels = batch_peak_channels[0:n_driftmatched_subset]
     else:
-        i_left = max(prct_95_i - n_driftmatched_subset, 0) # should never be negative given if statement, but precaution
-        batch_peak_channels = batch_peak_channels[i_left:prct_95_i]
+        i_left = max(prct_i - n_driftmatched_subset, 0) # should never be negative given if statement, but precaution
+        batch_peak_channels = batch_peak_channels[i_left:prct_i]
     drift_matched_spike_ids = np.sort(batch_peak_channels[:,0])
 
     if plot_debug:

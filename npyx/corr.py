@@ -135,7 +135,7 @@ def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=
     # is close enough to to be included in the CCG window
     # (stops when mask is only False because of mask[:-shift][spike_diff_b > (winsize_bins // 2)] = False)
     shift = 1
-    mask = np.ones_like(phy_ss, dtype=np.bool)
+    mask = np.ones_like(phy_ss, dtype=bool)
     while mask[:-shift].any():
 
         # Compute delta_Ts between each spike and the closest spike in the past
@@ -856,7 +856,7 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
     if ret_values:
         sig_pvals=thresh_consec(pvals, p_th/2, sgn=-1, n_consec=n_consec, only_max=only_max)
         poisson_zscore=(CCG-pred)/np.sqrt(pred)
-        for sp in sig_pvals: sp[1,:]=poisson_zscore[sp[0,:].astype(np.int)]
+        for sp in sig_pvals: sp[1,:]=poisson_zscore[sp[0,:].astype(np.int64)]
         return sig_pvals
 
     comp = (pvals<=p_th/2)
@@ -1088,6 +1088,40 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 
     return sigstack, sigustack
 
+def acg_3D(dp, u, cbin, cwin, normalize='Probability',
+            verbose=False, periods='all', again=False,
+            train=None, enforced_rp=0, num_firing_rate_bins=10, smooth=250):
+    f"""
+    Wrapper for 3D acg.
+    
+    See doc of crosscorr_vs_firing_rate:
+    {crosscorr_vs_firing_rate.__doc__}"""
+
+    dp = get_source_dp_u(dp, u)[0]
+    fs = read_metadata(dp)['highpass']['sampling_rate']
+    dpnm = get_npyx_memory(dp)
+
+    periods_str = str(periods)[0:50].replace(' ', '').replace('\n','')
+    fn = f"acg3d_{u}_{cbin}_{cwin}_{normalize}_{periods_str}_{enforced_rp}.npy"
+    if (dpnm/fn).exists() and not again:
+        bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
+        bins_f = np.load(dpnm/("f_"+fn))
+        acg_3d =  np.load(dpnm/fn)
+        return acg_3d, bins_t, bins_f
+
+    sav = False
+    if train is None:
+        train = trn(dp, u, 1, verbose, periods, again, enforced_rp)
+        sav = True
+    bins_f, acg_3d = crosscorr_vs_firing_rate(train, train, cwin, cbin, fs, num_firing_rate_bins, smooth)
+    bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
+
+    if sav:
+        np.save(dpnm/("f_"+fn), bins_f)
+        np.save(dpnm/fn, acg_3d)
+
+    return acg_3d, bins_t, bins_f
+
 def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num_firing_rate_bins=10, smooth=250):
     """
     Computes a "three dimensional" cross-correlogram that shows firing regularity when the neuron is
@@ -1175,7 +1209,12 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
             current_firing_rate_bin_number = len(firing_rate_bins) - 1
         spike_counts[current_firing_rate_bin_number, :] += spiketrain[start:stop]
         times[current_firing_rate_bin_number] += 1
-    return firing_rate_bins, spike_counts / (np.ones((len(time_axis), num_firing_rate_bins)) * times).T
+
+    # remove bin 0, which will always be 1
+    acg_3d = spike_counts / (np.ones((len(time_axis), num_firing_rate_bins)) * times).T
+    acg_3d[:,acg_3d.shape[1]//2] = 0
+
+    return firing_rate_bins, acg_3d
 
 def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
@@ -1504,7 +1543,7 @@ def get_cisi1(spk1, spk2, direction=0, verbose=False):
     # Concatenate and sort spike times of spk1 and 2
     # (Ensure that there is at least one spk2 spike smaller than/bigger than any spk1 spike)
     t_12=np.append(spk1, spk2)
-    i_12=np.array([False]*len(spk1)+[True]*len(spk2), dtype=np.bool)
+    i_12=np.array([False]*len(spk1)+[True]*len(spk2), dtype=bool)
     i_12=i_12[np.argsort(t_12)]
     t_12.sort()
 

@@ -349,7 +349,7 @@ def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.
           'REW':'digital', 'GHOST_REW':'digital', 'CUE':'digital', 'LICKS':'digital',
           'VRframes':'digital', 'REW_GHOST':'digital', 'ROT':'analog',
           'ROTreal':'analog', 'CameraFrames':'digital', 'LICKS_Piezo':'digital', 'LICKS_elec':'digital',
-          'opto_stims':'digital', 'ROT_A':'digital', 'ROT_B':'digital'}
+          'opto_stims':'digital', 'ROT_A':'digital', 'ROT_B':'digital', 'PUFF':'digital'}
         if type(variables)==list:
             variables=np.array(variables)
             areIn = np.isin(variables, allVariables)

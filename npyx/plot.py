@@ -993,10 +993,11 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
             window[1]=window[1]+1*1000/fs # to make actual window[1] tick visible
             assert times is None, 'You can either provide a window of 2 times or a list of alignement_events \
                 + a single window to compute an average, but not both!'
-            assert len(alignement_events)>1
-            # d = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, filt_key, 1,
-            #          whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
-            #          ignore_ks_chanfilt, center_chans_on_0, 0, scale=1, again=again)
+            assert len(alignement_events)>=1, "You must provide a list/array of alignement_events!"
+            rc=extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, filt_key, 1,
+                     whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
+                     nRangeWhiten, nRangeMedSub, use_ks_w_matrix,
+                     ignore_ks_chanfilt, center_chans_on_0, 0, 1, again)
             for e in alignement_events[1:]:
                 times=e+npa(window)/1e3
                 rc+=extract_rawChunk(dp, times, channels, filt_key, 1,

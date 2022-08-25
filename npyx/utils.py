@@ -113,6 +113,34 @@ def npa(arr=[], **kwargs):
         arr=np.array(arr, dtype=dtype)
     return arr
 
+def save_np_array(arr, filename, saveDir="~/Downloads", _format="npy", dtype=None):
+    """
+    Save a numpy array to a file.
+    
+    Parameters:
+        - arr: numpy array to save.
+        - filename: str, name of the file to save (without extension).
+        - saveDir: str, directory where to save the array.
+        - _format: 'npy' or 'npz'.
+        - dtype: numpy datatype. If provided, casts arrayt to this datatype before saving.
+    
+    Returns:
+        - None
+    """
+    saveDir = Path(saveDir).expanduser()
+    assert saveDir.exists(), f"{saveDir} does not exist!"
+
+    if dtype is not None:
+        arr = arr.astype(dtype)
+
+    putative_extension = filename[-4:]
+    if putative_extension not in [".npy", ".npz"]:
+        assert _format in ["npy", "npz"]
+        filename += f".{_format}"
+
+    np.save(saveDir/filename, arr)
+
+
 def isnumeric(x):
     x=str(x).replace('−','-')
     try:

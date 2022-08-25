@@ -337,3 +337,14 @@ def get_source_dp_u(dp, u):
 
     dp = Path(dp)
     return dp, u
+
+
+def merge_units_across_ss():
+    """
+    Merge units across spike sortings.
+
+    Only works across spike sortings of the same dataset.
+
+    Requires to manually provide pairs of units from the 1st and second spike sorting.
+    """
+    return

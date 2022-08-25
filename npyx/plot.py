@@ -27,7 +27,7 @@ from IPython.core.display import HTML,display
 mpl.rcParams['pdf.fonttype'] = 42 # necessary to make the text editable
 mpl.rcParams['ps.fonttype'] = 42
 
-from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable
+from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, save_np_array
 from npyx.stats import fractile_normal, fractile_poisson
 
 from npyx.inout import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map, predefined_chanmap
@@ -878,7 +878,7 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
     if saveFig:
         save_mpl_fig(fig, title, saveDir, _format)
     if saveData:
-        np.save(Path(saveDir, title+'.npy'), waveforms)
+        save_np_array(waveforms, title, saveDir)
 
     return fig
 
@@ -911,7 +911,7 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
 
 def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), filt_key='highpass',
              offset=450, color='black', lw=1, bg_alpha=0.8,
-             title=None, _format='pdf',  saveDir='~/Downloads', saveFig=0, figsize=(8,10), again=False,
+             title=None, _format='pdf',  saveDir='~/Downloads', saveFig=0, figsize=(8,10), saveData=False, again=False,
              center_chans_on_0=True, whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
              nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=False, ignore_ks_chanfilt=True,
              filter_forward=True, filter_backward=True,
@@ -941,6 +941,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     - saveFig: save the figure at saveDir
     - _format: format of the figure to save | default: pdf
     - figsize: (x_inches, y_inches) figure size
+    - saveData: bool, whether to save data used to make the plot (n_channels x time array, where time is in samples (30kHz))
     - again: bool, whether to recompute data rather than loading it from disc
 
     - center_chans_on_0: bool, whether to median subtract in time to reccenter channels on 0
@@ -1082,12 +1083,16 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     ax.set_ylim(yl)
     ax.set_xlim(xl)
 
+
+    rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
+    rcn=rcn+'_whitened' if whiten else rcn+'_raw'
     if saveFig:
-        rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
-        rcn=rcn+'_whitened' if whiten else rcn+'_raw'
         if title is not None: rcn=title
 
         save_mpl_fig(fig, rcn, saveDir, _format)
+
+    if saveData:
+        save_np_array(rc, rcn, saveDir)
 
     return fig
 

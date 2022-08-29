@@ -27,7 +27,7 @@ from IPython.core.display import HTML,display
 mpl.rcParams['pdf.fonttype'] = 42 # necessary to make the text editable
 mpl.rcParams['ps.fonttype'] = 42
 
-from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable
+from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, save_np_array
 from npyx.stats import fractile_normal, fractile_poisson
 
 from npyx.inout import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map, predefined_chanmap
@@ -746,19 +746,26 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
     Waveform plotting utility function.
 
     - waveforms: (n_waves, n_samples, n_channels) or (n_samples, n_channels) array, waveforms in uV
-    - subcm: (n_channels, 3) or (n_channels, 1) array ((channel_id, x, y) or (channel_id)), subest of channel map
+    - subcm: (n_channels, 3) or (n_channels, ) array ((channel_id, x, y) or (channel_id)), subset of channel map
     """
-    # formatting
+    # formatting parameters
+    if isinstance(color, str):
+        color=to_rgb(color)
+    color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
+
     if waveforms_std is None:
         plot_std=False
     else:
         waveforms_std = waveforms_std.T
+
     assert waveforms.ndim in [1,2,3],\
         'waveforms array shape wrong (should be (n_samples,), (n_waves, n_samples, n_channels) or (n_samples, n_channels))'
     if waveforms.ndim == 1:
         waveforms = waveforms[:,None]
+
+    # formatting waveforms array
     if waveforms.ndim == 3:
-        n_waveforms = waveforms.shape[0]
+        n_waveforms, n_samples, n_channels = waveforms.shape
         datam = waveforms.mean(0).T
         if type(sample_lines) is str:
             assert sample_lines=='all'
@@ -766,24 +773,24 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
         elif type(sample_lines) in [int, float]:
             sample_lines=min(waveforms.shape[0], sample_lines, n_waveforms)
     elif waveforms.ndim == 2:
-        sample_lines = 0
+        n_waveforms = 1
+        n_samples, n_channels = waveforms.shape
         datam = waveforms.T
+        sample_lines = 0
     
     # channels and channelmap
     if subcm is None:
         # make up channel map
         subcm=predefined_chanmap(probe_version='1.0')
-        subcm = subcm[datam.shape[-1],:]
+        subcm = subcm[:n_channels,:]
     else:
         if subcm.ndim==1:
             subcm_madeup = predefined_chanmap(probe_version='1.0')
-            subcm = np.vstack(subcm[:,None], subcm_madeup[datam.shape[-1],1:])
-        else:
-            assert subcm.shape[0]==datam.shape[0]
+            subcm = np.vstack(subcm[:,None], subcm_madeup[:n_channels,1:])
+    assert subcm.shape[0]==n_channels
+    subcm = subcm.astype(np.float32)
 
-    if isinstance(color, str):
-        color=to_rgb(color)
-    color_dark=(max(color[0]-0.08,0), max(color[1]-0.08,0), max(color[2]-0.08,0))
+    # find shared y limits
     if plot_std:
         datamin, datamax = np.nanmin(datam-waveforms_std)-50, np.nanmax(datam+waveforms_std)+50
     else:
@@ -810,24 +817,27 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
         fig_wborder=[margin,1-margin] # proportion of figure used for plotting
         minx_um,maxx_um=min(subcm[:,1])-ax_edge_um_x/2, max(subcm[:,1])+ax_edge_um_x/2
         miny_um,maxy_um=min(subcm[:,2])-ax_edge_um_y/2, max(subcm[:,2])+ax_edge_um_y/2
-        if figh_inch is None: figh_inch=figw_inch*(maxy_um-miny_um)/(maxx_um-minx_um)
-        fig=plt.figure(figsize=(figw_inch, figh_inch))
-
         subcm[:,1]=((subcm[:,1]-minx_um)/(maxx_um-minx_um)*np.diff(fig_wborder)+fig_wborder[0]).round(2)
         subcm[:,2]=((subcm[:,2]-miny_um)/(maxy_um-miny_um)*np.diff(fig_hborder)+fig_hborder[0]).round(2)
-        axw=(ax_edge_um_x/(maxx_um-minx_um)*np.diff(fig_wborder))[0] # in ratio of figure size
-        axh=(ax_edge_um_y/(maxy_um-miny_um)*np.diff(fig_hborder))[0] # in ratio of figure size
-
-        ax=np.empty((subcm.shape[0]), dtype='O')
+    
         # i is the relative raw data /channel index (low is bottom channel)
         i_bottomleft=np.nonzero((subcm[:2,1]==min(subcm[:2,1]))&(subcm[:2,2]==min(subcm[:2,2])))[0]
         i_bottomleft=np.argmin(subcm[:2,2]) if i_bottomleft.shape[0]==0 else i_bottomleft[0]
-        for i in range(subcm.shape[0]):
+
+        
+        if figh_inch is None:
+            figh_inch=figw_inch*(maxy_um-miny_um)/(maxx_um-minx_um)
+        axw=(ax_edge_um_x/(maxx_um-minx_um)*np.diff(fig_wborder))[0] # in ratio of figure size
+        axh=(ax_edge_um_y/(maxy_um-miny_um)*np.diff(fig_hborder))[0] # in ratio of figure size  
+
+        fig=plt.figure(figsize=(figw_inch, figh_inch))
+        ax=np.empty((n_channels), dtype='O')
+        for i in range(n_channels):
             x0,y0 = subcm[i,1:]
             ax[i] =fig.add_axes([x0-axw/2,y0-axh/2,axw,axh], autoscale_on=False)
 
         # Plot on subplots
-        for i in range(subcm.shape[0]):
+        for i in range(n_channels):
             for j in range(sample_lines):
                 assert waveforms.ndim==3
                 ax[i].plot(x, waveforms[j,:, i], linewidth=0.3, alpha=0.3, color=color)
@@ -882,7 +892,7 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
     if saveFig:
         save_mpl_fig(fig, title, saveDir, _format)
     if saveData:
-        np.save(Path(saveDir, title+'.npy'), waveforms)
+        save_np_array(waveforms, title, saveDir)
 
     return fig
 
@@ -920,7 +930,7 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
 
 def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.arange(384), filt_key='highpass',
              offset=450, color='black', lw=1, bg_alpha=0.8,
-             title=None, _format='pdf',  saveDir='~/Downloads', saveFig=0, figsize=(8,10), again=False,
+             title=None, _format='pdf',  saveDir='~/Downloads', saveFig=0, figsize=(8,10), saveData=False, again=False,
              center_chans_on_0=True, whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
              nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=False, ignore_ks_chanfilt=True,
              filter_forward=True, filter_backward=True,
@@ -950,6 +960,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     - saveFig: save the figure at saveDir
     - _format: format of the figure to save | default: pdf
     - figsize: (x_inches, y_inches) figure size
+    - saveData: bool, whether to save data used to make the plot (n_channels x time array, where time is in samples (30kHz))
     - again: bool, whether to recompute data rather than loading it from disc
 
     - center_chans_on_0: bool, whether to median subtract in time to reccenter channels on 0
@@ -1002,10 +1013,11 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
             window[1]=window[1]+1*1000/fs # to make actual window[1] tick visible
             assert times is None, 'You can either provide a window of 2 times or a list of alignement_events \
                 + a single window to compute an average, but not both!'
-            assert len(alignement_events)>1
-            # d = extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, filt_key, 1,
-            #          whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
-            #          ignore_ks_chanfilt, center_chans_on_0, 0, scale=1, again=again)
+            assert len(alignement_events)>=1, "You must provide a list/array of alignement_events!"
+            rc=extract_rawChunk(dp, alignement_events[0]+npa(window)/1e3, channels, filt_key, 1,
+                     whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
+                     nRangeWhiten, nRangeMedSub, use_ks_w_matrix,
+                     ignore_ks_chanfilt, center_chans_on_0, 0, 1, again)
             for e in alignement_events[1:]:
                 times=e+npa(window)/1e3
                 rc+=extract_rawChunk(dp, times, channels, filt_key, 1,
@@ -1090,12 +1102,16 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     ax.set_ylim(yl)
     ax.set_xlim(xl)
 
+
+    rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
+    rcn=rcn+'_whitened' if whiten else rcn+'_raw'
     if saveFig:
-        rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
-        rcn=rcn+'_whitened' if whiten else rcn+'_raw'
         if title is not None: rcn=title
 
         save_mpl_fig(fig, rcn, saveDir, _format)
+
+    if saveData:
+        save_np_array(rc, rcn, saveDir)
 
     return fig
 

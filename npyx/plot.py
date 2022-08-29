@@ -758,6 +758,11 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
     else:
         waveforms_std = waveforms_std.T
 
+    assert waveforms.ndim in [1,2,3],\
+        'waveforms array shape wrong (should be (n_samples,), (n_waves, n_samples, n_channels) or (n_samples, n_channels))'
+    if waveforms.ndim == 1:
+        waveforms = waveforms[:,None]
+
     # formatting waveforms array
     if waveforms.ndim == 3:
         n_waveforms, n_samples, n_channels = waveforms.shape
@@ -892,7 +897,7 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
     return fig
 
 def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
-                     fig=None, color=None):
+                     fig=None, color=None, custom_text=None):
     "w is a (n_samples, n_channels) array"
     if peak_channel is None:
         pk = np.argmax(np.ptp(w, axis=0))
@@ -901,6 +906,9 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
     ylim = [np.min(w[:,pk])-50, np.max(w[:,pk])+50]
     if fig is None: fig = plt.figure(figsize=(6, 14))
     chans = np.arange(pk-nchans//2, pk+nchans//2)
+    if custom_text is not None:
+        assert isinstance(custom_text, list)
+        assert len(custom_text) == nchans
     for i in range(nchans):
         ax = plt.subplot(nchans//2, 2, i+1) # will retrieve axes if alrady exists
         if chans[i] == pk:
@@ -909,6 +917,8 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
             ax.spines['top'].set_color('red')
             ax.spines['bottom'].set_color('red')
         ax.text(0.05, 0.7, f'{chans[i]}', fontsize=8, transform = ax.transAxes)
+        if custom_text is not None:
+            ax.text(0.8, 0.7, str(custom_text[i]), fontsize=8, transform = ax.transAxes)
         ax.plot(np.arange(-w.shape[0]//2/30, w.shape[0]//2/30, 1/30), w[:,chans[i]],
                 alpha=0.8, lw=1, color=color)
         ax.set_ylim(ylim)

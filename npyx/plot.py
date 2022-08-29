@@ -769,7 +769,7 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
     if subcm is None:
         # make up channel map
         subcm=predefined_chanmap(probe_version='1.0')
-        subcm = subcm[datam.shape[-1],:]
+        subcm = subcm[:datam.shape[-1],:]
     else:
         if subcm.ndim==1:
             subcm_madeup = predefined_chanmap(probe_version='1.0')

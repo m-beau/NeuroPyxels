@@ -790,6 +790,8 @@ def cu_median(a, axis=0):
         indexer[axis] = slice(index, index + 1)
     else:
         indexer[axis] = slice(index - 1, index + 1)
+    
+    indexer = tuple(indexer) # compatibility with cupy 11+ (MB)
 
     return cp.mean(part[indexer], axis=axis)
 

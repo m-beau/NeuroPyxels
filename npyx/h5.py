@@ -228,6 +228,8 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             else:
                 sane_spikes = (t*0+1).astype(bool)
                 
+        if optostims is None:
+            optostims = np.array([])
         write_to_group(neuron_group, 'optostims', optostims, again)
         write_to_group(neuron_group, 'sane_spikes', sane_spikes, again)
 
@@ -240,8 +242,10 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                                     n_waves_used_for_matching=n_waveforms_for_matching)
             dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
             write_to_group(neuron_group, 'primary_channel', peak_chan)
-            chan_bottom = max(0, peak_chan-mean_wvf_half_range)
-            chan_top = min(383, peak_chan+mean_wvf_half_range)
+            chan_range = np.arange(peak_chan-mean_wvf_half_range, peak_chan+mean_wvf_half_range)
+            chan_range_m = (chan_range>=0)&(chan_range<=383)
+            chan_bottom, chan_top = chan_range[chan_range_m][0], chan_range[chan_range_m][-1]
+            peak_chan_rel = np.nonzero(peak_chan == chan_range[chan_range_m])[0]
             dsm_waveform_chunk = dsm_waveform[:, chan_bottom:chan_top]
             write_to_group(neuron_group, 'mean_waveform_preprocessed',
                            dsm_waveform_chunk.T, again)
@@ -275,7 +279,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             mad = np.median(np.abs(chunk) - np.median(chunk, axis=1)[:, None], axis=1) 
             std_estimate = (mad / 0.6745) # Convert to std
             peakchan_S = np.ptp(dsm_waveform[:,peak_chan])
-            peakchan_N = std_estimate[mean_wvf_half_range]
+            peakchan_N = std_estimate[peak_chan_rel]
             peakchan_SNR = peakchan_S / peakchan_N
             
             write_to_group(neuron_group, 'amplitudes', amps, again)

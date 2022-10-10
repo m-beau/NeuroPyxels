@@ -228,6 +228,8 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             else:
                 sane_spikes = (t*0+1).astype(bool)
                 
+        if optostims is None:
+            optostims = np.array([])
         write_to_group(neuron_group, 'optostims', optostims, again)
         write_to_group(neuron_group, 'sane_spikes', sane_spikes, again)
 

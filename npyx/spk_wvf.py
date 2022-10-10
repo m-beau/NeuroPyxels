@@ -126,6 +126,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     sample_rate=meta['highpass']['sampling_rate']
     item_size = dtype.itemsize
     fileSizeBytes=meta['highpass']['binary_byte_size']
+    assert not isinstance(fileSizeBytes, str), f"It seems like there isn't any binary file at {dp}."
     if meta['acquisition_software']=='SpikeGLX':
         if meta['highpass']['fileSizeBytes'] != fileSizeBytes:
             print((f"\033[91;1mMismatch between ap.meta and ap.bin file size"

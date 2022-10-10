@@ -186,8 +186,11 @@ def read_pyfile(filepath, ignored_chars=[" ", "'", "\"", "\n", "\r"]):
     return params
 
 def list_files(directory, extension, full_path=False):
+    """
+    List files with extension "extension" in directory "directory"."""
     directory=str(directory)
-    files = [f for f in os.listdir(directory) if f.endswith('.' + extension)]
+    if extension[0]!='.': extension = '.'+extension
+    files = [f for f in os.listdir(directory) if f.endswith(extension)]
     files.sort()
     if full_path:
         return [Path('/'.join([directory,f])) for f in files]

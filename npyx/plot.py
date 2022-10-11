@@ -564,7 +564,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
                      fp=None, fn=None, fp_t=None, fn_t=None, fp_threshold=0.05, fn_threshold=0.05,
-                     good_fp_periods=None, good_fn_periods=None, title=None):
+                     good_fp_periods=None, good_fn_periods=None, title=None, axis=None):
     """
     - train: seconds
     """
@@ -573,21 +573,27 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
     else:
         fp_ok, fn_ok = False, False
     n_rows=1+int(fp_ok)+int(fn_ok)
-    fig, axs = plt.subplots(n_rows, 1, figsize=(8, n_rows*3), sharex=True)
+    if axis is None:
+        fig, axs = plt.subplots(n_rows, 1, figsize=(8, n_rows*3), sharex=True)
+    else:
+        axs = axis
     if n_rows==1: axs=[axs]
     x1,x2 = train[0], train[-1]
     axi=0
-    if fp_ok:
-        axs[axi].scatter(fp_t, fp, color='firebrick')
-        axs[axi].plot([x1,x2], [fp_threshold,fp_threshold], c='r', alpha=0.5)
-        axs[axi].set_ylabel("FP rate")
-        axi+=1
-    if fn_ok:
-        axs[axi].scatter(fn_t, fn, color='teal')
-        axs[axi].plot([x1,x2], [fn_threshold,fn_threshold], c='r', alpha=0.5)
-        axs[axi].plot(ls="--")
-        axs[axi].set_ylabel("FN rate")
-        axi+=1
+    if axis is not None:
+        pass
+    else:
+        if fp_ok:
+            axs[axi].scatter(fp_t, fp, color='firebrick')
+            axs[axi].plot([x1,x2], [fp_threshold,fp_threshold], c='r', alpha=0.5)
+            axs[axi].set_ylabel("FP rate")
+            axi+=1
+        if fn_ok:
+            axs[axi].scatter(fn_t, fn, color='teal')
+            axs[axi].plot([x1,x2], [fn_threshold,fn_threshold], c='r', alpha=0.5)
+            axs[axi].plot(ls="--")
+            axs[axi].set_ylabel("FN rate")
+            axi+=1
     axs[axi].scatter((train)[good_spikes_m], amplitudes[good_spikes_m], color='green', alpha=0.5, s=3)
     axs[axi].scatter((train)[~good_spikes_m], amplitudes[~good_spikes_m], color='k', alpha=0.5, s=3)
     min_amp=np.min(amplitudes)
@@ -604,8 +610,10 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
     
     if title is not None:
         fig.suptitle(title)
-    
-    return fig
+    if axis is None:
+        return fig
+    else:
+        return axs
 
 #%% Waveforms or raw data ##############################################################################################
 
@@ -758,6 +766,11 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
     else:
         waveforms_std = waveforms_std.T
 
+    assert waveforms.ndim in [1,2,3],\
+        'waveforms array shape wrong (should be (n_samples,), (n_waves, n_samples, n_channels) or (n_samples, n_channels))'
+    if waveforms.ndim == 1:
+        waveforms = waveforms[:,None]
+
     # formatting waveforms array
     if waveforms.ndim == 3:
         n_waveforms, n_samples, n_channels = waveforms.shape
@@ -892,7 +905,7 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
     return fig
 
 def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
-                     fig=None, color=None):
+                     fig=None, color=None, custom_text=None):
     "w is a (n_samples, n_channels) array"
     if peak_channel is None:
         pk = np.argmax(np.ptp(w, axis=0))
@@ -901,6 +914,9 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
     ylim = [np.min(w[:,pk])-50, np.max(w[:,pk])+50]
     if fig is None: fig = plt.figure(figsize=(6, 14))
     chans = np.arange(pk-nchans//2, pk+nchans//2)
+    if custom_text is not None:
+        assert isinstance(custom_text, list)
+        assert len(custom_text) == nchans
     for i in range(nchans):
         ax = plt.subplot(nchans//2, 2, i+1) # will retrieve axes if alrady exists
         if chans[i] == pk:
@@ -909,6 +925,8 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
             ax.spines['top'].set_color('red')
             ax.spines['bottom'].set_color('red')
         ax.text(0.05, 0.7, f'{chans[i]}', fontsize=8, transform = ax.transAxes)
+        if custom_text is not None:
+            ax.text(0.8, 0.7, str(custom_text[i]), fontsize=8, transform = ax.transAxes)
         ax.plot(np.arange(-w.shape[0]//2/30, w.shape[0]//2/30, 1/30), w[:,chans[i]],
                 alpha=0.8, lw=1, color=color)
         ax.set_ylim(ylim)

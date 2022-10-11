@@ -564,7 +564,7 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
                      fp=None, fn=None, fp_t=None, fn_t=None, fp_threshold=0.05, fn_threshold=0.05,
-                     good_fp_periods=None, good_fn_periods=None, title=None):
+                     good_fp_periods=None, good_fn_periods=None, title=None, axis=None):
     """
     - train: seconds
     """
@@ -573,21 +573,27 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
     else:
         fp_ok, fn_ok = False, False
     n_rows=1+int(fp_ok)+int(fn_ok)
-    fig, axs = plt.subplots(n_rows, 1, figsize=(8, n_rows*3), sharex=True)
+    if axis is None:
+        fig, axs = plt.subplots(n_rows, 1, figsize=(8, n_rows*3), sharex=True)
+    else:
+        axs = axis
     if n_rows==1: axs=[axs]
     x1,x2 = train[0], train[-1]
     axi=0
-    if fp_ok:
-        axs[axi].scatter(fp_t, fp, color='firebrick')
-        axs[axi].plot([x1,x2], [fp_threshold,fp_threshold], c='r', alpha=0.5)
-        axs[axi].set_ylabel("FP rate")
-        axi+=1
-    if fn_ok:
-        axs[axi].scatter(fn_t, fn, color='teal')
-        axs[axi].plot([x1,x2], [fn_threshold,fn_threshold], c='r', alpha=0.5)
-        axs[axi].plot(ls="--")
-        axs[axi].set_ylabel("FN rate")
-        axi+=1
+    if axis is not None:
+        pass
+    else:
+        if fp_ok:
+            axs[axi].scatter(fp_t, fp, color='firebrick')
+            axs[axi].plot([x1,x2], [fp_threshold,fp_threshold], c='r', alpha=0.5)
+            axs[axi].set_ylabel("FP rate")
+            axi+=1
+        if fn_ok:
+            axs[axi].scatter(fn_t, fn, color='teal')
+            axs[axi].plot([x1,x2], [fn_threshold,fn_threshold], c='r', alpha=0.5)
+            axs[axi].plot(ls="--")
+            axs[axi].set_ylabel("FN rate")
+            axi+=1
     axs[axi].scatter((train)[good_spikes_m], amplitudes[good_spikes_m], color='green', alpha=0.5, s=3)
     axs[axi].scatter((train)[~good_spikes_m], amplitudes[~good_spikes_m], color='k', alpha=0.5, s=3)
     min_amp=np.min(amplitudes)
@@ -604,8 +610,10 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
     
     if title is not None:
         fig.suptitle(title)
-    
-    return fig
+    if axis is None:
+        return fig
+    else:
+        return axs
 
 #%% Waveforms or raw data ##############################################################################################
 

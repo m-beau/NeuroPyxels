@@ -286,9 +286,10 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
                     1st column is channel indices, 2nd x position, 3rd y position
     '''
 
-    dp = Path(dp)
     assert y_orig in ['surface', 'tip']
-    if probe_version is None: probe_version=read_metadata(dp)['probe_version']
+    if probe_version is None:
+        assert dp is not None, "You need to provide either a path or a probe version!"
+        probe_version=read_metadata(dp)['probe_version']
 
     if probe_version in ['3A', '1.0', '2.0_singleshank']:
         cm = predefined_chanmap(probe_version)
@@ -300,6 +301,7 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
             raise ValueError("dp argument is not provided - when channel map is \
                              atypical and probe_version thus called 'local', \
                              the datapath needs to be provided to load the channel map.")
+        dp = Path(dp)
         c_ind=np.load(dp/'channel_map.npy');cp=np.load(dp/'channel_positions.npy')
         cm=npa(np.hstack([c_ind.reshape(max(c_ind.shape),1), cp]), dtype=np.int32)
 

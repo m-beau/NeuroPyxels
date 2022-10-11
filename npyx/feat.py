@@ -15,7 +15,6 @@ Example usage:
 
 
 """
-from charset_normalizer import detect
 from tqdm import tqdm
 
 import numpy as np
@@ -750,8 +749,17 @@ def recovery_slope(waves, peak_time, trough_time):
         peak_value,
     )
 
+def previous_peak_wrap(waves, chan_path, unit, n_chans=20):
 
-def previous_peak(waves, chan_path, unit, n_chans=20):
+    dpnm = get_npyx_memory(chan_path)
+    max_chan_path = list(dpnm.glob(f"dsm_{unit}_peakchan*"))[0]
+    max_chan = int(np.load(max_chan_path))
+
+    pbp, max_pbp = previous_peak(waves, max_chan, n_chans)
+
+    return pbp, max_pbp
+
+def previous_peak(waves, max_chan, n_chans=20):
     """
     takes as input 384x82 matrix
 
@@ -765,10 +773,7 @@ def previous_peak(waves, chan_path, unit, n_chans=20):
     # detect_peaks
     # find most negative peak
     # check if there is a peak before the most negative one
-    dpnm = get_npyx_memory(chan_path)
-    max_chan_path = list(dpnm.glob(f"dsm_{unit}_peakchan*"))[0]
-    max_chan = int(np.load(max_chan_path))
-    # waves = waves.T
+
     if max_chan <= n_chans - 1:
         bounds = (0, max_chan + n_chans + 1)
     elif max_chan > 384 - n_chans - 1:
@@ -804,6 +809,7 @@ def previous_peak(waves, chan_path, unit, n_chans=20):
     # find the max amd argmax of pbp
     argmax_pbp = np.argmax(pbp)
     max_pbp = pbp[argmax_pbp]
+
     return pbp, max_pbp
 
 
@@ -856,7 +862,7 @@ def chan_dist(chan, chanmap):
     # depending on which side of the peak chan it is
     sign_mask = np.ones((384))
     sign_mask[:chan] = -1
-    #    breakpoint()
+
     return all_dist * sign_mask
 
 
@@ -891,7 +897,21 @@ def in_distance_surface(dp, dist_limit=2000):
     return select_chan_in_bound
 
 
-def chan_spread(all_wav, chan_path, unit, n_chans=20, chan_spread_dist=25.6):
+def chan_spread_wrap(all_wav, chan_path, unit, n_chans=20, probe_v="1.0_staggered"):
+
+    # search for the file that has the given peak chan
+    dpnm = get_npyx_memory(chan_path)
+    max_chan_path = list(dpnm.glob(f"dsm_{unit}_peakchan*"))[0]
+    max_chan = int(np.load(max_chan_path))
+
+    chanmap = chan_map(chan_path)
+    probe_v = read_metadata(chan_path)["probe_version"]
+
+    dists, p2p, dist_p2p, sort_dist_p2p, spread = chan_spread(all_wav, max_chan, chanmap, n_chans, probe_v)
+
+    return max_chan, dists, p2p, dist_p2p, sort_dist_p2p, spread
+
+def chan_spread(all_wav, max_chan, chanmap, n_chans=20, probe_v="1.0_staggered"):
     """
     - take a 82*384 matrix
     - find the peak chan by looking at the amplitude differnce on all chans
@@ -900,15 +920,6 @@ def chan_spread(all_wav, chan_path, unit, n_chans=20, chan_spread_dist=25.6):
     - make a plot with the distance from peak chan on x axis and amplitude on y
     -
     """
-
-    assert chan_spread_dist in [
-        0,
-        25.6,
-        32,
-        40,
-    ], """chan_spread_dist needs to be one of 0, 25.6, 32, 40 or a fp
-            npyx channel distance"""
-    all_wav = all_wav
 
     # find peak chan
     # find difference between min and max on all chans
@@ -920,13 +931,7 @@ def chan_spread(all_wav, chan_path, unit, n_chans=20, chan_spread_dist=25.6):
     # get the distance between peak and trough
 
     _, _, p2p = consecutive_peaks_amp(all_wav.T)
-
-    # search for the file that has the given peak chan
-    dpnm = get_npyx_memory(chan_path)
-    max_chan_path = list(dpnm.glob(f"dsm_{unit}_peakchan*"))[0]
-    max_chan = int(np.load(max_chan_path))
-
-    chanmap = chan_map(chan_path)
+    
     # find the distance of all channels from peak chan
     dists = chan_dist(max_chan, chanmap)
 
@@ -944,9 +949,9 @@ def chan_spread(all_wav, chan_path, unit, n_chans=20, chan_spread_dist=25.6):
         bounds = (max_chan - n_chans, 384)
     else:
         bounds = (max_chan - n_chans, max_chan + n_chans + 1)
-    bound_dist = dists[bounds[0] : bounds[1] + 1]
-    bound_p2p = p2p[bounds[0] : bounds[1] + 1]
-    bound_dist_p2p = dist_p2p[bounds[0] : bounds[1] + 1]
+    # bound_dist = dists[bounds[0] : bounds[1] + 1]
+    # bound_p2p = p2p[bounds[0] : bounds[1] + 1]
+    # bound_dist_p2p = dist_p2p[bounds[0] : bounds[1] + 1]
     sort_dist_p2p = sort_dist_p2p[bounds[0] : bounds[1] + 1]
     # get the chanel maximum peak-to-peak distance from the channels
     # at chan_spread_dist appart from the peak chan
@@ -955,7 +960,6 @@ def chan_spread(all_wav, chan_path, unit, n_chans=20, chan_spread_dist=25.6):
     # on the probe version being used
 
     # get the probe version
-    probe_v = read_metadata(chan_path)["probe_version"]
     if probe_v in ["3A", "1.0_staggered"]:
         chan_spread_dist = 25.61249695
 
@@ -968,7 +972,7 @@ def chan_spread(all_wav, chan_path, unit, n_chans=20, chan_spread_dist=25.6):
     ]
     spread = np.max(vals_at_25)
 
-    return max_chan, dists, p2p, dist_p2p, sort_dist_p2p, spread
+    return dists, p2p, dist_p2p, sort_dist_p2p, spread
 
 
 def wvf_shape(wave):
@@ -1185,7 +1189,7 @@ def compute_isi_features(isint):
     SKW = skew(isint)
 
     # Entropy not included
-    return (
+    return [
         mfr,
         mifr,
         med_isi,
@@ -1201,7 +1205,7 @@ def compute_isi_features(isint):
         LcV,
         SI,
         SKW,
-    )
+    ]
 
 
 def healthy_waveform(waveform_1d, peaks_values):
@@ -1238,7 +1242,7 @@ def is_somatic(peaks_v):
 def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):
     """
     Input:
-        - 2D waveform (t samples x n channels)
+        - 2D waveform (n channels x t samples)
         
     Algorithm:
     0 - if healthy_waveform returns True
@@ -1266,12 +1270,9 @@ def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):
     wf_channels = np.arange(len(waveform_2d))
 
     # Determine which channels to consider
-    considered_waveforms = waveform_2d[
-        peak_channel - max_chan_lookaway : peak_channel + max_chan_lookaway + 1
-    ]
-    considered_channels = wf_channels[
-        peak_channel - max_chan_lookaway : peak_channel + max_chan_lookaway + 1
-    ]
+    chan_slice = slice(max(0, peak_channel - max_chan_lookaway), min(peak_channel + max_chan_lookaway + 1, waveform_2d.shape[0]))
+    considered_waveforms = waveform_2d[chan_slice]
+    considered_channels = wf_channels[chan_slice]
 
     # Filter away low amplitude channels
     high_amp_waveforms = considered_waveforms[np.ptp(considered_waveforms, axis=1) > 30]
@@ -1405,27 +1406,49 @@ def extract_peak_channel_features(relevant_waveform):
         onset_t,
         onset_amp,
         wvfd,
-        ptr,
+        ptr, 
         coeff1[0],
         coeff2[0],
         coeff3[0],
     ]
 
 
-def extract_spatial_features(waveform_2d, somatic, dp, unit):
+def extract_spatial_features_wrap(waveform_2d, somatic, dp, unit):
 
-    _, _, _, _, _, spatial_spread_ratio = chan_spread(
+    _, _, _, _, _, spatial_spread_ratio = chan_spread_wrap(
         waveform_2d, dp, unit
     )  # ratio between max amplitude among 4/5 closest channels at 23.61 um and max amplitude on peak channel
 
     _, max_dendritic_voltage = (
-        previous_peak(waveform_2d, dp, unit) if somatic else (1, 1)
+        previous_peak_wrap(waveform_2d, dp, unit) if somatic else (1, 1)
     )  # set to 1 if relevant waveform is dendritic already (because normalized)
 
     return spatial_spread_ratio, max_dendritic_voltage
 
+def extract_spatial_features(waveform_2d, peak_chan, somatic):
+    """
+    - peak_chan: channel from which the 1D waveworm features will be extracted
+    """
 
-def new_waveform_features(dp, unit, plot_debug=False):
+    n_chans = 20
+    probe_v = "1.0_staggered"
+    chanmap = chan_map(probe_version="1.0")
+
+    # ratio between max amplitude among 4/5 closest channels at 23.61 um and max amplitude on peak channel
+
+    _, _, _, _, spatial_spread_ratio = chan_spread(
+        waveform_2d, peak_chan, chanmap, n_chans, probe_v
+    )  
+
+    # set to 1 if relevant waveform is dendritic already (because normalized)
+    _, max_dendritic_voltage = (
+        previous_peak(waveform_2d, peak_chan, n_chans) if somatic else (1, 1)
+    )  
+
+    return spatial_spread_ratio, max_dendritic_voltage
+
+
+def new_waveform_features(waveform_2d, peak_channel, plot_debug=False):
     """
     It takes a datapoint and unit, finds the relevant waveform, and extracts features from it
     
@@ -1439,14 +1462,14 @@ def new_waveform_features(dp, unit, plot_debug=False):
         [dp, unit, relevant_channel, *peak_channel_features, *spatial_features]
     """
 
-    _, waveform_2d, _, peak_channel = wvf_dsmatch(
-        dp, unit, verbose=False, again=False, save=True,
-    )
-
     # First find working waveform
     relevant_waveform, somatic, relevant_channel = find_relevant_waveform(
         waveform_2d.T, peak_channel
     )
+
+    # If None is found features cannot be extracted
+    if relevant_waveform is None:
+        return [peak_channel, *[0] * 16]
 
     if plot_debug:
         info = f'Original peak: {peak_channel} relevant channel: {relevant_channel}. {"Somatic." if somatic else "Dendritic."}'
@@ -1469,21 +1492,24 @@ def new_waveform_features(dp, unit, plot_debug=False):
         )
         return None
 
-    # If None is found features cannot be extracted
-    if relevant_waveform is None:
-        return np.array([dp, unit, peak_channel, *[0] * 16])
-
     peak_channel_features = extract_peak_channel_features(relevant_waveform)
-    spatial_features = extract_spatial_features(waveform_2d.T, somatic, dp, unit)
+    spatial_features = extract_spatial_features(waveform_2d.T, peak_channel, somatic)
 
     return [
-        str(dp),
-        unit,
         int(relevant_channel),
         *peak_channel_features,
         *spatial_features,
     ]
 
+def waveform_features_wrap(dp, unit, plot_debug=False):
+
+    _, waveform_2d, _, peak_channel = wvf_dsmatch(
+        dp, unit, verbose=False, again=False, save=True,
+    )
+
+    wvf_feats = new_waveform_features(waveform_2d, peak_channel, plot_debug)
+
+    return [str(dp), unit] + wvf_feats
 
 def waveform_features(all_waves, dpath, peak_chan, unit):
     # return: list of all features for a unit
@@ -1534,10 +1560,10 @@ def waveform_features(all_waves, dpath, peak_chan, unit):
     coeff2, _, _, _ = repol_slope(best_wave)
 
     # chan spread
-    _, _, _, _, _, chans = chan_spread(all_waves, dpath, unit)
+    _, _, _, _, _, chans = chan_spread_wrap(all_waves, dpath, unit)
 
     # backprop spread
-    _, backp_max = previous_peak(all_waves, dpath, unit)
+    _, backp_max = previous_peak_wrap(all_waves, dpath, unit)
 
     ret_arr = [
         unit,
@@ -1708,8 +1734,8 @@ def chan_spread_bp_plot(dp, unit, n_chans=20):
         if n_chans % 2 != 0:
             n_chans += 1
         all_waves_unit_x = np.load(curr_fil)
-        backp, true_bp = previous_peak(all_waves_unit_x.T, dp, unit, n_chans)
-        csp_x = chan_spread(all_waves_unit_x.T, dp, unit, n_chans)
+        backp, true_bp = previous_peak_wrap(all_waves_unit_x.T, dp, unit, n_chans)
+        csp_x = chan_spread_wrap(all_waves_unit_x.T, dp, unit, n_chans)
         peak_chan = csp_x[0]
         print(peak_chan)
         plt.figure()
@@ -1755,7 +1781,7 @@ def chan_spread_bp_plot(dp, unit, n_chans=20):
         chan_plot(all_waves_unit_x.T, csp_x[0], to_plot)
 
 
-def temporal_features(all_spikes):
+def temp_feat(all_spikes):
     """
     Input: spike times IN SAMPLES
     Returns: list of features
@@ -1764,18 +1790,12 @@ def temporal_features(all_spikes):
 
     isi_block_clipped = compute_isi(all_spikes)
 
-    # mfr, mifr, med_isi, mode_isi, prct5ISI, entropy, CV2_mean, CV2_median, CV, IR, Lv, LvR, LcV, SI, skw \
-    # = compute_isi_features(isi_block_clipped)
-
-    # all_recs = [mfr, mifr, med_isi, mode_isi, prct5ISI, entropy, CV2_mean, CV2_median, CV, IR, Lv, LvR, LcV, SI, skw]
-
     return compute_isi_features(isi_block_clipped)
 
 
-def temp_feat(dp, units, use_or_operator=True, use_consecutive=False):
+def temporal_features_wrap(dp, unit, use_or_operator=True, use_consecutive=False):
     """
-    High level function for getting the temporal features from a single (integer) or
-    set of units (list of units) from a dp dataset.
+    High level function for getting the temporal features of a unit from a dataset at dp.
 
     Parameters:
         - use_or_operator: if True, if a chunk (10sec default) belongs to at least one 30s chunk
@@ -1791,27 +1811,20 @@ def temp_feat(dp, units, use_or_operator=True, use_consecutive=False):
 
     # units can be either a single integer or a list or np array of units
 
-    if isinstance(units, (int, np.int16, np.int32, np.int64)):
-        units = [units]
+    unit_spikes, _ = trn_filtered(
+        dp,
+        unit,
+        use_or_operator=use_or_operator,
+        use_consecutive=use_consecutive,
+        enforced_rp=0.2,
+    )
 
-    all_ft_list = []
-    for unit in units:
+    if len(unit_spikes) > 1:
+        tf = temp_feat(unit_spikes)
+    else:
+        tf = np.zeros(15)
 
-        unit_spikes, good_spikes_m = trn_filtered(
-            dp,
-            unit,
-            use_or_operator=use_or_operator,
-            use_consecutive=use_consecutive,
-            enforced_rp=0.2,
-        )
-        if len(unit_spikes) > 1:
-            tf = list(temporal_features(unit_spikes))
-            tf = [dp, unit] + tf
-            all_ft_list.append(tf)
-        else:
-            all_ft_list.append([dp] + [unit] + list(np.zeros(15)))
-
-    return all_ft_list
+    return [str(dp), unit] + list(tf)
 
 
 def wvf_feat(dp, units):
@@ -2589,8 +2602,8 @@ def feature_extraction(json_path, check_json=True, save_path=None):
                 label = "PkC_ss"
             elif u in cs:
                 label = "PkC_cs"
-            wvf_features = new_waveform_features(dp, u)
-            tmp_features = temp_feat(dp, u)[0]
+            wvf_features = waveform_features_wrap(dp, u)
+            tmp_features = temporal_features_wrap(dp, u)
             curr_feat = [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]
             feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
 

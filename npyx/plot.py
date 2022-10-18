@@ -40,26 +40,26 @@ from npyx.behav import align_times, get_processed_ifr, get_processed_popsync
 
 #%% plotting utilities ##############################################################################################
 
-def save_mpl_fig(fig, figname, saveDir, _format):
+def save_mpl_fig(fig, figname, saveDir, _format, dpi=500):
 
     # Fix matplotlib resolution and make text editable
-    dpi = mpl.rcParams['figure.dpi']
+    dpi_orig = mpl.rcParams['figure.dpi']
     fonttype1 = mpl.rcParams['pdf.fonttype']
     fonttype2 = mpl.rcParams['ps.fonttype']
-    mpl.rcParams['figure.dpi']=500
+
+    mpl.rcParams['figure.dpi']=dpi
     mpl.rcParams['pdf.fonttype']=42
     mpl.rcParams['ps.fonttype']=42
 
-    saveDir=op.expanduser(saveDir)
-    saveDir=Path(saveDir)
+    saveDir=Path(saveDir).expanduser()
     if not saveDir.exists():
         assert saveDir.parent.exists(), f'WARNING can only create a path of a single directory level, {saveDir.parent} must exist already!'
         saveDir.mkdir()
     p=saveDir/f"{figname}.{_format}"
-    fig.savefig(p, dpi=500, bbox_inches='tight')
+    fig.savefig(p, dpi=dpi, bbox_inches='tight')
 
     # restaure original parameters
-    mpl.rcParams['figure.dpi']=dpi
+    mpl.rcParams['figure.dpi']=dpi_orig
     mpl.rcParams['pdf.fonttype']=fonttype1
     mpl.rcParams['ps.fonttype']=fonttype2
     # platform=sys.platform
@@ -1772,7 +1772,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
 
     return fig
 
-def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=True,
+def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=False,
             _format='pdf', labels=True, title=None, ref_per=True,
             ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None, figsize=None):
     '''Plots acg and saves it given the acg array.

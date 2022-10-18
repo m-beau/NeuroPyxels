@@ -929,6 +929,8 @@ def chan_spread(all_wav, max_chan, chanmap, n_chans=20, probe_v="1.0_staggered")
 
     # find the most negative peak and the peak after that to
     # get the distance between peak and trough
+    print(chanmap.shape)
+    print(all_wav.shape)
 
     _, _, p2p = consecutive_peaks_amp(all_wav.T)
     

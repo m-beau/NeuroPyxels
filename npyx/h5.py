@@ -1,6 +1,5 @@
 from pathlib import Path
 import re
-import ssl
 import sys
 import warnings
 

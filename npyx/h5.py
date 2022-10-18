@@ -1,4 +1,3 @@
-import h5py
 from pathlib import Path
 import re
 import sys
@@ -6,8 +5,11 @@ import warnings
 
 import numpy as np 
 
+import json
+import h5py
+
 from npyx.utils import assert_int, assert_float
-from npyx.inout import get_binary_file_path, get_npix_sync, chan_map, extract_rawChunk, read_metadata
+from npyx.inout import get_binary_file_path, get_npix_sync, chan_map, extract_rawChunk, read_metadata, preprocess_binary_file
 from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 from npyx.gl import get_units, check_periods
@@ -15,7 +17,7 @@ from npyx.gl import get_units, check_periods
 
 
 # High level C4 functions
-def label_optotagged_unit_h5(h5_path, dataset, unit, label):
+def label_optotagged_unit_h5(h5_path, dataset, unit, label, prnt=False):
     """
     Add optotagged label to neuron.
 
@@ -25,8 +27,9 @@ def label_optotagged_unit_h5(h5_path, dataset, unit, label):
     - label: label to add
     """
     authorized_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC"]
-    assert label in authorized_labels
+    assert label in authorized_labels, f"{label} must match either of the following: {authorized_labels}"
     add_data_to_unit_h5(h5_path, dataset, unit, label, 'optotagged_label') 
+    if prnt: print(f"Labelled unit {unit} as {label}.")
 
 def reset_optotagged_labels(h5_path):
     """Resets all optotagged labels to 0"""
@@ -360,6 +363,67 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
 
     return neuron_path
 
+def load_json_datasets(json_path, include_missing_datasets=False):
+    with open(json_path) as f:
+        json_f = json.load(f)
+
+    print(f"\nLoading data from file {json_path}...\n")
+
+    DSs = {}
+    for ds in json_f.values():
+
+        for key in ['dp', 'ct', 'units', 'ss', 'cs']:
+            assert key in ds, f"{key} not in json file for dataset #{ds}!"
+        
+        dp=Path(ds['dp'])
+        
+        if not dp.exists():
+            print(f"Dataset {dp} not found on system!\n")
+            if include_missing_datasets: DSs[dp.name] = ds
+            continue
+        DSs[dp.name] = ds
+        units = list(ds['units'])
+        ss = list(ds['ss'])
+        cs = list(ds['cs'])
+        print(f"Dataset {dp} found with opto responsive units {units}, simple spikes {ss}, complex spikes {cs}.\n")
+
+        units_m=np.isin(units+ss+cs, get_units(dp))
+        assert all(units_m), f"Units {np.array(units)[~units_m]} not found in {dp}!"
+
+    return DSs
+
+
+def add_json_datasets_to_h5(json_path, h5_path, preprocess_binary = True, lab_id="hausser",
+                            delete_original_data=False, data_deletion_double_check=False):
+
+    DSs = load_json_datasets(json_path, include_missing_datasets=False)
+
+    for ds_name, ds in DSs.items():
+        dp=Path(ds['dp'])
+
+        if preprocess_binary:
+            preprocess_binary_file(dp,
+                delete_original_data=delete_original_data,
+                data_deletion_double_check=data_deletion_double_check)
+
+        optolabel=ds['ct']
+        if optolabel=="PkC": optolabel="PkC_ss"
+        units=ds['units']
+        ss=ds['ss']
+        cs=ds['cs']
+        for u in units+ss+cs:
+            add_unit_h5(h5_path, dp, u, lab_id=lab_id,
+                    unit_abolute_id=None, sync_chan_id=None,
+                    again=False, plot_debug=False, verbose=True)
+            if u in units:
+                label = optolabel
+            elif u in ss:
+                label="PkC_ss"
+            elif u in cs:
+                label="PkC_cs"
+            label_optotagged_unit_h5(h5_path, ds_name, u, label)
+
+
 def add_data_to_unit_h5(h5_path, dataset, unit, data, field):
     """
     Add data to neuron already in h5 file.
@@ -490,6 +554,8 @@ def read_h5(h5_path, datapath):
     """
     Returns data at datapath from h5 file at h5_path
     """
+
+    h5_path = Path(h5_path)
     
     assert_h5_file(h5_path)
     with h5py.File(h5_path) as h5_file:

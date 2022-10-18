@@ -12,3 +12,4 @@ spk_wvf2.py
 .vscode/*
 .DS_Store
 .ipynb_checkpoints/*
+.virtual_documents/*

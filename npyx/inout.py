@@ -705,7 +705,8 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
                        ADC_realign = False, median_subtract=True, f_low=None, f_high=300, order=3,
                        filter_forward=True, filter_backward=False,
                        spatial_filt=False, whiten = False, whiten_range=32,
-                       again_Wrot=False, verbose=False):
+                       again_Wrot=False, verbose=False, again_if_preprocessed_filename=False,
+                       delete_original_data=False, data_deletion_double_check=False):
     """Creates a preprocessed copy of binary file at dp/fname_filtered.bin,
     and moves the original binary file to dp/original_data.fname.bin.
 
@@ -740,6 +741,9 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
     - spatial_filt: bool, whether to high pass filter across channels at 0.1 Hz
     - whiten: bool, whether to whiten across channels
     - verbose: bool, whether to print extra information
+    - again_if_preprocessed_filename: bool, whether to re-filter if the name of the binary file has hallmarks of preprocessing.
+    - delete_original_data: bool, whether to delete the original binary file after filtering
+    - data_deletion_double_check: bool, must ALSO be true to alow deletion of the original binary file
     """
 
     # Parameters check
@@ -758,6 +762,12 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
     # Fetch binary file name, define target file name
     if fname is None:
         fname = get_binary_file_path(dp, filt_key, True)
+
+    if not again_if_preprocessed_filename:
+        if detected_preprocessed_fname(fname):
+            print(f"\nBinary file name {fname} seems to have already been preprocessed. If you wish to re-process it, set 'again_if_preprocessed_filename' to True.\n")
+            return fname
+
     fname=Path(fname)
     dp = fname.parent
     if target_dp is None:
@@ -769,7 +779,7 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
     filtered_fname, message = \
         make_preprocessing_fname(fname, ADC_realign, median_subtract,
                             f_low, f_high, filter_forward, filter_backward,
-                            whiten, whiten_range, spatial_filt)
+                            whiten, whiten_range, spatial_filt)    
     print(message)
 
     # fetch metadata
@@ -909,12 +919,23 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
             if (dp/'whitening_mat.npy').exists():
                 shutil.copy(dp/'whitening_mat.npy', orig_dp/'whitening_mat.npy')
 
+    if delete_original_data:
+        assert data_deletion_double_check,\
+        "WARNING you are attempting to delete the original binary file - if you wish to proceed, you must also set 'data_deletion_double_check' to True."
+        if move_orig_data:
+            shutil.rmtree(dp/'original_data')
+        else:
+            os.remove(fname)
+    else:
+        if data_deletion_double_check:
+            print("WARNING you attempted to delete the original binary file - 'delete_original_data' was not set to True, so the deletion was cancelled.")
+
     return target_dp/filtered_fname
 
 def make_preprocessing_fname(fname, ADC_realign, median_subtract,
                             f_low, f_high, filter_forward, filter_backward,
                             whiten, whiten_range, spatial_filt):
-
+        
     filter_suffix = ""
     message = ""
     if ADC_realign:
@@ -937,6 +958,15 @@ def make_preprocessing_fname(fname, ADC_realign, median_subtract,
     message = message[:-2]+"."
 
     return filtered_fname, message
+
+def detected_preprocessed_fname(fname):
+
+    fname_str = str(fname)
+    patterns = ["adcshift", "medsub", "tempfilt", "whit"]
+    for pat in patterns:
+        if pat in fname_str:
+            return True
+    return False
 
 #%% paqIO file loading utilities
 

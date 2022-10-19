@@ -945,7 +945,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
              plot_ylabels=True, show_allyticks=0, yticks_jump=10, plot_baselines=False,
              events=[], set0atEvent=1,
              ax=None, ext_data=None, ext_datachans=np.arange(384),
-             as_heatmap=False, vmin=-50,vmax=50,center=0):
+             as_heatmap=False, vmin=-50, vmax=50, center=0, legend=None):
     '''
     Plot raw data over a specified window of time, over a specified range of channels.
 
@@ -1035,7 +1035,8 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
             rc/=len(alignement_events)
     else:
         channels=assert_chan_in_dataset(dp, ext_datachans, ignore_ks_chanfilt)
-        assert len(channels)==ext_data.shape[0]
+        assert len(channels)==ext_data.shape[0],\
+            f"ext_data is of shape {ext_data.shape} but {len(channels)} channels are expected."
         assert window is not None, 'You must tell the plotting function to which time window the external data corresponds to!'
         times=window
         rc=ext_data.copy()
@@ -1089,6 +1090,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
                 y=i*offset
                 ax.plot([t[0,0], t[0,-1]], [y, y], color=(0.5, 0.5, 0.5), linestyle='--', linewidth=1)
         ax.plot(t.T, rc.T, linewidth=lw, color=color, alpha=bg_alpha)
+        ax.plot(t[:,0], rc[:,0], color=color, alpha=bg_alpha,  label=legend)
         ax.set_yticks(y_ticks)
         ax.set_yticklabels(y_ticks_labels) if plot_ylabels else ax.set_yticklabels([])
         ax.set_ylabel('Channel', size=14, weight='bold')
@@ -1102,13 +1104,16 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
 
     if title is not None: ax.set_title(title, size=20, weight='bold', va='bottom')
 
-    yl=ax.get_ylim() if as_heatmap else [min(rc[0,:])-2*offset,max(rc[-1,:])+2*offset]
+    yl=ax.get_ylim() if as_heatmap else [np.min(rc[0,:])-offset,np.max(rc[-1,:])+offset]
     xl=[0, (t[-1]-t[0])*fs/1000] if as_heatmap else [t[0,0], t[0,-1]]
     for e in events:
         if as_heatmap: e=(e-t[0])*(fs/1000)
         ax.plot([e,e], yl, color=(0.3, 0.3, 0.3), linestyle='--', linewidth=1.5)
     ax.set_ylim(yl)
     ax.set_xlim(xl)
+
+    if legend is not None:
+        plt.legend(bbox_to_anchor = (1,1,0,0), fontsize=14, frameon=False)
 
 
     rcn = '{}_t{}-{}_ch{}-{}'.format(op.basename(dp), times[0], times[1], channels[0], channels[-1]) # raw chunk name
@@ -1126,8 +1131,10 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
 def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                    Nchan_plot=5, spk_window=82, colors='phy', bg_color='k', lw=1, bg_alpha=0.8, lw_color=1.1,
                    title=None, saveDir='~/Downloads', saveData=0, saveFig=0, _format='pdf', figsize=(20,8),
-                   whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300, ignore_ks_chanfilt=0,
-                   show_allyticks=0, yticks_jump=50, plot_ylabels=True, events=[], set0atEvent=1):
+                   whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300,
+                   filter_forward=False, filter_backward=False,ignore_ks_chanfilt=0,
+                   show_allyticks=0, yticks_jump=50, plot_ylabels=True, events=[], set0atEvent=1,
+                   again=False):
     f'''
     Plot raw traces with colored overlaid spike times of specified units.
 
@@ -1150,8 +1157,12 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
     #     peakChan=get_peak_chan(dp,units[0])
     #     channels=np.arange(peakChan-Nchan_plot//2-1, peakChan+Nchan_plot//2+2)
     channels=assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt)
+
     rc = extract_rawChunk(dp, times, channels, 'highpass', saveData,
-                          whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt)
+                     whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
+                     nRangeWhiten, nRangeMedSub, False,
+                     ignore_ks_chanfilt, True, 0, 1, again)
+
     # Offset data
     plt_offsets = np.arange(0, len(channels)*offset, offset)
     plt_offsets = np.tile(plt_offsets[:,np.newaxis], (1, rc.shape[1]))
@@ -1159,10 +1170,10 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
 
     fig=plot_raw(dp, times, None, None, channels, filt_key='highpass',
              offset=450, color=bg_color, lw=lw, bg_alpha=bg_alpha,
-             title=title, _format='pdf',  saveDir=saveDir, saveFig=0, figsize=(8,10), again=False,
+             title=title, _format='pdf',  saveDir=saveDir, saveFig=0, figsize=figsize, again=False,
              center_chans_on_0=True, whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
              nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub, use_ks_w_matrix=False, ignore_ks_chanfilt=ignore_ks_chanfilt,
-             filter_forward=True, filter_backward=True,
+             filter_forward=filter_forward, filter_backward=filter_backward,
              plot_ylabels=plot_ylabels, show_allyticks=show_allyticks, yticks_jump=yticks_jump, plot_baselines=False,
              events=events, set0atEvent=set0atEvent,
              ax=None, ext_data=None, ext_datachans=np.arange(384),
@@ -1216,6 +1227,8 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                 ax.plot(tx_ms[ch1:ch2, spk_id].T, rc[ch1:ch2, spk_id].T, lw=lw_color, color=colors[iu])
                 #ax.plot(tx_ms[peakChan_rel, spk_id].T, rc[peakChan_rel, spk_id].T, lw=1.5, color=color)
                 fig.tight_layout()
+
+    ax.set_ylim([-offset, rc.max()+offset/2])
 
     if saveFig:
         rcn = '{}_{}_t{}-{}_ch{}-{}'.format(op.basename(dp), list(units), times[0], times[1], channels[0], channels[-1]) # raw chunk name
@@ -2384,7 +2397,10 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     else:
         labs=['{}@{}'.format(gu[i], ch[i]) for i in range(len(gu))]
         tks=np.arange(len(labs))
-        lab = 'unit.dataset@channel'
+        if gu[0] == np.round(gu[0]):
+            lab = 'unit@channel, depth-sorted.'
+        else:
+            lab = 'unit.dataset@channel, depth-sorted.'
 
     mpl.rcParams['figure.dpi']=100
     ttl='{}\n{}-{}-{}-{}-{}\n({})'.format(op.basename(dp),test, p_th, n_consec_bins, fract_baseline, W_sd, corr_type)

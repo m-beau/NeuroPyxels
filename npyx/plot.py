@@ -144,8 +144,13 @@ def ceil_power10(x):
 def n_decimals(x):
     return len(str(x).split('.')[1])
 
-def get_bestticks_from_array(arr, step=None, light=False):
-    span=arr[-1]-arr[0]
+def get_bestticks(start, end, step=None, light=False):
+    """
+    Returns the best ticks for a given array of values (i.e. an sparser array of equally spaced values).
+    If the array if np.arange(10), the returned array will be np.arange(0,10,1).
+    If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
+    """
+    span = end - start
     if step is None:
         upper10=ceil_power10(span)
         if span<=upper10/5:
@@ -156,9 +161,22 @@ def get_bestticks_from_array(arr, step=None, light=False):
             step=upper10*0.1
     if light: step=2*step
     assert step<span, f'Step {step} is too large for array span {span}!'
-    ticks=np.arange(myceil(arr[0],step),myfloor(arr[-1],step)+step,step)
+    ticks=np.arange(myceil(start,step),myfloor(end,step)+step,step)
     ticks=np.round(ticks, n_decimals(step))
     if step==int(step):ticks=ticks.astype(np.int64)
+
+    return ticks
+
+def get_bestticks_from_array(arr, step=None, light=False):
+    """
+    Returns the best ticks for a given array of values (i.e. an sparser array of equally spaced values).
+    If the array if np.arange(10), the returned array will be np.arange(0,10,1).
+    If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
+    """
+    arr = np.array(arr)
+    start, end = 0, len(arr)-1
+    ticks_i = get_bestticks(start, end, step, light)
+    ticks = arr[ticks_i]
 
     return ticks
 
@@ -942,7 +960,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
              center_chans_on_0=True, whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
              nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=False, ignore_ks_chanfilt=True,
              filter_forward=True, filter_backward=True,
-             plot_ylabels=True, show_allyticks=0, yticks_jump=10, plot_baselines=False,
+             plot_ylabels=True, show_allyticks=0, yticks_jump=None, plot_baselines=False,
              events=[], set0atEvent=1,
              ax=None, ext_data=None, ext_datachans=np.arange(384),
              as_heatmap=False, vmin=-50, vmax=50, center=0, legend=None):
@@ -1048,6 +1066,9 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
 
     # Sparsen y tick labels to declutter y axis
     if not show_allyticks:
+        if yticks_jump is None:
+            yticks_jump = get_bestticks(0, len(y_ticks_labels))
+            yticks_jump = yticks_jump[1] - yticks_jump[0]
         y_ticks_labels=y_ticks_labels[np.arange(len(y_ticks))%yticks_jump==0]
         y_ticks=y_ticks[np.arange(len(y_ticks))%yticks_jump==0]
 
@@ -1133,7 +1154,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                    title=None, saveDir='~/Downloads', saveData=0, saveFig=0, _format='pdf', figsize=(20,8),
                    whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300,
                    filter_forward=False, filter_backward=False,ignore_ks_chanfilt=0,
-                   show_allyticks=0, yticks_jump=50, plot_ylabels=True, events=[], set0atEvent=1,
+                   show_allyticks=0, yticks_jump=None, plot_ylabels=True, events=[], set0atEvent=1,
                    again=False):
     f'''
     Plot raw traces with colored overlaid spike times of specified units.

@@ -15,8 +15,9 @@ Example usage:
 
 
 """
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
+import sys
 import numpy as np
 from pathlib import Path
 from npyx.utils import peakdetect
@@ -108,7 +109,11 @@ def cross_times(waves, peak_time, trough_time):
 
     # new start
 
-    crossing1 = np.array([0,])
+    crossing1 = np.array(
+        [
+            0,
+        ]
+    )
 
     crossing1 = (
         trough_time + np.where(np.diff(np.sign(waves[trough_time:peak_time])))[0][0]
@@ -173,7 +178,7 @@ def detect_peaks(wvf, margin=0.8, onset=0.2, plot_debug=False):
         wvf (np.array): Waveform to detect peaks in.
         margin (float): Margin around baseline around which peaks are ignored, in std units.
         onset (float): Percentage of waveform to ignore before first and last peak.
-    
+
     Returns:
         all_idxes (np.array): Indices of all peaks.
         all_values (np.array): Values of all peaks.
@@ -188,18 +193,31 @@ def detect_peaks(wvf, margin=0.8, onset=0.2, plot_debug=False):
     max_values = wvf[max_idxes]
     min_values = wvf[min_idxes]
 
+    # Concatenate negative and positive peaks
     all_idxes = np.concatenate((max_idxes, min_idxes))
     all_values = np.concatenate((max_values, min_values))
 
+    # Sort peaks by time
     sorting_idx = np.argsort(all_idxes)
     all_idxes = all_idxes[sorting_idx]
     all_values = all_values[sorting_idx]
 
+    # Exclude peaks finded before the provided onset time
     mask = (all_idxes < len(wvf) // (1 / onset)) | (
         all_idxes > int(len(wvf) * (1 - onset))
     )
     all_idxes = all_idxes[~mask]
     all_values = all_values[~mask]
+
+    # Ensure that we have a positive peak coming after the most negative one, otherwise find it
+    abs_min_rel_idx = np.argmin(all_values)
+    if abs_min_rel_idx == len(all_values) - 1:
+        abs_min_idx = all_idxes[abs_min_rel_idx]
+        peak_after_trough_idxes, _ = find_peaks(wvf[abs_min_idx:])
+        peak_after_trough_idx = peak_after_trough_idxes[0] + abs_min_idx
+        peak_after_trough_value = wvf[peak_after_trough_idx]
+        all_idxes = np.append(all_idxes, peak_after_trough_idx)
+        all_values = np.append(all_values, peak_after_trough_value)
 
     if plot_debug:
         plt.plot(wvf)
@@ -749,6 +767,7 @@ def recovery_slope(waves, peak_time, trough_time):
         peak_value,
     )
 
+
 def previous_peak_wrap(waves, chan_path, unit, n_chans=20):
 
     dpnm = get_npyx_memory(chan_path)
@@ -758,6 +777,7 @@ def previous_peak_wrap(waves, chan_path, unit, n_chans=20):
     pbp, max_pbp = previous_peak(waves, max_chan, n_chans)
 
     return pbp, max_pbp
+
 
 def previous_peak(waves, max_chan, n_chans=20):
     """
@@ -907,9 +927,12 @@ def chan_spread_wrap(all_wav, chan_path, unit, n_chans=20, probe_v="1.0_staggere
     chanmap = chan_map(chan_path)
     probe_v = read_metadata(chan_path)["probe_version"]
 
-    dists, p2p, dist_p2p, sort_dist_p2p, spread = chan_spread(all_wav, max_chan, chanmap, n_chans, probe_v)
+    dists, p2p, dist_p2p, sort_dist_p2p, spread = chan_spread(
+        all_wav, max_chan, chanmap, n_chans, probe_v
+    )
 
     return max_chan, dists, p2p, dist_p2p, sort_dist_p2p, spread
+
 
 def chan_spread(all_wav, max_chan, chanmap, n_chans=20, probe_v="1.0_staggered"):
     """
@@ -931,9 +954,9 @@ def chan_spread(all_wav, max_chan, chanmap, n_chans=20, probe_v="1.0_staggered")
     # get the distance between peak and trough
 
     _, _, p2p = consecutive_peaks_amp(all_wav.T)
-    
+
     # find the distance of all channels from peak chan
-    chanmap = chanmap[:all_wav.shape[0],:]
+    chanmap = chanmap[: all_wav.shape[0], :]
     dists = chan_dist(max_chan, chanmap)
 
     dist_p2p = np.vstack((dists, p2p)).T
@@ -1213,7 +1236,7 @@ def healthy_waveform(waveform_1d, peaks_values):
     """
     Define if waveform looks healthy.
     Works for somatic and dendritic waveforms, and also fat spikes.
-    
+
     - at least 1 waveform amplitude > 30uV
     - count peaks from peak detect - should be between 2 and 5.
     """
@@ -1228,7 +1251,7 @@ def healthy_waveform(waveform_1d, peaks_values):
 
 
 def is_somatic(peaks_v):
-    """ 
+    """
     Assures that the waveform is somatic and can be used in further processing.
     For this we need to have at least a through followed by a peak in the waveform we found.
     """
@@ -1244,7 +1267,7 @@ def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):
     """
     Input:
         - 2D waveform (n channels x t samples)
-        
+
     Algorithm:
     0 - if healthy_waveform returns True
         else: returns NaNs
@@ -1254,15 +1277,16 @@ def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):
         2.1 - if is_somatic returns True
     3 - among waveforms detected as somatic, take channel with max amplitude
     3 - set boolean as True
-    
+
     2bis - no somatic waveform is found
     3bis - among waveforms detected as non somatic, take channel with max amplitude
     4bis - flip 1D waveform vertically
     5bis - set boolean as False
-    
+
     Returns:
     - 1D waveform on relevant channel (either somatic or dendritic)
     - boolean, True if somatic, False if dendritic
+    - channel number of relevant channel
     """
     # Initialise utility variables
     any_somatic = False
@@ -1271,7 +1295,10 @@ def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):
     wf_channels = np.arange(len(waveform_2d))
 
     # Determine which channels to consider
-    chan_slice = slice(max(0, peak_channel - max_chan_lookaway), min(peak_channel + max_chan_lookaway + 1, waveform_2d.shape[0]))
+    chan_slice = slice(
+        max(0, peak_channel - max_chan_lookaway),
+        min(peak_channel + max_chan_lookaway + 1, waveform_2d.shape[0]),
+    )
     considered_waveforms = waveform_2d[chan_slice]
     considered_channels = wf_channels[chan_slice]
 
@@ -1314,17 +1341,19 @@ def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):
 def find_relevant_peaks(peak_t, peak_v):
     """
     Given two arrays of peak times and peak values from detect_peaks,
-    finds the first trough in the array which is followed by a peak to use in the extraction 
+    finds the first trough in the array which is followed by a peak to use in the extraction
     of all the next features. Returns the time of the relevant peak and trough.
-    
+
     Args:
         - peak_t: array of peak times
         - peak_v: array of peak values
-        
+
     Returns:
         - relevant_trough_t: time of relevant trough
         - relevant_peak_t: time of the relevant peak
     """
+
+    assert len(peak_t) >= 2, "Number of peaks must be at least 2!"
 
     if len(peak_t) == 2:
         return peak_t[0], peak_t[1]
@@ -1332,11 +1361,14 @@ def find_relevant_peaks(peak_t, peak_v):
     signs = np.sign(peak_v).astype(np.int32)
     trough_mask = signs == -1
     first_trough_idx = np.where(trough_mask)[0][0]
-    
+
     # Ensure that a peak follows the trough we found
     valid = False
-    while valid == False and first_trough_idx < len(peak_t) -1 :
-        if np.sign(peak_v[first_trough_idx]) == -1 and np.sign(peak_v[first_trough_idx + 1]) == 1:
+    while valid == False and first_trough_idx < len(peak_t) - 1:
+        if (
+            np.sign(peak_v[first_trough_idx]) == -1
+            and np.sign(peak_v[first_trough_idx + 1]) == 1
+        ):
             first_trough_t = peak_t[first_trough_idx]
             first_peak_t = peak_t[first_trough_idx + 1]
             valid = True
@@ -1346,13 +1378,13 @@ def find_relevant_peaks(peak_t, peak_v):
     return first_trough_t, first_peak_t
 
 
-def extract_peak_channel_features(relevant_waveform):
+def extract_peak_channel_features(relevant_waveform, plot_debug=False):
     """
     It takes a waveform and returns a list of features that describe the waveform
-    
+
     Args:
         relevant_waveform: the waveform to be analyzed
-    
+
     Returns:
         The return is a list of the features that are being extracted from the waveform.
     """
@@ -1360,7 +1392,10 @@ def extract_peak_channel_features(relevant_waveform):
     # First interpolates the waveform for higher precision
     relevant_waveform = interp_wave(relevant_waveform)
 
-    peak_times, peak_values = detect_peaks(relevant_waveform)
+    peak_times, peak_values = detect_peaks(relevant_waveform, plot_debug=plot_debug)
+
+    if len(peak_times) < 2 or np.all(peak_values < 0):
+        return [0] * 15
 
     first_trough_t, first_peak_t = find_relevant_peaks(peak_times, peak_values)
 
@@ -1415,7 +1450,7 @@ def extract_peak_channel_features(relevant_waveform):
         onset_t,
         onset_amp,
         wvfd,
-        ptr, 
+        ptr,
         coeff1[0],
         coeff2[0],
         coeff3[0],
@@ -1434,6 +1469,7 @@ def extract_spatial_features_wrap(waveform_2d, somatic, dp, unit):
 
     return spatial_spread_ratio, max_dendritic_voltage
 
+
 def extract_spatial_features(waveform_2d, peak_chan, somatic):
     """
     - peak_chan: channel from which the 1D waveworm features will be extracted
@@ -1447,12 +1483,12 @@ def extract_spatial_features(waveform_2d, peak_chan, somatic):
 
     _, _, _, _, spatial_spread_ratio = chan_spread(
         waveform_2d, peak_chan, chanmap, n_chans, probe_v
-    )  
+    )
 
     # set to 1 if relevant waveform is dendritic already (because normalized)
     _, max_dendritic_voltage = (
         previous_peak(waveform_2d, peak_chan, n_chans) if somatic else (1, 1)
-    )  
+    )
 
     return spatial_spread_ratio, max_dendritic_voltage
 
@@ -1460,12 +1496,12 @@ def extract_spatial_features(waveform_2d, peak_chan, somatic):
 def new_waveform_features(waveform_2d, peak_channel, plot_debug=False):
     """
     It takes a datapoint and unit, finds the relevant waveform, and extracts features from it
-    
+
     Args:
       dp: the datapoint
       unit: the unit number
       plot_debug: If True, plots the waveforms and the relevant channel. Defaults to False
-    
+
     Returns:
       A numpy array of the following:
         [dp, unit, relevant_channel, *peak_channel_features, *spatial_features]
@@ -1480,28 +1516,28 @@ def new_waveform_features(waveform_2d, peak_channel, plot_debug=False):
     if relevant_waveform is None:
         return [peak_channel, *[0] * 17]
 
-    if plot_debug:
-        info = f'Original peak: {peak_channel} relevant channel: {relevant_channel}. {"Somatic." if somatic else "Dendritic."}'
-        plot = quickplot_n_waves(
-            waveform_2d,
-            info,
-            relevant_channel,
-            24,
-            custom_text=[
-                (
-                    healthy_waveform(wf, detect_peaks(wf)[1])
-                    and is_somatic(detect_peaks(wf)[1])
-                )
-                for wf in waveform_2d.T[relevant_channel - 12 : relevant_channel + 12]
-            ],
-        )
-        plt.show()
-        print(
-            "\n +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ \n"
-        )
-        return None
+    # if plot_debug:
+    #     info = f'Original peak: {peak_channel} relevant channel: {relevant_channel}. {"Somatic." if somatic else "Dendritic."}'
+    #     plot = quickplot_n_waves(
+    #         waveform_2d,
+    #         info,
+    #         relevant_channel,
+    #         24,
+    #         custom_text=[
+    #             (
+    #                 healthy_waveform(wf, detect_peaks(wf)[1])
+    #                 and is_somatic(detect_peaks(wf)[1])
+    #             )
+    #             for wf in waveform_2d.T[relevant_channel - 12 : relevant_channel + 12]
+    #         ],
+    #     )
+    #     plt.show()
+    #     print(
+    #         "\n +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ \n"
+    #     )
+    #     return None
 
-    peak_channel_features = extract_peak_channel_features(relevant_waveform)
+    peak_channel_features = extract_peak_channel_features(relevant_waveform, plot_debug)
     spatial_features = extract_spatial_features(waveform_2d.T, peak_channel, somatic)
 
     return [
@@ -1510,15 +1546,21 @@ def new_waveform_features(waveform_2d, peak_channel, plot_debug=False):
         *spatial_features,
     ]
 
+
 def waveform_features_wrap(dp, unit, plot_debug=False):
 
     _, waveform_2d, _, peak_channel = wvf_dsmatch(
-        dp, unit, verbose=False, again=False, save=True,
+        dp,
+        unit,
+        verbose=False,
+        again=True,
+        save=True,
     )
 
     wvf_feats = new_waveform_features(waveform_2d, peak_channel, plot_debug)
 
     return [str(dp), unit] + wvf_feats
+
 
 def waveform_features(all_waves, dpath, peak_chan, unit):
     # return: list of all features for a unit
@@ -1864,7 +1906,7 @@ def wvf_feat(dp, units):
             #                # not enough RAM to store all spikes in memory, Slow
             #                mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(dp,unit, verbose=False, again=False,fast =False, save = True)
             mean_pc, extracted_waves, _, max_chan = wvf_dsmatch(
-                dp, unit, verbose=False, again=False, save=True
+                dp, unit, verbose=False, again=True, save=True
             )
             curr_feat = waveform_features(extracted_waves.T, dp, max_chan, unit)
             curr_feat.insert(0, dp)
@@ -2513,16 +2555,16 @@ def filter_df(dfram):
 def feature_extraction(json_path, check_json=True, save_path=None):
     """
     It takes a json file containing paths to all the recordings and extracts the features.
-    
+
     Params:
-    
+
         json_path:  path to the json file that contains the data
         check_json: if True, will check that the files in the json file exist and that the units in
             the json file can all be found.
         save_path: where to save the csv file
-    
+
     Returns:
-    
+
         A dataframe with all the features for all the cells in the json file.
         This will include:
             - neuron information (optolabel, data_path, unit)
@@ -2611,10 +2653,22 @@ def feature_extraction(json_path, check_json=True, save_path=None):
                 label = "PkC_ss"
             elif u in cs:
                 label = "PkC_cs"
-            wvf_features = waveform_features_wrap(dp, u)
-            tmp_features = temporal_features_wrap(dp, u)
-            curr_feat = [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]
-            feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
+            try:
+                wvf_features = waveform_features_wrap(dp, u)
+                tmp_features = temporal_features_wrap(dp, u)
+                curr_feat = (
+                    [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]
+                )
+                feat_df = feat_df.append(
+                    dict(zip(columns, curr_feat)), ignore_index=True
+                )
+            except Exception as e:
+                exc_type, _, exc_tb = sys.exc_info()
+                print(
+                    f"Something went wrong for the feature computation of neuron {u} in {dp}"
+                )
+                print(f"{exc_type} at line {exc_tb.tb_lineno}: {e}")
+                raise
 
     if save_path is not None:
         today = date.today().strftime("%b-%d-%Y")

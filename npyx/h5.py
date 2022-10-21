@@ -62,8 +62,42 @@ def add_units_to_h5(h5_path, dp, units=None, **kwargs):
     for u in units:
         add_unit_h5(h5_path, dp, u, **kwargs)
 
+
+def relative_unit_path_h5(dataset, unit):
+    return f"datasets/{dataset}/{unit}"
+
+
+def get_unit_paths_h5(h5_file, dataset, unit,
+                      lab_id = 'hausser', unit_absolute_id = None):
+    relative_unit_path = relative_unit_path_h5(dataset, unit)
+    if relative_unit_path in h5_file:
+            absolute_unit_path = h5_file[f'{relative_unit_path}/neuron_absolute_id'][()].decode()
+    else:
+        if unit_absolute_id is None:
+            if f"{lab_id}_neuron_0" not in h5_file:
+                unit_absolute_id = 0
+            else:
+                root_groups = list(h5_file.keys())
+                neuron_ids = [int(x.split('_')[-1]) for x in root_groups if f"{lab_id}_neuron" in x]
+                unit_absolute_id = np.sort(neuron_ids)[-1] + 1
+        absolute_unit_path = f'{lab_id}_neuron_{unit_absolute_id}'
+            
+    return relative_unit_path, absolute_unit_path
+
+
+def remove_unit_h5(h5_path, dp, unit, lab_id='hausser'):
+    dataset = Path(dp).name
+    with h5py.File(h5_path, "a") as h5_file:
+        relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
+        del h5_file[relative_unit_path]
+        del h5_file[absolute_unit_path]
+        dataset_path = str(Path(relative_unit_path).parent)
+        if len(h5_file[dataset_path].keys()) == 0:
+            del h5_file[dataset_path]
+
+
 def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
-                unit_abolute_id=None, sync_chan_id=None,
+                unit_absolute_id=None, sync_chan_id=None,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
                 dataset=None,
                 raw_window=[0.1, 30.1], center_raw_window_on_spikes=True,
@@ -82,7 +116,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
      ---->>> data format details here www.tinyurl.com/c4database <<<---
 
     Each unit can be accessed from 2 paths which point to the same data:
-    - an absolute path, {unit_abolute_id}/
+    - an absolute path, {unit_absolute_id}/
                         which allows for a flat hierarchy and makes it easier to compute features,
                         easier to work on data from other labs
     - a relative path, datasets/{dataset}/{unit}/
@@ -159,37 +193,29 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
     h5_path = Path(h5_path)
     assert_h5_file(h5_path)
     with h5py.File(h5_path, "a") as h5_file:
-
-        # check whether neuron already exists in dataset
+        
+        # format dataset name
         if dataset is None:
             dataset = dp.name
         check_dataset_format(dataset)
-        neuron_path = f"datasets/{dataset}/{unit}"
-        if neuron_path in h5_file:
-            neuron_absolute_path=h5_file[f'{neuron_path}/neuron_absolute_id'][()].decode()
+        
+        # Define or fetch unit h5 paths
+        relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
+        if relative_unit_path in h5_file:
             if again:
-                del h5_file[neuron_path]
-                del h5_file[neuron_absolute_path]
+                del h5_file[relative_unit_path]
+                del h5_file[absolute_unit_path]
             else:
-                print(f"Neuron found in h5 file: {neuron_path} ({neuron_absolute_path})")
-                neuron_group = h5_file[neuron_absolute_path]
-                #return neuron_path
-            
-        if neuron_path not in h5_file or again:
-            # figure out where we're at
-            if unit_abolute_id is None:
-                if f"{lab_id}_neuron_0" not in h5_file:
-                    unit_abolute_id = 0
-                else:
-                    root_groups = list(h5_file.keys())
-                    neuron_ids = [int(x.split('_')[-1]) for x in root_groups if f"{lab_id}_neuron" in x]
-                    unit_abolute_id = np.sort(neuron_ids)[-1] + 1
-
-            # create group for new neuron
-            neuron_absolute_path=f'{lab_id}_neuron_{unit_abolute_id}'
-            neuron_group = h5_file.create_group(neuron_absolute_path)
-            h5_file[neuron_path] = neuron_group
-            print(f"Adding data at {neuron_path} ({neuron_absolute_path})...")
+                print(f"Neuron found in h5 file: {relative_unit_path} ({absolute_unit_path})")
+                neuron_group = h5_file[absolute_unit_path]
+        # redefine unit paths in case the unit got deleted
+        relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
+        
+        # create group for new neuron if necessary
+        if relative_unit_path not in h5_file:
+            neuron_group = h5_file.create_group(absolute_unit_path)
+            h5_file[relative_unit_path] = neuron_group
+            print(f"Adding data at {relative_unit_path} ({absolute_unit_path})...")
 
         # metadata
         write_to_group(neuron_group, 'lab_id', lab_id, again)
@@ -265,7 +291,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
         if not all_keys_in_group(k, neuron_group)\
             or again:
             if center_raw_window_on_spikes:
-                t = h5_file[neuron_path+'/spike_indices'][...]/samp_rate
+                t = h5_file[relative_unit_path+'/spike_indices'][...]/samp_rate
                 if raw_window[1]>t[0]: # spike starting after end of original window
                     raw_window = np.array(raw_window)+t[0]
                     raw_window[1]=min(raw_window[1], t[-1])
@@ -325,7 +351,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
         if ('whitened_voltage_sample' not in neuron_group or again)\
             and include_whitened_snippets:
             if center_raw_window_on_spikes:
-                t = h5_file[neuron_path+'/spike_indices'][...]/samp_rate
+                t = h5_file[relative_unit_path+'/spike_indices'][...]/samp_rate
                 if raw_window[1]>t[0]: # spike starting after end of original window
                     raw_window = np.array(raw_window)+t[0]
                     raw_window[1]=min(raw_window[1], t[-1])
@@ -361,7 +387,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
         write_to_group(neuron_group, 'hausser_label', 0, again)
         write_to_group(neuron_group, 'medina_label', 0, again)
 
-    return neuron_path
+    return relative_unit_path
 
 def load_json_datasets(json_path, include_missing_datasets=False):
     with open(json_path) as f:
@@ -386,9 +412,9 @@ def load_json_datasets(json_path, include_missing_datasets=False):
         ss = list(ds['ss'])
         cs = list(ds['cs'])
         print(f"Dataset {dp} found with opto responsive units {units}, simple spikes {ss}, complex spikes {cs}.\n")
-
-        units_m=np.isin(units+ss+cs, get_units(dp))
-        assert all(units_m), f"Units {np.array(units)[~units_m]} not found in {dp}!"
+        all_units = units+ss+cs
+        units_m=np.isin(all_units, get_units(dp))
+        assert all(units_m), f"Units {np.array(all_units)[~units_m]} not found in {dp}!"
 
     return DSs
 
@@ -413,7 +439,7 @@ def add_json_datasets_to_h5(json_path, h5_path, preprocess_binary = True, lab_id
         cs=ds['cs']
         for u in units+ss+cs:
             add_unit_h5(h5_path, dp, u, lab_id=lab_id,
-                    unit_abolute_id=None, sync_chan_id=None,
+                    unit_absolute_id=None, sync_chan_id=None,
                     again=False, plot_debug=False, verbose=True)
             if u in units:
                 label = optolabel
@@ -435,10 +461,10 @@ def add_data_to_unit_h5(h5_path, dataset, unit, data, field):
     - field: name of dataset to add data (id exists already, will overwrite)
     """
     check_dataset_format(dataset)
-    neuron_path = f"datasets/{dataset}/{unit}"
+    unit_path = relative_unit_path_h5(dataset, unit)
     with h5py.File(h5_path, "a") as h5_file:
-        assert neuron_path in h5_file, f"WARNING unit {neuron_path} does not seem to be present in the file. To add it, use add_unit_h5()."
-        write_to_group(h5_file[neuron_path], field, data, True)
+        assert unit_path in h5_file, f"WARNING unit {unit_path} does not seem to be present in the file. To add it, use add_unit_h5()."
+        write_to_group(h5_file[unit_path], field, data, True)
 
 # h5 vizualisattion functions
 def print_h5_contents(h5_path, txt_output=False):

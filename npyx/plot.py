@@ -943,7 +943,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
              nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=False, ignore_ks_chanfilt=True,
              filter_forward=True, filter_backward=True,
              plot_ylabels=True, show_allyticks=0, yticks_jump=10, plot_baselines=False,
-             events=[], set0atEvent=1,
+             events=[], set0atEvent=1, align_events_as_sweeps=False,
              ax=None, ext_data=None, ext_datachans=np.arange(384),
              as_heatmap=False, vmin=-50, vmax=50, center=0, legend=None):
     '''
@@ -1028,11 +1028,18 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
                      ignore_ks_chanfilt, center_chans_on_0, 0, 1, again)
             for e in alignement_events[1:]:
                 times=e+npa(window)/1e3
-                rc+=extract_rawChunk(dp, times, channels, filt_key, 1,
-                     whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
-                     nRangeWhiten, nRangeMedSub, use_ks_w_matrix,
-                     ignore_ks_chanfilt, center_chans_on_0, 0, 1, again)
-            rc/=len(alignement_events)
+                if align_events_as_sweeps:
+                    rc = np.concatenate((rc, extract_rawChunk(dp, times, channels, filt_key, 1,
+                                                              whiten, med_sub, hpfilt, hpfiltf, filter_forward,
+                                                              filter_backward, nRangeWhiten, nRangeMedSub,
+                                                              use_ks_w_matrix, ignore_ks_chanfilt,
+                                                              center_chans_on_0, 0, 1, again)))
+                else:
+                    rc += extract_rawChunk(dp, times, channels, filt_key, 1,
+                                         whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
+                                         nRangeWhiten, nRangeMedSub, use_ks_w_matrix,
+                                         ignore_ks_chanfilt, center_chans_on_0, 0, 1, again)
+            rc = rc/len(alignement_events) if not align_events_as_sweeps else rc
     else:
         channels=assert_chan_in_dataset(dp, ext_datachans, ignore_ks_chanfilt)
         assert len(channels)==ext_data.shape[0],\
@@ -1044,7 +1051,7 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
     # Define y ticks
     plt_offsets = np.arange(0, rc.shape[0]*offset, offset)
     y_ticks = np.arange(0, rc.shape[0], 1) if as_heatmap else np.arange(0, rc.shape[0]*offset, offset)
-    y_ticks_labels=channels
+    y_ticks_labels = np.repeat(np.asarray(alignement_events), len(channels)) if align_events_as_sweeps else channels
 
     # Sparsen y tick labels to declutter y axis
     if not show_allyticks:
@@ -1093,7 +1100,10 @@ def plot_raw(dp, times=None, alignement_events=None, window=None, channels=np.ar
         ax.plot(t[:,0], rc[:,0], color=color, alpha=bg_alpha,  label=legend)
         ax.set_yticks(y_ticks)
         ax.set_yticklabels(y_ticks_labels) if plot_ylabels else ax.set_yticklabels([])
-        ax.set_ylabel('Channel', size=14, weight='bold')
+        if align_events_as_sweeps:
+            ax.set_ylabel('Event (s)', size=14, weight='bold')
+        else:
+            ax.set_ylabel('Channel', size=14, weight='bold')
 
     ax.set_xlabel('Time (ms)', size=14, weight='bold')
     ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=2, length=6, labelsize=14)

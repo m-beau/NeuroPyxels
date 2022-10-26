@@ -326,6 +326,8 @@ def check_periods(periods):
         assert periods=='all', err_mess
         return periods
     periods = npa(periods)
+    if periods.ndim==1:
+        periods = periods.reshape(1,-1)
     assert periods.ndim == 2, "When feeding a single period [t1,t2], do not forget the outer brackets [[t1,t2]]!"
     assert periods.shape[1] == 2, err_mess
     assert np.all(np.diff(periods, axis=1)>0),\

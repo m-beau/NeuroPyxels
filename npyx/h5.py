@@ -429,13 +429,14 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id="hausser", preprocess_if_
 
     for ds_name, ds in DSs.items():
         dp=Path(ds['dp'])
-        
+
         if preprocess_if_raw:
             if not detect_hardware_filter(dp):
+                print("\033[34;1mRaw file detected - filtering with 1st order butterworth highpass at 300Hz...\033[0m")
                 preprocess_binary_file(dp,
                     delete_original_data=delete_original_data,
                     data_deletion_double_check=data_deletion_double_check,
-                    med_sub=False, hpfilt=True, filter_forward=True, filter_backward=False, order=1)
+                    median_subtract=False, filter_forward=True, filter_backward=False, order=1)
 
         optolabel=ds['ct']
         if optolabel=="PkC": optolabel="PkC_ss"

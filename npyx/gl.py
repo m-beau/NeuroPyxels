@@ -199,7 +199,7 @@ def detect_new_spikesorting(dp, print_message=True, qualities=None):
         if not np.all(np.isin(old_clusters,new_clusters)): spikesorted = True
 
     if spikesorted and print_message:
-        print('\n\033[34;1m--- New spike-sorting detected.')
+        print('\n\033[34;1m--- New spike-sorting detected.\033[0m')
 
     return spikesorted
 

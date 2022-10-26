@@ -435,11 +435,11 @@ def gpufilter(buff, fs=None, fslow=None, fshigh=None, order=3,
     return dataRAW
 
 def get_filter_params(fs, fshigh=None, fslow=None, order=3):
+    # Wn should be the cutoff frequency in fraction of the Nyquist frequency:
+    # fc / (fs / 2) = fc / fs * 2
     if fslow and fslow < fs / 2:
-        # butterworth filter with only 3 nodes (otherwise it's unstable for float32)
         return butter(order, (2 * fshigh / fs, 2 * fslow / fs), 'bandpass')
     else:
-        # butterworth filter with only 3 nodes (otherwise it's unstable for float32)
         return butter(order, fshigh / fs * 2, 'high')
 
 def make_kernel(kernel, name, **const_arrs):

@@ -196,17 +196,21 @@ def metadata(dp):
                             meta_glx[filtkey][k] = val
 
         # find probe version
-        if 'imProbeOpt' in meta_glx["highpass"].keys(): # 3A
+        if 'imProbeOpt' in meta_glx["highpass"]: # 3A
             glx_probe_version = meta_glx["highpass"]["imProbeOpt"]
-        elif 'imDatPrb_type' in meta_glx["highpass"].keys(): # 1.0 and beyond
+        elif 'imDatPrb_type' in meta_glx["highpass"]: # 1.0 and beyond
             glx_probe_version = meta_glx["highpass"]["imDatPrb_type"]
         else:
              glx_probe_version = 'N/A'
 
-        assert glx_probe_version in probe_versions['glx'].keys(),\
-            f'WARNING probe version {glx_probe_version} not handled - post an issue at www.github.com/m-beau/NeuroPyxels'
-        meta['probe_version']=probe_versions['glx'][glx_probe_version]
-        meta['probe_version_int'] = probe_versions['int'][meta['probe_version']]
+        if glx_probe_version in probe_versions['glx']:
+            meta['probe_version'] = probe_versions['glx'][glx_probe_version]
+            meta['probe_version_int'] = probe_versions['int'][meta['probe_version']]
+        else:
+            print(f'WARNING probe version {glx_probe_version} not handled - post an issue at www.github.com/m-beau/NeuroPyxels')
+            meta['probe_version'] = glx_probe_version
+            meta['probe_version_int'] = 0
+            
 
         # Based on probe version,
         # Find the voltage range, gain, encoding
@@ -257,15 +261,18 @@ def metadata(dp):
 
     # Calculate length of recording
     high_fs = meta['highpass']['sampling_rate']
+
     if meta['highpass']['binary_byte_size']=='unknown':
-        t_end=np.load(dp/'spike_times.npy').ravel()[-1]
-        meta['recording_length_seconds']=t_end/high_fs
+        if (dp/'spike_times.npy').exists():
+            t_end=np.load(dp/'spike_times.npy').ravel()[-1]
+            meta['recording_length_seconds']=t_end/high_fs
+        else:
+            meta['recording_length_seconds'] = 'unkown'
     else:
         file_size = meta['highpass']['binary_byte_size']
         item_size = np.dtype(meta['highpass']['datatype']).itemsize
         nChans = meta['highpass']['n_channels_binaryfile']
         meta['recording_length_seconds'] = file_size/item_size/nChans/high_fs
-
 
     return meta
 
@@ -700,6 +707,12 @@ def assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt=False):
     return channels
 
 #%% Binary file filtering wrappers
+
+def detect_hardware_filter(dp):
+    "Detects if the Neuropixels hardware filter was on or off during recording."
+    imro_table = metadata(dp)['highpass']['~imroTbl']
+    hpfiltered_int = int(imro_table[1][-1]) # 0 or 1
+    return bool(hpfiltered_int)
 
 def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, move_orig_data=True,
                        ADC_realign = False, median_subtract=True, f_low=None, f_high=300, order=3,

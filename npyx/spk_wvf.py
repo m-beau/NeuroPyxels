@@ -350,7 +350,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     raw_waves = wvf(dp, u = None, n_waveforms= 100, t_waveforms = t_waveforms,
                     selection='regular', periods=periods, spike_ids=spike_ids_split,
                     wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
-                    save=save , verbose = verbose,  again=True, whiten = whiten,
+                    save=save , verbose = verbose,  again=True,
+                    whiten = whiten, med_sub = med_sub,
                     hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
                     nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True)
     spike_ids_split = spike_ids_split.reshape(-1,n_waveforms_per_batch)

@@ -202,7 +202,7 @@ def detect_peaks(wvf, margin=0.8, onset=0.2, plot_debug=False):
     all_idxes = all_idxes[sorting_idx]
     all_values = all_values[sorting_idx]
 
-    # Exclude peaks finded before the provided onset time
+    # Exclude peaks found before the provided onset time
     mask = (all_idxes < len(wvf) // (1 / onset)) | (
         all_idxes > int(len(wvf) * (1 - onset))
     )
@@ -211,13 +211,21 @@ def detect_peaks(wvf, margin=0.8, onset=0.2, plot_debug=False):
 
     # Ensure that we have a positive peak coming after the most negative one, otherwise find it
     abs_min_rel_idx = np.argmin(all_values)
-    if abs_min_rel_idx == len(all_values) - 1:
+    if abs_min_rel_idx == len(all_values) - 1 or all_values[abs_min_rel_idx + 1] < 0:
         abs_min_idx = all_idxes[abs_min_rel_idx]
         peak_after_trough_idxes, _ = find_peaks(wvf[abs_min_idx:])
-        peak_after_trough_idx = peak_after_trough_idxes[0] + abs_min_idx
-        peak_after_trough_value = wvf[peak_after_trough_idx]
-        all_idxes = np.append(all_idxes, peak_after_trough_idx)
-        all_values = np.append(all_values, peak_after_trough_value)
+        if len(peak_after_trough_idxes) > 0:
+            peak_after_trough_idx = peak_after_trough_idxes[0] + abs_min_idx
+            peak_after_trough_value = wvf[peak_after_trough_idx]
+            all_idxes = np.append(all_idxes, peak_after_trough_idx)
+            all_values = np.append(all_values, peak_after_trough_value)
+
+            # Sort peaks by time again
+            sorting_idx = np.argsort(all_idxes)
+            all_idxes = all_idxes[sorting_idx]
+            all_values = all_values[sorting_idx]
+        else:
+            pass
 
     if plot_debug:
         plt.plot(wvf)
@@ -1259,8 +1267,9 @@ def is_somatic(peaks_v):
     peak_signs = np.sign(peaks_v).astype(np.int32).tolist()
     peak_signs = str(peak_signs)
     pattern = "-1, 1"
+    neg_abs = np.abs(np.max(peaks_v)) < np.abs(np.min(peaks_v))
 
-    return pattern in peak_signs
+    return pattern in peak_signs and neg_abs
 
 
 def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):

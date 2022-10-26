@@ -429,7 +429,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id="hausser", preprocess_if_
 
     for ds_name, ds in DSs.items():
         dp=Path(ds['dp'])
-        print(dp, detect_hardware_filter(dp))
+
         if preprocess_if_raw:
             if not detect_hardware_filter(dp):
                 print("\033[34;1mRaw file detected - filtering with 1st order butterworth highpass at 300Hz...\033[0m")

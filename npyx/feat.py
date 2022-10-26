@@ -183,8 +183,8 @@ def detect_peaks(wvf, margin=0.8, onset=0.2, plot_debug=False):
     peak_height = margin * np.std(wvf)
 
     # Find peaks using scipy. We also apply a distance criterion to avoid finding too close peaks in artefactual waveforms.
-    max_idxes, _ = find_peaks(wvf, height=peak_height, distance=len(wvf) // 10)
-    min_idxes, _ = find_peaks(-wvf, height=peak_height, distance=len(wvf) // 10)
+    max_idxes, _ = find_peaks(wvf, height=peak_height, distance=len(wvf) // 20)
+    min_idxes, _ = find_peaks(-wvf, height=peak_height, distance=len(wvf) // 20)
     max_values = wvf[max_idxes]
     min_values = wvf[min_idxes]
 
@@ -211,8 +211,8 @@ def detect_peaks(wvf, margin=0.8, onset=0.2, plot_debug=False):
         )
         for i, _ in enumerate(all_idxes):
             plt.plot(all_idxes[i], all_values[i], "x", color="red")
-            plt.axvspan(0, len(wvf) // (1 / onset), alpha=0.2)
-            plt.axvspan(int(len(wvf) * (1 - onset)), len(wvf), alpha=0.2)
+        plt.axvspan(0, len(wvf) // (1 / onset), alpha=0.4)
+        plt.axvspan(int(len(wvf) * (1 - onset)), len(wvf), alpha=0.4)
         plt.show()
 
     return all_idxes, all_values
@@ -413,7 +413,7 @@ def pos_10_90(waves, peak_time, trough_time):
 
     crosses_10 = np.array([cross_10, cross_10 + 1])
     # ensure the value is positive for the first crossing
-    crosses_10 = crosses_10[waves[crosses_10] > 0]
+    # crosses_10 = crosses_10[waves[crosses_10] > 0]
     crosses_90 = np.array([cross_90, cross_90 + 1])
     # from these crossing points find the closer one to the value
     close_10 = crosses_10[np.argmin(np.abs(waves[crosses_10]) - perc_10)]
@@ -860,7 +860,7 @@ def chan_dist(chan, chanmap):
     all_dist = np.sqrt(np.sum(np.square(coordinates), axis=1))
     # next the positive or a negative value is assigned to each
     # depending on which side of the peak chan it is
-    sign_mask = np.ones((384))
+    sign_mask = np.ones((all_dist.shape[0]))
     sign_mask[:chan] = -1
 
     return all_dist * sign_mask
@@ -933,6 +933,7 @@ def chan_spread(all_wav, max_chan, chanmap, n_chans=20, probe_v="1.0_staggered")
     _, _, p2p = consecutive_peaks_amp(all_wav.T)
     
     # find the distance of all channels from peak chan
+    chanmap = chanmap[:all_wav.shape[0],:]
     dists = chan_dist(max_chan, chanmap)
 
     dist_p2p = np.vstack((dists, p2p)).T
@@ -1331,8 +1332,16 @@ def find_relevant_peaks(peak_t, peak_v):
     signs = np.sign(peak_v).astype(np.int32)
     trough_mask = signs == -1
     first_trough_idx = np.where(trough_mask)[0][0]
-    first_trough_t = peak_t[first_trough_idx]
-    first_peak_t = peak_t[first_trough_idx + 1]
+    
+    # Ensure that a peak follows the trough we found
+    valid = False
+    while valid == False and first_trough_idx < len(peak_t) -1 :
+        if np.sign(peak_v[first_trough_idx]) == -1 and np.sign(peak_v[first_trough_idx + 1]) == 1:
+            first_trough_t = peak_t[first_trough_idx]
+            first_peak_t = peak_t[first_trough_idx + 1]
+            valid = True
+        else:
+            first_trough_idx += 1
 
     return first_trough_t, first_peak_t
 
@@ -1469,7 +1478,7 @@ def new_waveform_features(waveform_2d, peak_channel, plot_debug=False):
 
     # If None is found features cannot be extracted
     if relevant_waveform is None:
-        return [peak_channel, *[0] * 16]
+        return [peak_channel, *[0] * 17]
 
     if plot_debug:
         info = f'Original peak: {peak_channel} relevant channel: {relevant_channel}. {"Somatic." if somatic else "Dendritic."}'

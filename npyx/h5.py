@@ -168,7 +168,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                  (1st column: onsets, 2nd column: offsets).
                  By default None, will be read from sync channel (at sync_chan_id) if optostims_from_sync is True.
     - optostims_from_sync: bool, whether to pick up optostims from sync channel if None are provided.
-    - optostims_threshold: float, time before which optostims will be ignored
+    - optostims_threshold: float, time before which optostims will be ignored (same units as optostims, seconds if optostims_from_sync=True).
                            (handles sync signals without light at beginning of recording)
                            
     - n_waveforms_for_matching: int, number of waveforms to subsample for drift-shift matching
@@ -273,9 +273,8 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                 opto_m = optostims[:,0] > optostims_threshold
                 optostims = optostims[opto_m,:]
 
-            if optostims is None:
-                optostims = np.array([])
-            write_to_group(neuron_group, 'optostims', optostims, again)
+            if optostims is not None:
+                write_to_group(neuron_group, 'optostims', optostims, again)
 
         # waveforms
         k = ['mean_waveform_preprocessed', 'amplitudes', 'voltage_sample', 'peakchan_SNR']
@@ -435,7 +434,7 @@ def load_json_datasets(json_path, include_missing_datasets=False):
     return DSs
 
 
-def add_json_datasets_to_h5(json_path, h5_path, lab_id="hausser", preprocess_if_raw=False,
+def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
                             delete_original_data=False, data_deletion_double_check=False,
                             again=False, include_raw_snippets=False, verbose=False, **kwargs):
 
@@ -458,7 +457,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id="hausser", preprocess_if_
         ss=ds['ss']
         cs=ds['cs']
         sane_times = ds["sane_times"] if "sane_times" in ds else None
-        print("sane_times", sane_times)
+
         for u in units+ss+cs:
             add_unit_h5(h5_path, dp, u, lab_id, periods='all',
                     again=again, again_wvf=again, verbose=verbose,
@@ -471,6 +470,14 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id="hausser", preprocess_if_
             elif u in cs:
                 label="PkC_cs"
             label_optotagged_unit_h5(h5_path, ds_name, u, label)
+
+def add_json_datasets_to_h5_hausser(json_path, h5_path, again=False, include_raw_snippets=False,
+                                    delete_original_data=False, data_deletion_double_check=False):
+
+    add_json_datasets_to_h5(json_path, h5_path, "hausser", preprocess_if_raw=False,
+                            delete_original_data=delete_original_data, data_deletion_double_check=data_deletion_double_check,
+                            again=again, include_raw_snippets=include_raw_snippets, verbose=False,
+                            optostims_from_sync=True, optostims_threshold=20*60)
 
 
 def add_data_to_unit_h5(h5_path, dataset, unit, data, field):

@@ -270,7 +270,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples, periods=periods,
                                     again=again_wvf, plot_debug=plot_debug, verbose=verbose,
                                     n_waves_used_for_matching=n_waveforms_for_matching, 
-                                    med_sub = True, nRangeMedSub=100)
+                                    med_sub = True, nRangeMedSub=None)
             dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
             write_to_group(neuron_group, 'primary_channel', peak_chan)
             chan_range = np.arange(peak_chan-mean_wvf_half_range, peak_chan+mean_wvf_half_range)
@@ -430,39 +430,36 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id="hausser", preprocess_if_
     for ds_name, ds in DSs.items():
         dp=Path(ds['dp'])
         
-        try:
-            if preprocess_if_raw:
-                if not detect_hardware_filter(dp):
-                    preprocess_binary_file(dp,
-                        delete_original_data=delete_original_data,
-                        data_deletion_double_check=data_deletion_double_check,
-                        med_sub=False, hpfilt=True, filter_forward=True, filter_backward=False, order=1)
+        if preprocess_if_raw:
+            if not detect_hardware_filter(dp):
+                preprocess_binary_file(dp,
+                    delete_original_data=delete_original_data,
+                    data_deletion_double_check=data_deletion_double_check,
+                    med_sub=False, hpfilt=True, filter_forward=True, filter_backward=False, order=1)
 
-            optolabel=ds['ct']
-            if optolabel=="PkC": optolabel="PkC_ss"
-            units=ds['units']
-            ss=ds['ss']
-            cs=ds['cs']
-            for u in units+ss+cs:
-                add_unit_h5(h5_path, dp, u, lab_id, periods='all',
-                        unit_absolute_id=None, sync_chan_id=None,
-                        again=again, again_wvf=again, plot_debug=False, verbose=True,
-                        dataset=None,
-                        raw_window=[0.1, 30.1], center_raw_window_on_spikes=True,
-                        include_raw_snippets=include_raw_snippets, include_whitened_snippets=include_raw_snippets,
-                        raw_snippet_halfrange=2, mean_wvf_half_range=11,
-                        sane_spikes=None, sane_before_opto=False, include_fp_fn_mask=True,
-                        optostims=None, optostims_from_sync=False, optostims_threshold=None,
-                        n_waveforms_for_matching=5000)
-                if u in units:
-                    label = optolabel
-                elif u in ss:
-                    label="PkC_ss"
-                elif u in cs:
-                    label="PkC_cs"
-                label_optotagged_unit_h5(h5_path, ds_name, u, label)
-        except:
-            print(f"\033[31mERROR processing dataset {ds_name} at {dp}!\033[30m")
+        optolabel=ds['ct']
+        if optolabel=="PkC": optolabel="PkC_ss"
+        units=ds['units']
+        ss=ds['ss']
+        cs=ds['cs']
+        for u in units+ss+cs:
+            add_unit_h5(h5_path, dp, u, lab_id, periods='all',
+                    unit_absolute_id=None, sync_chan_id=None,
+                    again=again, again_wvf=again, plot_debug=False, verbose=True,
+                    dataset=None,
+                    raw_window=[0.1, 30.1], center_raw_window_on_spikes=True,
+                    include_raw_snippets=include_raw_snippets, include_whitened_snippets=include_raw_snippets,
+                    raw_snippet_halfrange=2, mean_wvf_half_range=11,
+                    sane_spikes=None, sane_before_opto=False, include_fp_fn_mask=True,
+                    optostims=None, optostims_from_sync=False, optostims_threshold=None,
+                    n_waveforms_for_matching=5000)
+            if u in units:
+                label = optolabel
+            elif u in ss:
+                label="PkC_ss"
+            elif u in cs:
+                label="PkC_cs"
+            label_optotagged_unit_h5(h5_path, ds_name, u, label)
 
 
 def add_data_to_unit_h5(h5_path, dataset, unit, data, field):

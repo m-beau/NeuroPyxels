@@ -9,7 +9,8 @@ import json
 import h5py
 
 from npyx.utils import assert_int, assert_float
-from npyx.inout import get_binary_file_path, get_npix_sync, chan_map, extract_rawChunk, read_metadata, preprocess_binary_file
+from npyx.inout import get_binary_file_path, get_npix_sync, chan_map,\
+                       extract_rawChunk, read_metadata, preprocess_binary_file, detect_hardware_filter
 from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 from npyx.gl import get_units, check_periods
@@ -420,7 +421,7 @@ def load_json_datasets(json_path, include_missing_datasets=False):
     return DSs
 
 
-def add_json_datasets_to_h5(json_path, h5_path, preprocess_binary = False, lab_id="hausser",
+def add_json_datasets_to_h5(json_path, h5_path, lab_id="hausser", preprocess_if_raw=False,
                             delete_original_data=False, data_deletion_double_check=False,
                             again=False, include_raw_snippets=False):
 
@@ -430,10 +431,12 @@ def add_json_datasets_to_h5(json_path, h5_path, preprocess_binary = False, lab_i
         dp=Path(ds['dp'])
         
         try:
-            if preprocess_binary:
-                preprocess_binary_file(dp,
-                    delete_original_data=delete_original_data,
-                    data_deletion_double_check=data_deletion_double_check)
+            if preprocess_if_raw:
+                if not detect_hardware_filter(dp):
+                    preprocess_binary_file(dp,
+                        delete_original_data=delete_original_data,
+                        data_deletion_double_check=data_deletion_double_check,
+                        med_sub=False, hpfilt=True, filter_forward=True, filter_backward=False, order=1)
 
             optolabel=ds['ct']
             if optolabel=="PkC": optolabel="PkC_ss"
@@ -441,11 +444,16 @@ def add_json_datasets_to_h5(json_path, h5_path, preprocess_binary = False, lab_i
             ss=ds['ss']
             cs=ds['cs']
             for u in units+ss+cs:
-                add_unit_h5(h5_path, dp, u, lab_id=lab_id,
+                add_unit_h5(h5_path, dp, u, lab_id, periods='all',
                         unit_absolute_id=None, sync_chan_id=None,
-                        again=again, again_wvf = again,
-                        plot_debug=False, verbose=True,
-                        include_raw_snippets=include_raw_snippets)
+                        again=again, again_wvf=again, plot_debug=False, verbose=True,
+                        dataset=None,
+                        raw_window=[0.1, 30.1], center_raw_window_on_spikes=True,
+                        include_raw_snippets=include_raw_snippets, include_whitened_snippets=include_raw_snippets,
+                        raw_snippet_halfrange=2, mean_wvf_half_range=11,
+                        sane_spikes=None, sane_before_opto=False, include_fp_fn_mask=True,
+                        optostims=None, optostims_from_sync=False, optostims_threshold=None,
+                        n_waveforms_for_matching=5000)
                 if u in units:
                     label = optolabel
                 elif u in ss:

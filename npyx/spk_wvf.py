@@ -32,7 +32,6 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
         nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=True):
     '''
     ********
-    routine from rtn.npyx.spk_wvf
     Extracts a sample of waveforms from the raw data file.
     ********
 
@@ -48,7 +47,7 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
         - spike_ids:          list/array, relative indices of spikes in the whole recording.
                                           Takes precedence over every other parameter: if provided, u, n_waveforms and periods will be ignored.
         - wvf_batch_size:     int, if >1 and 'regular' selection, selects ids as batches of spikes. | Default 10
-        - save:               bool, whether to save to routine memory. | Default True
+        - save:               bool, whether to save to NeuroPyxels cache. | Default True
         - verbose:            bool, whether to print informaiton. | Default False
         - again:              bool, whether to recompute waveforms even if ofund in routines memory. | Default False
         - ignore_nwvf:        bool, whether to ignore n_waveforms parameter when a list of times is provided as periods,
@@ -85,7 +84,7 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
     per_str = str(periods)[0:50].replace(' ', '').replace('\n','')
     fn=f"wvf{u}_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
     if os.path.exists(Path(dpnm,fn)) and (not again) and (spike_ids is None):
-        if verbose: print("File {} found in routines memory.".format(fn))
+        if verbose: print("File {} found in NeuroPyxels cache.".format(fn))
         return np.load(Path(dpnm,fn))
 
     waveforms = get_waveforms(dp, u, n_waveforms, t_waveforms, selection, periods, spike_ids, wvf_batch_size, ignore_nwvf,
@@ -242,9 +241,9 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         - spike_ids:          list/array, relative indices of spikes in the whole recording.
                                           If provided, u, n_waveforms and periods will be ignored.
         - wvf_batch_size:     int, if >1 and 'regular' selection, selects ids as batches of spikes. | Default 10
-        - save: bool,         whether to save to routine memory. | Default True
+        - save: bool,         whether to save to NeuroPyxels cache. | Default True
         - verbose: bool,         whether to print information. | Default False
-        - again: bool,        whether to recompute waveforms even if found in routines memory. | Default False
+        - again: bool,        whether to recompute waveforms even if found in NeuroPyxels cache. | Default False
         - ignore_nwvf:        bool, whether to ignore n_waveforms parameter when a list of times is provided as periods,
                                     to return all the spikes in the window instead. | Default True
         - whiten:             bool, whether to whiten across channels.
@@ -298,7 +297,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     fn_peakchan=f"dsm_{u}_peakchan_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}.npy"
 
     if Path(dpnm,fn).is_file() and (not again) and (spike_ids is None):
-        if verbose: print(f"File {fn} found in routines memory.")
+        if verbose: print(f"File {fn} found in NeuroPyxels cache.")
         drift_shift_matched_mean = np.load(Path(dpnm,fn_all))
         if plot_debug:
             w=wvf(dp, u, n_waveforms=n_waveforms, t_waveforms=t_waveforms)
@@ -702,7 +701,6 @@ def get_chDis(dp, ch1, ch2):
 def templates(dp, u, ignore_ks_chanfilt=False):
     '''
     ********
-    routine from rtn.npyx.spk_wvf
     Extracts the template used by kilosort to cluster this unit.
     ********
 

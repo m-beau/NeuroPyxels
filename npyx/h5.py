@@ -98,13 +98,13 @@ def remove_unit_h5(h5_path, dp, unit, lab_id='hausser'):
 
 
 def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
-                unit_absolute_id=None, sync_chan_id=None,
+                sync_chan_id=None,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
                 dataset=None,
                 raw_window=[0.1, 30.1], center_raw_window_on_spikes=True,
                 include_raw_snippets=True, include_whitened_snippets=True,
                 raw_snippet_halfrange=2, mean_wvf_half_range=11,
-                sane_spikes=None, sane_before_opto=False, include_fp_fn_mask=True,
+                sane_spikes=None, sane_periods=None, sane_before_opto=False, include_fp_fn_mask=True,
                 optostims=None, optostims_from_sync=False, optostims_threshold=None,
                 n_waveforms_for_matching=5000,
                 **kwargs):
@@ -156,6 +156,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
     
     - sane_spikes: optional bool array, custom definition of 'sane spikes' for whatever reason.
                    By default, will be all spikes within 'periods'.
+    - sane_periods: optional list of [start, stop] periods, in seconds, to define 'sane spikes'. Will prevail over "sane_before_opto" if both are defined.
     - sane_before_opto: bool, whether to consider all spikes before the 1st optostim
                         to constitute the sane_spikes boolean mask.
                         Will only work if optostims are provided (or alternatively optostims_from_sync is True.)
@@ -167,7 +168,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                  (1st column: onsets, 2nd column: offsets).
                  By default None, will be read from sync channel (at sync_chan_id) if optostims_from_sync is True.
     - optostims_from_sync: bool, whether to pick up optostims from sync channel if None are provided.
-    - optostims_threshold: float, time before which optostims will be ignored
+    - optostims_threshold: float, time before which optostims will be ignored (same units as optostims, seconds if optostims_from_sync=True).
                            (handles sync signals without light at beginning of recording)
                            
     - n_waveforms_for_matching: int, number of waveforms to subsample for drift-shift matching
@@ -210,7 +211,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                 print(f"Neuron found in h5 file: {relative_unit_path} ({absolute_unit_path})")
                 neuron_group = h5_file[absolute_unit_path]
         # redefine unit paths in case the unit got deleted
-        relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
+        #relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
         
         # create group for new neuron if necessary
         if relative_unit_path not in h5_file:
@@ -235,7 +236,29 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
         if 'spike_indices' not in neuron_group or again:
             t = trn(dp, unit, periods=periods, again=again)
             write_to_group(neuron_group, 'spike_indices', t, again)
-            
+        else:
+            t = neuron_group['spike_indices']
+
+        # usable spikes mask
+        if 'sane_spikes' not in neuron_group or again:
+            if sane_spikes is None and\
+                sane_periods is not None:
+                sane_periods = check_periods(sane_periods)
+                sane_periods*=samp_rate
+                sane_spikes = (t*0).astype(bool)
+                for sane_period in sane_periods:
+                    sane_spikes = sane_spikes|(t>=sane_period[0])&(t<=sane_period[1])
+            elif sane_spikes is None and\
+                optostims is not None and\
+                sane_before_opto:
+                # Only consider spikes 10s before first opto onset
+                sane_spikes = (t < (optostims[0,0]-10)*samp_rate)
+            else:
+                sane_spikes = (t*0+1).astype(bool)
+            write_to_group(neuron_group, 'sane_spikes', sane_spikes, again)
+
+        # optostims
+        if 'optostims' not in neuron_group or again:
             if optostims is None and optostims_from_sync:
                 ons, offs = get_npix_sync(dp, verbose=False)
                 if sync_chan_id is None:
@@ -249,19 +272,9 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             if optostims is not None and optostims_threshold is not None:
                 opto_m = optostims[:,0] > optostims_threshold
                 optostims = optostims[opto_m,:]
-                
-            if sane_spikes is None and\
-                optostims is not None and\
-                sane_before_opto:
-                # Only consider spikes 10s before first opto onset
-                sane_spikes = (t < (optostims[0,0]-10)*samp_rate)
-            else:
-                sane_spikes = (t*0+1).astype(bool)
-                
-        if optostims is None:
-            optostims = np.array([])
-        write_to_group(neuron_group, 'optostims', optostims, again)
-        write_to_group(neuron_group, 'sane_spikes', sane_spikes, again)
+
+            if optostims is not None:
+                write_to_group(neuron_group, 'optostims', optostims, again)
 
         # waveforms
         k = ['mean_waveform_preprocessed', 'amplitudes', 'voltage_sample', 'peakchan_SNR']
@@ -421,38 +434,35 @@ def load_json_datasets(json_path, include_missing_datasets=False):
     return DSs
 
 
-def add_json_datasets_to_h5(json_path, h5_path, lab_id="hausser", preprocess_if_raw=False,
+def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
                             delete_original_data=False, data_deletion_double_check=False,
-                            again=False, include_raw_snippets=False):
+                            again=False, include_raw_snippets=False, verbose=False, **kwargs):
 
     DSs = load_json_datasets(json_path, include_missing_datasets=False)
 
     for ds_name, ds in DSs.items():
         dp=Path(ds['dp'])
-        
+
         if preprocess_if_raw:
             if not detect_hardware_filter(dp):
+                print("\033[34;1mRaw file detected - filtering with 1st order butterworth highpass at 300Hz...\033[0m")
                 preprocess_binary_file(dp,
                     delete_original_data=delete_original_data,
                     data_deletion_double_check=data_deletion_double_check,
-                    med_sub=False, hpfilt=True, filter_forward=True, filter_backward=False, order=1)
+                    median_subtract=False, filter_forward=True, filter_backward=False, order=1)
 
         optolabel=ds['ct']
         if optolabel=="PkC": optolabel="PkC_ss"
         units=ds['units']
         ss=ds['ss']
         cs=ds['cs']
+        sane_times = ds["sane_times"] if "sane_times" in ds else None
+
         for u in units+ss+cs:
             add_unit_h5(h5_path, dp, u, lab_id, periods='all',
-                    unit_absolute_id=None, sync_chan_id=None,
-                    again=again, again_wvf=again, plot_debug=False, verbose=True,
-                    dataset=None,
-                    raw_window=[0.1, 30.1], center_raw_window_on_spikes=True,
+                    again=again, again_wvf=again, verbose=verbose,
                     include_raw_snippets=include_raw_snippets, include_whitened_snippets=include_raw_snippets,
-                    raw_snippet_halfrange=2, mean_wvf_half_range=11,
-                    sane_spikes=None, sane_before_opto=False, include_fp_fn_mask=True,
-                    optostims=None, optostims_from_sync=False, optostims_threshold=None,
-                    n_waveforms_for_matching=5000)
+                    sane_periods=sane_times, **kwargs)
             if u in units:
                 label = optolabel
             elif u in ss:
@@ -460,6 +470,14 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id="hausser", preprocess_if_
             elif u in cs:
                 label="PkC_cs"
             label_optotagged_unit_h5(h5_path, ds_name, u, label)
+
+def add_json_datasets_to_h5_hausser(json_path, h5_path, again=False, include_raw_snippets=False,
+                                    delete_original_data=False, data_deletion_double_check=False):
+
+    add_json_datasets_to_h5(json_path, h5_path, "hausser", preprocess_if_raw=False,
+                            delete_original_data=delete_original_data, data_deletion_double_check=data_deletion_double_check,
+                            again=again, include_raw_snippets=include_raw_snippets, verbose=False,
+                            optostims_from_sync=True, optostims_threshold=20*60)
 
 
 def add_data_to_unit_h5(h5_path, dataset, unit, data, field):

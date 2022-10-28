@@ -209,23 +209,24 @@ def detect_peaks(wvf, margin=0.8, onset=0.2, plot_debug=False):
     all_idxes = all_idxes[~mask]
     all_values = all_values[~mask]
 
-    # Ensure that we have a positive peak coming after the most negative one, otherwise find it
-    abs_min_rel_idx = np.argmin(all_values)
-    if abs_min_rel_idx == len(all_values) - 1 or all_values[abs_min_rel_idx + 1] < 0:
-        abs_min_idx = all_idxes[abs_min_rel_idx]
-        peak_after_trough_idxes, _ = find_peaks(wvf[abs_min_idx:])
-        if len(peak_after_trough_idxes) > 0:
-            peak_after_trough_idx = peak_after_trough_idxes[0] + abs_min_idx
-            peak_after_trough_value = wvf[peak_after_trough_idx]
-            all_idxes = np.append(all_idxes, peak_after_trough_idx)
-            all_values = np.append(all_values, peak_after_trough_value)
+    if len(all_values) != 0:
+        # Ensure that we have a positive peak coming after the most negative one, otherwise find it
+        abs_min_rel_idx = np.argmin(all_values)
+        if abs_min_rel_idx == len(all_values) - 1 or all_values[abs_min_rel_idx + 1] < 0:
+            abs_min_idx = all_idxes[abs_min_rel_idx]
+            peak_after_trough_idxes, _ = find_peaks(wvf[abs_min_idx:])
+            if len(peak_after_trough_idxes) > 0:
+                peak_after_trough_idx = peak_after_trough_idxes[0] + abs_min_idx
+                peak_after_trough_value = wvf[peak_after_trough_idx]
+                all_idxes = np.append(all_idxes, peak_after_trough_idx)
+                all_values = np.append(all_values, peak_after_trough_value)
 
-            # Sort peaks by time again
-            sorting_idx = np.argsort(all_idxes)
-            all_idxes = all_idxes[sorting_idx]
-            all_values = all_values[sorting_idx]
-        else:
-            pass
+                # Sort peaks by time again
+                sorting_idx = np.argsort(all_idxes)
+                all_idxes = all_idxes[sorting_idx]
+                all_values = all_values[sorting_idx]
+            else:
+                pass
 
     if plot_debug:
         plt.plot(wvf)

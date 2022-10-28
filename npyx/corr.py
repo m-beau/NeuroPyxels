@@ -1185,13 +1185,22 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
             firing_rate[0:times_2[i]] = current_firing_rate
         if i == len(times_2) - 1:
             firing_rate[times_2[i+1]:] = current_firing_rate
-    # Smooth the firing rates if requested
+            
+    # Smooth the firing rate using numpy convolution function if requested
     if smooth is not None:
-        smooth_half_num_indices = int(np.ceil(smooth / bin_size / 2))
-        smoothed_firing_rate = np.copy(firing_rate)
-        for i in range(0, len(smoothed_firing_rate)):
-            start = max(0, i - smooth_half_num_indices)
-            stop = min(len(smoothed_firing_rate), i + smooth_half_num_indices)
+        kernel_size = int(np.ceil(smooth / bin_size))
+        half_kernel_size = kernel_size // 2
+        kernel = np.ones(kernel_size) / kernel_size
+        smoothed_firing_rate = np.convolve(firing_rate, kernel, mode='same')
+
+        # Correct manually for possible artefacts at the edges
+        for i in range(kernel_size):
+            start = max(0, i - half_kernel_size)
+            stop = min(len(firing_rate), i + half_kernel_size)
+            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
+        for i in range(len(firing_rate) - kernel_size, len(firing_rate)):
+            start = max(0, i - half_kernel_size)
+            stop = min(len(firing_rate), i + half_kernel_size)
             smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
         firing_rate = smoothed_firing_rate
 

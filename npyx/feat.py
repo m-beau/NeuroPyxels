@@ -1318,9 +1318,10 @@ def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):
 
     # Scan remaining channels for candidate somatic waveforms
     for channel, wf in zip(high_amp_channels, high_amp_waveforms):
-        _, peak_v = detect_peaks(wf)
+        _, peak_v = detect_peaks(wf, margin = 0.8)
         if healthy_waveform(wf, peak_v):
-            if is_somatic(peak_v):
+            # To check if somatic we add back the margin used in detect peaks, so that slightly negative repolarisation will still appear as peaks
+            if is_somatic(peak_v + 0.8 * np.std(wf)):
                 any_somatic = True
                 candidate_channel_somatic.append(channel)
             else:

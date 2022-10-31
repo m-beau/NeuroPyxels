@@ -1172,7 +1172,7 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
 
     # Convert times_1 into a binary spike train
     max_indices = int(np.ceil(max(times_1[-1], times_2[-1]) + 1))
-    spiketrain = np.zeros(max_indices, dtype=np.bool)
+    spiketrain = np.zeros(max_indices, dtype=bool)
     spiketrain[times_2] = True
 
     # Convert neuron_2 spikes to firing rate using the inverse ISI method
@@ -1219,8 +1219,11 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
         spike_counts[current_firing_rate_bin_number, :] += spiketrain[start:stop]
         times[current_firing_rate_bin_number] += 1
 
-    # remove bin 0, which will always be 1
+    
     acg_3d = spike_counts / (np.ones((len(time_axis), num_firing_rate_bins)) * times).T
+    # Divison by zero cases will return nans, so we fix this
+    acg_3d = np.nan_to_num(acg_3d)
+    # remove bin 0, which will always be 1
     acg_3d[:,acg_3d.shape[1]//2] = 0
 
     return firing_rate_bins, acg_3d

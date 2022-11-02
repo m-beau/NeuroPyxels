@@ -1176,18 +1176,15 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
     spiketrain[times_2] = True
 
     # Convert neuron_2 spikes to firing rate using the inverse ISI method
-    num_samples = times_2[-1]
-    firing_rate = np.zeros(num_samples)
-    for i in range(0, len(times_2)-1):
-        current_firing_rate = 1.0 / ((times_2[i+1] - times_2[i]) * (bin_size / 1000))
-        firing_rate[times_2[i]:times_2[i+1]] = current_firing_rate
-        if i == 0:
-            firing_rate[0:times_2[i]] = current_firing_rate
-        if i == len(times_2) - 1:
-            firing_rate[times_2[i+1]:] = current_firing_rate
+    firing_rate = np.zeros(max_indices)
+    for i in range(1, len(times_2)-1):
+        start = 0 if i == 0 else (times_2[i-1] + (times_2[i] - times_2[i-1])//2)
+        stop = max_indices if i == len(times_2) - 1 else (times_2[i] + (times_2[i+1] - times_2[i])//2)
+        current_firing_rate = 1.0 / ((stop - start) * (bin_size / 1000))
+        firing_rate[start:stop] = current_firing_rate
             
     # Smooth the firing rate using numpy convolution function if requested
-    if smooth is not None:
+    if (type(smooth) == int or type(smooth) == float) and smooth > 0:
         kernel_size = int(np.ceil(smooth / bin_size))
         half_kernel_size = kernel_size // 2
         kernel = np.ones(kernel_size) / kernel_size
@@ -1206,7 +1203,7 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
 
     # Get firing rate quantiles
     quantile_bins = np.linspace(0, 1, num_firing_rate_bins + 2)[1:-1]
-    firing_rate_bins = np.quantile(firing_rate, quantile_bins)
+    firing_rate_bins = np.quantile(firing_rate[times_1], quantile_bins)
     for (i, spike_index) in enumerate(times_1):
         start = spike_index + int(np.ceil(time_axis[0] / bin_size))
         stop = start + len(time_axis)

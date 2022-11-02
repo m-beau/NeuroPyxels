@@ -87,40 +87,21 @@ def neg_peak_amp_time(waves, axes=1):
     return np.min(waves, axis=axes), np.argmin(waves, axis=axes)
 
 
-def cross_times(waves, peak_time, trough_time):
+def cross_times(wvf, peak_time, trough_time):
     """
     find where the wvf 'crosses' 0 between the most negative and the next peak
 
     """
 
-    # crossing between the two peaks
-    # find the two max peaks
-    #    peak_t, peak_v = detect_peaks(waves.T)
+    cross_relative_t = np.where(np.diff(np.sign(wvf[trough_time:peak_time])))[0]
+    if len(cross_relative_t) > 0:
+        cross_t = cross_relative_t[0] + trough_time
+    else:
+        cross_t = peak_time
+    
+    cross_t = cross_t.astype("int16")
 
-    # get the most negative peak
-    #    min_amp_arg = np.argmin(peak_v)
-    # get the peak following it
-
-    #    max_amp_arg = min_amp_arg +1
-    #    min_amp = peak_v[min_amp_arg]
-    #    max_amp = peak_v[max_amp_arg]
-    #    pos_t = peak_t[max_amp_arg]
-    #    neg_t = peak_t[min_amp_arg]
-
-    # new start
-
-    crossing1 = np.array(
-        [
-            0,
-        ]
-    )
-
-    crossing1 = (
-        trough_time + np.where(np.diff(np.sign(waves[trough_time:peak_time])))[0][0]
-    )
-    crossing1 = crossing1.astype("int16")
-
-    return crossing1, waves[crossing1 + 1]
+    return cross_t, wvf[cross_t + 1]
 
 
 # old start
@@ -404,9 +385,7 @@ def pos_10_90(waves, peak_time, trough_time):
     # get the most negative peak
     #    min_amp_arg = np.argmin(peak_v)
     # get the peak following it
-
-    prev_peak_t = trough_time
-    curr_peak_t = peak_time
+    
     peak_value = waves[peak_time]
 
     #    if peak_t.shape[0] == 2 and peak_v[0] > peak_v[1] :
@@ -414,8 +393,8 @@ def pos_10_90(waves, peak_time, trough_time):
     #
     #        min_amp = peak_v[min_amp_arg]
     #        max_amp = peak_v[max_amp_arg]
-    #        prev_peak_t = peak_t[max_amp_arg]
-    #        curr_peak_t = peak_t[min_amp_arg]
+    #        trough_time = peak_t[max_amp_arg]
+    #        peak_time = peak_t[min_amp_arg]
     #
     #    else:
     #        max_amp_arg = np.argmax(peak_v)
@@ -423,20 +402,22 @@ def pos_10_90(waves, peak_time, trough_time):
     #
     #        min_amp = peak_v[min_amp_arg]
     #        max_amp = peak_v[max_amp_arg]
-    #        curr_peak_t = peak_t[max_amp_arg]
-    #        prev_peak_t = peak_t[min_amp_arg]
+    #        peak_time = peak_t[max_amp_arg]
+    #        trough_time = peak_t[min_amp_arg]
 
     #    perc_10 = 0.1 * max_amp
     #    perc_90 = 0.9 * max_amp
-
-    perc_10, perc_90 = 0.1 * peak_value, 0.9 * peak_value
+    # get the section of the slope we need
+    upslope = waves[trough_time:peak_time]
+    
+    # Here they are inverted in the numpy call because we are dealing with negative values!
+    perc_10 = np.percentile(upslope, 90)
+    perc_90 = np.percentile(upslope, 10)
 
     # now need to find where the before and after cross two points happened
-    # get the section of the slope we need
-    upslope = waves[prev_peak_t:curr_peak_t]
     # get the points where the wave reaches the percentile values
-    cross_10 = prev_peak_t + np.where(np.diff(np.sign(upslope - perc_10)))[0][0]
-    cross_90 = prev_peak_t + np.where(np.diff(np.sign(upslope - perc_90)))[0][0]
+    cross_10 = trough_time + np.where(np.diff(np.sign(upslope - perc_10)))[0][0]
+    cross_90 = trough_time + np.where(np.diff(np.sign(upslope - perc_90)))[0][0]
 
     crosses_10 = np.array([cross_10, cross_10 + 1])
     # ensure the value is positive for the first crossing
@@ -1259,18 +1240,20 @@ def healthy_waveform(waveform_1d, peaks_values):
     return True
 
 
-def is_somatic(peaks_v):
+def is_somatic(peaks_v, wvf_std):
     """
     Assures that the waveform is somatic and can be used in further processing.
     For this we need to have at least a through followed by a peak in the waveform we found.
+    Alternative, the repolarisation (if negative) should be within the std of the waveform.
     """
 
     peak_signs = np.sign(peaks_v).astype(np.int32).tolist()
     peak_signs = str(peak_signs)
     pattern = "-1, 1"
     neg_abs = np.abs(np.max(peaks_v)) < np.abs(np.min(peaks_v))
+    repolarising = pattern in peak_signs or (np.abs(peaks_v[-1]) < wvf_std)
 
-    return pattern in peak_signs and neg_abs
+    return repolarising and neg_abs
 
 
 def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):
@@ -1320,8 +1303,7 @@ def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):
     for channel, wf in zip(high_amp_channels, high_amp_waveforms):
         _, peak_v = detect_peaks(wf, margin = 0.8)
         if healthy_waveform(wf, peak_v):
-            # To check if somatic we add back the margin used in detect peaks, so that slightly negative repolarisation will still appear as peaks
-            if is_somatic(peak_v + 0.8 * np.std(wf)):
+            if is_somatic(peak_v, np.std(wf)):
                 any_somatic = True
                 candidate_channel_somatic.append(channel)
             else:
@@ -1349,7 +1331,7 @@ def find_relevant_waveform(waveform_2d, peak_channel, max_chan_lookaway=16):
         return None, None, None
 
 
-def find_relevant_peaks(peak_t, peak_v):
+def find_relevant_peaks(peak_t, peak_v, wvf_std):
     """
     Given two arrays of peak times and peak values from detect_peaks,
     finds the first trough in the array which is followed by a peak to use in the extraction
@@ -1378,7 +1360,7 @@ def find_relevant_peaks(peak_t, peak_v):
     while valid == False and first_trough_idx < len(peak_t) - 1:
         if (
             np.sign(peak_v[first_trough_idx]) == -1
-            and np.sign(peak_v[first_trough_idx + 1]) == 1
+            and (np.sign(peak_v[first_trough_idx + 1]) == 1) or (np.abs(peak_v[first_trough_idx + 1]) < wvf_std)
         ):
             first_trough_t = peak_t[first_trough_idx]
             first_peak_t = peak_t[first_trough_idx + 1]
@@ -1408,7 +1390,7 @@ def extract_peak_channel_features(relevant_waveform, plot_debug=False):
     if len(peak_times) < 2 or np.all(peak_values < 0):
         return [0] * 15
 
-    first_trough_t, first_peak_t = find_relevant_peaks(peak_times, peak_values)
+    first_trough_t, first_peak_t = find_relevant_peaks(peak_times, peak_values, 0.8 * np.std(relevant_waveform))
 
     neg_v = relevant_waveform[first_trough_t]
     neg_t = first_trough_t
@@ -1656,7 +1638,7 @@ def plot_all(one_wave, dp=None, unit=None, label=None):
     wvf = wvf / np.max(np.abs(wvf))
     peak_t, peak_v = detect_peaks(wvf)
 
-    trough_time, peak_time = find_relevant_peaks(peak_t, peak_v)
+    trough_time, peak_time = find_relevant_peaks(peak_t, peak_v, 0.8 * np.std(wvf))
 
     onset = onset_amp_time(wvf, peak_time, trough_time)
     offset = end_amp_time(wvf, peak_time, trough_time)

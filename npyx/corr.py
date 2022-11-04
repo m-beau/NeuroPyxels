@@ -1185,6 +1185,7 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
             firing_rate[0:times_2[i]] = current_firing_rate
         if i == len(times_2) - 1:
             firing_rate[times_2[i+1]:] = current_firing_rate
+            
     # Smooth the firing rates if requested
     if smooth is not None:
         smooth_half_num_indices = int(np.ceil(smooth / bin_size / 2))

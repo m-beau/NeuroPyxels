@@ -582,9 +582,11 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
                      fp=None, fn=None, fp_t=None, fn_t=None, fp_threshold=0.05, fn_threshold=0.05,
-                     good_fp_periods=None, good_fn_periods=None, title=None, axis=None):
+                     good_fp_periods=None, good_fn_periods=None, title=None, axis=None,
+                     downsample=0.1):
     """
     - train: seconds
+    - downsample: [0-1] value, if not None fraction of amplitudes to plot
     """
     if fp is not None and fn is not None:
         fp_ok, fn_ok = len(fp)>0, len(fn)>0
@@ -612,8 +614,14 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
             axs[axi].plot(ls="--")
             axs[axi].set_ylabel("FN rate")
             axi+=1
-    axs[axi].scatter((train)[good_spikes_m], amplitudes[good_spikes_m], color='green', alpha=0.5, s=3)
-    axs[axi].scatter((train)[~good_spikes_m], amplitudes[~good_spikes_m], color='k', alpha=0.5, s=3)
+    if downsample is not None:
+        sample = np.random.choice(len(amplitudes), int(len(amplitudes)*downsample), replace=False)
+        train = train[sample]
+        amplitudes = amplitudes[sample]
+        good_spikes_m = good_spikes_m[sample]
+            
+    axs[axi].scatter((train)[good_spikes_m], amplitudes[good_spikes_m], color='green', alpha=0.5, s=10)
+    axs[axi].scatter((train)[~good_spikes_m], amplitudes[~good_spikes_m], color='k', alpha=0.5, s=10)
     min_amp=np.min(amplitudes)
     axs[axi].plot([x1,x2], [min_amp,min_amp], color='grey', lw=0.5, zorder=-1)
     if good_fp_periods is not None:
@@ -925,12 +933,13 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
 def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
                      fig=None, color=None, custom_text=None):
     "w is a (n_samples, n_channels) array"
+    t = np.arange(-w.shape[0]//2/30, w.shape[0]//2/30, 1/30)
     if peak_channel is None:
         pk = np.argmax(np.ptp(w, axis=0))
     else:
         pk = peak_channel
     ylim = [np.min(w[:,pk])-50, np.max(w[:,pk])+50]
-    if fig is None: fig = plt.figure(figsize=(6, 14))
+    if fig is None: fig = plt.figure(figsize=(3.5, 14))
     chans = np.arange(pk-nchans//2, pk+nchans//2)
     if custom_text is not None:
         assert isinstance(custom_text, list)
@@ -945,9 +954,10 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
         ax.text(0.05, 0.7, f'{chans[i]}', fontsize=8, transform = ax.transAxes)
         if custom_text is not None:
             ax.text(0.8, 0.7, str(custom_text[i]), fontsize=8, transform = ax.transAxes)
-        ax.plot(np.arange(-w.shape[0]//2/30, w.shape[0]//2/30, 1/30), w[:,chans[i]],
+        ax.plot(t, w[:,chans[i]],
                 alpha=0.8, lw=1, color=color)
         ax.set_ylim(ylim)
+        ax.set_xlim([t[0], t[-1]])
         if i%2==1: ax.set_yticklabels([])
         if i<nchans-2: ax.set_xticklabels([])
     fig.suptitle(title, y=0.92)
@@ -1728,7 +1738,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True,
             _format='pdf', labels=True, title=None, color=-1,
             ylim=None, normalize='Hertz', ccg_mn=None, ccg_std=None,
-            figsize=None, show_hz=False, style='line'):
+            figsize=None, show_hz=False, style='line', hide_axis=False):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -1808,7 +1818,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
          title=title,
          xlabel='Time (ms)', ylabel=ylabel,
          title_s=16, axlab_s=16, ticklab_s=16,
-         xlim=[-cwin*1./2, cwin*1./2], ylim=ylim)
+         xlim=[-cwin*1./2, cwin*1./2], ylim=ylim, hide_axis=hide_axis)
 
     # Eventually save figure
     if saveFig:
@@ -1818,7 +1828,8 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
 
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=False,
             _format='pdf', labels=True, title=None, ref_per=True,
-            ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None, figsize=None):
+            ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None, figsize=None,
+            hide_axis=False):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -1893,7 +1904,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
          title=title,
          xlabel='Time (ms)', ylabel=ylabel,
          title_s=16, axlab_s=16, ticklab_s=16,
-         xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2])
+         xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2], hide_axis=hide_axis)
 
 
     # Eventually save figure
@@ -1906,7 +1917,14 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
 def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downloads',
                      saveFig=False, _format='pdf', figsize=None,
                      labels=True, show_ttl=True, title=None,
-                     ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore'):
+                     ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore',
+                     acg_color=None, ccg_color='black', hide_axis=False, pad=0):
+
+    ## format parameters
+    if acg_color is not None and not isinstance(acg_color, str):
+        assert len(acg_color) == CCGs.shape[0],\
+            ("If acg_color is not a string, it must be a list of colors "
+            "with the same length as the number of units (e.g. [[r,g,b]] for 1 unit.")
 
     ## Instanciate figure and format x axis/channels
     l=CCGs.shape[0]
@@ -1983,12 +2001,18 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
             on_acg = (row==col)
             if on_acg:
                 acg_mask=np.append(acg_mask,[True])
-                color=phyColorsDic[row%6]
+                if acg_color is None:
+                    color = phyColorsDic[row%6]
+                else:
+                    if isinstance(acg_color, str):
+                        color = acg_color
+                    else:
+                        color = acg_color[row]
                 y=CCGs[row,col,:]
                 if normalize=='mixte': normalize1='Hertz'
             else:
                 acg_mask=np.append(acg_mask,[False])
-                color=phyColorsDic[-1]
+                color=ccg_color
                 if normalize=='mixte':
                     y=zscore(CCGs[row,col,:], 4./5)
                     normalize1='zscore'
@@ -2022,13 +2046,13 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 title_s=8, title_w='regular',
                 axlab_s=12, axlab_w='regular',
                 ticklab_s=12, ticklab_w='regular',
-                tight_layout=False)
+            tight_layout=False, hide_axis=hide_axis)
             i+=1
             pbar.update(1)
 
     if title is not None:
         fig.suptitle(title, size=20, weight='bold')
-    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95], pad=pad)
     if saveFig:
         save_mpl_fig(fig, f"ccg_{title}_{str(units).replace(' ', '')}-{cwin}_{cbin}", saveDir, _format)
 
@@ -2038,7 +2062,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
              saveDir='~/Downloads', saveFig=False, _format='pdf', figsize=None, verbose=False,
              color=0, labels=True, title=None, ref_per=True, ylim=[0,0],
              acg_mn=None, acg_std=None, again=False,
-              train=None):
+              train=None, hide_axis=False):
     """
     Parameters:
         - dp: str, data path
@@ -2085,7 +2109,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
         acg_mn=np.mean(np.append(acg25, acg35))
     fig=plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, _format=_format,
             labels=labels, title=title, ref_per=ref_per, ylim1=ylim1, ylim2=ylim2,
-            normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize)
+            normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize, hide_axis=hide_axis)
 
     return fig
 
@@ -2094,7 +2118,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
              title=None, show_ttl=True, color=-1, CCG=None,
              ylim_acg=None, ylim_ccg=None, share_y=False,
              ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False,
-             use_template=True, enforced_rp=0, style='line'):
+             use_template=True, enforced_rp=0, style='line', hide_axis=False, pad=0):
     """
     Parameters:
         - dp: str, data path
@@ -2154,11 +2178,12 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
 
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format,
                       labels=labels, title=title, color=color, ylim=ylim_ccg,
-                      normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std, figsize=figsize, style=style)
+                      normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std, figsize=figsize, style=style, hide_axis=hide_axis)
     else:
         fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, saveDir, saveFig, _format, figsize,
                                labels=labels, show_ttl=show_ttl,title=title,
-                               ylim_acg=ylim_acg, ylim_ccg=ylim_ccg, share_y=share_y, normalize=normalize)
+                               ylim_acg=ylim_acg, ylim_ccg=ylim_ccg, share_y=share_y, normalize=normalize,
+                               acg_color=color, hide_axis=hide_axis, pad=pad)
 
     return fig
 

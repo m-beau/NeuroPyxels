@@ -203,7 +203,9 @@ def mplp(fig=None, ax=None, figsize=None,
          ticklab_w='regular', ticklab_s=14, ticks_direction='out', lw=1,
          title=None, title_w='bold', title_s=16,
          hide_top_right=True, hide_axis=False,
-         tight_layout=False, hspace=None, wspace=None, hide_legend=False):
+         tight_layout=False, hspace=None, wspace=None,
+         show_legend=False, hide_legend=False, legend_loc=(1,1),
+         saveFig=False, saveDir = "~/Downloads", figname="figure", _format="pdf"):
     '''
     make plots pretty
     matplotlib plots
@@ -289,7 +291,15 @@ def mplp(fig=None, ax=None, figsize=None,
     fig.align_ylabels(axis_to_align)
     fig.align_xlabels(axis_to_align)
 
-    if hide_legend: plt.legend([],[], frameon=False)
+    assert not (show_legend and hide_legend),\
+        "You instructed to both show and hide the legend...?"
+    assert len(legend_loc)==2 or len(legend_loc)==4,\
+        "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
+    if show_legend: plt.legend(bbox_to_anchor=legend_loc)
+    elif hide_legend: plt.legend([],[], frameon=False)
+
+    if saveFig:
+        save_mpl_fig(fig, figname, saveDir, _format, dpi=500)
 
     return fig, ax
 
@@ -2349,7 +2359,7 @@ def add_colorbar(fig, ax, mappable, vmin, vmax,
     cbaraxx0,cbaraxy0 = float(axpos.x1+0.005), float(axpos.y0) #float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
     cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, width, height])
     if cticks is None:
-        cticks=get_bestticks_from_array(np.arange(vmin,vmax+(vmax-vmin)/10,(vmax-vmin)/10), light=True)
+        cticks=get_bestticks(vmin, vmax, light=True)
     fig.colorbar(mappable, cax=cbar_ax, ax=ax,
              orientation='vertical', label=clabel,
              extend=extend_cmap, ticks=cticks, use_gridspec=True)

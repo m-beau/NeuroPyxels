@@ -1172,33 +1172,39 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
 
     # Convert times_1 into a binary spike train
     max_indices = int(np.ceil(max(times_1[-1], times_2[-1]) + 1))
-    spiketrain = np.zeros(max_indices, dtype=np.bool)
+    spiketrain = np.zeros(max_indices, dtype=bool)
     spiketrain[times_2] = True
 
     # Convert neuron_2 spikes to firing rate using the inverse ISI method
-    num_samples = times_2[-1]
-    firing_rate = np.zeros(num_samples)
-    for i in range(0, len(times_2)-1):
-        current_firing_rate = 1.0 / ((times_2[i+1] - times_2[i]) * (bin_size / 1000))
-        firing_rate[times_2[i]:times_2[i+1]] = current_firing_rate
-        if i == 0:
-            firing_rate[0:times_2[i]] = current_firing_rate
-        if i == len(times_2) - 1:
-            firing_rate[times_2[i+1]:] = current_firing_rate
+    firing_rate = np.zeros(max_indices)
+    for i in range(1, len(times_2)-1):
+        start = 0 if i == 0 else (times_2[i-1] + (times_2[i] - times_2[i-1])//2)
+        stop = max_indices if i == len(times_2) - 1 else (times_2[i] + (times_2[i+1] - times_2[i])//2)
+        current_firing_rate = 1.0 / ((stop - start) * (bin_size / 1000))
+        firing_rate[start:stop] = current_firing_rate
             
-    # Smooth the firing rates if requested
-    if smooth is not None:
-        smooth_half_num_indices = int(np.ceil(smooth / bin_size / 2))
-        smoothed_firing_rate = np.copy(firing_rate)
-        for i in range(0, len(smoothed_firing_rate)):
-            start = max(0, i - smooth_half_num_indices)
-            stop = min(len(smoothed_firing_rate), i + smooth_half_num_indices)
+    # Smooth the firing rate using numpy convolution function if requested
+    if (type(smooth) == int or type(smooth) == float) and smooth > 0:
+        kernel_size = int(np.ceil(smooth / bin_size))
+        half_kernel_size = kernel_size // 2
+        kernel = np.ones(kernel_size) / kernel_size
+        smoothed_firing_rate = np.convolve(firing_rate, kernel, mode='same')
+
+        # Correct manually for possible artefacts at the edges
+        for i in range(kernel_size):
+            start = max(0, i - half_kernel_size)
+            stop = min(len(firing_rate), i + half_kernel_size)
+            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
+        for i in range(len(firing_rate) - kernel_size, len(firing_rate)):
+            start = max(0, i - half_kernel_size)
+            stop = min(len(firing_rate), i + half_kernel_size)
+
             smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
         firing_rate = smoothed_firing_rate
 
     # Get firing rate quantiles
     quantile_bins = np.linspace(0, 1, num_firing_rate_bins + 2)[1:-1]
-    firing_rate_bins = np.quantile(firing_rate, quantile_bins)
+    firing_rate_bins = np.quantile(firing_rate[times_1], quantile_bins)
     for (i, spike_index) in enumerate(times_1):
         start = spike_index + int(np.ceil(time_axis[0] / bin_size))
         stop = start + len(time_axis)
@@ -1211,8 +1217,11 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
         spike_counts[current_firing_rate_bin_number, :] += spiketrain[start:stop]
         times[current_firing_rate_bin_number] += 1
 
-    # remove bin 0, which will always be 1
+    
     acg_3d = spike_counts / (np.ones((len(time_axis), num_firing_rate_bins)) * times).T
+    # Divison by zero cases will return nans, so we fix this
+    acg_3d = np.nan_to_num(acg_3d)
+    # remove bin 0, which will always be 1
     acg_3d[:,acg_3d.shape[1]//2] = 0
 
     return firing_rate_bins, acg_3d

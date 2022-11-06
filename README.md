@@ -338,9 +338,9 @@ PS - The spike times are aligned across datasets by modelling the drift between 
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/error_dist.png" width="600"/>
 <br/>
 
-### Other npyx utility functions which could turn out useful
+### Bonus: cool npyx plotting utilities which could turn out useful
 ```python
-from npyx.utils import get_ncolors_cmap
+from npyx.plot import get_ncolors_cmap
 
 # allows you to easily extract the (r,g,b) tuples from a matplotlib or crameri colormap
 # to use them in other plots!
@@ -349,6 +349,41 @@ colors = get_ncolors_cmap('viridis', 10, plot=1)
 # in a jupyter notebook, will also plot he HTML colormap:
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/colormaps.png" width="600"/>
+
+```python
+from npyx.plot import mplp
+import matplotlib.pyplot as plt
+
+# mplp() will turn any matplotlib plot into something you can work with.
+# fed up googling around and landing on stack overflow to tweak your figures?
+# just read mplp parameters, they are self-explanatory!
+
+df1 = pd.load("my_dataframe.csv")
+
+# Seaborn figure (seaborn is simply a wrapper for matplotlib):
+fig = plt.figure()
+sns.scatterplot(data=df1,
+                x='popsync', y='depth', hue='mean_popsync',
+                palette='plasma', alpha=1, linewidth=1, edgecolor='black')
+```
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/no_mplp.png" width="600"/>
+
+```python
+# Same figure, tweaked with mplp():
+fig = plt.figure()
+sns.scatterplot(data=df1,
+                x='popsync', y='depth', hue='mean_popsync',
+                palette='plasma', alpha=1, linewidth=1, edgecolor='black')
+mplp(figsize=(3,3), title="My title", ylim=[-10,-2], xlim=[-40,60],
+      xlabel = "My x label (rotated ticks)", ylabel="My y label",
+      xtickrot=45,
+      hide_legend=True, colorbar=True,
+      vmin=df['mean_popsync'].min(), vmax=df['mean_popsync'].max(),
+      cbar_w=0.03, cbar_h=0.4, clabel="My colorbar label\n(no more ugly legend!)", cmap="plasma",
+      clabel_s=16, cticks_s=14, ticklab_s=16,
+      saveFig=saveFig, saveDir=saveDir, figname = f"popsync_{pair}")
+```
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/mplp.png" width="600"/>
 
 <br/>
 

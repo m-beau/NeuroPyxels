@@ -19,7 +19,7 @@ There isn't any better doc atm - post an issue if you have any question, or emai
   - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
   - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
   - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
-  - [Bonus: cool npyx plotting utilities which could turn out useful](https://github.com/m-beau/NeuroPyxels#bonus-cool-npyx-plotting-utilities-which-could-turn-out-useful)
+  - [Bonus: cool npyx plotting utilities which could turn out useful](https://github.com/m-beau/NeuroPyxels#bonus-cool-matplotlib-plotting-utilities-which-could-turn-out-useful)
 - **[Installation](https://github.com/m-beau/NeuroPyxels#installation)**
 - **[Acknowledgement](https://github.com/m-beau/NeuroPyxels#acknowledgement)**
 - **[Developer cheatsheet](https://github.com/m-beau/NeuroPyxels#developer-cheatsheet)**

@@ -56,6 +56,22 @@ def mplp(fig=None, ax=None, figsize=None,
     '''
     make plots pretty
     matplotlib plots
+
+    Awesome utility to format matplotlib plots.
+    Simply add mplp() at the end of any plotting script, feeding it with your fav parameters!
+
+    In a breeze,
+        - change the weight/size/alignment/rotation of the axis labels, ticks labels, title
+        - edit the x, y and colorbar axis ticks and ticks labels
+        - hide the splines (edges of your figure)
+        - hide all the axis, label etc in one go with hide_axis
+        - save figures in any format
+        - add or remove a legend
+        - add a custom colorbar
+        - apply tight_layout to fit your subplots properly (in a way which prevents saved plots from being clipped)
+
+    How it works: it will grab the currently active figure and axis (plt.gcf() and plt.gca()).
+    Alternatively, you can pass a matplotlib figure and specific axes as arguments.
     '''
     if fig is None: fig=plt.gcf()
     if ax is None: ax=plt.gca()

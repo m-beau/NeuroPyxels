@@ -1852,7 +1852,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
 #                     ax.plot(x, y_p-y_p_sem, lw=0.5, color=color)
 #                     ax.plot(x, y_p+y_p_sem, lw=0.5, color=color)
 #             yl=max(y_p+y_p_sem); ylims.append(int(yl)+5-(yl%5));
-#             ax.set_ylabel('Inst.F.R. (Hz)')
+#             ax.set_ylabel('Inst.F.R. (sp/s)')
 
 #         ax.set_xlabel('Time from {} (ms).'.format(trgnDic[trg]))
 
@@ -2029,7 +2029,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
 #                 ax.plot(x, y_p-y_p_sem, lw=0.5, color=color)
 #                 ax.plot(x, y_p+y_p_sem, lw=0.5, color=color)
 #         yl=max(y_p+y_p_sem); ylims.append(int(yl)+5-(yl%5));
-#         ax.set_ylabel('Inst.F.R. (Hz)')
+#         ax.set_ylabel('Inst.F.R. (sp/s)')
 
 #     ax.set_xlabel('Time from {} (ms).'.format(triggersname))
 #     ax.set_title('{} (n={})'.format(title, totalUnits))
@@ -2392,7 +2392,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
 #     sns.pointplot(data=allMFRs, dodge=.532, join=False, color=(139/256,0,0), markers="D", scale=1, orient='h', ci='sd')
 #     ax.set_title('Mean firing rate of all putative Complex Spikes')
 #     ax.set_xlim([0, ylim])
-#     ax.set_xlabel('Mean Firing Rate (Hz)')
+#     ax.set_xlabel('Mean Firing Rate (sp/s)')
 #     ax.set_yticklabels([])
 #     print('All MFR mean: {} +/- {} Hz'.format(np.mean(allMFRs), np.std(allMFRs)))
 #     if saveFig or saveData:
@@ -2556,7 +2556,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
 #                 ax.plot([400,400], ax.get_ylim(), ls="--", c=[30/255,144/255,255/255], lw=0.5)
 #             ax.set_xlim(window[0], window[1])
 #             ax.set_xlabel('Time (ms)')
-#             ax.set_ylabel('Inst.F.R (Hz)')
+#             ax.set_ylabel('Inst.F.R (sp/s)')
 
 #     fig.tight_layout()
 #     return fig, axes

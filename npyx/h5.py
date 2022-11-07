@@ -436,7 +436,8 @@ def load_json_datasets(json_path, include_missing_datasets=False):
 
 def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
                             delete_original_data=False, data_deletion_double_check=False,
-                            again=False, include_raw_snippets=False, verbose=False, **kwargs):
+                            again=False, include_raw_snippets=False, verbose=False,
+                            include_all_good = False, **kwargs):
 
     DSs = load_json_datasets(json_path, include_missing_datasets=False)
 
@@ -456,9 +457,15 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
         units=ds['units']
         ss=ds['ss']
         cs=ds['cs']
+        good_units = list(get_units(dp, 'good'))
         sane_times = ds["sane_times"] if "sane_times" in ds else None
 
-        for u in units+ss+cs:
+        if include_all_good:
+            units_for_h5 = np.unique(units+ss+cs+good_units)
+        else:
+            units_for_h5 = units+ss+cs
+
+        for u in units_for_h5:
             add_unit_h5(h5_path, dp, u, lab_id, periods='all',
                     again=again, again_wvf=again, verbose=verbose,
                     include_raw_snippets=include_raw_snippets, include_whitened_snippets=include_raw_snippets,
@@ -469,15 +476,18 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
                 label="PkC_ss"
             elif u in cs:
                 label="PkC_cs"
+            else:
+                continue
             label_optotagged_unit_h5(h5_path, ds_name, u, label)
 
 def add_json_datasets_to_h5_hausser(json_path, h5_path, again=False, include_raw_snippets=False,
-                                    delete_original_data=False, data_deletion_double_check=False):
+                                    delete_original_data=False, data_deletion_double_check=False,
+                                    include_all_good=False):
 
     add_json_datasets_to_h5(json_path, h5_path, "hausser", preprocess_if_raw=False,
                             delete_original_data=delete_original_data, data_deletion_double_check=data_deletion_double_check,
                             again=again, include_raw_snippets=include_raw_snippets, verbose=False,
-                            optostims_from_sync=True, optostims_threshold=20*60)
+                            optostims_from_sync=True, optostims_threshold=20*60, include_all_good=include_all_good)
 
 
 def add_data_to_unit_h5(h5_path, dataset, unit, data, field):

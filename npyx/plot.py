@@ -1636,6 +1636,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
     ## TODO overlay=False, overlay_dim='events',
     nevents=len(events)
     ntrains=len(trains)
+    assert nevents>0 and ntrains>0, "You must provide at least one event and one train!"
     if trains_col_groups is None: trains_col_groups=[0]*ntrains
     ntraingroups=np.unique(trains_col_groups).shape[0]
 

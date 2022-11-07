@@ -572,6 +572,11 @@ def pos_half_width(waves, peak_time, trough_time):
 
     # look for crossings from cross_time to end
     start_interval = cross_times(waves, peak_time, trough_time)[0].astype(np.int64)
+    
+    # If the cross time found is the peak value, it means that the peak is negative! (i.e. the repolarisation is not very prominent)
+    if start_interval == peak_time:
+        return peak_time, peak_time, 0, 0
+    
     end_interval = waves.shape[0]
 
     current_slope = waves[start_interval:end_interval]
@@ -1250,7 +1255,7 @@ def is_somatic(peaks_v, wvf_std):
     peak_signs = np.sign(peaks_v).astype(np.int32).tolist()
     peak_signs = str(peak_signs)
     pattern = "-1, 1"
-    neg_abs = np.abs(np.max(peaks_v)) < np.abs(np.min(peaks_v))
+    neg_abs = (pattern in peak_signs and len(peaks_v)==2) or (np.abs(np.max(peaks_v)) < np.abs(np.min(peaks_v)))
     repolarising = pattern in peak_signs or (np.abs(peaks_v[-1]) < wvf_std)
 
     return repolarising and neg_abs
@@ -2545,7 +2550,7 @@ def filter_df(dfram):
     return dfram[~all_conds]
 
 
-def feature_extraction(json_path, check_json=True, save_path=None):
+def feature_extraction(json_path, check_json=True, save_path=None, use_unlabelled=False, ignore_exceptions=False):
     """
     It takes a json file containing paths to all the recordings and extracts the features.
 
@@ -2572,7 +2577,7 @@ def feature_extraction(json_path, check_json=True, save_path=None):
     any_not_found = False
     if check_json:
         for ds in tqdm(
-            json_f.values(), desc="Checking provided json file", position=0, leave=True
+            json_f.values(), desc="Checking provided json file", position=0, leave=False
         ):
             dp = Path(ds["dp"])
             DSs[dp.name] = ds
@@ -2630,41 +2635,57 @@ def feature_extraction(json_path, check_json=True, save_path=None):
     ]
 
     feat_df = pd.DataFrame(columns=columns)
-
-    for ds in tqdm(json_f.values(), desc="Extracting features", position=0, leave=True):
-        dp = Path(ds["dp"])
-        optolabel = ds["ct"]
-        if optolabel == "PkC":
-            optolabel = "PkC_ss"
-        units = ds["units"]
-        ss = ds["ss"]
-        cs = ds["cs"]
-        for u in units + ss + cs:
-            if u in units:
-                label = optolabel
-            elif u in ss:
-                label = "PkC_ss"
-            elif u in cs:
-                label = "PkC_cs"
-            try:
-                wvf_features = waveform_features_wrap(dp, u)
-                tmp_features = temporal_features_wrap(dp, u)
-                curr_feat = (
-                    [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]
-                )
-                feat_df = feat_df.append(
-                    dict(zip(columns, curr_feat)), ignore_index=True
-                )
-            except Exception as e:
-                exc_type, _, exc_tb = sys.exc_info()
-                print(
-                    f"Something went wrong for the feature computation of neuron {u} in {dp}"
-                )
-                print(f"{exc_type} at line {exc_tb.tb_lineno}: {e}")
-                raise
-
-    if save_path is not None:
-        today = date.today().strftime("%b-%d-%Y")
-        feat_df.to_csv(f"{save_path}{today}_all_features.csv")
+    # Wrapping everything inside an exception block just to make sure we are returning the dataframe even if the results are partial.
+    try:
+        for ds in tqdm(json_f.values(), desc="Extracting features from datasets", position=0, leave=True):
+            dp = Path(ds["dp"])
+            optolabel = ds["ct"]
+            if optolabel == "PkC":
+                optolabel = "PkC_ss"
+            if use_unlabelled:
+                units = get_units(dp, 'good').tolist()
+                ss = []
+                cs = []
+            else:
+                units = ds["units"] 
+                ss = ds["ss"]
+                cs = ds["cs"]
+            for u in tqdm(units + ss + cs, desc=f"Extracting features from {dp.name}", position=1, leave=False):
+                if u in units:
+                    label = optolabel if not use_unlabelled else "unlabelled"
+                elif u in ss:
+                    label = "PkC_ss"
+                elif u in cs:
+                    label = "PkC_cs"
+                try:
+                    wvf_features = waveform_features_wrap(dp, u)
+                    tmp_features = temporal_features_wrap(dp, u)
+                    curr_feat = (
+                        [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]
+                    )
+                    feat_df = feat_df.append(
+                        dict(zip(columns, curr_feat)), ignore_index=True
+                    )
+                except Exception as e:
+                    exc_type, _, exc_tb = sys.exc_info()
+                    print(
+                        f"Something went wrong for the feature computation of neuron {u} in {dp}"
+                    )
+                    print(f"{exc_type} at line {exc_tb.tb_lineno}: {e}")
+                    
+                    if ignore_exceptions:
+                        curr_feat = np.zeros(len(columns))
+                        feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
+                        continue
+                    else:
+                        raise
+                    
+    except:
+        raise                
+    
+    finally:
+        if save_path is not None:
+            today = date.today().strftime("%b-%d-%Y")
+            feat_df.to_csv(f"{save_path}{today}_all_features.csv")
 
     return feat_df

@@ -40,6 +40,138 @@ from npyx.behav import align_times, get_processed_ifr, get_processed_popsync
 
 #%% plotting utilities ##############################################################################################
 
+def mplp(fig=None, ax=None, figsize=None,
+         xlim=None, ylim=None, xlabel=None, ylabel=None,
+         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=False, reset_yticks=False,
+         xtickrot=0, ytickrot=0, xtickha='center', xtickva='top', ytickha='right', ytickva='center',
+         axlab_w='regular', axlab_s=16,
+         ticklab_w='regular', ticklab_s=14, ticks_direction='out', lw=1,
+         title=None, title_w='bold', title_s=16,
+         hide_top_right=True, hide_axis=False,
+         tight_layout=False, hspace=None, wspace=None,
+         show_legend=False, hide_legend=False, legend_loc=(1,1),
+         saveFig=False, saveDir = "~/Downloads", figname="figure", _format="pdf",
+         colorbar=False, vmin=None, vmax=None, cmap=None, cticks=None,
+         cbar_w=0.03, cbar_h=0.4, clabel=None, clabel_w='regular', clabel_s=16, cticks_s=14):
+    '''
+    make plots pretty
+    matplotlib plots
+
+    Awesome utility to format matplotlib plots.
+    Simply add mplp() at the end of any plotting script, feeding it with your fav parameters!
+
+    In a breeze,
+        - change the weight/size/alignment/rotation of the axis labels, ticks labels, title
+        - edit the x, y and colorbar axis ticks and ticks labels
+        - hide the splines (edges of your figure)
+        - hide all the axis, label etc in one go with hide_axis
+        - save figures in any format
+        - add or remove a legend
+        - add a custom colorbar
+        - apply tight_layout to fit your subplots properly (in a way which prevents saved plots from being clipped)
+
+    How it works: it will grab the currently active figure and axis (plt.gcf() and plt.gca()).
+    Alternatively, you can pass a matplotlib figure and specific axes as arguments.
+    '''
+    if fig is None: fig=plt.gcf()
+    if ax is None: ax=plt.gca()
+    hfont = {'fontname':'Arial'}
+    if figsize is not None:
+        fig.set_figwidth(figsize[0])
+        fig.set_figheight(figsize[1])
+    # Opportunity to easily hide everything
+    if hide_axis:
+        ax.axis('off')
+
+    else: ax.axis('on')
+
+    # Axis labels
+    if ylabel is None:ylabel=ax.get_ylabel()
+    if xlabel is None:xlabel=ax.get_xlabel()
+    ax.set_ylabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
+    ax.set_xlabel(xlabel, weight=axlab_w, size=axlab_s, **hfont)
+
+    # Setup limits BEFORE altering the ticks
+    # since the limits will alter the ticks
+    if xlim is None: xlim=ax.get_xlim()
+    if ylim is None: ylim=ax.get_ylim()
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+
+    # Tick values
+    if xticks is None:
+        if reset_xticks:
+            ax.xaxis.set_major_locator(AutoLocator())
+        xticks=ax.get_xticks()
+        ax.set_xticks(xticks)
+    else: ax.set_xticks(xticks)
+    if yticks is None:
+        if reset_yticks:
+            ax.yaxis.set_major_locator(AutoLocator())
+        yticks=ax.get_yticks()
+        ax.set_yticks(yticks)
+    else: ax.set_yticks(yticks)
+
+    # Tick labels and x/y limits
+    fig.canvas.draw() # To force setting of ticklabels
+    if xtickslabels is None:
+        if any(ax.get_xticklabels()):
+            if isnumeric(ax.get_xticklabels()[0].get_text()): xtickslabels,x_nflt=get_labels_from_ticks(xticks)
+            else: xtickslabels = ax.get_xticklabels()
+    if ytickslabels is None:
+        if any(ax.get_yticklabels()):
+            if isnumeric(ax.get_yticklabels()[0].get_text()): ytickslabels,y_nflt=get_labels_from_ticks(yticks)
+            else: ytickslabels = ax.get_yticklabels()
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    if xtickslabels is not None:
+        assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/few xtickslabels! Make sure that the default/provided xticks match them.'
+        ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=xtickrot, ha=xtickha, va=xtickva)
+    if ytickslabels is not None:
+        assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels! Make sure that the default/provided yticks match them.'
+        ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=ytickrot, ha=ytickha, va=ytickva)
+
+    # Title
+    if title is None: title=ax.get_title()
+    ax.set_title(title, size=title_s, weight=title_w)
+
+    # Ticks and spines aspect
+    ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=4, direction=ticks_direction)
+    spine_keys = list(ax.spines.keys())
+    hide_spine_keys = ['polar'] if 'polar' in spine_keys else ['top', 'right']
+    lw_spine_keys = ['polar'] if 'polar' in spine_keys else ['left', 'bottom', 'top', 'right']
+    if hide_top_right and 'top' in hide_spine_keys: [ax.spines[sp].set_visible(False) for sp in hide_spine_keys]
+    else: [ax.spines[sp].set_visible(True) for sp in hide_spine_keys]
+    for sp in lw_spine_keys:
+        ax.spines[sp].set_lw(lw)
+
+
+    # Alignement and spacing elements
+    if tight_layout:fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    if (hspace is not None): fig.subplots_adjust(hspace=hspace)
+    if (wspace is not None): fig.subplots_adjust(wspace=wspace)
+    axis_to_align = [AX for AX in fig.axes if 'AxesSubplot' in AX.__repr__()]
+    fig.align_ylabels(axis_to_align)
+    fig.align_xlabels(axis_to_align)
+
+    assert not (show_legend and hide_legend),\
+        "You instructed to both show and hide the legend...?"
+    assert len(legend_loc)==2 or len(legend_loc)==4,\
+        "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
+    if show_legend: plt.legend(bbox_to_anchor=legend_loc)
+    elif hide_legend: plt.legend([],[], frameon=False)
+
+    if colorbar:
+        assert vmin is not None and vmax is not None and cmap is not None,\
+            "You must provide vmin, vmax and cmap to show a colorbar."
+        fig = add_colorbar(fig, ax, None, vmin, vmax,
+                 cbar_w, cbar_h, cticks, clabel, clabel_w, clabel_s, cticks_s, cmap) 
+
+    if saveFig:
+        save_mpl_fig(fig, figname, saveDir, _format, dpi=500)
+
+    return fig, ax
+
 def save_mpl_fig(fig, figname, saveDir, _format, dpi=500):
 
     # Fix matplotlib resolution and make text editable
@@ -193,105 +325,6 @@ def get_labels_from_ticks(ticks):
     jump_n=1 if nflt==0 else 2
     ticks_labels=[str(l)+'0'*(nflt+jump_n-len(str(l).replace('-',''))) for l in ticks_labels]
     return ticks_labels, nflt
-
-
-def mplp(fig=None, ax=None, figsize=None,
-         xlim=None, ylim=None, xlabel=None, ylabel=None,
-         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=False, reset_yticks=False,
-         xtickrot=0, ytickrot=0, xtickha='center', xtickva='top', ytickha='right', ytickva='center',
-         axlab_w='bold', axlab_s=16,
-         ticklab_w='regular', ticklab_s=14, ticks_direction='out', lw=1,
-         title=None, title_w='bold', title_s=16,
-         hide_top_right=True, hide_axis=False,
-         tight_layout=False, hspace=None, wspace=None, hide_legend=False):
-    '''
-    make plots pretty
-    matplotlib plots
-    '''
-    if fig is None: fig=plt.gcf()
-    if ax is None: ax=plt.gca()
-    hfont = {'fontname':'Arial'}
-    if figsize is not None:
-        fig.set_figwidth(figsize[0])
-        fig.set_figheight(figsize[1])
-    # Opportunity to easily hide everything
-    if hide_axis:
-        ax.axis('off')
-
-    else: ax.axis('on')
-
-    # Axis labels
-    if ylabel is None:ylabel=ax.get_ylabel()
-    if xlabel is None:xlabel=ax.get_xlabel()
-    ax.set_ylabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
-    ax.set_xlabel(xlabel, weight=axlab_w, size=axlab_s, **hfont)
-
-    # Setup limits BEFORE altering the ticks
-    # since the limits will alter the ticks
-    if xlim is None: xlim=ax.get_xlim()
-    if ylim is None: ylim=ax.get_ylim()
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
-
-    # Tick values
-    if xticks is None:
-        if reset_xticks:
-            ax.xaxis.set_major_locator(AutoLocator())
-        xticks=ax.get_xticks()
-        ax.set_xticks(xticks)
-    else: ax.set_xticks(xticks)
-    if yticks is None:
-        if reset_yticks:
-            ax.yaxis.set_major_locator(AutoLocator())
-        yticks=ax.get_yticks()
-        ax.set_yticks(yticks)
-    else: ax.set_yticks(yticks)
-
-    # Tick labels and x/y limits
-    fig.canvas.draw() # To force setting of ticklabels
-    if xtickslabels is None:
-        if any(ax.get_xticklabels()):
-            if isnumeric(ax.get_xticklabels()[0].get_text()): xtickslabels,x_nflt=get_labels_from_ticks(xticks)
-            else: xtickslabels = ax.get_xticklabels()
-    if ytickslabels is None:
-        if any(ax.get_yticklabels()):
-            if isnumeric(ax.get_yticklabels()[0].get_text()): ytickslabels,y_nflt=get_labels_from_ticks(yticks)
-            else: ytickslabels = ax.get_yticklabels()
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
-    if xtickslabels is not None:
-        assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/few xtickslabels! Make sure that the default/provided xticks match them.'
-        ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=xtickrot, ha=xtickha, va=xtickva)
-    if ytickslabels is not None:
-        assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels! Make sure that the default/provided yticks match them.'
-        ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=ytickrot, ha=ytickha, va=ytickva)
-
-    # Title
-    if title is None: title=ax.get_title()
-    ax.set_title(title, size=title_s, weight=title_w)
-
-    # Ticks and spines aspect
-    ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=4, direction=ticks_direction)
-    spine_keys = list(ax.spines.keys())
-    hide_spine_keys = ['polar'] if 'polar' in spine_keys else ['top', 'right']
-    lw_spine_keys = ['polar'] if 'polar' in spine_keys else ['left', 'bottom', 'top', 'right']
-    if hide_top_right and 'top' in hide_spine_keys: [ax.spines[sp].set_visible(False) for sp in hide_spine_keys]
-    else: [ax.spines[sp].set_visible(True) for sp in hide_spine_keys]
-    for sp in lw_spine_keys:
-        ax.spines[sp].set_lw(lw)
-
-
-    # Alignement and spacing elements
-    if tight_layout:fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    if (hspace is not None): fig.subplots_adjust(hspace=hspace)
-    if (wspace is not None): fig.subplots_adjust(wspace=wspace)
-    axis_to_align = [AX for AX in fig.axes if 'AxesSubplot' in AX.__repr__()]
-    fig.align_ylabels(axis_to_align)
-    fig.align_xlabels(axis_to_align)
-
-    if hide_legend: plt.legend([],[], frameon=False)
-
-    return fig, ax
 
 def sci_notation(num, decimal_digits=1, precision=None, exponent=None):
     """
@@ -582,9 +615,11 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 
 def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
                      fp=None, fn=None, fp_t=None, fn_t=None, fp_threshold=0.05, fn_threshold=0.05,
-                     good_fp_periods=None, good_fn_periods=None, title=None, axis=None):
+                     good_fp_periods=None, good_fn_periods=None, title=None, axis=None,
+                     downsample=0.1):
     """
     - train: seconds
+    - downsample: [0-1] value, if not None fraction of amplitudes to plot
     """
     if fp is not None and fn is not None:
         fp_ok, fn_ok = len(fp)>0, len(fn)>0
@@ -612,8 +647,14 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
             axs[axi].plot(ls="--")
             axs[axi].set_ylabel("FN rate")
             axi+=1
-    axs[axi].scatter((train)[good_spikes_m], amplitudes[good_spikes_m], color='green', alpha=0.5, s=3)
-    axs[axi].scatter((train)[~good_spikes_m], amplitudes[~good_spikes_m], color='k', alpha=0.5, s=3)
+    if downsample is not None:
+        sample = np.random.choice(len(amplitudes), int(len(amplitudes)*downsample), replace=False)
+        train = train[sample]
+        amplitudes = amplitudes[sample]
+        good_spikes_m = good_spikes_m[sample]
+            
+    axs[axi].scatter((train)[good_spikes_m], amplitudes[good_spikes_m], color='green', alpha=0.5, s=10)
+    axs[axi].scatter((train)[~good_spikes_m], amplitudes[~good_spikes_m], color='k', alpha=0.5, s=10)
     min_amp=np.min(amplitudes)
     axs[axi].plot([x1,x2], [min_amp,min_amp], color='grey', lw=0.5, zorder=-1)
     if good_fp_periods is not None:
@@ -925,12 +966,13 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
 def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
                      fig=None, color=None, custom_text=None):
     "w is a (n_samples, n_channels) array"
+    t = np.arange(-w.shape[0]//2/30, w.shape[0]//2/30, 1/30)
     if peak_channel is None:
         pk = np.argmax(np.ptp(w, axis=0))
     else:
         pk = peak_channel
     ylim = [np.min(w[:,pk])-50, np.max(w[:,pk])+50]
-    if fig is None: fig = plt.figure(figsize=(6, 14))
+    if fig is None: fig = plt.figure(figsize=(3.5, 14))
     chans = np.arange(pk-nchans//2, pk+nchans//2)
     if custom_text is not None:
         assert isinstance(custom_text, list)
@@ -945,9 +987,10 @@ def quickplot_n_waves(w, title='', peak_channel=None, nchans = 16,
         ax.text(0.05, 0.7, f'{chans[i]}', fontsize=8, transform = ax.transAxes)
         if custom_text is not None:
             ax.text(0.8, 0.7, str(custom_text[i]), fontsize=8, transform = ax.transAxes)
-        ax.plot(np.arange(-w.shape[0]//2/30, w.shape[0]//2/30, 1/30), w[:,chans[i]],
+        ax.plot(t, w[:,chans[i]],
                 alpha=0.8, lw=1, color=color)
         ax.set_ylim(ylim)
+        ax.set_xlim([t[0], t[-1]])
         if i%2==1: ax.set_yticklabels([])
         if i<nchans-2: ax.set_xticklabels([])
     fig.suptitle(title, y=0.92)
@@ -1329,7 +1372,7 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
            saveDir='~/Downloads', saveFig=0, _format='pdf',
            zscore=False, bsl_subtract=False, ylim=None,
            convolve=True, xticks=None, xticklabels=None,
-           xlabel='Time (ms)', ylabel='IFR (Hz)', legend_label=None, legend=False,
+           xlabel='Time (ms)', ylabel='IFR (sp/s)', legend_label=None, legend=False,
            ax=None, figsize=None, tight_layout=True, hspace=None, wspace=None):
 
     if ax is None:
@@ -1372,7 +1415,7 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
     ax.set_xlim(xl)
 
     if ylabel is None:
-        ylabel='IFR\n(zscore)' if zscore else r'$\Delta$ FR (Hz)' if bsl_subtract else 'IFR (Hz)'
+        ylabel='IFR\n(zscore)' if zscore else r'$\Delta$ FR (sp/s)' if bsl_subtract else 'IFR (sp/s)'
     if xlabel is None: xlabel=''
 
     fig,ax=mplp(fig=fig, ax=ax, figsize=figsize,
@@ -1486,7 +1529,7 @@ def raster_plot(times, events, window=[-1000, 1000], events_toplot=[0], events_c
                 center=vmin+((vmax-vmin)/2)
             if cmap_str is None: cmap_str = 'viridis' if not (zscore|bsl_subtract) else 'RdBu_r'
             ntrials=y.shape[0]
-            clab='Inst. firing rate (Hz)' if not zscore else 'Inst. firing rate (zscore)'
+            clab='Inst. firing rate (sp/s)' if not zscore else 'Inst. firing rate (zscore)'
             imshow_cbar(y, origin='top', xevents_toplot=events_toplot, events_color=events_color,
                         xvalues=np.arange(window[0], window[1], psthb), yvalues=np.arange(ntrials)+1,
                         xticks=xticks, yticks=y_ticks,
@@ -1593,6 +1636,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
     ## TODO overlay=False, overlay_dim='events',
     nevents=len(events)
     ntrains=len(trains)
+    assert nevents>0 and ntrains>0, "You must provide at least one event and one train!"
     if trains_col_groups is None: trains_col_groups=[0]*ntrains
     ntraingroups=np.unique(trains_col_groups).shape[0]
 
@@ -1650,7 +1694,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
                 legend_label=es if ((ax_id==ax_ids[-1,-1])&(overlap_events)) else None
 
                 xlab='Time (ms)' if ax_id in ax_ids[-1,:] else ''
-                ylab='IFR\n(zscore)' if zscore else r'$\Delta$ FR (Hz)' if bsl_subtract else 'IFR (Hz)'
+                ylab='IFR\n(zscore)' if zscore else r'$\Delta$ FR (sp/s)' if bsl_subtract else 'IFR (sp/s)'
                 event_str = es if not overlap_events else ''
                 (ttl_s, y_s) = (ts, event_str) if not transpose else (event_str, ts)
                 ylab= f'{y_s}\n{ylab}' if ax_id in ax_ids[:,0] else ''
@@ -1704,7 +1748,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
         if cmap_str is None: cmap_str = 'viridis' if not (zscore|bsl_subtract) else 'RdBu_r'
         nunits=Y.shape[0]
         y_ticks_labels=trains_str if not transpose else events_str
-        clab='Inst. firing rate (Hz)' if not zscore else 'Inst. firing rate (zscore)'
+        clab='Inst. firing rate (sp/s)' if not zscore else 'Inst. firing rate (zscore)'
         ylab=f'Units\n{_s1}' if not transpose else f'Events\n{_s1}'
         tc=colorfamilies[_i1][trains_col_groups[_i2]] if not transpose else colorfamilies[_i2][trains_col_groups[_i1]]
         xlab='Time (ms)' if _i1==len(l1)-1 else None
@@ -1726,9 +1770,9 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
 #%% Correlograms ##############################################################################################
 
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True,
-            _format='pdf', labels=True, title=None, color=-1,
+            _format='pdf', labels=True, title=None, color=None,
             ylim=None, normalize='Hertz', ccg_mn=None, ccg_std=None,
-            figsize=None, show_hz=False, style='line'):
+            figsize=None, show_hz=False, style='line', hide_axis=False):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -1761,19 +1805,11 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
             yl=np.max(np.abs(CCG))
             ylim=[-yl, yl]
 
-
-    # optional second y axis
-    if ccg_mn is not None and ccg_std is not None and show_hz:
-        ax2 = ax.twinx()
-        ax2.set_ylabel('Crosscorrelation (Hz)', fontsize=16, rotation=270, va='bottom')
-        ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
-        ax2.set_yticks(ax.get_yticks())
-        ax2.set_yticklabels(ax2ticks, fontsize=16)
-        ax2.set_ylim(ylim)
-
     # pick color and plot
     if isinstance(color, int): # else, an actual color is passed
         color=phyColorsDic[color]
+    elif color is None:
+        color=phyColorsDic[0]
 
     # plotting
     if style=='bar':
@@ -1801,14 +1837,27 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
                 'Hertz':'Hz',
                 'Pearson':'Pearson',
                 'zscore':'z-score'}
-    ylabel=f"Crosscorrelation ({ylabdic[normalize]})" if labels else None
+    ylabel=f"Crosscorr. ({ylabdic[normalize]})" if labels else None
 
     if figsize is None: figsize = (4.5,4)
-    mplp(fig, figsize=figsize,
+    mplp(fig, ax, figsize=figsize,
          title=title,
          xlabel='Time (ms)', ylabel=ylabel,
-         title_s=16, axlab_s=16, ticklab_s=16,
-         xlim=[-cwin*1./2, cwin*1./2], ylim=ylim)
+         xticks = get_bestticks(-cwin/2, cwin/2, light=True),
+         yticks = get_bestticks(ylim[0], ylim[1], light=True),
+         title_s=16, axlab_s=18, ticklab_s=18, axlab_w = 'regular',
+         xlim=[-cwin*1./2, cwin*1./2], ylim=ylim, hide_axis=hide_axis)
+
+    # optional second y axis
+    if ccg_mn is not None and ccg_std is not None and show_hz:
+        ax2 = ax.twinx()
+        ax2.set_ylabel('Crosscorr. (sp/s)', fontsize=18, rotation=270, va='bottom')
+        ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
+        ax2.set_yticks(ax.get_yticks())
+        ax2.set_yticklabels(ax2ticks, fontsize=16)
+        ax2.set_ylim(ylim)
+        [ax2.spines[sp].set_visible(False) for sp in ['top']]
+
 
     # Eventually save figure
     if saveFig:
@@ -1818,7 +1867,8 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
 
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=False,
             _format='pdf', labels=True, title=None, ref_per=True,
-            ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None, figsize=None):
+            ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None, figsize=None,
+            hide_axis=False):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -1858,7 +1908,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     # optional secondary y axis
     if acg_mn is not None and acg_std is not None:
         ax2 = ax.twinx()
-        ax2.set_ylabel('Autocorrelation (Hz)', fontsize=16, rotation=270, va='bottom')
+        ax2.set_ylabel('Autocorrelation (sp/s)', fontsize=16, rotation=270, va='bottom')
         ax2ticks=[np.round(acg_mn+tick*acg_std,1) for tick in ax.get_yticks()]
         ax2.set_yticks(ax.get_yticks())
         ax2.set_yticklabels(ax2ticks, fontsize=16)
@@ -1893,7 +1943,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
          title=title,
          xlabel='Time (ms)', ylabel=ylabel,
          title_s=16, axlab_s=16, ticklab_s=16,
-         xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2])
+         xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2], hide_axis=hide_axis)
 
 
     # Eventually save figure
@@ -1906,7 +1956,14 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
 def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downloads',
                      saveFig=False, _format='pdf', figsize=None,
                      labels=True, show_ttl=True, title=None,
-                     ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore'):
+                     ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore',
+                     acg_color=None, ccg_color='black', hide_axis=False, pad=0):
+
+    ## format parameters
+    if acg_color is not None and not isinstance(acg_color, str) and not isinstance(acg_color, int):
+        assert len(acg_color) == CCGs.shape[0],\
+            ("If acg_color is not a string, it must be a list of colors "
+            "with the same length as the number of units (e.g. [[r,g,b]] for 1 unit.")
 
     ## Instanciate figure and format x axis/channels
     l=CCGs.shape[0]
@@ -1983,12 +2040,18 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
             on_acg = (row==col)
             if on_acg:
                 acg_mask=np.append(acg_mask,[True])
-                color=phyColorsDic[row%6]
+                if acg_color is None:
+                    color = phyColorsDic[row%6]
+                else:
+                    if isinstance(acg_color, str):
+                        color = acg_color
+                    else:
+                        color = acg_color[row]
                 y=CCGs[row,col,:]
                 if normalize=='mixte': normalize1='Hertz'
             else:
                 acg_mask=np.append(acg_mask,[False])
-                color=phyColorsDic[-1]
+                color=ccg_color
                 if normalize=='mixte':
                     y=zscore(CCGs[row,col,:], 4./5)
                     normalize1='zscore'
@@ -2003,7 +2066,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 ax.fill_between(x, ylims[i][0]*np.ones(len(x)), y, color=color)
 
             # plot framing
-            norm_str={'mixte':'\n(Hz/zscore)', 'zscore':'(zscore)', 'Hertz':'(Hz)',
+            norm_str={'mixte':'', 'zscore':'(zscore)', 'Hertz':'(sp/s)',
                       'Pearson':'(Pearson)','Counts':'(Counts)'}
 
             ylabel = f"Crosscorr. {norm_str[normalize]}" if row==col else None
@@ -2020,15 +2083,15 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
             mplp(ax=ax, figsize=figsize, ylim=ylims[i], xlim=[-cwin*1./2, cwin*1./2],
                 lw=1, title=ttl, ylabel=ylabel, xlabel=xlabel,
                 title_s=8, title_w='regular',
-                axlab_s=12, axlab_w='regular',
-                ticklab_s=12, ticklab_w='regular',
-                tight_layout=False)
+                axlab_s=16, axlab_w='regular',
+                ticklab_s=18, ticklab_w='regular',
+            tight_layout=False, hide_axis=hide_axis)
             i+=1
             pbar.update(1)
 
     if title is not None:
         fig.suptitle(title, size=20, weight='bold')
-    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95], pad=pad)
     if saveFig:
         save_mpl_fig(fig, f"ccg_{title}_{str(units).replace(' ', '')}-{cwin}_{cbin}", saveDir, _format)
 
@@ -2038,7 +2101,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
              saveDir='~/Downloads', saveFig=False, _format='pdf', figsize=None, verbose=False,
              color=0, labels=True, title=None, ref_per=True, ylim=[0,0],
              acg_mn=None, acg_std=None, again=False,
-              train=None):
+              train=None, hide_axis=False):
     """
     Parameters:
         - dp: str, data path
@@ -2085,16 +2148,16 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
         acg_mn=np.mean(np.append(acg25, acg35))
     fig=plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, _format=_format,
             labels=labels, title=title, ref_per=ref_per, ylim1=ylim1, ylim2=ylim2,
-            normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize)
+            normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize, hide_axis=hide_axis)
 
     return fig
 
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloads', saveFig=False,
              _format='pdf', figsize=None, periods='all', labels=True,
-             title=None, show_ttl=True, color=-1, CCG=None,
+             title=None, show_ttl=True, color=None, CCG=None,
              ylim_acg=None, ylim_ccg=None, share_y=False,
-             ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False,
-             use_template=True, enforced_rp=0, style='line'):
+             ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False, show_hz=False,
+             use_template=True, enforced_rp=0, style='line', hide_axis=False, pad=0):
     """
     Parameters:
         - dp: str, data path
@@ -2154,11 +2217,13 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
 
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format,
                       labels=labels, title=title, color=color, ylim=ylim_ccg,
-                      normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std, figsize=figsize, style=style)
+                      normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std,
+                      figsize=figsize, style=style, hide_axis=hide_axis, show_hz=show_hz)
     else:
         fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, saveDir, saveFig, _format, figsize,
                                labels=labels, show_ttl=show_ttl,title=title,
-                               ylim_acg=ylim_acg, ylim_ccg=ylim_ccg, share_y=share_y, normalize=normalize)
+                               ylim_acg=ylim_acg, ylim_ccg=ylim_ccg, share_y=share_y, normalize=normalize,
+                               acg_color=color, hide_axis=hide_axis, pad=pad)
 
     return fig
 
@@ -2215,7 +2280,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
                 xvalues=None, yvalues=None, xticks=None, yticks=None,
                 xticklabels=None, yticklabels=None, xlabel=None, ylabel=None, xtickrot=45, title='',
                 cmapstr="RdBu_r", vmin=None, vmax=None, center=None, colorseq='nonlinear',
-                clabel='', extend_cmap='neither', cticks=None,
+                clabel='', cticks=None,
                 figsize=(6,4), aspect='auto', function='imshow',
                 ax=None, tight_layout=True, cmap_h=0.3, **kwargs):
     '''
@@ -2299,46 +2364,70 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
           xticks=xticks, yticks=yticks, xtickslabels=xticklabels, ytickslabels=yticklabels,
           reset_xticks=False, reset_yticks=False, xtickrot=xtickrot, ytickrot=0,
           xtickha={0:'center',45:'right'}[xtickrot], xtickva='top', ytickha='right', ytickva='center',
-          axlab_w='bold', axlab_s=14,
-          ticklab_w='regular', ticklab_s=10, ticks_direction='out', lw=1,
-          title=title, title_w='bold', title_s=14,
+          axlab_w='bold', axlab_s=16,
+          ticklab_w='regular', ticklab_s=12, ticks_direction='out', lw=1,
+          title=title, title_w='regular', title_s=12,
           hide_top_right=False, hide_axis=False, tight_layout=False)
 
     if tight_layout: fig.tight_layout(rect=[0,0,0.8,1])
 
     # Add colorbar, nicely formatted
     fig = add_colorbar(fig, ax, axim, vmin, vmax,
-                0.01, cmap_h, clabel, cticks, extend_cmap)
+                        0.01, cmap_h, cticks, clabel, 'bold')
 
     return fig
 
-def add_colorbar(fig, ax, mappable, vmin, vmax,
-                 width=0.01, height=0.5, clabel=None, cticks=None, extend_cmap=False):
+def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
+                 width=0.01, height=0.5, cticks=None,
+                 clabel=None, clabel_w='regular', clabel_s=16, cticks_s=14,
+                 cmap=None):
     """
     Add colorbar to figure with a predefined axis.
     
     Makes sure that the size of the predefined axis does not change, but that the figure extends.
     """
-    assert vmin < vmax, "Make sure that vmin < vmax (cannot make a 0-range colorbar...)."
+
+    # format vmin and vmax
+    if vmin is not None or vmax is not None:
+        assert vmin is not None and vmax is not None, "You must provide both vmin and vmax!" 
+    if vmin is not None and vmax is not None:
+        assert vmin < vmax, "Make sure that vmin < vmax (cannot make a 0-range colorbar...)."
+        if cticks is None:
+            cticks=get_bestticks(vmin, vmax, light=True)
+
+    # define mappable
+    if mappable is None:
+        assert vmin is not None or vmax is not None,\
+            "If you do not provide a mappable (e.g. ax.collections[0]), you must provide vmin and vmax!"
+        assert cmap is not None,\
+            "If you do not provide a mappable (e.g. ax.collections[0]), you must provide a colormap (e.g. 'viridis')!"
+        norm = plt.Normalize(vmin, vmax)
+        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        mappable.set_array([])
+
+    # create colorbar axis
     axpos=ax.get_position()
-    cbaraxx0,cbaraxy0 = float(axpos.x1+0.005), float(axpos.y0) #float(max(axpos.x1, 0.85)+0.005), float(axpos.y0)
-    cbar_ax = fig.add_axes([cbaraxx0, cbaraxy0, width, height])
-    if cticks is None:
-        cticks=get_bestticks_from_array(np.arange(vmin,vmax+(vmax-vmin)/10,(vmax-vmin)/10), light=True)
+    pad = 0.01
+    bottom_left_x, bottom_left_y = float(axpos.x1+pad), float(axpos.y0)
+    cbar_ax = fig.add_axes([bottom_left_x, bottom_left_y, width, height])
+
+    # add colorbar
     fig.colorbar(mappable, cax=cbar_ax, ax=ax,
              orientation='vertical', label=clabel,
-             extend=extend_cmap, ticks=cticks, use_gridspec=True)
+             ticks=cticks, use_gridspec=True)
+
+    # format colorbar ticks, labels etc
     if clabel is not None:
-        cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family='arial',weight='bold', size=14))
+        cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family='arial', weight=clabel_w, size=clabel_s))
         cbar_ax.yaxis.label.set_rotation(-90)
         cbar_ax.yaxis.label.set_va('bottom')
         cbar_ax.yaxis.label.set_ha('center')
         cbar_ax.yaxis.labelpad=5
+    cbar_ax.yaxis.set_ticklabels(cticks, ha='left')
+    cbar_ax.yaxis.set_tick_params(pad=5, labelsize=cticks_s)
+
     fig.canvas.draw()
     set_ax_size(ax,*fig.get_size_inches())
-    #cticks=[t.get_text() for t in cbar_ax.yaxis.get_ticklabels()]
-    cbar_ax.yaxis.set_ticklabels(cticks, ha='left')
-    cbar_ax.yaxis.set_tick_params(pad=5, labelsize=12)
 
     return fig
 
@@ -2392,7 +2481,7 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
               p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
               drop_seq=['sign', 'time', 'max_amplitude'], units=None, name=None,
               text=False, markers=False, ticks=True, depth_ticks=False,
-              regions={}, reg_colors={}, vminmax=[-7,7], figsize=(6,6),
+              regions={}, reg_colors={}, vminmax=[-7,7], figsize=(4,4),
               saveFig=False, saveDir=None, _format='pdf',
               again=False, againCCG=False, use_template_for_peakchan=False, periods='all'):
     f'''
@@ -2433,14 +2522,15 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         else:
             lab = 'unit.dataset@channel, depth-sorted.'
 
-    mpl.rcParams['figure.dpi']=100
     ttl='{}\n{}-{}-{}-{}-{}\n({})'.format(op.basename(dp),test, p_th, n_consec_bins, fract_baseline, W_sd, corr_type)
     dataset_borders = list(np.nonzero(np.diff(get_ds_ids(peakChs[:,0])))[0]) if assert_multi(dp) else []
-    fig=imshow_cbar(sfcm, origin='top', xevents_toplot=dataset_borders, yevents_toplot=dataset_borders, events_color=[0.5,0.5,0.5],events_lw=1,
-                xvalues=None, yvalues=None, xticks=tks, yticks=tks,
-                xticklabels=labs, yticklabels=labs, xlabel=lab, ylabel=lab, title=ttl,
+    fig=imshow_cbar(sfcm, origin='top',
+                xevents_toplot=dataset_borders, yevents_toplot=dataset_borders,
+                events_color=[0.5,0.5,0.5],events_lw=1,
+                xvalues=None, yvalues=None, xticks=tks, yticks=tks, title=ttl,
+                xticklabels=labs, yticklabels=labs, xlabel=lab, ylabel=lab,
                 cmapstr="RdBu_r", vmin=vminmax[0], vmax=vminmax[1], center=0, colorseq='nonlinear',
-                clabel='Crosscorr. modulation (s.d.)', extend_cmap='neither', cticks=None,
+                clabel='Crosscorr. (zscore)', extend_cmap='neither', cticks=None,
                 figsize=figsize, aspect='auto', function='imshow',
                 ax=None)
 
@@ -2458,15 +2548,17 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             reg_colors={k:(1,1,1) for k in regions.keys()}
         for region, rng in regions.items():
             rngi=[np.argmin(abs(r-ch)) for r in rng[::-1]]
-            ax.plot([rngi[0]-0.5,rngi[0]-0.5], [yl[0],yl[1]], ls="-", c=[0.5,0.5,0.5], lw=1)
-            ax.plot([rngi[1]+0.5,rngi[1]+0.5], [yl[0],yl[1]], ls="-", c=[0.5,0.5,0.5], lw=1)
-            ax.plot([xl[0],xl[1]], [rngi[0]-0.5,rngi[0]-0.5], ls="-", c=[0.5,0.5,0.5], lw=1)
-            ax.plot([xl[0],xl[1]], [rngi[1]+0.5,rngi[1]+0.5], ls="-", c=[0.5,0.5,0.5], lw=1)
-            rect_y = mpl.patches.Rectangle((xl[0],rngi[0]-0.5), 1, np.diff(rngi)+1, linewidth=1, edgecolor=(0,0,0,0), facecolor=reg_colors[region])
-            rect_x = mpl.patches.Rectangle((rngi[0]-0.5, yl[0]-1), np.diff(rngi)+1, 1, linewidth=1, edgecolor=(0,0,0,0), facecolor=reg_colors[region])
+            ax.plot([rngi[0]-0.5,rngi[0]-0.5], [yl[0],yl[1]], ls="-", c=[0.5,0.5,0.5], lw=0.5)
+            ax.plot([rngi[1]+0.5,rngi[1]+0.5], [yl[0],yl[1]], ls="-", c=[0.5,0.5,0.5], lw=0.5)
+            ax.plot([xl[0],xl[1]], [rngi[0]-0.5,rngi[0]-0.5], ls="-", c=[0.5,0.5,0.5], lw=0.5)
+            ax.plot([xl[0],xl[1]], [rngi[1]+0.5,rngi[1]+0.5], ls="-", c=[0.5,0.5,0.5], lw=0.5)
+            border_width = 2
+            rect_y = mpl.patches.Rectangle((xl[0],rngi[0]-0.5), border_width, np.diff(rngi)+1, facecolor=reg_colors[region])
+            rect_x = mpl.patches.Rectangle((rngi[0]-0.5, yl[0]-border_width), np.diff(rngi)+1, 100, facecolor=reg_colors[region])
             ax.add_patch(rect_y)
             ax.add_patch(rect_x)
-            ax.text(x=2, y=rngi[0]+np.diff(rngi)/2, s=region, c=reg_colors[region], fontsize=18, fontweight='bold', rotation=90, va='center')
+            ax.text(x=border_width+1, y=rngi[0]+np.diff(rngi)/2, s=region, c=reg_colors[region],
+                    fontsize=16, fontweight='bold', rotation=90, va='center')
 
     if markers:
         for i in range(sfcm.shape[0]):

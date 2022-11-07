@@ -1198,6 +1198,7 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
         for i in range(len(firing_rate) - kernel_size, len(firing_rate)):
             start = max(0, i - half_kernel_size)
             stop = min(len(firing_rate), i + half_kernel_size)
+
             smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
         firing_rate = smoothed_firing_rate
 

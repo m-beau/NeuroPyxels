@@ -155,6 +155,46 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None, warnings=True
 
     return DSs
 
+def make_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
+    
+    DSs = get_datasets(ds_master, ds_paths_master, ds_behav_master, warnings=False)
+    connected_pairs_df=pd.DataFrame(columns=['ds','dp', 'ss','cs','nc', 'holds_no_behav', 'holds_no_sync'])
+    for dsname, ds in DSs.items():
+        for dsk, dsv in ds.items():
+            if 'probe' in dsk:
+                probei= 0 # if merged dataset: int(dsk[-1])-1
+                if 'ss_cnc_real' in dsv.keys():
+                    if np.any(dsv['ss_cnc_real']):
+                        dp_dic = {probe:str(ds[probe]['dp']) for probe in ds.keys() if 'probe' in probe}
+                        dp, ds_table = merge_datasets(dp_dic)
+                        
+                        putative_pairs = [str(pair) for pair in dsv["ss_cnc_put"]]
+                        assert len(putative_pairs)>0, f"No connected pairs found in dataset {dsname} at {ds_master}!"
+                        real_pairs = [str(pair) for pair in dsv["ss_cnc_real"]]
+                        assert np.all(np.isin(real_pairs, putative_pairs)),\
+                            f"Some real connected pairs are not in putative connected pairs: {real_pairs[~np.isin(real_pairs, putative_pairs)]}.\n Edit json file at {ds_master}!"
+                        
+                        for ss,cnc in dsv["ss_cnc_put"]:
+                            
+                            cs=np.nan
+                            if np.any(dsv['ss_cs']):
+                                ss_cs = npa(dsv['ss_cs'])
+                                if ss in ss_cs[:,0]:
+                                    cs = ss_cs[np.isin(ss_cs[:,0],[ss]),1][0]
+                                    
+                            if str([ss,cnc]) in real_pairs:
+                                holds_no_sync = True
+                            else:
+                                holds_no_sync = False
+                                
+                            holds_no_behav = True ## TODO
+                            connected_pairs_df=connected_pairs_df.append(
+                                {'ds':dsname, 'dp':dp,
+                                 'ss':ss+0.1*probei, 'cs':cs+0.1*probei, 'nc':cnc+0.1*probei,
+                                'holds_no_behav':holds_no_behav, 'holds_no_sync':holds_no_sync},
+                                 ignore_index=True)
+    return connected_pairs_df
+
 def get_rec_len(dp, unit='seconds'):
     ' returns recording length in seconds or samples'
     assert unit in ['samples', 'seconds']
@@ -283,7 +323,7 @@ def load_merged_units_qualities(dp_merged, ds_table=None):
 
 def get_units(dp, quality='all', chan_range=None, again=False):
 
-    assert quality in ['all', 'good', 'mua', 'noise']
+    assert quality in ['all', 'good', 'mua', 'noise', 'unsorted']
 
     if assert_multi(dp):
         qualities = load_merged_units_qualities(dp)
@@ -338,4 +378,4 @@ def check_periods(periods):
 # circular imports
 from npyx.inout import read_metadata
 from npyx.spk_wvf import get_depthSort_peakChans
-from npyx.merger import assert_multi, get_ds_table
+from npyx.merger import assert_multi, get_ds_table, merge_datasets

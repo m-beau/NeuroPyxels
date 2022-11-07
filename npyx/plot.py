@@ -1186,7 +1186,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
              filter_forward=filter_forward, filter_backward=filter_backward,
              plot_ylabels=plot_ylabels, show_allyticks=show_allyticks, yticks_jump=yticks_jump, plot_baselines=False,
              events=events, set0atEvent=set0atEvent,
-             ax=None, ext_data=None, ext_datachans=np.arange(384),
+             ax=ax, ext_data=None, ext_datachans=np.arange(384),
              as_heatmap=False, vmin=-50,vmax=50,center=0)
         
     if ax is None:

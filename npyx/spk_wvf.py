@@ -562,7 +562,7 @@ def get_pc(waveforms):
     peak_chan = np.argmax(max_min_wvf)
     return peak_chan
 
-def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=True, periods='all'):
+def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=True, periods='all', save=True):
     '''
     Returns index of peak channel, either according to the full probe channel map (0 through 383)
                                    or according to the kilosort channel map (0 through N with N<=383)
@@ -604,7 +604,7 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
         peak_chan = cm[:,0][ks_peak_chan]
     else:
         waveforms=wvf(dp, u=unit, n_waveforms=200, t_waveforms=82,
-                      selection='regular', periods=periods, spike_ids=None, again=again,
+                      selection='regular', periods=periods, spike_ids=None, again=again, save=save,
                       ignore_ks_chanfilt=True)
         probe_peak_chan = get_pc(waveforms)
         if ignore_ks_chanfilt: # absolute == relative channel index

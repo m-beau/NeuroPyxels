@@ -10,7 +10,7 @@ from psutil import disk_partitions; opj=op.join
 from pathlib import Path
 
 import pickle as pkl
-from tqdm.notebook import tqdm #from tqdm import tqdm
+from tqdm.auto import tqdm
 
 import numpy as np
 from math import floor, log10

@@ -18,10 +18,9 @@ def get_version(rel_path):
 with open("README.md", "r") as readme_file:
     readme = readme_file.read()
 
-requirements=['ipython', 'numpy', 'scipy', 'pandas', 'matplotlib',
-      'six', 'statsmodels', 'cmcrameri', 'tqdm', 'llvmlite', 'joblib', 'ipywidgets',
-      'scikit-learn', 'umap-learn', 'networkx', 'psutil', 'imutils', 'python_utils',
-      'h5py', 'numba', 'urllib3', 'certifi', 'idna', 'opencv-python']
+requirements = ['ipython', 'numpy', 'scipy', 'pandas', 'numba', 'statsmodels',
+                'matplotlib', 'cmcrameri', 'opencv-python', 'scikit-learn', 'networkx',
+                'psutil', 'joblib', 'tqdm', 'h5py']
 
 setup(name='npyx',
       version=get_version("npyx/__init__.py"),

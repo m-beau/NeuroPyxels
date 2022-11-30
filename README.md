@@ -393,12 +393,12 @@ mplp(figsize=(3,3), title="My title", ylim=[-10,-2], xlim=[-40,60],
 
 Using a conda/virtualenv environment is very much advised, as pre-existing packages on a python installation might be incompatible with npyx and break your installation (typically leading to `python -c 'import npyx'` failing). Instructions here: [manage conda environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
 
-Npyx supports Python 3.7+.
+Npyx supports Python >=3.7 <=3.10.
 
 - as a user
   - from pip (normally up to date)
   ```bash
-  conda create -n my_env python=3.8
+  conda create -n my_env python=3.10
   conda activate my_env
   pip install npyx
   # either 11.0 or either cuda toolkit version you have already installed
@@ -410,7 +410,7 @@ Npyx supports Python 3.7+.
   ```
   - from the remote repository (always up to date)
   ```bash
-  conda create -n my_env python=3.8
+  conda create -n my_env python=3.10
   conda activate my_env
   pip install git+https://github.com/m-beau/NeuroPyxels@master
   # either 11.0 or either cuda toolkit version you have already installed
@@ -423,7 +423,7 @@ Npyx supports Python 3.7+.
 - as a superuser (recommended if plans to work on it/regularly pull upgrades)
   > Tip: in an ipython/jupyter session, use `%load_ext autoreload` then `%autoreload` to make your local edits active in your session without having to restart your kernel. Amazing for development.
     ```bash
-    conda create -n my_env python=3.8
+    conda create -n my_env python=3.10
     conda activate my_env
     cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
     git clone https://github.com/m-beau/NeuroPyxels
@@ -447,12 +447,6 @@ Npyx supports Python 3.7+.
     # create your own branch from where you will be able to gracefully merge your edits with the master branch
     # after revision.
     ```
-- test installation
-```python
-from npyx import *
-dp = "path/to/Neuropixels/dataset"
-test_npyx(dp) # will run npyx core functions and return a bunch of plots if in an ipython/jupyter session
-```
 
 ### Dealing with cupy (GPU shenanigans)
 To run the preprocessing functions (borrowed from pykilosort), you will need NVIDIA drivers and cuda-toolkit installed on your computer. This can be the hardest part of the installation. To test if your is working OK you should be able to run the following:
@@ -526,8 +520,8 @@ Older versions of numba did not feature the .core submodule. You probably run a 
   pip install numba
   ```
 <br/>
-- core dumped when importing
 
+- **core dumped when importing** <br/>
 This seems to be an issue related to PyQt5 required by opencv (opencv-python).
 Solution:
 ```
@@ -550,6 +544,16 @@ Available platform plugins are: xcb, eglfs, linuxfb, minimal, minimalegl, offscr
 Aborted (core dumped)
 ```
 <br/>
+
+- **I think I installed everything properly, but npyx is not found if I run 'python -c "import npyx" '!** <br/>
+Typically:
+```bash
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'npyx'
+```
+Make sure that the python installation that you are using is indeed the version of your new environment. <br/>
+To do so, run "which python" on linux/mac or "where python" on windows: the output should be the path to the right environment e.g. "/home/.../anaconda/envs/npyx/bin/python". If it isn't, try to deactivate/reactivate your conda environment, or make sure you do not have conflicting python installations on your machine.
 
 ## Acknowledgement
 

@@ -299,7 +299,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             write_to_group(neuron_group, 'channel_ids',
                            np.arange(chan_bottom, chan_top, dtype=np.dtype('uint16')),
                            again)
-            write_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, 1:2], again)
+            write_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, 1:], again)
 
         # Extract voltage snippets
         k = ['amplitudes', 'channel_noise_std', 'peakchan_SNR', 'voltage_sample']
@@ -333,7 +333,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
         if ('fn_fp_filtered_spikes' not in neuron_group or again) and include_fp_fn_mask:
             # get good spikes mask for all spikes
             # because trn_filtered can only work on a contiguous chunk
-            if periods is 'all':
+            if isinstance(periods, str): # can only be 'all', given check_periods
                 periods_m_range = [0, meta['recording_length_seconds']/60]
             else:
                 periods_m_range = [periods.min()/60, periods.max()/60]
@@ -342,7 +342,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
 
 
             # if periods is not all, trim down the mask to spikes in periods
-            if periods is not 'all':
+            if not isinstance(periods, str): # if str, can only be 'all', given check_periods
                 t = trn(dp, unit, periods=periods) # if again, as recomputed just above anyway, so don't pass the argument
                 t_all = trn(dp, unit) # grab all spikes
                 periods_mask = np.isin(t_all, t)

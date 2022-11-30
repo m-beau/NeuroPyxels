@@ -36,6 +36,6 @@ setup(name='npyx',
       install_requires=requirements,
       keywords='neuropixels,kilosort,phy,data analysis,electrophysiology,neuroscience',
       classifiers=[
-        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"]
     )

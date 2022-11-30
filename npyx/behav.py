@@ -302,8 +302,8 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
                 paqdic[f'{paqk}_npix']=npix_ons[npix_paq[paqk]]
                 paqdic[f"{off_key}_npix"]=npix_ofs[npix_paq[paqk]] # same key for onsets and offsets
             else:
-                paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(np.int64)
-                paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(np.int64)
+                #paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(np.int64)
+                #paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(np.int64)
                 paqdic[f'{paqk}_npix']=np.round(a*paqv+b, 0).astype(np.int64)
                 paqdic[f"{off_key}_npix"]=np.round(a*paqdic[off_key]+b, 0).astype(np.int64)
 
@@ -544,12 +544,16 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
             df.loc[tr, 'trialside']=start_side
             df.loc[tr, 'correct']=correct
             lickmask=(paqdic['LICKS_Piezo_ON_npix']>npixon)&(paqdic['LICKS_Piezo_ON_npix']<npixof+5*npix_fs)
-            df.loc[tr, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
+            df.at[tr, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
             if correct:
                 movonpaq=ob_on_paq+thresh(wvel_mvt_norm, -start_side*0.5, -start_side)[0]
                 movofpaq=ob_on_paq+np.append(thresh(wpos_mvt, rew_zone, -1), thresh(wpos_mvt, -rew_zone, 1)).min()
                 mov_dur=(movofpaq-movonpaq)*1000/paq_fs
                 ballistic=(mov_dur<ballistic_thresh) # in ms
+                df.loc[tr, 'movement_onset']=int(npixon+(movonpaq)*npix_fs/paq_fs)
+                df.loc[tr, 'movement_offset']=int(npixon+(movofpaq)*npix_fs/paq_fs)
+                df.loc[tr, 'movement_duration']=mov_dur
+                df.loc[tr, 'ballistic']=ballistic
                 if plot:
                     plt.figure()
                     plt.plot(wvel[int(pad*paq_fs+500):-int(pad*paq_fs)], c='grey')
@@ -558,16 +562,13 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
                     plt.plot([movonpaq-500, movonpaq-500], [min(wpos), max(wpos)], c='g', ls=ls)
                     plt.plot([movofpaq-500, movofpaq-500], [min(wpos), max(wpos)], c='r', ls=ls)
                     plt.title(f'trial {tr}\nduration:{mov_dur}ms')
-                df.loc[tr, 'movement_onset']=int(npixon+(movonpaq)*npix_fs/paq_fs)
-                df.loc[tr, 'movement_offset']=int(npixon+(movofpaq)*npix_fs/paq_fs)
-                df.loc[tr, 'movement_duration']=mov_dur
-                df.loc[tr, 'ballistic']=ballistic
             if include_wheel_data:
                 df.at[tr, 'object_position']=opos
                 df.at[tr, 'wheel_position']=wpos
                 df.loc[tr, 'trial_onset_relpaq']=int(pad*paq_fs)
-                df.loc[tr, 'movement_onset_relpaq']=int(pad*paq_fs)+movonpaq
-                df.loc[tr, 'movement_offset_relpaq']=int(pad*paq_fs)+movofpaq
+                if correct:
+                    df.loc[tr, 'movement_onset_relpaq']=int(pad*paq_fs)+movonpaq
+                    df.loc[tr, 'movement_offset_relpaq']=int(pad*paq_fs)+movofpaq
                 df.loc[tr, 'trial_offset_relpaq']=len(wpos)-int(pad*paq_fs)
                 df.at[tr, 'lick_trace']=paqdic['LICKS_Piezo'][i1:i2]
 
@@ -597,7 +598,7 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
                 df.loc[i, 'trial_type']='random_reward'
                 df.loc[i, 'reward_onset']=r
                 lickmask=(paqdic['LICKS_Piezo_ON_npix']>r)&(paqdic['LICKS_Piezo_ON_npix']<r+5*npix_fs) # from reward to 5s after reward
-            df.loc[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
+            df.at[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
 
         # Finally, fill in the cues alone (omitted rewards)
         cues_alone=paqdic['CUE_ON_npix'][~np.isin(paqdic['CUE_ON_npix'], df['cue_onset'])]
@@ -606,7 +607,7 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
             df.loc[i, 'trial_type']='cue_alone'
             df.loc[i, 'cue_onset']=c
             lickmask=(paqdic['LICKS_Piezo_ON_npix']>c)&(paqdic['LICKS_Piezo_ON_npix']<c+5*npix_fs) # from cue to 5s after cue
-            df.loc[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
+            df.at[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
 
         # Also add spontaneous licks
         if add_spont_licks:
@@ -614,7 +615,7 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
             spontaneous_licks=paqdic['LICKS_Piezo_ON_npix'][~np.isin(paqdic['LICKS_Piezo_ON_npix'], allocated_licks)]
             i=df.index[-1]+1
             df.loc[i, 'trial_type']='spontaneous_licks'
-            df.loc[i, "lick_onsets"]=spontaneous_licks
+            df.at[i, "lick_onsets"]=spontaneous_licks
 
         df.to_csv(fn)
 
@@ -1852,7 +1853,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
 #                     ax.plot(x, y_p-y_p_sem, lw=0.5, color=color)
 #                     ax.plot(x, y_p+y_p_sem, lw=0.5, color=color)
 #             yl=max(y_p+y_p_sem); ylims.append(int(yl)+5-(yl%5));
-#             ax.set_ylabel('Inst.F.R. (sp/s)')
+#             ax.set_ylabel('Inst.F.R. (spk/s)')
 
 #         ax.set_xlabel('Time from {} (ms).'.format(trgnDic[trg]))
 
@@ -2029,7 +2030,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
 #                 ax.plot(x, y_p-y_p_sem, lw=0.5, color=color)
 #                 ax.plot(x, y_p+y_p_sem, lw=0.5, color=color)
 #         yl=max(y_p+y_p_sem); ylims.append(int(yl)+5-(yl%5));
-#         ax.set_ylabel('Inst.F.R. (sp/s)')
+#         ax.set_ylabel('Inst.F.R. (spk/s)')
 
 #     ax.set_xlabel('Time from {} (ms).'.format(triggersname))
 #     ax.set_title('{} (n={})'.format(title, totalUnits))
@@ -2392,7 +2393,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
 #     sns.pointplot(data=allMFRs, dodge=.532, join=False, color=(139/256,0,0), markers="D", scale=1, orient='h', ci='sd')
 #     ax.set_title('Mean firing rate of all putative Complex Spikes')
 #     ax.set_xlim([0, ylim])
-#     ax.set_xlabel('Mean Firing Rate (sp/s)')
+#     ax.set_xlabel('Mean Firing Rate (spk/s)')
 #     ax.set_yticklabels([])
 #     print('All MFR mean: {} +/- {} Hz'.format(np.mean(allMFRs), np.std(allMFRs)))
 #     if saveFig or saveData:
@@ -2556,7 +2557,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
 #                 ax.plot([400,400], ax.get_ylim(), ls="--", c=[30/255,144/255,255/255], lw=0.5)
 #             ax.set_xlim(window[0], window[1])
 #             ax.set_xlabel('Time (ms)')
-#             ax.set_ylabel('Inst.F.R (sp/s)')
+#             ax.set_ylabel('Inst.F.R (spk/s)')
 
 #     fig.tight_layout()
 #     return fig, axes

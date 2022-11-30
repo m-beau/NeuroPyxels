@@ -1,8 +1,8 @@
-# NeuroPyxels: loading, processing and plotting Neuropixels data in python
+<h1><img src = "https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/NeuroPyxels_logo_final.png" width="150"></a> NeuroPyxels: loading, processing and plotting Neuropixels data in Python</h1>
 
-[![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)  [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5509776.svg)](https://doi.org/10.5281/zenodo.5509776)
-
-<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/NeuroPyxels_logo_final.png" width="200"/>
+[![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5509776.svg)](https://doi.org/10.5281/zenodo.5509776)
+[![License](https://img.shields.io/pypi/l/npyx.svg)](https://github.com/m-beau/NeuroPyxels/blob/master/LICENSE)
 
 [NeuroPyxels](https://github.com/m-beau/NeuroPyxels) (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels: it features a suite of core utility functions for loading, processing and plotting Neuropixels data.
 
@@ -447,6 +447,12 @@ Npyx supports Python 3.7+.
     # create your own branch from where you will be able to gracefully merge your edits with the master branch
     # after revision.
     ```
+- test installation
+```python
+from npyx import *
+dp = "path/to/Neuropixels/dataset"
+test_npyx(dp) # will run npyx core functions and return a bunch of plots if in an ipython/jupyter session
+```
 
 ### Dealing with cupy (GPU shenanigans)
 To run the preprocessing functions (borrowed from pykilosort), you will need NVIDIA drivers and cuda-toolkit installed on your computer. This can be the hardest part of the installation. To test if your is working OK you should be able to run the following:

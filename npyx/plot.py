@@ -1216,7 +1216,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                    whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300,
                    filter_forward=False, filter_backward=False,ignore_ks_chanfilt=0,
                    show_allyticks=0, yticks_jump=None, plot_ylabels=True, events=[], set0atEvent=1,
-                   again=False):
+                   again=False, ax=None):
     f'''
     Plot raw traces with colored overlaid spike times of specified units.
 
@@ -1258,11 +1258,12 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
              filter_forward=filter_forward, filter_backward=filter_backward,
              plot_ylabels=plot_ylabels, show_allyticks=show_allyticks, yticks_jump=yticks_jump, plot_baselines=False,
              events=events, set0atEvent=set0atEvent,
-             ax=None, ext_data=None, ext_datachans=np.arange(384),
+             ax=ax, ext_data=None, ext_datachans=np.arange(384),
              as_heatmap=False, vmin=-50,vmax=50,center=0)
         
 
-    ax=fig.get_axes()[0]
+    if ax is None:
+        ax=fig.get_axes()[0]
     assert assert_iterable(units)
     assert len(units)>=1
     fs=read_metadata(dp)['highpass']['sampling_rate']

@@ -1,20 +1,19 @@
-from pathlib import Path
+import json
 import re
 import sys
 import warnings
+from pathlib import Path
 
-import numpy as np 
-
-import json
 import h5py
+import numpy as np
 
-from npyx.utils import assert_int, assert_float
-from npyx.inout import get_binary_file_path, get_npix_sync, chan_map,\
-                       extract_rawChunk, read_metadata, preprocess_binary_file, detect_hardware_filter
+from npyx.gl import check_periods, get_units
+from npyx.inout import (chan_map, detect_hardware_filter, extract_rawChunk,
+                        get_binary_file_path, get_npix_sync,
+                        preprocess_binary_file, read_metadata)
 from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
-from npyx.gl import get_units, check_periods
-
+from npyx.utils import assert_float, assert_int
 
 
 # High level C4 functions
@@ -98,7 +97,7 @@ def remove_unit_h5(h5_path, dp, unit, lab_id='hausser'):
 
 
 def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
-                sync_chan_id=None,
+                sync_chan_id=None, overwrite_h5=False,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
                 dataset=None,
                 raw_window=[0.1, 30.1], center_raw_window_on_spikes=True,
@@ -204,7 +203,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
         # Define or fetch unit h5 paths
         relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
         if relative_unit_path in h5_file:
-            if again:
+            if overwrite_h5:
                 del h5_file[relative_unit_path]
                 del h5_file[absolute_unit_path]
             else:
@@ -457,7 +456,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
         units=ds['units']
         ss=ds['ss']
         cs=ds['cs']
-        good_units = list(get_units(dp, 'good'))
+        good_units = list(get_units(dp, 'good', again=again))
         sane_times = ds["sane_times"] if "sane_times" in ds else None
 
         if include_all_good:
@@ -482,12 +481,12 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
 
 def add_json_datasets_to_h5_hausser(json_path, h5_path, again=False, include_raw_snippets=False,
                                     delete_original_data=False, data_deletion_double_check=False,
-                                    include_all_good=False):
+                                    include_all_good=False, overwrite_h5=False):
 
     add_json_datasets_to_h5(json_path, h5_path, "hausser", preprocess_if_raw=False,
                             delete_original_data=delete_original_data, data_deletion_double_check=data_deletion_double_check,
                             again=again, include_raw_snippets=include_raw_snippets, verbose=False,
-                            optostims_from_sync=True, optostims_threshold=20*60, include_all_good=include_all_good)
+                            optostims_from_sync=True, optostims_threshold=20*60, include_all_good=include_all_good, overwrite_h5=overwrite_h5)
 
 
 def add_data_to_unit_h5(h5_path, dataset, unit, data, field):

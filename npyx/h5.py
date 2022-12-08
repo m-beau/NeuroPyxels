@@ -219,27 +219,27 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             print(f"Adding data at {relative_unit_path} ({absolute_unit_path})...")
 
         # metadata
-        write_to_group(neuron_group, 'lab_id', lab_id, again)
-        write_to_group(neuron_group, 'dataset_id', dataset, again)
-        write_to_group(neuron_group, 'neuron_id', unit, again)
-        write_to_group(neuron_group, 'neuron_absolute_id', neuron_group.name, again)
-        write_to_group(neuron_group, 'sampling_rate', samp_rate, again)
-        write_to_group(neuron_group, 'periods', samp_rate, again)
+        write_to_group(neuron_group, 'lab_id', lab_id, overwrite_h5)
+        write_to_group(neuron_group, 'dataset_id', dataset, overwrite_h5)
+        write_to_group(neuron_group, 'neuron_id', unit, overwrite_h5)
+        write_to_group(neuron_group, 'neuron_absolute_id', neuron_group.name, overwrite_h5)
+        write_to_group(neuron_group, 'sampling_rate', samp_rate, overwrite_h5)
+        write_to_group(neuron_group, 'periods', samp_rate, overwrite_h5)
         
         # add any additional keys passed to this function
         for key, value in kwargs.items():
-            write_to_group(neuron_group, key, value, again)
+            write_to_group(neuron_group, key, value, overwrite_h5)
 
         # spike_times
         periods = check_periods(periods)
-        if 'spike_indices' not in neuron_group or again:
+        if 'spike_indices' not in neuron_group or overwrite_h5:
             t = trn(dp, unit, periods=periods, again=again)
-            write_to_group(neuron_group, 'spike_indices', t, again)
+            write_to_group(neuron_group, 'spike_indices', t, overwrite_h5)
         else:
             t = neuron_group['spike_indices']
 
         # usable spikes mask
-        if 'sane_spikes' not in neuron_group or again:
+        if 'sane_spikes' not in neuron_group or overwrite_h5:
             if sane_spikes is None and\
                 sane_periods is not None:
                 sane_periods = check_periods(sane_periods)
@@ -254,10 +254,10 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                 sane_spikes = (t < (optostims[0,0]-10)*samp_rate)
             else:
                 sane_spikes = (t*0+1).astype(bool)
-            write_to_group(neuron_group, 'sane_spikes', sane_spikes, again)
+            write_to_group(neuron_group, 'sane_spikes', sane_spikes, overwrite_h5)
 
         # optostims
-        if 'optostims' not in neuron_group or again:
+        if 'optostims' not in neuron_group or overwrite_h5:
             if optostims is None and optostims_from_sync:
                 ons, offs = get_npix_sync(dp, verbose=False)
                 if sync_chan_id is None:
@@ -273,11 +273,11 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                 optostims = optostims[opto_m,:]
 
             if optostims is not None:
-                write_to_group(neuron_group, 'optostims', optostims, again)
+                write_to_group(neuron_group, 'optostims', optostims, overwrite_h5)
 
         # waveforms
         k = ['mean_waveform_preprocessed', 'amplitudes', 'voltage_sample', 'peakchan_SNR']
-        if not all_keys_in_group(k, neuron_group) or again:
+        if not all_keys_in_group(k, neuron_group) or overwrite_h5:
             # must recompute chan_bottom and chan_top - suboptimal, can be rewritten
             dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples, periods=periods,
                                     again=again_wvf, plot_debug=plot_debug, verbose=verbose,
@@ -291,19 +291,19 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             peak_chan_rel = np.nonzero(peak_chan == chan_range[chan_range_m])[0]
             dsm_waveform_chunk = dsm_waveform[:, chan_bottom:chan_top]
             write_to_group(neuron_group, 'mean_waveform_preprocessed',
-                           dsm_waveform_chunk.T, again)
+                           dsm_waveform_chunk.T, overwrite_h5)
             write_to_group(neuron_group, 'consensus_waveform',
-                           dsm_waveform_chunk.T*np.nan, again)
+                           dsm_waveform_chunk.T*np.nan, overwrite_h5)
             cm = chan_map(dp)
             write_to_group(neuron_group, 'channel_ids',
                            np.arange(chan_bottom, chan_top, dtype=np.dtype('uint16')),
-                           again)
-            write_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, 1:2], again)
+                           overwrite_h5)
+            write_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, 1:2], overwrite_h5)
 
         # Extract voltage snippets
         k = ['amplitudes', 'channel_noise_std', 'peakchan_SNR', 'voltage_sample']
         if not all_keys_in_group(k, neuron_group)\
-            or again:
+            or overwrite_h5:
             if center_raw_window_on_spikes:
                 t = h5_file[relative_unit_path+'/spike_indices'][...]/samp_rate
                 if raw_window[1]>t[0]: # spike starting after end of original window
@@ -315,7 +315,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
 
         # quality metrics
         k = ['amplitudes', 'channel_noise_std', 'peakchan_SNR']
-        if not all_keys_in_group(k, neuron_group) or again:
+        if not all_keys_in_group(k, neuron_group) or overwrite_h5:
                 
             amps = np.load(dp/'amplitudes.npy').squeeze()[ids(dp, unit, periods=periods)]
             
@@ -325,11 +325,11 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             peakchan_N = std_estimate[peak_chan_rel]
             peakchan_SNR = peakchan_S / peakchan_N
             
-            write_to_group(neuron_group, 'amplitudes', amps, again)
-            write_to_group(neuron_group, 'channel_noise_std', std_estimate, again)
-            write_to_group(neuron_group, 'peakchan_SNR', peakchan_SNR, again)
+            write_to_group(neuron_group, 'amplitudes', amps, overwrite_h5)
+            write_to_group(neuron_group, 'channel_noise_std', std_estimate, overwrite_h5)
+            write_to_group(neuron_group, 'peakchan_SNR', peakchan_SNR, overwrite_h5)
     
-        if ('fn_fp_filtered_spikes' not in neuron_group or again) and include_fp_fn_mask:
+        if ('fn_fp_filtered_spikes' not in neuron_group or overwrite_h5) and include_fp_fn_mask:
             # get good spikes mask for all spikes
             # because trn_filtered can only work on a contiguous chunk
             if periods is 'all':
@@ -347,10 +347,10 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                 periods_mask = np.isin(t_all, t)
                 fp_fn_good_spikes = fp_fn_good_spikes[periods_mask]
 
-            write_to_group(neuron_group, 'fn_fp_filtered_spikes', fp_fn_good_spikes, again)
+            write_to_group(neuron_group, 'fn_fp_filtered_spikes', fp_fn_good_spikes, overwrite_h5)
             
         # voltage snippets
-        if ('voltage_sample' not in neuron_group or again)\
+        if ('voltage_sample' not in neuron_group or overwrite_h5)\
             and include_raw_snippets:
             # Only store the voltage sample for the primary channel
             peak_chan = neuron_group['primary_channel']
@@ -362,7 +362,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             write_to_group(neuron_group, 'voltage_sample_start_index', int(raw_window[0] * samp_rate))
             write_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor'])
             
-        if ('whitened_voltage_sample' not in neuron_group or again)\
+        if ('whitened_voltage_sample' not in neuron_group or overwrite_h5)\
             and include_whitened_snippets:
             if center_raw_window_on_spikes:
                 t = h5_file[relative_unit_path+'/spike_indices'][...]/samp_rate
@@ -389,17 +389,17 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             write_to_group(neuron_group, 'whitened_voltage_sample', raw_snippet)
 
         # layer
-        write_to_group(neuron_group, 'phyllum_layer', 0, again)
-        write_to_group(neuron_group, 'human_layer', 0, again)
+        write_to_group(neuron_group, 'phyllum_layer', 0, overwrite_h5)
+        write_to_group(neuron_group, 'human_layer', 0, overwrite_h5)
 
         # ground truth labels
-        write_to_group(neuron_group, 'expert_label', 0, again)
-        write_to_group(neuron_group, 'optotagged_label', 0, again)
+        write_to_group(neuron_group, 'expert_label', 0, overwrite_h5)
+        write_to_group(neuron_group, 'optotagged_label', 0, overwrite_h5)
 
         # predicted labels
-        write_to_group(neuron_group, 'lisberger_label', 0, again)
-        write_to_group(neuron_group, 'hausser_label', 0, again)
-        write_to_group(neuron_group, 'medina_label', 0, again)
+        write_to_group(neuron_group, 'lisberger_label', 0, overwrite_h5)
+        write_to_group(neuron_group, 'hausser_label', 0, overwrite_h5)
+        write_to_group(neuron_group, 'medina_label', 0, overwrite_h5)
 
     return relative_unit_path
 

@@ -1654,7 +1654,9 @@ def h5_feature_extraction(
             )
             print(f"{exc_type} at line {exc_tb.tb_lineno}: {e}")
             if ignore_exceptions:
-                curr_feat = np.zeros(len(columns))
+                curr_feat = np.zeros(len(columns))[3:].tolist()
+                discarded_info = [label, dp, unit]
+                curr_feat = discarded_info + curr_feat
                 feat_df = feat_df.append(
                     dict(zip(columns, curr_feat)), ignore_index=True
                 )

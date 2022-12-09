@@ -8,9 +8,15 @@ import h5py
 import numpy as np
 
 from npyx.gl import check_periods, get_units
-from npyx.inout import (chan_map, detect_hardware_filter, extract_rawChunk,
-                        get_binary_file_path, get_npix_sync,
-                        preprocess_binary_file, read_metadata)
+from npyx.inout import (
+    chan_map,
+    detect_hardware_filter,
+    extract_rawChunk,
+    get_binary_file_path,
+    get_npix_sync,
+    preprocess_binary_file,
+    read_metadata,
+)
 from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 from npyx.utils import assert_float, assert_int
@@ -105,7 +111,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                 raw_snippet_halfrange=2, mean_wvf_half_range=11,
                 sane_spikes=None, sane_periods=None, sane_before_opto=False, include_fp_fn_mask=True,
                 optostims=None, optostims_from_sync=False, optostims_threshold=None,
-                n_waveforms_for_matching=5000,
+                n_waveforms_for_matching=5000, selective_overwrite=None,
                 **kwargs):
     """
     Add a spike-sorted unit to an HDF5 file (on a phy compatible dataformat).
@@ -171,6 +177,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                            (handles sync signals without light at beginning of recording)
                            
     - n_waveforms_for_matching: int, number of waveforms to subsample for drift-shift matching
+    - selective_overwrite: list of strings, which fields to specifically recompute even if again is False (much faster if only one field to overwrite).
 
     Additional key-value parameteters:
     - *any_key* = *any_value*
@@ -181,6 +188,9 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
     will result in a key of 'my_note' and a value of "Cool info" being stored in the HDF5 file
     for this unit.
     """
+    
+    if selective_overwrite is not None:
+        assert isinstance(selective_overwrite, list), "Selective_overwrite must be a list of strings."
     
     dp=Path(dp)
     meta = read_metadata(dp) 
@@ -232,32 +242,14 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
 
         # spike_times
         periods = check_periods(periods)
-        if 'spike_indices' not in neuron_group or overwrite_h5:
+        if 'spike_indices' not in neuron_group or overwrite_h5 or ("spike_indices" in selective_overwrite):
             t = trn(dp, unit, periods=periods, again=again)
             write_to_group(neuron_group, 'spike_indices', t, overwrite_h5)
         else:
             t = neuron_group['spike_indices']
 
-        # usable spikes mask
-        if 'sane_spikes' not in neuron_group or overwrite_h5:
-            if sane_spikes is None and\
-                sane_periods is not None:
-                sane_periods = check_periods(sane_periods)
-                sane_periods*=samp_rate
-                sane_spikes = (t*0).astype(bool)
-                for sane_period in sane_periods:
-                    sane_spikes = sane_spikes|(t>=sane_period[0])&(t<=sane_period[1])
-            elif sane_spikes is None and\
-                optostims is not None and\
-                sane_before_opto:
-                # Only consider spikes 10s before first opto onset
-                sane_spikes = (t < (optostims[0,0]-10)*samp_rate)
-            else:
-                sane_spikes = (t*0+1).astype(bool)
-            write_to_group(neuron_group, 'sane_spikes', sane_spikes, overwrite_h5)
-
         # optostims
-        if 'optostims' not in neuron_group or overwrite_h5:
+        if 'optostims' not in neuron_group or overwrite_h5 or ("optostims" in selective_overwrite):
             if optostims is None and optostims_from_sync:
                 ons, offs = get_npix_sync(dp, verbose=False)
                 if sync_chan_id is None:
@@ -274,10 +266,29 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
 
             if optostims is not None:
                 write_to_group(neuron_group, 'optostims', optostims, overwrite_h5)
+    
+        # usable spikes mask
+        if 'sane_spikes' not in neuron_group or overwrite_h5 or ("sane_spikes" in selective_overwrite):
+            if sane_spikes is None and\
+                sane_periods is not None:
+                sane_periods = check_periods(sane_periods)
+                sane_periods*=samp_rate
+                sane_spikes = (t*0).astype(bool)
+                for sane_period in sane_periods:
+                    sane_spikes = sane_spikes|(t>=sane_period[0])&(t<=sane_period[1])
+            elif sane_spikes is None and\
+                optostims is not None and\
+                sane_before_opto:
+                # Only consider spikes 10s before first opto onset
+                sane_spikes = (t < (optostims[0,0]-10)*samp_rate)
+            else:
+                sane_spikes = (t*0+1).astype(bool)
+            write_to_group(neuron_group, 'sane_spikes', sane_spikes, overwrite_h5)
+
 
         # waveforms
         k = ['mean_waveform_preprocessed', 'amplitudes', 'voltage_sample', 'peakchan_SNR']
-        if not all_keys_in_group(k, neuron_group) or overwrite_h5:
+        if not all_keys_in_group(k, neuron_group) or overwrite_h5 or ("mean_waveform_preprocessed" in selective_overwrite):
             # must recompute chan_bottom and chan_top - suboptimal, can be rewritten
             dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples, periods=periods,
                                     again=again_wvf, plot_debug=plot_debug, verbose=verbose,
@@ -303,7 +314,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
         # Extract voltage snippets
         k = ['amplitudes', 'channel_noise_std', 'peakchan_SNR', 'voltage_sample']
         if not all_keys_in_group(k, neuron_group)\
-            or overwrite_h5:
+            or overwrite_h5 or ("voltage_sample" in selective_overwrite):
             if center_raw_window_on_spikes:
                 t = h5_file[relative_unit_path+'/spike_indices'][...]/samp_rate
                 if raw_window[1]>t[0]: # spike starting after end of original window
@@ -315,7 +326,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
 
         # quality metrics
         k = ['amplitudes', 'channel_noise_std', 'peakchan_SNR']
-        if not all_keys_in_group(k, neuron_group) or overwrite_h5:
+        if not all_keys_in_group(k, neuron_group) or overwrite_h5 or ("amplitudes" in selective_overwrite):
                 
             amps = np.load(dp/'amplitudes.npy').squeeze()[ids(dp, unit, periods=periods)]
             
@@ -329,7 +340,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             write_to_group(neuron_group, 'channel_noise_std', std_estimate, overwrite_h5)
             write_to_group(neuron_group, 'peakchan_SNR', peakchan_SNR, overwrite_h5)
     
-        if ('fn_fp_filtered_spikes' not in neuron_group or overwrite_h5) and include_fp_fn_mask:
+        if ('fn_fp_filtered_spikes' not in neuron_group or overwrite_h5) and include_fp_fn_mask or ("fn_fp_filtered_spikes" in selective_overwrite):
             # get good spikes mask for all spikes
             # because trn_filtered can only work on a contiguous chunk
             if periods is 'all':
@@ -350,7 +361,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             write_to_group(neuron_group, 'fn_fp_filtered_spikes', fp_fn_good_spikes, overwrite_h5)
             
         # voltage snippets
-        if ('voltage_sample' not in neuron_group or overwrite_h5)\
+        if ('voltage_sample' not in neuron_group or overwrite_h5 or ('voltage_sample' in selective_overwrite))\
             and include_raw_snippets:
             # Only store the voltage sample for the primary channel
             peak_chan = neuron_group['primary_channel']
@@ -363,7 +374,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             write_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor'])
             
         if ('whitened_voltage_sample' not in neuron_group or overwrite_h5)\
-            and include_whitened_snippets:
+            and include_whitened_snippets or ("whitened_voltage_sample" in selective_overwrite):
             if center_raw_window_on_spikes:
                 t = h5_file[relative_unit_path+'/spike_indices'][...]/samp_rate
                 if raw_window[1]>t[0]: # spike starting after end of original window
@@ -481,12 +492,13 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
 
 def add_json_datasets_to_h5_hausser(json_path, h5_path, again=False, include_raw_snippets=False,
                                     delete_original_data=False, data_deletion_double_check=False,
-                                    include_all_good=False, overwrite_h5=False):
+                                    include_all_good=False, overwrite_h5=False, **kwargs):
 
     add_json_datasets_to_h5(json_path, h5_path, "hausser", preprocess_if_raw=False,
                             delete_original_data=delete_original_data, data_deletion_double_check=data_deletion_double_check,
                             again=again, include_raw_snippets=include_raw_snippets, verbose=False,
-                            optostims_from_sync=True, optostims_threshold=20*60, include_all_good=include_all_good, overwrite_h5=overwrite_h5)
+                            optostims_from_sync=True, optostims_threshold=20*60, sane_before_opto=True,
+                            include_all_good=include_all_good, overwrite_h5=overwrite_h5, **kwargs)
 
 
 def add_data_to_unit_h5(h5_path, dataset, unit, data, field):

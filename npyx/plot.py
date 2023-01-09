@@ -1953,12 +1953,11 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     ylabel=f"Autocorrelation ({ylabdic[normalize]})" if labels else None
 
     if figsize is None: figsize = (4.5,4)
-    if ax is None:
-        mplp(fig, figsize=figsize, title=title, xlabel='Time (ms)', ylabel=ylabel, title_s=20, axlab_s=20,
+    mplp(fig, figsize=figsize, title=title, xlabel='Time (ms)', ylabel=ylabel, title_s=20, axlab_s=20,
              ticklab_s=20, xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2], hide_axis=hide_axis)
-        # Eventually save figure
-        if saveFig:
-            save_mpl_fig(fig, 'acg{}-{}_{:.2f}'.format(unit, cwin, cbin), saveDir, _format)
+    # Eventually save figure
+    if saveFig:
+        save_mpl_fig(fig, 'acg{}-{}_{:.2f}'.format(unit, cwin, cbin), saveDir, _format)
 
     return fig
 

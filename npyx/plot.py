@@ -2029,7 +2029,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     return fig
 
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=False,
-            _format='pdf', labels=True, title=None, ref_per=True,
+            _format='pdf', labels=True, title=None, ref_per=True, ax=None,
             ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None, figsize=None,
             hide_axis=False, prettify=True):
     '''Plots acg and saves it given the acg array.
@@ -2041,8 +2041,10 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
     saveFig: boolean, to save the figure or not.
     '''
     global phyColorsDic
-
-    fig, ax = plt.subplots()
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
 
     # x axis
     cbin = np.clip(cbin, 1000*1./fs, 1e8)
@@ -2103,12 +2105,10 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
 
     if figsize is None: figsize = (4.5,4)
     mplp(fig, figsize=figsize,
-         title=title,
-         xlabel='Time (ms)', ylabel=ylabel,
-         title_s=20, axlab_s=20, ticklab_s=20,
-         xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2], hide_axis=hide_axis,
-         prettify=prettify)
-
+    title=title, xlabel='Time (ms)', ylabel=ylabel,
+    title_s=20, axlab_s=20, ticklab_s=20,
+    xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2],
+    hide_axis=hide_axis, prettify=prettify)
 
     # Eventually save figure
     if saveFig:
@@ -2264,11 +2264,12 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
 
     return fig
 
+
 def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
              saveDir='~/Downloads', saveFig=False, _format='pdf', figsize=None, verbose=False,
-             color=0, labels=True, title=None, ref_per=True, ylim=[0,0],
+             color=0, labels=True, title=None, ref_per=True, ylim=[0, 0], ax=None,
              acg_mn=None, acg_std=None, again=False,
-              train=None, hide_axis=False, prettify=True):
+             train=None, hide_axis=False, prettify=True):
     """
     Parameters:
         - dp: str, data path
@@ -2277,7 +2278,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
         - cwin: float, full window size (ms)
         - normalize: str in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'], unit of y axis
         - periods: 'all' or [(t1,t2), (t3,t4)...], periods to use to compute CCG (in SECONDS)
-        
+
 
         - saveDir: str, save directory for figure
         - saveFig: bool, whether to dave Figure at saveDir
@@ -2301,24 +2302,27 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
     Returns:
         - fig: matplotlib figure object
     """
-    saveDir=op.expanduser(saveDir)
+    saveDir = op.expanduser(saveDir)
     if train is not None:
-        bChs=None
+        bChs = None
     else:
-        bChs=get_depthSort_peakChans(dp, units=[unit])[:,1].flatten()
+        bChs = get_depthSort_peakChans(dp, units=[unit])[:, 1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
-    ACG=acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize, verbose=verbose, periods=periods, again=again, train=train)
-    if normalize=='zscore':
-        ACG_hertz=acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', verbose=verbose, periods=periods)
-        acg25, acg35 = ACG_hertz[:int(len(ACG_hertz)*2./5)], ACG_hertz[int(len(ACG_hertz)*3./5):]
-        acg_std=np.std(np.append(acg25, acg35))
-        acg_mn=np.mean(np.append(acg25, acg35))
-    fig=plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, _format=_format,
-            labels=labels, title=title, ref_per=ref_per, ylim1=ylim1, ylim2=ylim2,
-            normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize, hide_axis=hide_axis,
-            prettify=prettify)
+
+    ACG = acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize,
+              verbose=verbose, periods=periods, again=again, train=train)
+    if normalize == 'zscore':
+        ACG_hertz = acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', verbose=verbose, periods=periods)
+        acg25, acg35 = ACG_hertz[:int(len(ACG_hertz) * 2. / 5)], ACG_hertz[int(len(ACG_hertz) * 3. / 5):]
+        acg_std = np.std(np.append(acg25, acg35))
+        acg_mn = np.mean(np.append(acg25, acg35))
+    fig = plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, _format=_format,
+                  labels=labels, title=title, ref_per=ref_per, ylim1=ylim1, ylim2=ylim2, ax=ax,
+                  normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize, hide_axis=hide_axis,
+                  prettify=prettify)
 
     return fig
+
 
 def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloads', saveFig=False,
              _format='pdf', figsize=None, periods='all', labels=True,

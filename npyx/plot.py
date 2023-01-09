@@ -40,26 +40,92 @@ from npyx.behav import align_times, get_processed_ifr, get_processed_popsync
 
 #%% plotting utilities ##############################################################################################
 
-def mplp(fig=None, ax=None, figsize=None,
+default_mplp_params = dict(
+            # title default parameters
+            title_w='regular',
+            title_s=22,
+
+            # axes labels default parameters
+            axlab_w='regular',
+            axlab_s=22,
+
+            # tick labels default parameters
+            ticklab_w='regular',
+            ticklab_s=22,
+            ticks_direction='out',
+
+            # ticks default parameters
+            xtickrot=0,
+            ytickrot=0,
+            xtickha='center',
+            xtickva='top',
+            ytickha='right',
+            ytickva='center',
+
+            # spines and layout default parameters
+            lw=1,
+            hide_top_right=True,
+            hide_axis=False,
+            tight_layout=False,
+
+            # legend default parameters
+            show_legend=False,
+            hide_legend=False,
+            legend_loc=(1,1),
+
+            # figure saving default parameters
+            saveFig=False,
+            saveDir = "~/Downloads",
+            figname="figure",
+            _format="pdf",
+
+            # colorbar default parameters
+            colorbar=False,
+            cbar_w=0.03,
+            cbar_h=0.4,
+            clabel=None,
+            clabel_w='regular',
+            clabel_s=22,
+            cticks_s=22,
+)
+
+def pprint_dic(dic):
+    kv = "".join([f"{k}: {v},\n" for k,v in dic.items()])
+    return "{\n"+kv+"}"
+
+def docstring_decorator(*args):
+    """
+    Feed as many arguments as wished to incorporate into the function f's docstring.
+    Edit f' docstring with {0}, {1}... acordingly.
+    """
+    def decorate(f):
+        f.__doc__ = f.__doc__.format(*args)
+        return f
+    return decorate
+
+@docstring_decorator(pprint_dic(default_mplp_params))
+def mplp(fig=None, ax=None, figsize=None, axsize=None,
          xlim=None, ylim=None, xlabel=None, ylabel=None,
-         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=False, reset_yticks=False,
-         xtickrot=0, ytickrot=0, xtickha='center', xtickva='top', ytickha='right', ytickva='center',
-         axlab_w='regular', axlab_s=22,
-         ticklab_w='regular', ticklab_s=22, ticks_direction='out', lw=1,
-         title=None, title_w='bold', title_s=22,
-         hide_top_right=True, hide_axis=False,
-         tight_layout=False, hspace=None, wspace=None,
-         show_legend=False, hide_legend=False, legend_loc=(1,1),
-         saveFig=False, saveDir = "~/Downloads", figname="figure", _format="pdf",
-         colorbar=False, vmin=None, vmax=None, cmap=None, cticks=None,
-         cbar_w=0.03, cbar_h=0.4, clabel=None, clabel_w='regular', clabel_s=22, cticks_s=22,
-         axsize=None):
-    '''
+         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=None, reset_yticks=None,
+         xtickrot=None, ytickrot=None, xtickha=None, xtickva=None, ytickha=None, ytickva=None,
+         axlab_w=None, axlab_s=None,
+         ticklab_w=None, ticklab_s=None, ticks_direction=None,
+         title=None, title_w=None, title_s=None,
+         lw=None, hide_top_right=None, hide_axis=None,
+         tight_layout=None, hspace=None, wspace=None,
+         show_legend=None, hide_legend=None, legend_loc=None,
+         saveFig=None, saveDir = None, figname=None, _format=None,
+         colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None,
+         cbar_w=None, cbar_h=None, clabel=None, clabel_w=None, clabel_s=None, cticks_s=None,
+         prettify=True):
+    """
     make plots pretty
-    matplotlib plots
+    matplotlib plotter
 
     Awesome utility to format matplotlib plots.
     Simply add mplp() at the end of any plotting script, feeding it with your fav parameters!
+
+    IMPORTANT If you set prettify = False, it will only reset the parameters that you provide actively, and leave the rest as is.
 
     In a breeze,
         - change the weight/size/alignment/rotation of the axis labels, ticks labels, title
@@ -73,9 +139,74 @@ def mplp(fig=None, ax=None, figsize=None,
 
     How it works: it will grab the currently active figure and axis (plt.gcf() and plt.gca()).
     Alternatively, you can pass a matplotlib figure and specific axes as arguments.
-    '''
+
+    Default parameters:
+        {0}
+    """
+
     if fig is None: fig=plt.gcf()
     if ax is None: ax=plt.gca()
+
+    # if prettify is set to True (default),
+    # mplp() will change the plot parameters in the background,
+    # even if not actively passed
+    if prettify:
+
+        # limits default parameters
+        if xlim is None: xlim = ax.get_xlim()
+        if ylim is None: ylim = ax.get_ylim()
+
+        # title default parameters
+        if title is None: title = ax.get_title()
+        if title_w is None: title_w = default_mplp_params['title_w']
+        if title_s is None: title_s = default_mplp_params['title_s']
+
+        # axes labels default parameters
+        if ylabel is None: ylabel = ax.get_ylabel()
+        if xlabel is None: xlabel = ax.get_xlabel()
+        if axlab_w is None: axlab_w = default_mplp_params['axlab_w']
+        if axlab_s is None: axlab_s = default_mplp_params['axlab_s']
+
+        # tick labels default parameters
+        if ticklab_w is None: ticklab_w = default_mplp_params['ticklab_w']
+        if ticklab_s is None: ticklab_s = default_mplp_params['ticklab_s']
+        if ticks_direction is None: ticks_direction = default_mplp_params['ticks_direction']
+
+        # ticks default parameters
+        if xtickrot is None: xtickrot = default_mplp_params['xtickrot']
+        if ytickrot is None: ytickrot = default_mplp_params['ytickrot']
+        if xtickha is None: xtickha = default_mplp_params['xtickha']
+        if xtickva is None: xtickva = default_mplp_params['xtickva']
+        if ytickha is None: ytickha = default_mplp_params['ytickha']
+        if ytickva is None: ytickva = default_mplp_params['ytickva']
+
+        # spines and layout default parameters
+        if lw is None: lw = default_mplp_params['lw']
+        if hide_top_right is None: hide_top_right = default_mplp_params['hide_top_right']
+        if hide_axis is None: hide_axis = default_mplp_params['hide_axis']
+        if tight_layout is None: tight_layout = default_mplp_params['tight_layout']
+
+        # legend default parameters
+        if show_legend is None: show_legend = default_mplp_params['show_legend']
+        if hide_legend is None: hide_legend = default_mplp_params['hide_legend']
+        if legend_loc is None: legend_loc = default_mplp_params['legend_loc']
+
+        # figure saving default parameters
+        if saveFig is None: saveFig = default_mplp_params['saveFig']
+        if saveDir is None: saveDir = default_mplp_params['saveDir']
+        if figname is None: figname = default_mplp_params['figname']
+        if _format is None: _format = default_mplp_params['_format']
+
+        # colorbar default parameters
+        if colorbar is None: colorbar = default_mplp_params['colorbar']
+        if cbar_w is None: cbar_w = default_mplp_params['cbar_w']
+        if cbar_h is None: cbar_h = default_mplp_params['cbar_h']
+        if clabel is None: clabel = default_mplp_params['clabel']
+        if clabel_w is None: clabel_w = default_mplp_params['clabel_w']
+        if clabel_s is None: clabel_s = default_mplp_params['clabel_s']
+        if cticks_s is None: cticks_s = default_mplp_params['cticks_s']
+
+
     hfont = {'fontname':'Arial'}
     if figsize is not None:
         assert axsize is  None,\
@@ -86,85 +217,100 @@ def mplp(fig=None, ax=None, figsize=None,
         assert figsize is  None,\
             "You cannot set both the axes and figure size - the axes size is based on the figure size."
         set_ax_size(ax, *axsize)
-    # Opportunity to easily hide everything
-    if hide_axis:
-        ax.axis('off')
 
-    else: ax.axis('on')
+    # Opportunity to easily hide everything
+    if hide_axis is not None:
+        if hide_axis:
+            ax.axis('off')
+        else: ax.axis('on')
 
     # Axis labels
-    if ylabel is None:ylabel=ax.get_ylabel()
-    if xlabel is None:xlabel=ax.get_xlabel()
-    ax.set_ylabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
-    ax.set_xlabel(xlabel, weight=axlab_w, size=axlab_s, **hfont)
+    if ylabel is not None: ax.set_ylabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
+    if xlabel is not None: ax.set_xlabel(xlabel, weight=axlab_w, size=axlab_s, **hfont)
 
-    # Setup limits BEFORE altering the ticks
+    # Setup x/y limits BEFORE altering the ticks
     # since the limits will alter the ticks
-    if xlim is None: xlim=ax.get_xlim()
-    if ylim is None: ylim=ax.get_ylim()
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+    if xlim is not None: ax.set_xlim(xlim)
+    if ylim is not None: ax.set_ylim(ylim)
 
     # Tick values
-    if xticks is None:
+    if prettify and xticks is None:
         if reset_xticks:
             ax.xaxis.set_major_locator(AutoLocator())
-        xticks=ax.get_xticks()
-        ax.set_xticks(xticks)
-    else: ax.set_xticks(xticks)
-    if yticks is None:
+        xticks = ax.get_xticks()
+    if xticks is not None: ax.set_xticks(xticks)
+
+    if prettify and yticks is None:
         if reset_yticks:
             ax.yaxis.set_major_locator(AutoLocator())
-        yticks=ax.get_yticks()
-        ax.set_yticks(yticks)
-    else: ax.set_yticks(yticks)
+        yticks = ax.get_yticks()
+    if yticks is not None: ax.set_yticks(yticks)
 
-    # Tick labels and x/y limits
+    # Tick labels
     fig.canvas.draw() # To force setting of ticklabels
-    if xtickslabels is None:
+    if xtickslabels is None and prettify:
         if any(ax.get_xticklabels()):
-            if isnumeric(ax.get_xticklabels()[0].get_text()): xtickslabels,x_nflt=get_labels_from_ticks(xticks)
-            else: xtickslabels = ax.get_xticklabels()
-    if ytickslabels is None:
+            if isnumeric(ax.get_xticklabels()[0].get_text()):
+                xtickslabels, x_nflt = get_labels_from_ticks(xticks)
+            else:
+                xtickslabels = ax.get_xticklabels()
+    if ytickslabels is None and prettify:
         if any(ax.get_yticklabels()):
-            if isnumeric(ax.get_yticklabels()[0].get_text()): ytickslabels,y_nflt=get_labels_from_ticks(yticks)
-            else: ytickslabels = ax.get_yticklabels()
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+            if isnumeric(ax.get_yticklabels()[0].get_text()):
+                ytickslabels, y_nflt = get_labels_from_ticks(yticks)
+            else:
+                ytickslabels = ax.get_yticklabels()
+
     if xtickslabels is not None:
-        assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/few xtickslabels! Make sure that the default/provided xticks match them.'
+        if xticks is not None:
+            assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/few xtickslabels! Make sure that the default/provided xticks match them.'
+        if xtickha is None: xtickha = ax.xaxis.get_ticklabels()[0].get_ha()
+        if xtickva is None: xtickva = ax.xaxis.get_ticklabels()[0].get_va()
         ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=xtickrot, ha=xtickha, va=xtickva)
     if ytickslabels is not None:
-        assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels! Make sure that the default/provided yticks match them.'
+        if yticks is not None:
+            assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels! Make sure that the default/provided yticks match them.'
+        if ytickha is None: ytickha = ax.yaxis.get_ticklabels()[0].get_ha()
+        if ytickva is None: ytickva = ax.yaxis.get_ticklabels()[0].get_va()
         ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=ytickrot, ha=ytickha, va=ytickva)
 
+    # Reset x/y limits a second time
+    if xlim is not None: ax.set_xlim(xlim)
+    if ylim is not None: ax.set_ylim(ylim)
+
     # Title
-    if title is None: title=ax.get_title()
-    ax.set_title(title, size=title_s, weight=title_w)
+    if title is not None: ax.set_title(title, size=title_s, weight=title_w)
 
     # Ticks and spines aspect
-    ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=4, direction=ticks_direction)
-    spine_keys = list(ax.spines.keys())
-    hide_spine_keys = ['polar'] if 'polar' in spine_keys else ['top', 'right']
-    lw_spine_keys = ['polar'] if 'polar' in spine_keys else ['left', 'bottom', 'top', 'right']
-    if hide_top_right and 'top' in hide_spine_keys: [ax.spines[sp].set_visible(False) for sp in hide_spine_keys]
-    else: [ax.spines[sp].set_visible(True) for sp in hide_spine_keys]
-    for sp in lw_spine_keys:
-        ax.spines[sp].set_lw(lw)
+    if prettify:
+        ax.tick_params(axis='both', bottom=1, left=1, top=0, right=0, width=lw, length=4, direction=ticks_direction)
+    elif lw is not None or ticks_direction is not None:
+        ax.tick_params(axis='both', width=lw, direction=ticks_direction)
+
+    if hide_top_right is not None:
+        spine_keys = list(ax.spines.keys())
+        hide_spine_keys = ['polar'] if 'polar' in spine_keys else ['top', 'right']
+        lw_spine_keys = ['polar'] if 'polar' in spine_keys else ['left', 'bottom', 'top', 'right']
+        if hide_top_right and 'top' in hide_spine_keys: [ax.spines[sp].set_visible(False) for sp in hide_spine_keys]
+        else: [ax.spines[sp].set_visible(True) for sp in hide_spine_keys]
+        for sp in lw_spine_keys:
+            ax.spines[sp].set_lw(lw)
 
 
-    # Alignement and spacing elements
-    if tight_layout:fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    if (hspace is not None): fig.subplots_adjust(hspace=hspace)
-    if (wspace is not None): fig.subplots_adjust(wspace=wspace)
-    axis_to_align = [AX for AX in fig.axes if 'AxesSubplot' in AX.__repr__()]
-    fig.align_ylabels(axis_to_align)
-    fig.align_xlabels(axis_to_align)
+    # Aligning and spacing axes and labels
+    if tight_layout: fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    if hspace is not None: fig.subplots_adjust(hspace=hspace)
+    if wspace is not None: fig.subplots_adjust(wspace=wspace)
+    if prettify:
+        axis_to_align = [AX for AX in fig.axes if 'AxesSubplot' in AX.__repr__()]
+        fig.align_ylabels(axis_to_align)
+        fig.align_xlabels(axis_to_align)
 
     assert not (show_legend and hide_legend),\
         "You instructed to both show and hide the legend...?"
-    assert len(legend_loc)==2 or len(legend_loc)==4,\
-        "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
+    if legend_loc is not None:
+        assert len(legend_loc)==2 or len(legend_loc)==4,\
+            "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
     if show_legend: plt.legend(bbox_to_anchor=legend_loc)
     elif hide_legend: plt.legend([],[], frameon=False)
 
@@ -529,7 +675,7 @@ def set_ax_size(ax,w,h):
 def hist_MB(arr, a=None, b=None, s=None,
             title='Histogram', xlabel='', ylabel='',
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
-            saveFig=False, saveDir='', _format='pdf'):
+            saveFig=False, saveDir='', _format='pdf', prettify=True):
     if a is None: a=np.min(arr)
     if b is None: b=np.max(arr)
     if s is None: s=(b-a)/100
@@ -546,7 +692,7 @@ def hist_MB(arr, a=None, b=None, s=None,
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
 
     if xlim is None: xlim = [a-s/2,b+s/2]
-    fig,ax=mplp(fig, ax, xlim=xlim, figsize=figsize)
+    fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize, prettify=prettify)
 
     if saveFig: save_mpl_fig(fig, title, saveDir, _format)
       
@@ -554,7 +700,7 @@ def hist_MB(arr, a=None, b=None, s=None,
 
 def paired_plot(df, cats, ylabel=None, xlabel=None, color="grey",
                dodge=True, dodge_range=0.1,
-               figsize=(3,5)):
+               figsize=(3,5), prettify=True):
     """
     df: pandas dataframe
     cats: list of str, columns of dataframe df
@@ -580,13 +726,14 @@ def paired_plot(df, cats, ylabel=None, xlabel=None, color="grey",
     plt.plot(lines_x, lines, color=color, alpha=0.5, zorder=-1)
 
     mplp(figsize=figsize, ylabel=ylabel, xlabel=xlabel,
-         xlim=[-0.5, i+0.5], xticks=np.arange(i+1), xtickslabels=cats)
+         xlim=[-0.5, i+0.5], xticks=np.arange(i+1), xtickslabels=cats,
+         prettify=prettify)
 
 
 #%% Stats plots ##############################################################################################
 
 def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1, x=None, ax=None, color=None,
-                      ylabel=None, xlabel=None, title=None):
+                      ylabel=None, xlabel=None, title=None, prettify=True):
     '''
     Function to plot array X and the upper and lower borders for a given p value.
     Parameters:
@@ -617,7 +764,8 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
     ax.plot(x,fp2, c='r', ls='--')
     ax.legend(fontsize=14)
 
-    fig, ax = mplp(fig, ax, ylabel=ylabel, xlabel=xlabel, title=title)
+    fig, ax = mplp(fig, ax, ylabel=ylabel, xlabel=xlabel,
+                   title=title, prettify=prettify)
 
     return fig
 
@@ -1382,7 +1530,8 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
            zscore=False, bsl_subtract=False, ylim=None,
            convolve=True, xticks=None, xticklabels=None,
            xlabel='Time (ms)', ylabel='IFR (spk/s)', legend_label=None, legend=False,
-           ax=None, figsize=None, tight_layout=True, hspace=None, wspace=None):
+           ax=None, figsize=None, tight_layout=True, hspace=None, wspace=None,
+           prettify=True):
 
     if ax is None:
         fig, ax = plt.subplots()
@@ -1433,7 +1582,8 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
      axlab_w='bold', axlab_s=16,
      ticklab_w='regular',ticklab_s=14, lw=1,
      title=title, title_w='bold', title_s=16,
-     hide_top_right=True, tight_layout=tight_layout, hspace=hspace, wspace=wspace)
+     hide_top_right=True, tight_layout=tight_layout, hspace=hspace, wspace=wspace,
+     prettify=prettify)
 
     if saveFig:
         figname=title
@@ -1449,7 +1599,7 @@ def raster_plot(times, events, window=[-1000, 1000], events_toplot=[0], events_c
                 as_heatmap=False, vmin=None, center=None, vmax=None, cmap_str=None,
                 show_psth=False, psthb=10,
                 zscore=False, bsl_subtract=False, bsl_window=[-2000,-1000], ylim_psth=None,
-                convolve=True, gsd=2):
+                convolve=True, gsd=2, prettify=True):
     '''
     Make a raster plot of the provided 'times' aligned on the provided 'events', from window[0] to window[1].
     By default, there will be len(events) lines. you can pick a subset of events to plot
@@ -1563,7 +1713,8 @@ def raster_plot(times, events, window=[-1000, 1000], events_toplot=[0], events_c
                  axlab_w='bold', axlab_s=20,
                  ticklab_w='regular',ticklab_s=16, lw=1,
                  title=title, title_w='bold', title_s=24,
-                 hide_top_right=True, hide_axis=False)
+                 hide_top_right=True, hide_axis=False,
+                 prettify=prettify)
     print(f'{ntrials} trials.')
     xl=ax.get_xlim()
     yl=ax.get_ylim()
@@ -1782,7 +1933,8 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
 def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloads', saveFig=True,
             _format='pdf', labels=True, title=None, color=None,
             ylim=None, normalize='Hertz', ccg_mn=None, ccg_std=None,
-            figsize=None, show_hz=False, style='line', hide_axis=False, show_ttl=True):
+            figsize=None, show_hz=False, style='line', hide_axis=False, show_ttl=True,
+            prettify=True):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -1855,10 +2007,9 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     mplp(fig, ax, figsize=figsize,
          title=title,
          xlabel='Time (ms)', ylabel=ylabel,
-         #xticks = get_bestticks(-cwin/2, cwin/2, light=True),
-         #yticks = get_bestticks(ylim[0], ylim[1], light=True),
          title_s=20, axlab_s=20, ticklab_s=20, axlab_w = 'regular',
-         xlim=[-cwin*1./2, cwin*1./2], ylim=ylim, hide_axis=hide_axis)
+         xlim=[-cwin*1./2, cwin*1./2], ylim=ylim, hide_axis=hide_axis,
+         prettify=prettify)
 
     # optional second y axis
     if ccg_mn is not None and ccg_std is not None and show_hz:
@@ -1880,7 +2031,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
 def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir='~/Downloads', saveFig=False,
             _format='pdf', labels=True, title=None, ref_per=True,
             ylim1=0, ylim2=0, normalize='Hertz', acg_mn=None, acg_std=None, figsize=None,
-            hide_axis=False):
+            hide_axis=False, prettify=True):
     '''Plots acg and saves it given the acg array.
     unit: int.
     ACG: acg array in non normalized counts.
@@ -1955,7 +2106,8 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000, saveDir=
          title=title,
          xlabel='Time (ms)', ylabel=ylabel,
          title_s=20, axlab_s=20, ticklab_s=20,
-         xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2], hide_axis=hide_axis)
+         xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2], hide_axis=hide_axis,
+         prettify=prettify)
 
 
     # Eventually save figure
@@ -1969,7 +2121,8 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                      saveFig=False, _format='pdf', figsize=None,
                      labels=True, show_ttl=True, title=None,
                      ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore',
-                     acg_color=None, ccg_color='black', hide_axis=False, pad=0):
+                     acg_color=None, ccg_color='black', hide_axis=False, pad=0,
+                     prettify=True):
 
     ## format parameters
     if acg_color is not None and not isinstance(acg_color, str) and not isinstance(acg_color, int):
@@ -2098,7 +2251,8 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 title_s=8, title_w='regular',
                 axlab_s=16, axlab_w='regular',
                 ticklab_s=18, ticklab_w='regular',
-            tight_layout=False, hide_axis=hide_axis)
+                tight_layout=False, hide_axis=hide_axis,
+                prettify=prettify)
             i+=1
             pbar.update(1)
 
@@ -2114,7 +2268,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
              saveDir='~/Downloads', saveFig=False, _format='pdf', figsize=None, verbose=False,
              color=0, labels=True, title=None, ref_per=True, ylim=[0,0],
              acg_mn=None, acg_std=None, again=False,
-              train=None, hide_axis=False):
+              train=None, hide_axis=False, prettify=True):
     """
     Parameters:
         - dp: str, data path
@@ -2161,7 +2315,8 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
         acg_mn=np.mean(np.append(acg25, acg35))
     fig=plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, _format=_format,
             labels=labels, title=title, ref_per=ref_per, ylim1=ylim1, ylim2=ylim2,
-            normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize, hide_axis=hide_axis)
+            normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize, hide_axis=hide_axis,
+            prettify=prettify)
 
     return fig
 
@@ -2170,7 +2325,8 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
              title=None, show_ttl=True, color=None, CCG=None,
              ylim_acg=None, ylim_ccg=None, share_y=False,
              ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False, show_hz=False,
-             use_template=True, enforced_rp=0, style='line', hide_axis=False, pad=0):
+             use_template=True, enforced_rp=0, style='line', hide_axis=False, pad=0,
+             prettify=True):
     """
     Parameters:
         - dp: str, data path
@@ -2231,12 +2387,13 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte', saveDir='~/Downloa
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format,
                       labels=labels, title=title, color=color, ylim=ylim_ccg,
                       normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std,
-                      figsize=figsize, style=style, hide_axis=hide_axis, show_hz=show_hz, show_ttl=show_ttl)
+                      figsize=figsize, style=style, hide_axis=hide_axis, show_hz=show_hz, show_ttl=show_ttl,
+                      prettify=prettify)
     else:
         fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, saveDir, saveFig, _format, figsize,
                                labels=labels, show_ttl=show_ttl,title=title,
                                ylim_acg=ylim_acg, ylim_ccg=ylim_ccg, share_y=share_y, normalize=normalize,
-                               acg_color=color, hide_axis=hide_axis, pad=pad)
+                               acg_color=color, hide_axis=hide_axis, pad=pad, prettify=prettify)
 
     return fig
 
@@ -2295,7 +2452,8 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
                 cmapstr="RdBu_r", vmin=None, vmax=None, center=None, colorseq='nonlinear',
                 clabel='', cticks=None,
                 figsize=(6,4), aspect='auto', function='imshow',
-                ax=None, tight_layout=True, cmap_h=0.3, **kwargs):
+                ax=None, tight_layout=True, cmap_h=0.3, prettify=True,
+                **kwargs):
     '''
     Essentially plt.imshow(im, cmap=cmapstr), but with a nicer and actually customizable colorbar.
 
@@ -2380,7 +2538,8 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
           axlab_w='bold', axlab_s=16,
           ticklab_w='regular', ticklab_s=12, ticks_direction='out', lw=1,
           title=title, title_w='regular', title_s=12,
-          hide_top_right=False, hide_axis=False, tight_layout=False)
+          hide_top_right=False, hide_axis=False, tight_layout=False,
+          prettify=prettify)
 
     if tight_layout: fig.tight_layout(rect=[0,0,0.8,1])
 

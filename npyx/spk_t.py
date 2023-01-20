@@ -8,8 +8,9 @@ import os.path as op
 opj=op.join
 from pathlib import Path, PosixPath, WindowsPath
 
-# from itertools import groupby
-# from operator import itemgetter
+from joblib import Memory
+cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
+cache_memory = Memory(cachedir, verbose=0)
 
 import matplotlib.pyplot as plt
 
@@ -18,7 +19,7 @@ import pandas as pd
 from scipy.stats import iqr
 from scipy.optimize import curve_fit
 from scipy.stats import norm
-from npyx.utils import smooth, thresh_consec, npa, assert_int, assert_float
+from npyx.utils import smooth, thresh_consec, npa, assert_int, assert_float, docstring_decorator
 from npyx.gl import get_units, get_npyx_memory, check_periods
 from npyx.inout import read_metadata
 
@@ -212,12 +213,16 @@ def inst_cv2(t):
 
     return cv2
 
+@cache_memory.cache
 def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
-    i = np.diff(t) if len(t)>1 else None
-    if i is None: return 0
-    # Remove outlyers
-    i=i[(i>=np.quantile(i, exclusion_quantile))&(i<=np.quantile(i, 1-exclusion_quantile))]/fs
-    return np.round(1./np.mean(i),2)
+    isint = np.diff(t) if len(t)>1 else None
+    if isint is None: return 0
+    # Remove outliers
+    quantile_high = np.quantile(isint, 1-exclusion_quantile)
+    quantil_low = np.quantile(isint, exclusion_quantile)
+    isint = isint[(isint >= quantil_low) & (isint <= quantile_high)]
+    isint = isint/fs
+    return np.round(1./np.mean(isint),2)
 
 def mfr(dp=None, U=None, exclusion_quantile=0.005, enforced_rp=0,
         periods='all', again=False, train=None, fs=None):
@@ -387,7 +392,6 @@ def train_quality(dp, unit, period_m=[0,20],
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold = 0.05,
                   again = False, save = True, verbose = False, plot_debug = False,
                   enforced_rp = 0):
-
     """
     Subselect spike times which meet two criteria:
         low number of 'missed spikes' (false negatives)
@@ -442,8 +446,9 @@ def train_quality(dp, unit, period_m=[0,20],
         - enforced_rp: float, enforced refractory period in ms (if 2 spikes are closer than enforced_rp ms, only the first one  is kept.)
     
     Returns:
-    - goodsec, acgsec, gausssec
-
+        - good_spikes_m: mask of spikes belonging to the intersection of the chunks with low enough fp/fn rates.
+        - good_fp_start_end: list of [start, end] of chunks with low enough fp rate (in seconds).
+        - good_fn_start_end: list of [start, end] of chunks with low enough fn rate (in seconds).
     """
     
     dp = Path(dp)
@@ -477,6 +482,9 @@ def train_quality(dp, unit, period_m=[0,20],
     unit_amp = load_amplitudes(dp, unit, verbose, 'all', again, enforced_rp)
     
     unit_train = trn(dp, unit, enforced_rp=enforced_rp, again=again, verbose=verbose)/fs
+
+    if period_m is None:
+        period_m = [0, unit_train[-1]/60]
     period_s=[period_m[0]*60, period_m[1]*60]
 
     # Attempt to reload if precomputed
@@ -543,11 +551,11 @@ def train_quality(dp, unit, period_m=[0,20],
         # Compute denominator of FP on total period
         acg_tot = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[period_s])
         x_block = np.round(np.arange(-c_win/2, c_win/2 + c_bin, c_bin), 8) # round to fix binary imprecisions
-        rp_mask = (x_block >= -violations_ms) & (x_block <= violations_ms)
+        # rp_mask = (x_block >= -violations_ms) & (x_block <= violations_ms)
         baseline_mask = (acg_tot*0).astype(bool)
         baseline_mask[:n_bins_acg_baseline] = True
         baseline_mask[-n_bins_acg_baseline:] = True
-        baseline_mean = np.mean(acg_tot[baseline_mask])
+        # baseline_mean = np.mean(acg_tot[baseline_mask])
         
         # False positive estimation
         for i, (t1,t2) in enumerate(fp_chunks):
@@ -556,12 +564,16 @@ def train_quality(dp, unit, period_m=[0,20],
             n_spikes_chunk=np.sum(chunk_mask)
 
             if n_spikes_chunk > 15:
-                ACG = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[(t1, t2)])
-                violations_mean = np.mean(ACG[rp_mask])
-                rpv_ratio_acg = round(violations_mean / baseline_mean, 4)
-                fp_toplot.append(rpv_ratio_acg)
+
+                # ACG = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[(t1, t2)])
+                # violations_mean = np.mean(ACG[rp_mask])
+                #rpv_ratio_acg = round(violations_mean / baseline_mean, 4)
+                # fp_toplot.append(rpv_ratio_acg)
+                fp_rate = isi_violations(unit_train, min_time=t1, max_time=t2,
+                                         isi_threshold=violations_ms/1000, min_isi=0.0005)[0]
+                fp_toplot.append(fp_rate)
                 chunk_fp_t.append(t1+(t2-t1)/2)
-                if (rpv_ratio_acg <= fp_threshold):
+                if (fp_rate <= fp_threshold):
                     passed_fp[i] = [t1, t2, 1]
 
     # Across all chunks, if at least 1 good chunk for both (else no spike can be called good)
@@ -645,23 +657,7 @@ def train_quality(dp, unit, period_m=[0,20],
             
         return good_spikes_m, [0], [0]
 
-# def get_consec_sections(seconds):
-#         """
-#         Given an array with seconds as entries (with 1 sec increments)
-
-#         Return: list of consecutive sections start and end times
-#         """
-#         sec_all = []
-#         for k, g in groupby(enumerate(seconds), lambda ix: ix[0]-ix[1]):
-#             sec_all.append(list( map(itemgetter(1), g)))
-#         start_end = []
-
-#         # get the start and end times of these section
-#         for good_section in sec_all:
-#             start_end.append([good_section[0], good_sectienforced_rp
-#         return start_end
-
-
+@docstring_decorator(train_quality.__doc__)
 def trn_filtered(dp, unit, period_m=[0,20],
                   fp_chunk_span=3, fp_chunk_size = 10,
                   fn_chunk_span = 3, fn_chunk_size = 10,
@@ -670,7 +666,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
                   use_consecutive = False, consecutive_n_seconds = 180,
                   again = False, save = True, verbose = False, plot_debug = False,
                   enforced_rp=0):
-    f"""
+    """
     Returns spike times (in sample) meeting the false positive and false negative criteria.
     Mainly wrapper of train_quality().
     
@@ -688,7 +684,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
                           
     train_quality docstring:
     
-    {train_quality.__doc__}
+    {0}
     """
     dp = Path(dp)
     t = trn(dp,unit, enforced_rp=enforced_rp)
@@ -700,10 +696,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
 
     # use spike times themselves to define beginning and end of good Sections
     # as the FP and FN sections do not necessarily overlap
-    edges = np.diff([0]+list(good_spikes_m.astype(int))+[0])
-    good_left = np.nonzero(edges==1)[0]
-    good_right = np.nonzero(edges==-1)[0]-1
-    good_sections = [[t_s[l], t_s[r]] for l,r in zip(good_left, good_right)]
+    good_sections = good_sections_from_mask(good_spikes_m, t_s)
     
     if len(good_sections)>0:#
         total_good_sections = sum([s[1]-s[0] for s in good_sections])
@@ -727,6 +720,48 @@ def trn_filtered(dp, unit, period_m=[0,20],
     if verbose: print('No consecutive section passed the filters')
     return np.array([0]), (t*0).astype(bool)
 
+def good_sections_from_mask(good_times_m, time_series=None):
+    """
+    Returns a list of good sections [[t1,t2], ...] in units of 'time_series'
+    from a boolean mask of time stamps good_times_m.
+    """
+    edges = np.diff([0]+list(good_times_m.astype(int))+[0])
+    good_left = np.nonzero(edges==1)[0]
+    good_right = np.nonzero(edges==-1)[0]-1
+    if time_series is not None:
+        return [[time_series[l], time_series[r]] for l,r in zip(good_left, good_right) if r>l]
+    else:
+        return [[l,r] for l,r in zip(good_left, good_right) if r>l]
+
+@cache_memory.cache
+def get_common_good_sections(good_sections_list):
+    """
+    good_sections: list of lists of periods
+    [
+    [[t11, t12], [t13,t14], ...],
+    [[t21, t22], [t23,t24], ...],
+    ]
+    Must be in SAMPLES, INTEGERS.
+
+    Returns:
+        - common_good_sections: list of sections common to all the lists of periods.
+    """
+
+    periods = [sec[i] for sec in good_sections_list for i in range(len(sec))]
+    end = int(np.max(periods))
+    bad_sections = []
+    for sec in good_sections_list:
+        sec = np.array(sec)
+        assert sec.shape[1]==2, "All periods must be of size 2!"
+        bad_sec = np.concatenate([[0], np.array(sec).ravel(), [end]]).astype(int)
+        bad_sec = bad_sec.reshape(-1,2)
+        bad_sections.append(bad_sec)
+    m = np.full((end,), True)
+    for sec in bad_sections:
+        for sec_per in sec:
+            m[slice(sec_per[0]+1, sec_per[1])] = False
+
+    return good_sections_from_mask(m)
 
 def gaussian_cut(x, a, mu, sigma, x_cut):
     g = a * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
@@ -839,3 +874,4 @@ def estimate_bins(x, rule):
 from  npyx.corr import acg
 from npyx.merger import assert_multi, get_dataset_id, get_ds_table, get_source_dp_u
 from npyx.plot import plot_fp_fn_rates
+from npyx.metrics import isi_violations

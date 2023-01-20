@@ -27,7 +27,7 @@ from IPython.core.display import HTML,display
 mpl.rcParams['pdf.fonttype'] = 42 # necessary to make the text editable
 mpl.rcParams['ps.fonttype'] = 42
 
-from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, save_np_array
+from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, save_np_array, pprint_dic, docstring_decorator
 from npyx.stats import fractile_normal, fractile_poisson
 
 from npyx.inout import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map, predefined_chanmap
@@ -88,20 +88,6 @@ default_mplp_params = dict(
             clabel_s=22,
             cticks_s=22,
 )
-
-def pprint_dic(dic):
-    kv = "".join([f"{k}: {v},\n" for k,v in dic.items()])
-    return "{\n"+kv+"}"
-
-def docstring_decorator(*args):
-    """
-    Feed as many arguments as wished to incorporate into the function f's docstring.
-    Edit f' docstring with {0}, {1}... acordingly.
-    """
-    def decorate(f):
-        f.__doc__ = f.__doc__.format(*args)
-        return f
-    return decorate
 
 @docstring_decorator(pprint_dic(default_mplp_params))
 def mplp(fig=None, ax=None, figsize=None, axsize=None,
@@ -675,7 +661,7 @@ def set_ax_size(ax,w,h):
 def hist_MB(arr, a=None, b=None, s=None,
             title='Histogram', xlabel='', ylabel='',
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
-            saveFig=False, saveDir='', _format='pdf', prettify=True):
+            saveFig=False, saveDir='', _format='pdf', prettify=True, **kwargs):
     if a is None: a=np.min(arr)
     if b is None: b=np.max(arr)
     if s is None: s=(b-a)/100
@@ -692,7 +678,7 @@ def hist_MB(arr, a=None, b=None, s=None,
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
 
     if xlim is None: xlim = [a-s/2,b+s/2]
-    fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize, prettify=prettify)
+    fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize, prettify=prettify, **kwargs)
 
     if saveFig: save_mpl_fig(fig, title, saveDir, _format)
       

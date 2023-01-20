@@ -41,8 +41,7 @@ from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
 
 def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=False, trains=None, enforced_rp=0):
     '''
-
-    - trains: dict, of the form {unit1:train1InSamples, unit2:...}'''
+    - trains: list of spike trains, in samples.'''
     trains_dic={}
     if trains is None:
         for iu, u in enumerate(U):
@@ -85,7 +84,7 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
        - U (list of integers): list of units indices.
        - fs: sampling rate (Hertz). Default 30000.
        - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-       - trains: dictionnary of trains, to calculate the CCG of an arbitrary list of trains in SAMPLES for fs=30kHz.'''
+       - trains: list of spike trains, in samples.'''
 
     #### Get clusters and times
     U=list(U)

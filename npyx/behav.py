@@ -9,6 +9,10 @@ import os.path as op; opj=op.join
 from pathlib import Path
 import pickle
 
+from joblib import Memory
+cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
+cache_memory = Memory(cachedir, verbose=0)
+
 import numpy as np
 import scipy as sp
 import pandas as pd
@@ -21,7 +25,7 @@ from numpy import pi, cos, sin
 
 import cv2
 
-from npyx.utils import npa, thresh, thresh_consec, smooth, sign, align_timeseries, assert_int, get_bins
+from npyx.utils import npa, thresh, thresh_consec, smooth, sign, assert_int
 
 from npyx.inout import read_metadata, get_npix_sync, paq_read, list_files
 from npyx.spk_t import mean_firing_rate
@@ -815,6 +819,7 @@ def jPSTH(spikes1, spikes2, events, b=2, window=[-1000,1000], convolve=False, me
 
     return jpsth, jpsth_ccg, coincidence_psth
 
+@cache_memory.cache
 def get_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
     '''
     Parameters:
@@ -875,6 +880,7 @@ def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
         #print('WARNING not enough spikes around events to compute std, y_p_var was filled with nan. Patched by filling with ones.')
 
     return y, y_p, y_p_var
+
 
 def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_trials=False,
                       zscore=False, zscoretype='within',

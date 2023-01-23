@@ -1,12 +1,14 @@
 import traceback
 
+import numpy as np
+
 import npyx
 from npyx.inout import get_npix_sync
 from npyx.gl import get_units, read_metadata
 from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf, wvf_dsmatch, get_peak_chan, templates
 from npyx.corr import ccg
-from npyx.plot import plot_ccg, plot_wvf, plot_raw
+from npyx.plot import plot_acg, plot_ccg, plot_wvf, plot_raw
 
 prefix = "\033[34;1m--- "
 red_prefix = "\033[91;1m--- "
@@ -32,8 +34,7 @@ def test_npyx(dp, raise_error=False):
     units = test_function(get_units, raise_error, True, dp=dp)
     if units is None:
         raise ValueError("Something went really wrong, get_units did not run. Fix code and try again before testing next function.")
-    u = units[-1]
-    u1 = units[-3]
+    u, u1 = units[np.random.randint(0, len(units)-1, 2)]
 
     test_function(ids, raise_error, dp=dp, unit=u, again=1)
 
@@ -48,11 +49,13 @@ def test_npyx(dp, raise_error=False):
     test_function(get_peak_chan, raise_error, dp=dp, unit=u, again=1)
 
     test_function(templates, raise_error, dp=dp, u=u)
-
+    
     test_function(ccg, raise_error, dp=dp, U=[u,u1], bin_size=0.2, win_size=40, again=1)
 
     test_function(plot_wvf, raise_error, dp=dp, u=u, again=1, use_dsmatch=True)
 
+    test_function(plot_acg, raise_error, dp=dp, unit=u, again=1)
+    
     test_function(plot_ccg, raise_error, dp=dp, units=[u,u1], as_grid=True, again=1)
 
     test_function(plot_raw, raise_error, dp=dp, times=[0.1,0.15], channels=list(range(50)), again=1)

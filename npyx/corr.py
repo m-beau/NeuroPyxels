@@ -41,8 +41,7 @@ from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
 
 def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=False, trains=None, enforced_rp=0):
     '''
-
-    - trains: dict, of the form {unit1:train1InSamples, unit2:...}'''
+    - trains: list of spike trains, in samples.'''
     trains_dic={}
     if trains is None:
         for iu, u in enumerate(U):
@@ -85,7 +84,7 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
        - U (list of integers): list of units indices.
        - fs: sampling rate (Hertz). Default 30000.
        - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-       - trains: dictionnary of trains, to calculate the CCG of an arbitrary list of trains in SAMPLES for fs=30kHz.'''
+       - trains: list of spike trains, in samples.'''
 
     #### Get clusters and times
     U=list(U)
@@ -1020,7 +1019,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
                 features=pd.read_csv(feat_path)
                 return sigstack, sigustack, features
             features=pd.DataFrame(columns=feat_columns)
-            for i,c in enumerate(tqdm(sigstack, desc=f'Computing features of significant CCGs overs {num_cores} cores')):
+            for i,c in enumerate(tqdm(sigstack, desc=f'Computing features of significant CCGs over {num_cores} cores')):
                 pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn,
                                 fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
                 for p in pks:
@@ -1056,7 +1055,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 
     ccgsig_results = Parallel(n_jobs=num_cores)(\
         delayed(get_ccg_sig)(*ccgsig_args[i]) for i in tqdm(range(len(ccgsig_args)),
-        desc=f'Looking for significant CCGs overs {num_cores} cores'))
+        desc=f'Looking for significant CCGs over {num_cores} cores'))
 
     sigustack=[]
     sigstack=[]

@@ -196,6 +196,26 @@ def list_files(directory, extension, full_path=False):
         return [Path('/'.join([directory,f])) for f in files]
     return files
 
+
+## Text formatting utilities
+
+def pprint_dic(dic):
+    kv = "".join([f"{k}: {v},\n" for k,v in dic.items()])
+    return "{\n"+kv+"}"
+
+def docstring_decorator(*args):
+    """
+    Feed as many arguments as wished to incorporate into the function f's docstring.
+    Edit f' docstring with {0}, {1}... acordingly.
+    """
+    def decorate(f):
+        f.__doc__ = f.__doc__.format(*args)
+        return f
+    return decorate
+
+
+## Threholding utilities
+
 def any_n_consec(X, n_consec, where=False):
     '''
     The trick below finds whether there are n_consec consecutive ones in the array comp
@@ -377,6 +397,9 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
 
     return crosses
 
+
+## Zscoring, smoothing
+
 def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
     '''
     Returns z-scored (centered, reduced) array using outer edges of array to compute mean and std.
@@ -421,7 +444,6 @@ def smooth(arr, method='gaussian_causal', sd=5, axis=1, gamma_a=5):
     pad_width = [[C,C] if i==axis else [0,0] for i in range(arr.ndim)]
     padarr=np.pad(arr, pad_width, 'symmetric')
 
-
     ## Compute the kernel
     if method in ['gaussian', 'gaussian_causal']:
         X=np.arange(-4*sd, 4*sd+1)
@@ -452,7 +474,7 @@ def smooth(arr, method='gaussian_causal', sd=5, axis=1, gamma_a=5):
 
 
     ## Remove padding
-    sarr = sarr[slice_along_axis(C,-C,axis=axis)]
+    sarr = sarr[slice_along_axis(C+1,-C+1, axis=axis)]
     assert np.all(sarr.shape==arr.shape)
 
 

@@ -14,6 +14,7 @@ from .behav import *
 from .merger import *
 from .circuitProphyler import *
 from .feat import *
+from .metrics import *
 from .info import *
 from .h5 import *
 from .testing import *

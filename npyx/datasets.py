@@ -408,30 +408,22 @@ class NeuronsDataset:
         It removes all the data points that have no labels
         """
         mask = self.targets != -1
-        self.wf = self.wf[mask]
-        self.acg = self.acg[mask]
-        self.targets = self.targets[mask]
-        self.info = np.array(self.info)[mask].tolist()
-        self.spikes_list = np.array(self.spikes_list, dtype=object)[mask].tolist()
-        self.labels_list = np.array(self.labels_list)[mask].tolist()
-
-        if hasattr(self, "amplitudes_list"):
-            self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[
-                mask
-            ].tolist()
+        self._apply_mask(mask)
 
     def make_unlabelled_only(self):
         """
         Removes all datapoints that have labels
         """
         mask = self.targets == -1
+        self._apply_mask(mask)
+
+    def _apply_mask(self, mask):
         self.wf = self.wf[mask]
         self.acg = self.acg[mask]
         self.targets = self.targets[mask]
         self.info = np.array(self.info)[mask].tolist()
         self.spikes_list = np.array(self.spikes_list, dtype=object)[mask].tolist()
         self.labels_list = np.array(self.labels_list)[mask].tolist()
-
         if hasattr(self, "amplitudes_list"):
             self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[
                 mask

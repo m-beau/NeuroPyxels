@@ -6,8 +6,8 @@
 import os
 import os.path as op; opj=op.join
 from pathlib import Path
+import hashlib
 import psutil
-import traceback
 
 import warnings
 warnings.simplefilter('ignore', category=RuntimeWarning)
@@ -516,8 +516,9 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
 def get_ccgstack_fullname(name=None, cbin=0.2, cwin=80,
                           normalize='Counts', periods='all'):
     norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
-    periods_str = str(periods)[0:50].replace(' ', '').replace('\n','')
-    fn=f"ccgstack_{name}_{norm}_{cbin}_{cwin}_{periods_str}"
+    periods_str = str(periods).replace(' ', '').replace('\n','')
+    periods_hash = hashlib.sha1(periods_str.encode()).hexdigest()[:20]
+    fn=f"ccgstack_{name}_{norm}_{cbin}_{cwin}_{periods_hash}"
     fnu=fn+"_U"
 
     fn+=".npy"
@@ -1100,8 +1101,9 @@ def acg_3D(dp, u, cbin, cwin, normalize='Probability',
     fs = read_metadata(dp)['highpass']['sampling_rate']
     dpnm = get_npyx_memory(dp)
 
-    periods_str = str(periods)[0:50].replace(' ', '').replace('\n','')
-    fn = f"acg3d_{u}_{cbin}_{cwin}_{normalize}_{periods_str}_{enforced_rp}.npy"
+    periods_str = str(periods).replace(' ', '').replace('\n','')
+    periods_hash = hashlib.sha1(periods_str.encode()).hexdigest()[:20]
+    fn = f"acg3d_{u}_{cbin}_{cwin}_{normalize}_{periods_hash}_{enforced_rp}.npy"
     if (dpnm/fn).exists() and not again:
         bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
         bins_f = np.load(dpnm/("f_"+fn))

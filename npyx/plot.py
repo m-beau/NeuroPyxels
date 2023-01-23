@@ -2270,7 +2270,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
     if figsize is None: figsize=(4.5*l/2,4*l/2)
     fig = plt.figure(figsize=figsize)
 
-    x=np.arange(-cwin/2, cwin/2+cbin, cbin)
+    x=np.round(np.linspace(-cwin/2, cwin/2, CCGs.shape[2]),1)
     if bChs is not None:
         bChs=npa(bChs).astype(np.int64)
 

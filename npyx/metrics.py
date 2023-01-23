@@ -209,7 +209,7 @@ def calculate_quality_metrics(spike_times,
                                                        pc_feature_ind,
                                                        params['n_silhouette'])
 
-            print("Calculating drift metrics")
+            # print("Calculating drift metrics")
             # max_drift, cumulative_drift = calculate_drift_metrics(spike_times[period_mask],
             #                                            spike_clusters[period_mask],
             #                                            spike_templates[period_mask],

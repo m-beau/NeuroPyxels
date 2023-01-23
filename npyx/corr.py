@@ -1621,8 +1621,7 @@ def get_cisi(spk1, spk2, direction=0, verbose=False):
                     or for 0, the smallest interval of either
                     (in this case not only consecutive 1,2 or 2,1 ISIs are considered but all spikes of 1)
     Returns:
-        - spk_1to2: spikes of spk1 directly followed/preceeded by a spike of spk2
-        - isi_1to2: corresponding interspike intervals
+        - isi_1to2: shortest interspike intervals of spk1 to spk2
     '''
     assert direction in [1, 0, -1]
     spk1=np.sort(spk1).astype(np.float64)

@@ -130,7 +130,7 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None, warnings=True
                 continue
             assert ds_name in DSs.keys(),\
                 print(f"\n\033[31;1mWARNING dataset {ds_name} from \033[34;1mds_paths_master\033[31;1m isn't referenced in \033[34;1mds_master\033[31;1m.")
-            DSs[ds_name]["dp"]=str(dp)
+            DSs[ds_name]["dp"]=dp
             for prb in DSs[ds_name].keys():
                 if 'probe' in prb:
                     dp_prb=dp/f'{ds_name}_{prb}'
@@ -139,7 +139,7 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None, warnings=True
                         f"Edit path of {ds_name}:path in \033[34;1mds_paths_master\033[31;1m "
                         "and check that all probes are in subdirectories."))
                         continue
-                    DSs[ds_name][prb]["dp"]=str(dp_prb)
+                    DSs[ds_name][prb]["dp"]=dp_prb
 
     for ds_name, ds in DSs.items():
         if "dp" not in ds.keys():
@@ -363,7 +363,7 @@ def get_good_units(dp):
 def check_periods(periods):
     err_mess = "periods can only be 'all' or a list of lists/tuples [[t1.1,t1.2], [t2.1,t2.2]...] in seconds!"
     if isinstance(periods, str):
-        assert periods=='all', err_mess
+        assert periods == 'all', err_mess
         return periods
     periods = npa(periods)
     if periods.ndim==1:

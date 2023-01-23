@@ -1019,7 +1019,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
                 features=pd.read_csv(feat_path)
                 return sigstack, sigustack, features
             features=pd.DataFrame(columns=feat_columns)
-            for i,c in enumerate(tqdm(sigstack, desc=f'Computing features of significant CCGs overs {num_cores} cores')):
+            for i,c in enumerate(tqdm(sigstack, desc=f'Computing features of significant CCGs over {num_cores} cores')):
                 pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn,
                                 fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
                 for p in pks:
@@ -1055,7 +1055,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
 
     ccgsig_results = Parallel(n_jobs=num_cores)(\
         delayed(get_ccg_sig)(*ccgsig_args[i]) for i in tqdm(range(len(ccgsig_args)),
-        desc=f'Looking for significant CCGs overs {num_cores} cores'))
+        desc=f'Looking for significant CCGs over {num_cores} cores'))
 
     sigustack=[]
     sigstack=[]

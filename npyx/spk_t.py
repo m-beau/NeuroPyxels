@@ -120,7 +120,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - periods: list [[t1,t2], [t3,t4],...] (in seconds) or 'all' for all periods.
     - again: boolean, if True recomputes data from source files without checking routines memory.
-    - enforced_rp: float, enforced refractory period - if 2 spikes are separated by less than enforced_rp ms, the first one only is kept.
+    - enforced_rp: float, enforced refractory period (ms)- if 2 spikes are separated by less than enforced_rp ms, the first one only is kept.
                    By default 0, only removed pure duplicates (they happen!).
     '''
 

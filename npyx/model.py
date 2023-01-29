@@ -98,7 +98,7 @@ class GLM:
         - .beta: (n_predictors,) array. Model fit parameters once .fit(X, y) has been called.
         - .model: object, scikit-learn or custom model object (in particular has .fit, .predict, .coef_ methods/attributes).
         - .description: str, description of picked model given arguments.
-        - .eval: dict, contains mse, r2 and explained variance of model evaluation once .evaluate(y_true, y_predicted) has been called.
+        - .eval: dict, contains 'mse', 'r2' and explained variance 'ev' of model evaluation once .evaluate(y_true, y_predicted) has been called.
     ___________________________________________________________________________________________
     Model selection procedure:
         if distribution == "gaussian":
@@ -132,7 +132,7 @@ class GLM:
             Using regularizers with Poisson GLMs is very new,
             can only be approximated with 'cyclical gradient descent'.
             This is implemented in the R package glmnet,
-            and in the python package PyGLMnet. Not worth bothering honestly.
+            and in the python package PyGLMnet. Not worth implementing.
     """
     def __init__(self,
                  distribution = "gaussian",
@@ -246,7 +246,7 @@ class GLM:
             # Note: Using regularizers with Poisson GLMs is very new,
             # can only be approximated with 'cyclical gradient descent'.
             # This is implemented in the R package glmnet,
-            # and in the python package PyGLMnet. Not worth bothering implementing.
+            # and in the python package PyGLMnet. Not worth implementing.
 
         self.normalize_X = normalize_X
         self.is_fit = False
@@ -266,7 +266,7 @@ class GLM:
         X_scaled = (X - m)/s
         return X_scaled
         
-    def fit(self, X, y):
+    def fit(self, X, y, verbose=True):
         
         X = X.copy().squeeze()
         y = y.copy().squeeze()
@@ -276,7 +276,7 @@ class GLM:
         if self.normalize_X:
             X = self.scale(X)
         
-        print(f"\nFitting a {self.description}...\n")
+        if verbose: print(f"\nFitting a {self.description}...\n")
         self.model.fit(X, y)
         
         self.beta = self.model.coef_.squeeze()
@@ -297,17 +297,17 @@ class GLM:
         
         return self.beta
     
-    def evaluate(self, y, y_predicted):
+    def evaluate(self, y, y_predicted, verbose=False):
         # Evaluate model performance
         y, y_predicted = y.squeeze(), y_predicted.squeeze()
         self.eval['mse'] = mean_squared_error(y, y_predicted)
-        print("Mean Squared Error:", self.eval['mse'])
+        if verbose: print("Mean Squared Error:", self.eval['mse'])
         # R-squared
         self.eval['r2'] = r2_score(y, y_predicted)
-        print("R-squared:", self.eval['r2'] )
+        if verbose: print("R-squared:", self.eval['r2'] )
         # Explained variance
         self.eval['ev'] = explained_variance_score(y, y_predicted)
-        print("Explained variance:", self.eval['ev'])
+        if verbose: print("Explained variance:", self.eval['ev'])
         
         return self.eval['mse'], self.eval['r2'], self.eval['ev']
 

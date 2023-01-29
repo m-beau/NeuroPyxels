@@ -659,7 +659,7 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
 
 def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_with_opto = True, 
                           speed_th_steer = 0.1, speed_th_run = 0.5, light_buffer = 0.5,
-                          again = False, verbose = True):
+                          again = False, again_behav = False, verbose = True):
     """
     Function to calculate periods of undisturbed neural activity
     (no (monitored) behaviour or optostims).
@@ -682,7 +682,8 @@ def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_wi
     assert dp is None or behavdic is None, "Only one of dp or behavdic should be provided"
 
     if behavdic is None:
-        behavdic = behav_dic(dp, f_behav=None, vid_path=None, again=again, again_align=again, again_rawpaq=again,
+        behavdic = behav_dic(dp, f_behav=None, vid_path=None,
+        again=again_behav, again_align=again_behav, again_rawpaq=again_behav,
                      lick_ili_th=0.075, n_ticks=1024, diam=200, gsd=25,
                      plot=False, drop_raw=False, cam_paqi_to_use=None)
 
@@ -697,21 +698,23 @@ def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_wi
     else:
         raise ValueError("Neither 'wheel_position_mm' nor 'ROT_SPEED' was found in behavdic!")
 
-    move_periods = light_periods = None
-    if dp is not None and not again:
+    if dp is not None:
         dp = Path(dp)
         th_str = speed_th_steer if behaviour == "steering" else speed_th_run
         fn_move = f"periods_{th_str}_{behaviour}.npy"
         fn_nomove = fn_move.replace(f"{th_str}_", f"{th_str}_no_")
-        if (dp/fn_move).exists():
-            move_periods = np.load(dp/fn_move)
-            nomove_periods = np.load(dp/fn_nomove)
         if dataset_with_opto:
             fn_light = f"periods_{light_buffer}_opto.npy"
             fn_nolight = fn_light.replace(f"_opto.npy", f"_no_opto.npy")
-            if (dp/fn_light).exists() and dataset_with_opto:
-                light_periods = np.load(dp/fn_light)
-                no_light_periods = np.load(dp/fn_nolight)
+    move_periods = light_periods = None
+    if dp is not None and not again:
+        if (dp/fn_move).exists():
+            move_periods = np.load(dp/fn_move)
+            nomove_periods = np.load(dp/fn_nomove)
+            if dataset_with_opto:
+                if (dp/fn_light).exists():
+                    light_periods = np.load(dp/fn_light)
+                    no_light_periods = np.load(dp/fn_nolight)
 
     if move_periods is None:
         if behaviour == "steering":

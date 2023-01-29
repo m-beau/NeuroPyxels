@@ -18,6 +18,10 @@ from joblib import Parallel, delayed
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
 
+from joblib import Memory
+cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
+cache_memory = Memory(cachedir, verbose=0)
+
 import numpy as np
 import pandas as pd
 
@@ -548,9 +552,12 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts',
                      HAS to be provided so that the stack can be saved!
         - sav:       bool, whether to save the stack in routines memory.
                      Will only be saved if a name is provided!
+        - again:     bool, whether to recompute the stack even if it already exists in cache.
+        - periods:   list of tuples, periods to compute ccgs from. | Default: all
+        - parallel:  bool, whether to compute ccgs on parallel cpu cores. | Default: True
     Returns:
-        - sigstack: np array, ccg stack containing the ccgs, of shape U_src=U_trg x cwin//cbin+1 if all_to_all=False or U_src x U_trg x cwin//cbin+1 else
-        - sigustack: np array, matching unit pairs for each ccg, of shape U_src=U_trg if all_to_all=False or U_src x U_trg else
+        - sigstack: np array, ccg stack containing the ccgs, of shape (U_src=U_trg, cwin//cbin+1,) if all_to_all=False or else (U_src, U_trg, cwin//cbin+1,)
+        - sigustack: np array, matching unit pairs for each ccg, of shape (U_src=U_trg,) if all_to_all=False or else (U_src, U_trg,)
     '''
     dpnm = get_npyx_memory(dp)
 
@@ -838,13 +845,16 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
           (this is the standard deviation of the gaussian used to compute the predictor = convolved CCG).
           E.g. if looking for monosynaptic event, use 5 millisecond.
         - ret_values: bool, returns values of CCG corresponding to threshold crosses if True, in Poisson standard deviations
+
+    NOTE: p_th used to be divided by 2: probably a mistake
+    (inherited from alpha table conversion where you pick the value for 2.5% of either side to get 5% in total?)
     '''
 
     assert np.all(CCG==np.round(CCG)), 'CCG should be in counts -> integers!'
     assert 0<p_th<1, "p_th should be between 0 and 1!"
     assert n_consec>=1 and round(n_consec)==n_consec
 
-    W_sd=int(W_sd/cbin)
+    W_sd=int(W_sd/cbin) # convert W_sd from ms to samples
     pred, pvals = StarkAbeles2009_ccg_sig(CCG, W=2*W_sd, WINTYPE='gauss', HF=None, CALCP=True, sgn=sgn)
     pred, pvals = pred.flatten(), pvals.flatten()
 
@@ -854,12 +864,12 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
         return fig
 
     if ret_values:
-        sig_pvals=thresh_consec(pvals, p_th/2, sgn=-1, n_consec=n_consec, only_max=only_max)
-        poisson_zscore=(CCG-pred)/np.sqrt(pred)
+        sig_pvals=thresh_consec(pvals, p_th, sgn=-1, n_consec=n_consec, only_max=only_max)
+        poisson_zscore=(CCG-pred)/np.sqrt(pred) # Poisson: mean = variance = std^2 (so take sqrt(mean) for std)
         for sp in sig_pvals: sp[1,:]=poisson_zscore[sp[0,:].astype(np.int64)]
         return sig_pvals
 
-    comp = (pvals<=p_th/2)
+    comp = (pvals<=p_th)
     return any_n_consec(comp, n_consec, where=False)
 
 
@@ -1054,7 +1064,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
             ccgsig_ids.append((i,j))
             ccgsig_args.append((CCG, cbin, cwin, p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, ret_features, only_max))
 
-    ccgsig_results = Parallel(n_jobs=num_cores)(\
+    ccgsig_results = Parallel(n_jobs=-2)(\
         delayed(get_ccg_sig)(*ccgsig_args[i]) for i in tqdm(range(len(ccgsig_args)),
         desc=f'Looking for significant CCGs over {num_cores} cores'))
 
@@ -1299,7 +1309,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         tfilt=[[-2.5,-1],[1,2.5]]
         sfilt=1
     elif corr_type=='inhibitions':
-        tfilt=[[-2.5,-1],[1,2.5]]
+        tfilt=[[-3,-0.2],[0.2,3]]
         sfilt=-1
     elif corr_type=='connections':
         tfilt=[[-2.5,-1],[1,2.5]]
@@ -1328,6 +1338,9 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
                   p_th, n_consec_bins, sgn, fract_baseline, W_sd, test, again, againCCG, ret_features=True, only_max=only_max,
                   periods=periods)
 
+
+    sfc['t_ms_center'] = sfc.l_ms+(sfc.r_ms-sfc.l_ms)/2
+    
     # If filtering of connections wishes to be done at a later stage, simply return
     if corr_type=='all': return sfc, np.zeros((len(gu),len(gu))), peakChs
 
@@ -1348,8 +1361,8 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
 
         # Filter out based on time
         def drop_time(sfc, tfilt, corr_type):
-            # for complex spike pauses: use time of trough center, not minimum
-            t=(sfc.l_ms+(sfc.r_ms-sfc.l_ms)/2).values if corr_type=='cs_pause' else sfc['t_ms'].values
+            # use time of trough center, not minimum
+            t=sfc['t_ms_center']
             t_mask=np.zeros((sfc.shape[0])).astype('bool')
             if np.any(tfilt):
                 for tm in tfilt:
@@ -1381,13 +1394,13 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     if (pre_chanrange is not None)|(post_chanrange is not None):
         peakChs = get_depthSort_peakChans(dp, use_template=use_template_for_peakchan)
         if pre_chanrange is not None:
-            pre_units=sfc.uSrc[sfc.t_ms>=0].append(sfc.uTrg[sfc.t_ms<0]).sort_index().values
+            pre_units=sfc.uSrc[sfc.t_ms_center>=0].append(sfc.uTrg[sfc.t_ms_center<0]).sort_index().values
             peak_m=(peakChs[:,1]>pre_chanrange[0])&(peakChs[:,1]<pre_chanrange[1])
             range_m=np.isin(pre_units,peakChs[peak_m,0])
             sfc.drop(index=sfc.index[~range_m], inplace=True)
             sfc.reset_index(inplace=True, drop=True)
         if post_chanrange is not None:
-            post_units=sfc.uSrc[sfc.t_ms<0].append(sfc.uTrg[sfc.t_ms>=0]).sort_index().values
+            post_units=sfc.uSrc[sfc.t_ms_center<0].append(sfc.uTrg[sfc.t_ms_center>=0]).sort_index().values
             peak_m=(peakChs[:,1]>post_chanrange[0])&(peakChs[:,1]<post_chanrange[1])
             range_m=np.isin(post_units,peakChs[peak_m,0])
             sfc.drop(index=sfc.index[~range_m], inplace=True)
@@ -1416,7 +1429,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
         # plotting u1-> u2 in top right corner
         # u2 -> u1 in bottom left corner
         elif corr_type in ['excitations', 'inhibitions']:
-            t=sfc.loc[i, 't_ms']
+            t=sfc.loc[i, 't_ms_center']
             tmask1=(t>=tfilt[1][0])&(t<=tfilt[1][1])
             tmask2=(t>=tfilt[0][0])&(t<=tfilt[0][1])
             if np.any(tmask1):
@@ -1717,7 +1730,7 @@ def get_cisi_parprocess(spk1, spk2, direction=0, verbose=False):
 
     n=chunks.shape[0]
     inputs=[(i, chunk) for i, chunk in enumerate(chunks)]
-    results=Parallel(n_jobs=num_cores)(delayed(par_process)(inp[0], inp[1], spk2, n, direction) for inp in inputs)
+    results=Parallel(n_jobs=-2)(delayed(par_process)(inp[0], inp[1], spk2, n, direction) for inp in inputs)
 
     return np.concatenate(results).ravel()
 
@@ -1927,6 +1940,7 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
 
     return pop_sync/N_pop_firing
 
+@cache_memory.cache
 def fraction_pop_sync(dp, u1, U, sync_win=2, b=1, sd=1000, th=0.02, again=False,
                       t1=None, trains=None, fs=None, t_end=None):
     f'''Wrapper for frac_pop_sync:

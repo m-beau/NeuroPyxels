@@ -1,5 +1,6 @@
 import json
 import re
+import gc
 import sys
 import time
 import warnings
@@ -529,6 +530,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
             else:
                 continue
             label_optotagged_unit_h5(h5_path, ds_name, u, label)
+            gc.collect()
 
 def add_json_datasets_to_h5_hausser(json_path, h5_path, again=False, include_raw_snippets=False,
                                     delete_original_data=False, data_deletion_double_check=False,

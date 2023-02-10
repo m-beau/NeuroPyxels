@@ -98,13 +98,10 @@ def normalise_wf(wf):
     or the peak is set to +1 if the waveform is dendritic
     """
     baseline = wf[:, :20].mean(axis=1, keepdims=True)
+    wf = wf - baseline
     through = wf.min()
     peak = wf.max()
-    return (
-        (wf - baseline) / np.abs(through)
-        if np.abs(through) > np.abs(peak)
-        else (wf - baseline) / np.abs(peak)
-    )
+    return wf / np.abs(through) if np.abs(through) > np.abs(peak) else wf / np.abs(peak)
 
 
 def crop_original_wave(waveform, central_range=60, n_channels=10):
@@ -213,6 +210,9 @@ class NeuronsDataset:
                     neuron_id = name.split("_")[-1]
                     neuron_ids.append(int(neuron_id))
 
+        if not quality_check:
+            self.quality_checks_mask = np.ones(len(neuron_ids), dtype=bool)
+
         discarded_df = pd.DataFrame(columns=["neuron_id", "label", "dataset", "reason"])
         for wf_n in tqdm(np.sort(neuron_ids), desc="Reading dataset", leave=False):
             try:
@@ -232,18 +232,16 @@ class NeuronsDataset:
 
                 spike_idxes = get_neuron_attr(dataset, wf_n, "spike_indices")
 
-                if quality_check:
-                    sane_spikes = get_neuron_attr(dataset, wf_n, "sane_spikes")
-                    fn_fp_spikes = get_neuron_attr(
-                        dataset, wf_n, "fn_fp_filtered_spikes"
-                    )
-                    mask = fn_fp_spikes & sane_spikes
-                    spikes = spike_idxes[mask].copy()
-                else:
-                    spikes = spike_idxes
+                sane_spikes = get_neuron_attr(dataset, wf_n, "sane_spikes")
+                fn_fp_spikes = get_neuron_attr(dataset, wf_n, "fn_fp_filtered_spikes")
+                quality_mask = fn_fp_spikes & sane_spikes
 
-                # if spikes is void after quality checks, skip this neuron
-                if len(spikes) == 0:
+                spikes = (
+                    spike_idxes[quality_mask].copy() if quality_check else spike_idxes
+                )
+
+                # if spikes is void after quality checks, skip this neuron (if quality checks are enabled)
+                if len(spikes) == 0 and quality_check:
                     dataset_name = (
                         get_neuron_attr(dataset, wf_n, "dataset_id")
                         .ravel()[0]
@@ -269,6 +267,9 @@ class NeuronsDataset:
                     )
                     del self.labels_list[-1]
                     continue
+
+                elif len(spikes) == 0 and not quality_check:
+                    self.quality_checks_mask[wf_n] = 0
 
                 # Extract amplitudes if requested
                 if _use_amplitudes:
@@ -428,6 +429,8 @@ class NeuronsDataset:
             self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[
                 mask
             ].tolist()
+        if hasattr(self, "quality_checks_mask"):
+            self.quality_checks_mask = self.quality_checks_mask[mask]
 
     def make_full_dataset(self, wf_only=False, acg_only=False):
         """
@@ -471,21 +474,11 @@ class NeuronsDataset:
 
         granule_cell_mask = self.targets == LABELLING["GrC"]
 
-        self.targets = (self.targets[~granule_cell_mask] - 1).astype(int)
-        self.full_dataset = self.full_dataset[~granule_cell_mask]
-        self.targets[self.targets < 0] = -1  # Reset the label of unlabeled cells
-        self.wf = self.wf[~granule_cell_mask]
-        self.acg = self.acg[~granule_cell_mask]
-        self.info = np.array(self.info)[~granule_cell_mask].tolist()
-        self.labels_list = np.array(self.labels_list)[~granule_cell_mask].tolist()
-        self.spikes_list = np.array(self.spikes_list, dtype=object)[
-            ~granule_cell_mask
-        ].tolist()
+        self._apply_mask(granule_cell_mask)
 
-        if hasattr(self, "amplitudes_list"):
-            self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[
-                ~granule_cell_mask
-            ].tolist()
+        self.targets = (self.targets - 1).astype(int)
+        self.targets[self.targets < 0] = -1  # Reset the label of unlabeled cells
+
         # To convert text labels to numbers
         new_labelling = {
             "PkC_cs": 4,
@@ -533,6 +526,15 @@ class NeuronsDataset:
         npyx.plot.plot_acg("hello", 0, train=train)
         plt.show()
 
+    def apply_quality_checks(self):
+        assert hasattr(
+            self, "quality_checks_mask"
+        ), "No quality checks mask found, perhaps you have applied them already?"
+        checked_dataset = copy.deepcopy(self)
+        checked_dataset._apply_mask(checked_dataset.quality_checks_mask)
+        del checked_dataset.quality_checks_mask
+        return checked_dataset
+
     def __len__(self):
         return len(self.wf)
 
@@ -559,8 +561,25 @@ def merge_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         )
         new_dataset.labels_list = new_dataset.labels_list + dataset.labels_list
 
-        if hasattr(new_dataset, "amplitudes_list"):
+        if hasattr(new_dataset, "amplitudes_list") and hasattr(
+            dataset, "amplitudes_list"
+        ):
             new_dataset.amplitudes_list = (
                 new_dataset.amplitudes_list + dataset.amplitudes_list
+            )
+        else:
+            raise NotImplementedError(
+                "Attempted to merge datasets with different attributes"
+            )
+
+        if hasattr(new_dataset, "quality_checks_mask") and hasattr(
+            dataset, "quality_checks_mask"
+        ):
+            new_dataset.quality_checks_mask = np.hstack(
+                (new_dataset.quality_checks_mask, dataset.quality_checks_mask)
+            )
+        else:
+            raise NotImplementedError(
+                "Attempted to merge datasets with different attributes"
             )
     return new_dataset

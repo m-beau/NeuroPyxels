@@ -9,6 +9,10 @@ import os.path as op; opj=op.join
 from pathlib import Path
 import pickle
 
+from joblib import Memory
+cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
+cache_memory = Memory(cachedir, verbose=0)
+
 import numpy as np
 import scipy as sp
 import pandas as pd
@@ -21,10 +25,11 @@ from numpy import pi, cos, sin
 
 import cv2
 
-from npyx.utils import npa, thresh, thresh_consec, smooth, sign, align_timeseries, assert_int, get_bins
+from npyx.utils import npa, thresh, thresh_consec, smooth, sign, assert_int
 
 from npyx.inout import read_metadata, get_npix_sync, paq_read, list_files
-from npyx.spk_t import mean_firing_rate
+from npyx.gl import get_rec_len
+from npyx.spk_t import mean_firing_rate, get_common_good_sections
 from npyx.corr import crosscorr_cyrille, frac_pop_sync
 from npyx.merger import assert_multi, get_ds_table
 
@@ -647,6 +652,137 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
 
     return df, wheel_turn_dic
 
+
+#%% Recording period extraction
+
+# Find periods without motion
+
+def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_with_opto = True, 
+                          speed_th_steer = 0.1, speed_th_run = 0.5, light_buffer = 0.5,
+                          again = False, again_behav = False, verbose = True):
+    """
+    Function to calculate periods of undisturbed neural activity
+    (no (monitored) behaviour or optostims).
+
+    Arguments:
+        - dp: str, path to Neuropixels dataset (only provide if no behavdic) 
+        - behavdic: dict, output of behav_dic() (only provide if no dp)
+        - rec_len: float, recording length (in seconds). Only useful is dp is None.
+        - dataset_with_opto: whether the dataset had functioning channel rhodopsin and optostims were delivered
+        - speed_th_steer: threhsold to consider a 'steering' period (cm/s)
+        - speed_th_run: threshold to consider a 'running' period (mm/s)
+        - light_buffer: buffer to add before light onsets/after light offsets (s)
+        - again: bool, whether to reload behaviour and recalculate periods
+        - verbose: bool, whether to print details.
+    
+    Returns:
+        - baseline_periods: 2D array of shape (n_periods, 2), [[t1,t2], ...] in seconds.
+    """
+
+    assert dp is None or behavdic is None, "Only one of dp or behavdic should be provided"
+
+    if behavdic is None:
+        behavdic = behav_dic(dp, f_behav=None, vid_path=None,
+        again=again_behav, again_align=again_behav, again_rawpaq=again_behav,
+                     lick_ili_th=0.075, n_ticks=1024, diam=200, gsd=25,
+                     plot=False, drop_raw=False, cam_paqi_to_use=None)
+
+    if rec_len is None:
+        assert dp is not None, "You must provide the recording length in seconds!"
+        rec_len = get_rec_len(dp, unit='seconds')
+
+    if 'wheel_position_mm' in behavdic.keys():
+        behaviour = "steering"
+    elif 'ROT_SPEED' in behavdic.keys():
+        behaviour = "running"
+    else:
+        raise ValueError("Neither 'wheel_position_mm' nor 'ROT_SPEED' was found in behavdic!")
+
+    if dp is not None:
+        dp = Path(dp)
+        th_str = speed_th_steer if behaviour == "steering" else speed_th_run
+        fn_move = f"periods_{th_str}_{behaviour}.npy"
+        fn_nomove = fn_move.replace(f"{th_str}_", f"{th_str}_no_")
+        if dataset_with_opto:
+            fn_light = f"periods_{light_buffer}_opto.npy"
+            fn_nolight = fn_light.replace(f"_opto.npy", f"_no_opto.npy")
+    move_periods = light_periods = None
+    if dp is not None and not again:
+        if (dp/fn_move).exists():
+            move_periods = np.load(dp/fn_move)
+            nomove_periods = np.load(dp/fn_nomove)
+            if dataset_with_opto:
+                if (dp/fn_light).exists():
+                    light_periods = np.load(dp/fn_light)
+                    no_light_periods = np.load(dp/fn_nolight)
+
+    if move_periods is None:
+        if behaviour == "steering":
+            wheel_speed = np.abs(behavdic['wheel_speed_cm/s']) 
+            span=1 # s
+            # because paqIO oversamples at 5000Hz whereas VR runs at 30Hz, 
+            # only onsets are meaningful -> cannot use onest to offset as periods
+            # instead, take all periods outside of +/-1second around any threshold crossing
+            steer_th = thresh(wheel_speed, speed_th_steer, 1)
+            steer_spans = np.hstack([(steer_th-span*behavdic['paq_fs'])[:,None], (steer_th+span*behavdic['paq_fs'])[:,None]])
+            steer_mask = np.zeros(wheel_speed.shape).astype(np.int8)
+            for steer_span in steer_spans:
+                steer_mask[steer_span[0]:steer_span[1]]=1
+            
+            steer_values   = thresh_consec(steer_mask, 0.5, 1)
+            move_periods   = np.round(npa([[r[0,0],r[0,-1]] for r in steer_values])*behavdic['a']+behavdic['b'])/behavdic['npix_fs']
+            nomove_periods = np.concatenate([[0], move_periods.ravel(), [rec_len]]).reshape((-1,2))
+            
+            if np.any(move_periods) and verbose:
+                print(f'{np.sum(np.diff(move_periods, axis=1))}s of steering in total.')
+                print(f'{np.sum(np.diff(nomove_periods, axis=1))}s of no steering in total.')
+                
+        elif behaviour == "running":
+            v=behavdic['ROT_SPEED']
+            consec=1 # s
+            run_values = thresh_consec(v, speed_th_run, consec, consec*behavdic['paq_fs'], ret_values=True)
+            move_periods = np.round(npa([[r[0,0],r[0,-1]] for r in run_values])*behavdic['a']+behavdic['b'])/behavdic['npix_fs']
+            nomove_periods = np.concatenate([[0], move_periods.ravel(), [rec_len]]).reshape((-1,2))
+            
+            if np.any(move_periods) and verbose:
+                print(f'{np.sum(np.diff(move_periods, axis=1))}s of running in total.')
+                print(f'{np.sum(np.diff(nomove_periods, axis=1))}s of no running in total.')
+            
+    # find periods without light
+    if dataset_with_opto and light_periods is None:
+        light_periods = np.array(list(zip(behavdic['opto_stims_ON_npix']/behavdic['npix_fs'], behavdic['opto_stims_OFF_npix']/behavdic['npix_fs'])))
+        light_periods_buffered = light_periods.copy()
+        light_periods_buffered[0] -= light_buffer
+        light_periods_buffered[1] += light_buffer
+        no_light_periods = np.concatenate([[0], light_periods_buffered.ravel(), [rec_len]])
+        no_light_periods = no_light_periods.reshape(-1, 2)
+
+        print(f'{np.sum(np.diff(light_periods, axis=1))}s of periods with light in total.')
+        print(f'{np.sum(np.diff(no_light_periods, axis=1))}s of periods with no light in total (buffer before onset/after offset: {light_buffer}s).')
+
+    # save arrays to disk
+    if dp is not None:
+        np.save(dp/fn_move, move_periods)
+        np.save(dp/fn_nomove, nomove_periods)
+        if dataset_with_opto:
+            np.save(dp/fn_light, light_periods)
+            np.save(dp/fn_nolight, no_light_periods)
+
+    if dataset_with_opto:
+        # get intersection of both
+        fs = 30_000
+        no_light_periods = (no_light_periods*fs).astype(int)
+        nomove_periods = (nomove_periods*fs).astype(int)
+        no_light_nor_move_periods = get_common_good_sections([list(no_light_periods), list(nomove_periods)])
+        no_light_nor_move_periods = np.array(no_light_nor_move_periods)/fs
+        print(f'{np.sum(np.diff(no_light_nor_move_periods, axis=1))}s of periods with no light nor running in total (buffer before onset/after light offset: {light_buffer}s).')
+        baseline_recording_periods = no_light_nor_move_periods
+    else:
+        baseline_recording_periods = nomove_periods
+
+    return baseline_recording_periods
+
+
 #%% Alignement, binning and processing of time series
 
 def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remove_empty_trials=False):
@@ -727,9 +863,6 @@ def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=Fal
 
     return aligned_t, aligned_tb
 
-def time_to_phase():
-
-    return
 
 def align_times_manyevents(times, events, b=2, window=[-1000,1000], fs=30000):
     '''
@@ -815,6 +948,7 @@ def jPSTH(spikes1, spikes2, events, b=2, window=[-1000,1000], convolve=False, me
 
     return jpsth, jpsth_ccg, coincidence_psth
 
+@cache_memory.cache
 def get_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
     '''
     Parameters:
@@ -875,6 +1009,7 @@ def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
         #print('WARNING not enough spikes around events to compute std, y_p_var was filled with nan. Patched by filling with ones.')
 
     return y, y_p, y_p_var
+
 
 def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_trials=False,
                       zscore=False, zscoretype='within',
@@ -1040,6 +1175,8 @@ def filter_allneurons_active(M, p=0, return_masks=False):
 
     return M[:,all_active_mask,:]
 
+
+#%% Population synchrony analysis
 
 def get_processed_popsync(trains, events, psthb=10, window=[-1000,1000],
                           events_tiling_frac=0.1, sync_win=2, fs=30000, t_end=None,

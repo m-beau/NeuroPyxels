@@ -157,9 +157,9 @@ corr, p = kendalltau(data1, data2)
 from scipy.stats import chi2_contingency
 table = ...
 stat, p, dof, expected = chi2_contingency(table)
-
+"""
 #%% C] Parametric statistical hypothesis tests
-
+"""
 #### Student’s t-test
 # ->> TEST WHETHER TWO SAMPLES HAVE SIGNIFICANTLY DIFFERENT MEANS
 # <- Assumptions on observations in each sample: 1) iid, 2) Normal distribution, 3) Same variance
@@ -215,15 +215,6 @@ from scipy.stats import friedmanchisquare
 data1, data2, ... = ...
 stat, p = friedmanchisquare(data1, data2, ...)
 
-#%% E] Pval correction for repeated comparisons
-
-
-
-
-
-
-
-#%% MODERN STATISTICS: NO MORE TESTS BUT DATA MODELLING
 
 """
 

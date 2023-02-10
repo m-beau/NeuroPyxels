@@ -28,7 +28,8 @@ from scipy import fft, ifft
 from scipy.optimize import curve_fit
 from scipy.signal import cspline1d_eval, cspline1d
 
-#%% Colors dictionnaries
+
+#%% Plotting utilities
 
 phyColorsDic = {
     0:(53./255, 127./255, 255./255),
@@ -75,7 +76,7 @@ mark_dict = {
 }
 
 
-#%% Utils
+#%% Numpy and numerical computing utilities
 
 _ACCEPTED_ARRAY_DTYPES = (np.float32, np.float64,
                           np.int8, np.int16, np.uint8, np.uint16,
@@ -158,6 +159,8 @@ def sign(x):
 def minus_is_1(x):
     return abs(1-1*x)*1./2
 
+#%% File and directory utilities
+
 def read_pyfile(filepath, ignored_chars=[" ", "'", "\"", "\n", "\r"]):
     '''
     Reads .py file and returns contents as dictionnary.
@@ -195,6 +198,30 @@ def list_files(directory, extension, full_path=False):
     if full_path:
         return [Path('/'.join([directory,f])) for f in files]
     return files
+
+
+#%% Text formatting utilities
+
+def pprint_dic(dic):
+    kv = "".join([f"{k}: {v},\n" for k,v in dic.items()])
+    return "{\n"+kv+"}"
+
+def docstring_decorator(*args):
+    """
+    Feed as many arguments as wished to incorporate into the function f's docstring.
+    Edit f' docstring with {0}, {1}... acordingly.
+    """
+    def decorate(f):
+        f.__doc__ = f.__doc__.format(*args)
+        return f
+    return decorate
+
+def repr_string(self):
+    r_string = str(["."+k for k in dir(self) if "__" not in k])
+    return r_string.replace("'", "").replace("[","").replace("]","")
+
+
+#%% Threholding utilities
 
 def any_n_consec(X, n_consec, where=False):
     '''
@@ -377,6 +404,9 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
 
     return crosses
 
+
+#%% Zscoring, smoothing
+
 def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
     '''
     Returns z-scored (centered, reduced) array using outer edges of array to compute mean and std.
@@ -421,7 +451,6 @@ def smooth(arr, method='gaussian_causal', sd=5, axis=1, gamma_a=5):
     pad_width = [[C,C] if i==axis else [0,0] for i in range(arr.ndim)]
     padarr=np.pad(arr, pad_width, 'symmetric')
 
-
     ## Compute the kernel
     if method in ['gaussian', 'gaussian_causal']:
         X=np.arange(-4*sd, 4*sd+1)
@@ -452,7 +481,7 @@ def smooth(arr, method='gaussian_causal', sd=5, axis=1, gamma_a=5):
 
 
     ## Remove padding
-    sarr = sarr[slice_along_axis(C,-C,axis=axis)]
+    sarr = sarr[slice_along_axis(C+1,-C+1, axis=axis)]
     assert np.all(sarr.shape==arr.shape)
 
 
@@ -645,14 +674,7 @@ def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, verbose=
         sp=samples[lasti]
     return make_2D_array(samples[:lasti+1])
 
-# def n_largest_samples(to_sort: np.array, largest_n: int) -> np.array:
-
-#     """
-#     Returns the n largest sorted samples from an array
-#     """
-
-#     sorted_n = np.argpartition(to_sort, -largest_n, axis=0 )[-largest_n:].flatten()
-#     return sorted_n
+#%% Alignment utilities
 
 def align_timeseries(timeseries, sync_signals, fs, offset_policy='original'):
     '''
@@ -775,7 +797,8 @@ def  align_timeseries_interpol(timeseries, sync_signals, fs=None):
 
     return timeseries
 
-#%% Stolen from phy
+#%% Borrowed from phy
+
 def _as_array(arr, dtype=None):
     """Convert an object to a numerical NumPy array.
     Avoid a copy if possible.

@@ -61,25 +61,26 @@ def get_neuron_attr(hdf5_file_path, id=None, file=None):
             neuron_id = name.split("_")[-1]
             neuron_ids.append(neuron_id)
         if id is None:
-            neuron_ids = [int(neuron_id) for neuron_id in neuron_ids]
-            first_input = input(f"Select a neuron id from: {neuron_ids}")
-            if first_input == "":
-                print("No neuron id selected, exiting")
-                return None
-            first_path = f"{str(pi)}_neuron_{str(first_input)}"
+            return get_neuron_attr_generic(neuron_ids, pi, hdf5_file)
+        return_path = f"{str(pi)}_neuron_{str(id)}/{str(file)}"
+        return hdf5_file[return_path][(...)]
 
-            second_input = input(
-                f"Select a file to load from: {ls(hdf5_file[first_path])}"
-            )
-            if second_input == "":
-                print("No attribute selected, exiting")
-                return None
-            second_path = first_path + "/" + str(second_input)
 
-            return hdf5_file[second_path][(...)]
-        else:
-            return_path = f"{str(pi)}_neuron_{str(id)}/{str(file)}"
-            return hdf5_file[return_path][(...)]
+def get_neuron_attr_generic(neuron_ids, pi, hdf5_file):
+    neuron_ids = [int(neuron_id) for neuron_id in neuron_ids]
+    first_input = input(f"Select a neuron id from: {neuron_ids}")
+    if first_input == "":
+        print("No neuron id selected, exiting")
+        return None
+    first_path = f"{str(pi)}_neuron_{str(first_input)}"
+
+    second_input = input(f"Select a file to load from: {ls(hdf5_file[first_path])}")
+    if second_input == "":
+        print("No attribute selected, exiting")
+        return None
+    second_path = first_path + "/" + str(second_input)
+
+    return hdf5_file[second_path][(...)]
 
 
 def ls(hdf5_file_path):
@@ -268,8 +269,8 @@ class NeuronsDataset:
                     del self.labels_list[-1]
                     continue
 
-                elif len(spikes) == 0 and not quality_check:
-                    self.quality_checks_mask[wf_n] = 0
+                if len(spike_idxes[quality_mask].copy()) == 0:
+                    self.quality_checks_mask[wf_n] = False
 
                 # Extract amplitudes if requested
                 if _use_amplitudes:
@@ -527,6 +528,13 @@ class NeuronsDataset:
         plt.show()
 
     def apply_quality_checks(self):
+        """
+        It takes a dataset, checks that it has a quality_checks_mask attribute, and then applies that
+        mask to the dataset
+
+        Returns:
+          A new dataset with the quality checks applied.
+        """
         assert hasattr(
             self, "quality_checks_mask"
         ), "No quality checks mask found, perhaps you have applied them already?"
@@ -539,7 +547,7 @@ class NeuronsDataset:
         return len(self.wf)
 
 
-def merge_datasets(*args: NeuronsDataset) -> NeuronsDataset:
+def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
     """Merges multiple NeuronsDatasets instances into one"""
     new_dataset = copy.deepcopy(args[0])
     for dataset in args[1:]:

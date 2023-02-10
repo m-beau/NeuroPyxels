@@ -1,25 +1,20 @@
 ## Code borrowed from Allen institute spikemetrics (jan 2022):
 ## https://github.com/AllenInstitute/ecephys_spike_sorting/tree/master/ecephys_spike_sorting/modules/quality_metrics
 
-from pathlib import Path
 import hashlib
+import warnings
+from collections import OrderedDict
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from collections import OrderedDict
-
-import warnings
-
-from tqdm.auto import tqdm
-
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
-from sklearn.neighbors import NearestNeighbors
-from sklearn.metrics import silhouette_score
-
+from scipy.ndimage.filters import gaussian_filter1d
 from scipy.spatial.distance import cdist
 from scipy.stats import chi2
-from scipy.ndimage.filters import gaussian_filter1d
-
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+from sklearn.metrics import silhouette_score
+from sklearn.neighbors import NearestNeighbors
+from tqdm.auto import tqdm
 
 
 def quality_metrics(dp, units=None, params=None, save=True, again=False):

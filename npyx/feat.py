@@ -1580,6 +1580,7 @@ def h5_feature_extraction(
     fix_chanmap=True,
     ignore_exceptions=False,
     quality_check=True,
+    labels_only=True,
     _debug=False,
     _n_channels=21,
     _central_range=82,
@@ -1604,7 +1605,6 @@ def h5_feature_extraction(
     """
     if _label is None:
         _label = "optotagged_label"
-
     columns = FEATURES
 
     feat_df = pd.DataFrame(columns=columns)
@@ -1618,6 +1618,9 @@ def h5_feature_extraction(
         _use_amplitudes=True,
         _label=_label,
     )
+
+    if labels_only:
+        dataset.make_labels_only()
 
     for i in tqdm(range(len(dataset)), desc="Extracting features"):
         dp = "/".join(dataset.info[i].split("/")[:-1])

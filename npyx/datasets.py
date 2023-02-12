@@ -269,6 +269,9 @@ class NeuronsDataset:
                     del self.labels_list[-1]
                     continue
 
+                # Even without quality checks, we want to save only the spikes in the spontaneous period
+                self.spikes_list.append(spikes[sane_spikes].astype(int))
+
                 if len(spike_idxes[quality_mask].copy()) == 0:
                     self.quality_checks_mask[wf_n] = False
 
@@ -338,14 +341,26 @@ class NeuronsDataset:
                         del self.amplitudes_list[-1]
                     continue
 
-                if normalise_acg:
-                    acg = npyx.corr.acg("hello", 4, 1, 200, train=spikes)
-                    normal_acg = np.clip(acg / np.max(acg), 0, 10)
-                    self.acg_list.append(normal_acg.astype(float))
+                # Extract ACG. Even if we don't apply quality checks, we still want to use spikes from the spontaneous period
+
+                acg_spikes = spikes if quality_check else spikes[sane_spikes]
+
+                if len(acg_spikes) == 0:
+                    self.acg_list.append(np.zeros(201).astype(float))
+
                 else:
-                    acg = npyx.corr.acg("hello", 4, 1, 200, train=spikes)
-                    self.acg_list.append(acg.astype(float))
-                self.spikes_list.append(spikes.astype(int))
+                    if normalise_acg:
+                        acg = npyx.corr.acg(
+                            ".npyx_placeholder", 4, 1, 200, train=acg_spikes
+                        )
+                        normal_acg = np.clip(acg / np.max(acg), 0, 10)
+                        self.acg_list.append(normal_acg.astype(float))
+                    else:
+                        acg = npyx.corr.acg(
+                            ".npyx_placeholder", 4, 1, 200, train=acg_spikes
+                        )
+                        self.acg_list.append(acg.astype(float))
+
                 # Extract useful metadata
                 dataset_name = (
                     get_neuron_attr(dataset, wf_n, "dataset_id")
@@ -426,6 +441,7 @@ class NeuronsDataset:
         self.info = np.array(self.info)[mask].tolist()
         self.spikes_list = np.array(self.spikes_list, dtype=object)[mask].tolist()
         self.labels_list = np.array(self.labels_list)[mask].tolist()
+        self.acg_list = np.array(self.acg_list)[mask].tolist()
         if hasattr(self, "amplitudes_list"):
             self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[
                 mask
@@ -524,7 +540,7 @@ class NeuronsDataset:
 
         npyx.plot.plt_wvf(wvf.T)
         plt.show()
-        npyx.plot.plot_acg("hello", 0, train=train)
+        npyx.plot.plot_acg(".npyx_placeholder", 0, train=train)
         plt.show()
 
     def apply_quality_checks(self):
@@ -557,6 +573,9 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         new_dataset.targets = np.hstack((new_dataset.targets, dataset.targets))
         new_dataset.info = np.hstack(
             (np.array(new_dataset.info), np.array(dataset.info))
+        ).tolist()
+        new_dataset.acg_list = np.vstack(
+            (np.array(new_dataset.acg_list), np.array(dataset.acg_list))
         ).tolist()
         new_dataset.spikes_list = np.hstack(
             (

@@ -200,6 +200,7 @@ class NeuronsDataset:
         self.spikes_list = []
         self.labels_list = []
         self.info = []
+        self.chanmap_list = []
 
         if _use_amplitudes:
             self.amplitudes_list = []
@@ -213,6 +214,8 @@ class NeuronsDataset:
 
         if not quality_check:
             self.quality_checks_mask = np.ones(len(neuron_ids), dtype=bool)
+            self.fn_fp_list = []
+            self.sane_spikes_list = []
 
         discarded_df = pd.DataFrame(columns=["neuron_id", "label", "dataset", "reason"])
         for wf_n in tqdm(np.sort(neuron_ids), desc="Reading dataset", leave=False):
@@ -271,6 +274,10 @@ class NeuronsDataset:
 
                 # Even without quality checks, we want to save only the spikes in the spontaneous period
                 self.spikes_list.append(spikes[sane_spikes].astype(int))
+
+                if not quality_check:
+                    self.fn_fp_list.append(fn_fp_spikes)
+                    self.sane_spikes_list.append(sane_spikes)
 
                 if len(spike_idxes[quality_mask].copy()) == 0:
                     self.quality_checks_mask[wf_n] = False
@@ -373,6 +380,9 @@ class NeuronsDataset:
                 neuron_metadata = dataset_name + "/" + str(neuron_id)
                 self.info.append(str(neuron_metadata))
 
+                chanmap = get_neuron_attr(dataset, wf_n, "channelmap")
+                self.chanmap_list.append(np.array(chanmap))
+
             except KeyError:
                 dataset_name = (
                     get_neuron_attr(dataset, wf_n, "dataset_id")
@@ -442,12 +452,17 @@ class NeuronsDataset:
         self.spikes_list = np.array(self.spikes_list, dtype=object)[mask].tolist()
         self.labels_list = np.array(self.labels_list)[mask].tolist()
         self.acg_list = np.array(self.acg_list)[mask].tolist()
+        self.chanmap_list = np.array(self.chanmap_list, dtype=object)[mask].tolist()
         if hasattr(self, "amplitudes_list"):
             self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[
                 mask
             ].tolist()
         if hasattr(self, "quality_checks_mask"):
             self.quality_checks_mask = self.quality_checks_mask[mask]
+            self.fn_fp_list = np.array(self.fn_fp_list, dtype=object)[mask].tolist()
+            self.sane_spikes_list = np.array(self.sane_spikes_list, dtype=object)[
+                mask
+            ].tolist()
 
     def make_full_dataset(self, wf_only=False, acg_only=False):
         """
@@ -555,8 +570,16 @@ class NeuronsDataset:
             self, "quality_checks_mask"
         ), "No quality checks mask found, perhaps you have applied them already?"
         checked_dataset = copy.deepcopy(self)
+        checked_dataset.spikes_list = [
+            train[fn_fp_mask[sane_mask]]
+            for train, fn_fp_mask, sane_mask in zip(
+                self.spikes_list, self.fn_fp_list, self.sane_spikes_list
+            )
+        ]
         checked_dataset._apply_mask(checked_dataset.quality_checks_mask)
         del checked_dataset.quality_checks_mask
+        del checked_dataset.fn_fp_list
+        del checked_dataset.sane_spikes_list
         return checked_dataset
 
     def __len__(self):
@@ -571,6 +594,7 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         new_dataset.wf = np.vstack((new_dataset.wf, dataset.wf))
         new_dataset.acg = np.vstack((new_dataset.acg, dataset.acg))
         new_dataset.targets = np.hstack((new_dataset.targets, dataset.targets))
+        new_dataset.chanmap_list = new_dataset.chanmap_list + dataset.chanmap_list
         new_dataset.info = np.hstack(
             (np.array(new_dataset.info), np.array(dataset.info))
         ).tolist()
@@ -604,6 +628,10 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         ):
             new_dataset.quality_checks_mask = np.hstack(
                 (new_dataset.quality_checks_mask, dataset.quality_checks_mask)
+            )
+            new_dataset.fn_fp_list = new_dataset.fn_fp_list + dataset.fn_fp_list
+            new_dataset.sane_spikes_list = (
+                new_dataset.sane_spikes_list + dataset.sane_spikes_list
             )
         else:
             raise NotImplementedError(

@@ -5,6 +5,8 @@ Authors: @fededagos, @agolajko
 
 Functions needed to extract temporal and waveform features from Neuropixels recordings.
 """
+from __future__ import annotations
+
 import json
 import os
 import sys
@@ -1175,7 +1177,7 @@ def extract_spatial_features(
     """
 
     # ratio between max amplitude among 4/5 closest channels at 23.61 um and max amplitude on peak channel
-
+    chanmap = np.array(chanmap)
     spatial_spread_ratio = chan_spread(waveform_2d, peak_chan, chanmap)
     # set to 1 if relevant waveform is dendritic already (because normalized)
     max_dendritic_voltage = (
@@ -1609,15 +1611,18 @@ def h5_feature_extraction(
 
     feat_df = pd.DataFrame(columns=columns)
 
-    dataset = NeuronsDataset(
-        dataset_path,
-        quality_check=quality_check,
-        normalise_wvf=False,
-        n_channels=_n_channels,
-        central_range=_central_range,
-        _use_amplitudes=True,
-        _label=_label,
-    )
+    if isinstance(dataset_path, NeuronsDataset):
+        dataset = dataset_path
+    else:
+        dataset = NeuronsDataset(
+            dataset_path,
+            quality_check=quality_check,
+            normalise_wvf=False,
+            n_channels=_n_channels,
+            central_range=_central_range,
+            _use_amplitudes=True,
+            _label=_label,
+        )
 
     if labels_only:
         dataset.make_labels_only()
@@ -1630,11 +1635,14 @@ def h5_feature_extraction(
         spike_train = dataset.spikes_list[i]
         # Recover the channelmap
         try:
-            chanmap_path = f"datasets/{dataset.info[i]}/channelmap"
-            with h5py.File(dataset_path, "r") as hdf5_file:
-                chanmap = hdf5_file[chanmap_path][(...)]
-                if fix_chanmap:
-                    chanmap = recover_chanmap(chanmap)
+            if isinstance(dataset_path, NeuronsDataset):
+                chanmap = dataset.chanmap_list[i]
+            else:
+                chanmap_path = f"datasets/{dataset.info[i]}/channelmap"
+                with h5py.File(dataset_path, "r") as hdf5_file:
+                    chanmap = hdf5_file[chanmap_path][(...)]
+                    if fix_chanmap:
+                        chanmap = recover_chanmap(chanmap)
         except KeyError:
             chanmap = None
 
@@ -1656,16 +1664,13 @@ def h5_feature_extraction(
                 f"Something went wrong for the feature computation of neuron {i} (unit {unit} in {dp})"
             )
             print(f"{exc_type} at line {exc_tb.tb_lineno}: {e}")
-            if ignore_exceptions:
-                curr_feat = np.zeros(len(columns))[3:].tolist()
-                discarded_info = [label, dp, unit]
-                curr_feat = discarded_info + curr_feat
-                feat_df = feat_df.append(
-                    dict(zip(columns, curr_feat)), ignore_index=True
-                )
-            else:
+            if not ignore_exceptions:
                 raise
 
+            curr_feat = np.zeros(len(columns))[3:].tolist()
+            discarded_info = [label, dp, unit]
+            curr_feat = discarded_info + curr_feat
+            feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
     feat_df = feat_df.infer_objects()
     if save_path is None:
         save_path = os.getcwd()
@@ -1677,9 +1682,9 @@ def h5_feature_extraction(
     return feat_df
 
 
-def filter_df(df: pd.DataFrame) -> pd.DataFrame:
+def get_unusable_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Filters out datapoints with unusable features.
+    Returns the index of unusable features
     """
     features_only = df.iloc[:, 2:]
     bad_idx = []
@@ -1688,23 +1693,18 @@ def filter_df(df: pd.DataFrame) -> pd.DataFrame:
         zeros = count[value == 0]
         if zeros.size > 0 and zeros > 5:
             bad_idx.append(i)
-    keep = [i for i in range(len(df)) if i not in bad_idx]
-    df.dropna(inplace=True)
-    return df.iloc[keep]
+    bad_idx += df.index[df.isna().any(axis=1)].tolist()
+
+    return np.unique(bad_idx)
 
 
-def generate_train_and_labels(df: pd.DataFrame, drop_cols=None):
+def prepare_classification(
+    df: pd.DataFrame, bad_idx=None, drop_cols=None
+) -> tuple[pd.DataFrame, pd.Series]:
     """
-    It takes a dataframe and returns a tuple of two dataframes, one with the features and one with the
-    labels
-
-    Args:
-      df (pd.DataFrame): the dataframe to generate the train and labels from
-      drop_cols: a list of columns to drop from the dataframe.
-
-    Returns:
-      The dataframe with the columns dropped and the labels
+    Prepares the dataframe for classification.
     """
+
     if drop_cols is None:
         drop_cols = [
             "label",
@@ -1713,8 +1713,12 @@ def generate_train_and_labels(df: pd.DataFrame, drop_cols=None):
             "relevant_channel",
             "any_somatic",
             "max_peaks",
-            "trough_t",
-            "peak_t",
-        ] + AMPLITUDE_FEATURES
-    new_df = df.drop(columns=drop_cols)
-    return new_df.copy(), df.loc[:, "label"].copy()
+        ]
+
+    df = df.drop(index=bad_idx)
+    df = df.reset_index(drop=True)
+    df = df.infer_objects()
+
+    X, y = df.drop(drop_cols, axis=1), df["label"]
+
+    return X, y

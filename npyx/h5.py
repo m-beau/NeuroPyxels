@@ -1,6 +1,6 @@
+import gc
 import json
 import re
-import gc
 import sys
 import time
 import warnings
@@ -11,12 +11,18 @@ import numpy as np
 from tqdm import tqdm
 
 from npyx.gl import check_periods, get_units
-from npyx.inout import (chan_map, detect_hardware_filter, extract_rawChunk,
-                        get_binary_file_path, get_npix_sync,
-                        preprocess_binary_file, read_metadata)
+from npyx.inout import (
+    chan_map,
+    detect_hardware_filter,
+    extract_rawChunk,
+    get_binary_file_path,
+    get_npix_sync,
+    preprocess_binary_file,
+    read_metadata,
+)
 from npyx.spk_t import ids, trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
-from npyx.utils import assert_float, assert_int
+from npyx.utils import assert_float, assert_int, docstring_decorator
 
 
 # High level C4 functions
@@ -41,33 +47,6 @@ def reset_optotagged_labels(h5_path):
             if 'hausser_neuron' not in neuron: continue
             data_path = f"{neuron}/optotagged_label"
             write_to_dataset(h5_f, data_path, 0, overwrite=True)
-
-def add_units_to_h5(h5_path, dp, units=None, **kwargs):
-    f"""
-    Add all or specified units at the respective data path to an HDF5 file.
-
-    This is a high-level function designed to add many units at the
-    specified datapath to an HDF5 file. All additional key-value 
-    arguments are passed to `add_unit_h5`
-
-    Example:
-      add_units_to_h5('my_lab_data.h5', '/path/to/dataset_id', lab_id='pi_last_name')
-    Will add all sorted units in the 'kilosort_results' directory 
-    to the HDF5 file called 'my_lab_data.h5' (in the current directory).
-
-    Other arguments from add_unit_h5:
-    {add_unit_h5.__doc__}
-    """
-
-    if units is None:
-        units = get_units(dp)
-    
-    for u in units:
-        add_unit_h5(h5_path, dp, u, **kwargs)
-
-
-def relative_unit_path_h5(dataset, unit):
-    return f"datasets/{dataset}/{unit}"
 
 
 def get_unit_paths_h5(h5_file, dataset, unit,
@@ -99,7 +78,7 @@ def remove_unit_h5(h5_path, dp, unit, lab_id='hausser'):
             del h5_file[dataset_path]
 
 
-def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
+def add_unit_h5(h5_path, dp, unit, lab_id, genetic_line=None, periods='all',
                 sync_chan_id=None, overwrite_h5=False,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
                 dataset=None,
@@ -137,6 +116,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
     - dp: Path the Kilosort data directory
     - unit: The unit id/neuron unit index
     - lab_id: The lab/PI id to use to label the units
+    - genetic_line: The genetic line of the animal used to record this data. None by default.
     - periods: 'all' or [[t1,t2],[t3,t4],...] in seconds
 
     Key-value parameters:
@@ -232,6 +212,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
         pbar.update(1)
         write_to_group(neuron_group, 'lab_id', lab_id, overwrite_h5)
         write_to_group(neuron_group, 'dataset_id', dataset, overwrite_h5)
+        write_to_group(neuron_group, 'line', genetic_line, overwrite_h5)
         write_to_group(neuron_group, 'neuron_id', unit, overwrite_h5)
         write_to_group(neuron_group, 'neuron_absolute_id', neuron_group.name, overwrite_h5)
         write_to_group(neuron_group, 'sampling_rate', samp_rate, overwrite_h5)
@@ -455,6 +436,34 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
 
     return relative_unit_path
 
+@docstring_decorator(add_unit_h5.__doc__)
+def add_units_to_h5(h5_path, dp, units=None, **kwargs):
+    """
+    Add all or specified units at the respective data path to an HDF5 file.
+
+    This is a high-level function designed to add many units at the
+    specified datapath to an HDF5 file. All additional key-value 
+    arguments are passed to `add_unit_h5`
+
+    Example:
+      add_units_to_h5('my_lab_data.h5', '/path/to/dataset_id', lab_id='pi_last_name')
+    Will add all sorted units in the 'kilosort_results' directory 
+    to the HDF5 file called 'my_lab_data.h5' (in the current directory).
+
+    Other arguments from add_unit_h5:
+    {0}
+    """
+
+    if units is None:
+        units = get_units(dp)
+    
+    for u in units:
+        add_unit_h5(h5_path, dp, u, **kwargs)
+
+
+def relative_unit_path_h5(dataset, unit):
+    return f"datasets/{dataset}/{unit}"
+
 def load_json_datasets(json_path, include_missing_datasets=False):
     with open(json_path) as f:
         json_f = json.load(f)
@@ -464,7 +473,7 @@ def load_json_datasets(json_path, include_missing_datasets=False):
     DSs = {}
     for ds in json_f.values():
 
-        for key in ['dp', 'ct', 'units', 'ss', 'cs']:
+        for key in ['dp', 'ct', 'line', 'units', 'ss', 'cs']:
             assert key in ds, f"{key} not in json file for dataset #{ds}!"
         
         dp=Path(ds['dp'])
@@ -473,7 +482,8 @@ def load_json_datasets(json_path, include_missing_datasets=False):
             print(f"Dataset {dp} not found on system!\n")
             if include_missing_datasets: DSs[dp.name] = ds
             continue
-        DSs[dp.name] = ds
+        DSs[dp.name+'&'+ds['ct']] = ds
+        
         units = list(ds['units'])
         ss = list(ds['ss'])
         cs = list(ds['cs'])
@@ -492,7 +502,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
 
     DSs = load_json_datasets(json_path, include_missing_datasets=False)
 
-    for ds_name, ds in DSs.items():
+    for ds_name_ct, ds in DSs.items():
         dp=Path(ds['dp'])
 
         if preprocess_if_raw:
@@ -503,8 +513,10 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
                     data_deletion_double_check=data_deletion_double_check,
                     median_subtract=False, filter_forward=True, filter_backward=False, order=1)
 
-        optolabel=ds['ct']
+        ds_name, optolabel = ds_name_ct.split('&')
+        assert optolabel == ds['ct']
         if optolabel=="PkC": optolabel="PkC_ss"
+        genetic_line = ds['line']
         units=ds['units']
         ss=ds['ss']
         cs=ds['cs']
@@ -517,7 +529,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
             units_for_h5 = units+ss+cs
 
         for u in units_for_h5:
-            add_unit_h5(h5_path, dp, u, lab_id, periods='all',
+            add_unit_h5(h5_path, dp, u, lab_id, genetic_line, periods='all',
                     again=again, again_wvf=again, verbose=verbose,
                     include_raw_snippets=include_raw_snippets, include_whitened_snippets=include_raw_snippets,
                     sane_periods=sane_times, **kwargs)

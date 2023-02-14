@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from . import inout, utils, gl, spk_t, spk_wvf, corr, plot, behav, merger, stats
+from . import inout, utils, gl, spk_t, spk_wvf, corr, plot, behav, merger, stats, datasets
 
 from .utils import *
 from .inout import *

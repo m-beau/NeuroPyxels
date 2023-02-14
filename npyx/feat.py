@@ -36,7 +36,7 @@ from .spk_wvf import wvf_dsmatch
 
 FEATURES = [
     "label",
-    "dp",
+    "dataset",
     "unit",
     "mfr",
     "mifr",
@@ -1708,7 +1708,7 @@ def prepare_classification(
     if drop_cols is None:
         drop_cols = [
             "label",
-            "dp",
+            "dataset",
             "unit",
             "relevant_channel",
             "any_somatic",

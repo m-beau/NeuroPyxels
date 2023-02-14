@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+"""
+2022-12
+Authors: @fededagos
+
+This module contains the functions to load the data from the hdf5 files used
+in the C4 collaboration. It also contains the functions to preprocess the data.
+"""
 import copy
 import pickle
 
@@ -188,6 +196,8 @@ class NeuronsDataset:
         _label="optotagged_label",
         _labelling=LABELLING,
         _use_amplitudes=False,
+        _bin_size=1,
+        _win_size=200,
     ):
 
         # Store useful metadata about how the dataset was extracted
@@ -201,6 +211,7 @@ class NeuronsDataset:
         self.labels_list = []
         self.info = []
         self.chanmap_list = []
+        self.genetic_line_list = []
 
         if _use_amplitudes:
             self.amplitudes_list = []
@@ -273,7 +284,10 @@ class NeuronsDataset:
                     continue
 
                 # Even without quality checks, we want to save only the spikes in the spontaneous period
-                self.spikes_list.append(spikes[sane_spikes].astype(int))
+                if quality_check:
+                    self.spikes_list.append(spikes.astype(int))
+                else:
+                    self.spikes_list.append(spikes[sane_spikes].astype(int))
 
                 if not quality_check:
                     self.fn_fp_list.append(fn_fp_spikes)
@@ -353,18 +367,28 @@ class NeuronsDataset:
                 acg_spikes = spikes if quality_check else spikes[sane_spikes]
 
                 if len(acg_spikes) == 0:
-                    self.acg_list.append(np.zeros(201).astype(float))
+                    self.acg_list.append(
+                        np.zeros(int(_win_size / _bin_size + 1)).astype(float)
+                    )
 
                 else:
                     if normalise_acg:
                         acg = npyx.corr.acg(
-                            ".npyx_placeholder", 4, 1, 200, train=acg_spikes
+                            ".npyx_placeholder",
+                            4,
+                            _bin_size,
+                            _win_size,
+                            train=acg_spikes,
                         )
                         normal_acg = np.clip(acg / np.max(acg), 0, 10)
                         self.acg_list.append(normal_acg.astype(float))
                     else:
                         acg = npyx.corr.acg(
-                            ".npyx_placeholder", 4, 1, 200, train=acg_spikes
+                            ".npyx_placeholder",
+                            4,
+                            _bin_size,
+                            _win_size,
+                            train=acg_spikes,
                         )
                         self.acg_list.append(acg.astype(float))
 
@@ -382,6 +406,12 @@ class NeuronsDataset:
 
                 chanmap = get_neuron_attr(dataset, wf_n, "channelmap")
                 self.chanmap_list.append(np.array(chanmap))
+
+                try:
+                    genetic_line = get_neuron_attr(dataset, wf_n, "line")
+                    self.genetic_line_list.append(genetic_line.item().decode("utf-8"))
+                except KeyError:
+                    self.genetic_line_list.append("unknown")
 
             except KeyError:
                 dataset_name = (
@@ -453,6 +483,9 @@ class NeuronsDataset:
         self.labels_list = np.array(self.labels_list)[mask].tolist()
         self.acg_list = np.array(self.acg_list)[mask].tolist()
         self.chanmap_list = np.array(self.chanmap_list, dtype=object)[mask].tolist()
+        self.genetic_line_list = np.array(self.genetic_line_list, dtype=object)[
+            mask
+        ].tolist()
         if hasattr(self, "amplitudes_list"):
             self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[
                 mask
@@ -595,6 +628,9 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         new_dataset.acg = np.vstack((new_dataset.acg, dataset.acg))
         new_dataset.targets = np.hstack((new_dataset.targets, dataset.targets))
         new_dataset.chanmap_list = new_dataset.chanmap_list + dataset.chanmap_list
+        new_dataset.genetic_line_list = (
+            new_dataset.genetic_line_list + dataset.genetic_line_list
+        )
         new_dataset.info = np.hstack(
             (np.array(new_dataset.info), np.array(dataset.info))
         ).tolist()
@@ -612,29 +648,27 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         )
         new_dataset.labels_list = new_dataset.labels_list + dataset.labels_list
 
-        if hasattr(new_dataset, "amplitudes_list") and hasattr(
-            dataset, "amplitudes_list"
-        ):
-            new_dataset.amplitudes_list = (
-                new_dataset.amplitudes_list + dataset.amplitudes_list
-            )
-        else:
-            raise NotImplementedError(
-                "Attempted to merge datasets with different attributes"
-            )
+        if hasattr(new_dataset, "amplitudes_list"):
+            if hasattr(dataset, "amplitudes_list"):
+                new_dataset.amplitudes_list = (
+                    new_dataset.amplitudes_list + dataset.amplitudes_list
+                )
+            else:
+                raise NotImplementedError(
+                    "Attempted to merge datasets with different attributes"
+                )
 
-        if hasattr(new_dataset, "quality_checks_mask") and hasattr(
-            dataset, "quality_checks_mask"
-        ):
-            new_dataset.quality_checks_mask = np.hstack(
-                (new_dataset.quality_checks_mask, dataset.quality_checks_mask)
-            )
-            new_dataset.fn_fp_list = new_dataset.fn_fp_list + dataset.fn_fp_list
-            new_dataset.sane_spikes_list = (
-                new_dataset.sane_spikes_list + dataset.sane_spikes_list
-            )
-        else:
-            raise NotImplementedError(
-                "Attempted to merge datasets with different attributes"
-            )
+        if hasattr(new_dataset, "quality_checks_mask"):
+            if hasattr(dataset, "quality_checks_mask"):
+                new_dataset.quality_checks_mask = np.hstack(
+                    (new_dataset.quality_checks_mask, dataset.quality_checks_mask)
+                )
+                new_dataset.fn_fp_list = new_dataset.fn_fp_list + dataset.fn_fp_list
+                new_dataset.sane_spikes_list = (
+                    new_dataset.sane_spikes_list + dataset.sane_spikes_list
+                )
+            else:
+                raise NotImplementedError(
+                    "Attempted to merge datasets with different attributes"
+                )
     return new_dataset

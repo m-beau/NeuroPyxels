@@ -91,7 +91,7 @@ default_mplp_params = dict(
             # horizontal and vertical lines default parameters
             hlines = None, # provide any iterable of values to plot horizontal lines along the y axis
             vlines = None, # provide any iterable of values to plot vertical lines along the x axis
-            lines_kwargs = {'lw':1, 'ls':'--', 'color':'k'}, # add any other matplotlib.lines.Line2D arguments
+            lines_kwargs = {'lw':1.5, 'ls':'--', 'color':'k'}, # add any other matplotlib.lines.Line2D arguments
 )
 
 @docstring_decorator(pprint_dic(default_mplp_params))

@@ -87,6 +87,11 @@ default_mplp_params = dict(
             clabel_w='regular',
             clabel_s=22,
             cticks_s=22,
+
+            # horizontal and vertical lines default parameters
+            hlines = None, # provide any iterable of values to plot horizontal lines along the y axis
+            vlines = None, # provide any iterable of values to plot vertical lines along the x axis
+            lines_kwargs = {'lw':1, 'ls':'--', 'color':'k'}, # add any other matplotlib.lines.Line2D arguments
 )
 
 @docstring_decorator(pprint_dic(default_mplp_params))
@@ -103,6 +108,7 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
          saveFig=None, saveDir = None, figname=None, _format=None,
          colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None,
          cbar_w=None, cbar_h=None, clabel=None, clabel_w=None, clabel_s=None, cticks_s=None,
+         hlines = None, vlines = None, lines_kwargs = None,
          prettify=True):
     """
     make plots pretty
@@ -130,7 +136,13 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         {0}
     """
 
-    if fig is None: fig=plt.gcf()
+    global default_mplp_params
+
+    if fig is None:
+        if ax is None:
+            fig = plt.gcf()
+        else:
+            fig = ax.get_figure()
     if ax is None: ax=plt.gca()
 
     # if prettify is set to True (default),
@@ -249,16 +261,20 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
 
     if xtickslabels is not None:
         if xticks is not None:
-            assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/few xtickslabels! Make sure that the default/provided xticks match them.'
+            assert len(xtickslabels)==len(xticks),\
+                'WARNING you provided too many/few xtickslabels! Make sure that the default/provided xticks match them.'
         if xtickha is None: xtickha = ax.xaxis.get_ticklabels()[0].get_ha()
         if xtickva is None: xtickva = ax.xaxis.get_ticklabels()[0].get_va()
-        ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=xtickrot, ha=xtickha, va=xtickva)
+        ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w,
+                            color=(0,0,0), **hfont, rotation=xtickrot, ha=xtickha, va=xtickva)
     if ytickslabels is not None:
         if yticks is not None:
-            assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels! Make sure that the default/provided yticks match them.'
+            assert len(ytickslabels)==len(yticks),\
+                'WARNING you provided too many/few ytickslabels! Make sure that the default/provided yticks match them.'
         if ytickha is None: ytickha = ax.yaxis.get_ticklabels()[0].get_ha()
         if ytickva is None: ytickva = ax.yaxis.get_ticklabels()[0].get_va()
-        ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=ytickrot, ha=ytickha, va=ytickva)
+        ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w,
+                            color=(0,0,0), **hfont, rotation=ytickrot, ha=ytickha, va=ytickva)
 
     # Reset x/y limits a second time
     if xlim is not None: ax.set_xlim(xlim)
@@ -282,6 +298,19 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         for sp in lw_spine_keys:
             ax.spines[sp].set_lw(lw)
 
+    # Optionally plot horizontal and vertical dashed lines
+    if lines_kwargs is None: lines_kwargs = {}
+    l_kwargs = default_mplp_params['lines_kwargs']
+    l_kwargs.update(lines_kwargs) # prevalence of passed arguments
+
+    if hlines is not None:
+        assert hasattr(hlines, '__iter__'), 'hlines must be an iterable!'
+        for hline in hlines:
+            ax.axhline(y=hline, **l_kwargs)
+    if vlines is not None:
+        assert hasattr(vlines, '__iter__'), 'vlines must be an iterable!'
+        for vline in vlines:
+            ax.axvline(x=vline, **l_kwargs)
 
     # Aligning and spacing axes and labels
     if tight_layout: fig.tight_layout(rect=[0, 0.03, 1, 0.95])

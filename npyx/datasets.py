@@ -198,6 +198,9 @@ class NeuronsDataset:
         _use_amplitudes=False,
         _bin_size=1,
         _win_size=200,
+        _debug=False,
+        _lisberger=False,
+        _labels_only=False,
     ):
 
         # Store useful metadata about how the dataset was extracted
@@ -224,12 +227,17 @@ class NeuronsDataset:
                     neuron_ids.append(int(neuron_id))
 
         if not quality_check:
-            self.quality_checks_mask = np.ones(len(neuron_ids), dtype=bool)
+            self.quality_checks_mask = []
             self.fn_fp_list = []
             self.sane_spikes_list = []
 
         discarded_df = pd.DataFrame(columns=["neuron_id", "label", "dataset", "reason"])
-        for wf_n in tqdm(np.sort(neuron_ids), desc="Reading dataset", leave=False):
+        for i, wf_n in tqdm(
+            enumerate(np.sort(neuron_ids)),
+            total=len(neuron_ids),
+            desc="Reading dataset",
+            leave=False,
+        ):
             try:
                 # Get the label for this wvf
                 label = get_neuron_attr(dataset, wf_n, _label).ravel()[0]
@@ -243,14 +251,22 @@ class NeuronsDataset:
                     label = label.item()
                     self.labels_list.append(label)
                 else:
+                    if _labels_only:
+                        continue
                     self.labels_list.append("unlabelled")
 
                 spike_idxes = get_neuron_attr(dataset, wf_n, "spike_indices")
 
-                sane_spikes = get_neuron_attr(dataset, wf_n, "sane_spikes")
-                fn_fp_spikes = get_neuron_attr(dataset, wf_n, "fn_fp_filtered_spikes")
-                quality_mask = fn_fp_spikes & sane_spikes
+                if not _lisberger:
+                    sane_spikes = get_neuron_attr(dataset, wf_n, "sane_spikes")
+                    fn_fp_spikes = get_neuron_attr(
+                        dataset, wf_n, "fn_fp_filtered_spikes"
+                    )
+                else:
+                    sane_spikes = np.ones_like(spike_idxes, dtype=bool)
+                    fn_fp_spikes = np.ones_like(spike_idxes, dtype=bool)
 
+                quality_mask = fn_fp_spikes & sane_spikes
                 spikes = (
                     spike_idxes[quality_mask].copy() if quality_check else spike_idxes
                 )
@@ -294,7 +310,9 @@ class NeuronsDataset:
                     self.sane_spikes_list.append(sane_spikes)
 
                 if len(spike_idxes[quality_mask].copy()) == 0:
-                    self.quality_checks_mask[wf_n] = False
+                    self.quality_checks_mask.append(False)
+                else:
+                    self.quality_checks_mask.append(True)
 
                 # Extract amplitudes if requested
                 if _use_amplitudes:
@@ -381,6 +399,8 @@ class NeuronsDataset:
                             train=acg_spikes,
                         )
                         normal_acg = np.clip(acg / np.max(acg), 0, 10)
+                        # For some bin and window sizes, the ACG is all zeros. In this case, we want to set it to a constant value
+                        normal_acg = np.nan_to_num(normal_acg, nan=0)
                         self.acg_list.append(normal_acg.astype(float))
                     else:
                         acg = npyx.corr.acg(
@@ -414,6 +434,8 @@ class NeuronsDataset:
                     self.genetic_line_list.append("unknown")
 
             except KeyError:
+                if _debug:
+                    raise
                 dataset_name = (
                     get_neuron_attr(dataset, wf_n, "dataset_id")
                     .ravel()[0]
@@ -454,6 +476,8 @@ class NeuronsDataset:
         )
         self.wf = np.stack(self.wf_list, axis=0)
         self.acg = np.stack(acg_list_resampled, axis=0)
+
+        self.quality_checks_mask = np.array(self.quality_checks_mask)
 
         print(
             f"{len(self.wf_list)} neurons loaded, of which labelled: {sum(self.targets != -1)} \n"
@@ -496,6 +520,8 @@ class NeuronsDataset:
             self.sane_spikes_list = np.array(self.sane_spikes_list, dtype=object)[
                 mask
             ].tolist()
+        if hasattr(self, "full_dataset"):
+            self.full_dataset = self.full_dataset[mask]
 
     def make_full_dataset(self, wf_only=False, acg_only=False):
         """
@@ -539,7 +565,7 @@ class NeuronsDataset:
 
         granule_cell_mask = self.targets == LABELLING["GrC"]
 
-        self._apply_mask(granule_cell_mask)
+        self._apply_mask(~granule_cell_mask)
 
         self.targets = (self.targets - 1).astype(int)
         self.targets[self.targets < 0] = -1  # Reset the label of unlabeled cells

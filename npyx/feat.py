@@ -251,14 +251,14 @@ def compute_isi_features(isint):
 
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2701610/pdf/pcbi.1000433.pdf
     local_variation = 3 * np.mean(
-        np.ones((len(isint) - 1)) - (4 * prod_isi_offset) / (sum_isi_offset**2)
+        np.ones((len(isint) - 1)) - (4 * prod_isi_offset) / (sum_isi_offset ** 2)
     )
 
     # Revised Local Variation, with R the refractory period in the same unit as isint
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2701610/pdf/pcbi.1000433.pdf
     R = 0.8  # ms
     revised_local_variation = 3 * np.mean(
-        (np.ones((len(isint) - 1)) - (4 * prod_isi_offset) / (sum_isi_offset**2))
+        (np.ones((len(isint) - 1)) - (4 * prod_isi_offset) / (sum_isi_offset ** 2))
         * (np.ones((len(isint) - 1)) + (4 * R / sum_isi_offset))
     )
 
@@ -266,7 +266,7 @@ def compute_isi_features(isint):
     log_CV = np.std(np.log10(isint)) * 1.0 / np.mean(np.log10(isint))
 
     # Geometric average of the rescaled cross correlation of ISIs
-    SI_index = -np.mean(0.5 * np.log10((4 * prod_isi_offset) / (sum_isi_offset**2)))
+    SI_index = -np.mean(0.5 * np.log10((4 * prod_isi_offset) / (sum_isi_offset ** 2)))
 
     # Skewness of the inter-spikes intervals distribution
     skewness = skew(isint)
@@ -1262,11 +1262,7 @@ def waveform_features_json(dp: str, unit: int, plot_debug: bool = False) -> list
     assert os.path.exists(dp), f"Provided path {dp} does not exist"
 
     _, waveform_2d, _, peak_channel = wvf_dsmatch(
-        dp,
-        unit,
-        verbose=False,
-        again=True,
-        save=True,
+        dp, unit, verbose=False, again=True, save=True,
     )
 
     chanmap = chan_map(probe_version="1.0")
@@ -1588,6 +1584,7 @@ def h5_feature_extraction(
     _central_range=82,
     _label=None,
     _sampling_rate=30_000,
+    _use_chanmap=True,
 ):
     """
     It takes a NeuronsDataset instance coming from an h5 dataset and extracts the features.
@@ -1634,24 +1631,23 @@ def h5_feature_extraction(
         waveform = dataset.wf[i].reshape(dataset._n_channels, dataset._central_range)
         spike_train = dataset.spikes_list[i]
         # Recover the channelmap
-        try:
-            if isinstance(dataset_path, NeuronsDataset):
-                chanmap = dataset.chanmap_list[i]
-            else:
-                chanmap_path = f"datasets/{dataset.info[i]}/channelmap"
-                with h5py.File(dataset_path, "r") as hdf5_file:
-                    chanmap = hdf5_file[chanmap_path][(...)]
-                    if fix_chanmap:
-                        chanmap = recover_chanmap(chanmap)
-        except KeyError:
+        if _use_chanmap:
+            try:
+                if isinstance(dataset_path, NeuronsDataset):
+                    chanmap = dataset.chanmap_list[i]
+                else:
+                    chanmap_path = f"datasets/{dataset.info[i]}/channelmap"
+                    with h5py.File(dataset_path, "r") as hdf5_file:
+                        chanmap = hdf5_file[chanmap_path][(...)]
+                        if fix_chanmap:
+                            chanmap = recover_chanmap(chanmap)
+            except KeyError:
+                chanmap = None
+        else:
             chanmap = None
-
         try:
             wvf_features = waveform_features(
-                waveform,
-                dataset._n_channels // 2,
-                chanmap,
-                plot_debug=_debug,
+                waveform, dataset._n_channels // 2, chanmap, plot_debug=_debug,
             )
             tmp_features = temporal_features(spike_train, _sampling_rate)
 
@@ -1714,11 +1710,12 @@ def prepare_classification(
             "any_somatic",
             "max_peaks",
         ]
+    if bad_idx is not None:
+        df = df.drop(index=bad_idx)
+        df = df.reset_index(drop=True)
 
-    df = df.drop(index=bad_idx)
-    df = df.reset_index(drop=True)
     df = df.infer_objects()
 
-    X, y = df.drop(drop_cols, axis=1), df["label"]
+    X, y = df.drop(columns=drop_cols, axis=1), df["label"]
 
     return X, y

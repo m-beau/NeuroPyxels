@@ -5,6 +5,8 @@ Authors: @fededagos, @agolajko
 
 Functions needed to extract temporal and waveform features from Neuropixels recordings.
 """
+from __future__ import annotations
+
 import json
 import os
 import sys
@@ -34,7 +36,7 @@ from .spk_wvf import wvf_dsmatch
 
 FEATURES = [
     "label",
-    "dp",
+    "dataset",
     "unit",
     "mfr",
     "mifr",
@@ -249,14 +251,14 @@ def compute_isi_features(isint):
 
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2701610/pdf/pcbi.1000433.pdf
     local_variation = 3 * np.mean(
-        np.ones((len(isint) - 1)) - (4 * prod_isi_offset) / (sum_isi_offset**2)
+        np.ones((len(isint) - 1)) - (4 * prod_isi_offset) / (sum_isi_offset ** 2)
     )
 
     # Revised Local Variation, with R the refractory period in the same unit as isint
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2701610/pdf/pcbi.1000433.pdf
     R = 0.8  # ms
     revised_local_variation = 3 * np.mean(
-        (np.ones((len(isint) - 1)) - (4 * prod_isi_offset) / (sum_isi_offset**2))
+        (np.ones((len(isint) - 1)) - (4 * prod_isi_offset) / (sum_isi_offset ** 2))
         * (np.ones((len(isint) - 1)) + (4 * R / sum_isi_offset))
     )
 
@@ -264,7 +266,7 @@ def compute_isi_features(isint):
     log_CV = np.std(np.log10(isint)) * 1.0 / np.mean(np.log10(isint))
 
     # Geometric average of the rescaled cross correlation of ISIs
-    SI_index = -np.mean(0.5 * np.log10((4 * prod_isi_offset) / (sum_isi_offset**2)))
+    SI_index = -np.mean(0.5 * np.log10((4 * prod_isi_offset) / (sum_isi_offset ** 2)))
 
     # Skewness of the inter-spikes intervals distribution
     skewness = skew(isint)
@@ -1175,7 +1177,7 @@ def extract_spatial_features(
     """
 
     # ratio between max amplitude among 4/5 closest channels at 23.61 um and max amplitude on peak channel
-
+    chanmap = np.array(chanmap)
     spatial_spread_ratio = chan_spread(waveform_2d, peak_chan, chanmap)
     # set to 1 if relevant waveform is dendritic already (because normalized)
     max_dendritic_voltage = (
@@ -1260,11 +1262,7 @@ def waveform_features_json(dp: str, unit: int, plot_debug: bool = False) -> list
     assert os.path.exists(dp), f"Provided path {dp} does not exist"
 
     _, waveform_2d, _, peak_channel = wvf_dsmatch(
-        dp,
-        unit,
-        verbose=False,
-        again=True,
-        save=True,
+        dp, unit, verbose=False, again=True, save=True,
     )
 
     chanmap = chan_map(probe_version="1.0")
@@ -1580,11 +1578,13 @@ def h5_feature_extraction(
     fix_chanmap=True,
     ignore_exceptions=False,
     quality_check=True,
+    labels_only=True,
     _debug=False,
     _n_channels=21,
     _central_range=82,
     _label=None,
     _sampling_rate=30_000,
+    _use_chanmap=True,
 ):
     """
     It takes a NeuronsDataset instance coming from an h5 dataset and extracts the features.
@@ -1604,20 +1604,25 @@ def h5_feature_extraction(
     """
     if _label is None:
         _label = "optotagged_label"
-
     columns = FEATURES
 
     feat_df = pd.DataFrame(columns=columns)
 
-    dataset = NeuronsDataset(
-        dataset_path,
-        quality_check=quality_check,
-        normalise_wvf=False,
-        n_channels=_n_channels,
-        central_range=_central_range,
-        _use_amplitudes=True,
-        _label=_label,
-    )
+    if isinstance(dataset_path, NeuronsDataset):
+        dataset = dataset_path
+    else:
+        dataset = NeuronsDataset(
+            dataset_path,
+            quality_check=quality_check,
+            normalise_wvf=False,
+            n_channels=_n_channels,
+            central_range=_central_range,
+            _use_amplitudes=True,
+            _label=_label,
+        )
+
+    if labels_only:
+        dataset.make_labels_only()
 
     for i in tqdm(range(len(dataset)), desc="Extracting features"):
         dp = "/".join(dataset.info[i].split("/")[:-1])
@@ -1626,21 +1631,23 @@ def h5_feature_extraction(
         waveform = dataset.wf[i].reshape(dataset._n_channels, dataset._central_range)
         spike_train = dataset.spikes_list[i]
         # Recover the channelmap
-        try:
-            chanmap_path = f"datasets/{dataset.info[i]}/channelmap"
-            with h5py.File(dataset_path, "r") as hdf5_file:
-                chanmap = hdf5_file[chanmap_path][(...)]
-                if fix_chanmap:
-                    chanmap = recover_chanmap(chanmap)
-        except KeyError:
+        if _use_chanmap:
+            try:
+                if isinstance(dataset_path, NeuronsDataset):
+                    chanmap = dataset.chanmap_list[i]
+                else:
+                    chanmap_path = f"datasets/{dataset.info[i]}/channelmap"
+                    with h5py.File(dataset_path, "r") as hdf5_file:
+                        chanmap = hdf5_file[chanmap_path][(...)]
+                        if fix_chanmap:
+                            chanmap = recover_chanmap(chanmap)
+            except KeyError:
+                chanmap = None
+        else:
             chanmap = None
-
         try:
             wvf_features = waveform_features(
-                waveform,
-                dataset._n_channels // 2,
-                chanmap,
-                plot_debug=_debug,
+                waveform, dataset._n_channels // 2, chanmap, plot_debug=_debug,
             )
             tmp_features = temporal_features(spike_train, _sampling_rate)
 
@@ -1653,16 +1660,13 @@ def h5_feature_extraction(
                 f"Something went wrong for the feature computation of neuron {i} (unit {unit} in {dp})"
             )
             print(f"{exc_type} at line {exc_tb.tb_lineno}: {e}")
-            if ignore_exceptions:
-                curr_feat = np.zeros(len(columns))[3:].tolist()
-                discarded_info = [label, dp, unit]
-                curr_feat = discarded_info + curr_feat
-                feat_df = feat_df.append(
-                    dict(zip(columns, curr_feat)), ignore_index=True
-                )
-            else:
+            if not ignore_exceptions:
                 raise
 
+            curr_feat = np.zeros(len(columns))[3:].tolist()
+            discarded_info = [label, dp, unit]
+            curr_feat = discarded_info + curr_feat
+            feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
     feat_df = feat_df.infer_objects()
     if save_path is None:
         save_path = os.getcwd()
@@ -1674,9 +1678,9 @@ def h5_feature_extraction(
     return feat_df
 
 
-def filter_df(df: pd.DataFrame) -> pd.DataFrame:
+def get_unusable_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Filters out datapoints with unusable features.
+    Returns the index of unusable features
     """
     features_only = df.iloc[:, 2:]
     bad_idx = []
@@ -1685,33 +1689,33 @@ def filter_df(df: pd.DataFrame) -> pd.DataFrame:
         zeros = count[value == 0]
         if zeros.size > 0 and zeros > 5:
             bad_idx.append(i)
-    keep = [i for i in range(len(df)) if i not in bad_idx]
-    df.dropna(inplace=True)
-    return df.iloc[keep]
+    bad_idx += df.index[df.isna().any(axis=1)].tolist()
+
+    return np.unique(bad_idx)
 
 
-def generate_train_and_labels(df: pd.DataFrame, drop_cols=None):
+def prepare_classification(
+    df: pd.DataFrame, bad_idx=None, drop_cols=None
+) -> tuple[pd.DataFrame, pd.Series]:
     """
-    It takes a dataframe and returns a tuple of two dataframes, one with the features and one with the
-    labels
-
-    Args:
-      df (pd.DataFrame): the dataframe to generate the train and labels from
-      drop_cols: a list of columns to drop from the dataframe.
-
-    Returns:
-      The dataframe with the columns dropped and the labels
+    Prepares the dataframe for classification.
     """
+
     if drop_cols is None:
         drop_cols = [
             "label",
-            "dp",
+            "dataset",
             "unit",
             "relevant_channel",
             "any_somatic",
             "max_peaks",
-            "trough_t",
-            "peak_t",
-        ] + AMPLITUDE_FEATURES
-    new_df = df.drop(columns=drop_cols)
-    return new_df.copy(), df.loc[:, "label"].copy()
+        ]
+    if bad_idx is not None:
+        df = df.drop(index=bad_idx)
+        df = df.reset_index(drop=True)
+
+    df = df.infer_objects()
+
+    X, y = df.drop(columns=drop_cols, axis=1), df["label"]
+
+    return X, y

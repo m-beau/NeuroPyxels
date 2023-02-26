@@ -25,7 +25,7 @@ from numpy import pi, cos, sin
 
 import cv2
 
-from npyx.utils import npa, thresh, thresh_consec, smooth, sign, assert_int
+from npyx.utils import npa, thresh, thresh_consec, smooth, sign, assert_int, assert_iterable
 
 from npyx.inout import read_metadata, get_npix_sync, paq_read, list_files
 from npyx.gl import get_rec_len
@@ -1399,6 +1399,65 @@ def frame_from_vid(video_path, frame_i, plot=True):
     ret, frame = cap.read()
     if plot: plt.imshow(frame)
     return frame
+
+
+#%% polar analysis
+
+def cart2pol(x, y):
+    '''
+    Parameters:
+    - x: float or np array, x coord. of vector end
+    - y: float or np array, y coord. of vector end
+    Returns: (r, theta) with
+        - r: float or np array, vector norm
+        - theta: float or np array, vector angle IN RADIANS
+    '''
+    r = np.sqrt(x**2 + y**2)
+    theta = np.arctan2(y, x)
+    return (r, theta)
+
+def pol2cart(r, theta):
+    '''
+    Parameters:
+    - r: float or np array, vector norm
+    - theta: float or np array, vector angle IN RADIANS
+    Returns: (x, y) with
+        - x: float or np array, x coord. of vector end
+        - y: float or np array, y coord. of vector end
+    '''
+    x = r * np.cos(theta)
+    y = r * np.sin(theta)
+    return (x, y)
+
+def get_polar_vect(R, thetas, return_dsi=False):
+    '''
+    Parameters:
+    - R:     np array, norms of vectors on a polar plot
+    - thetas: np array, list of angles IN RADIANS associated with R values
+    - return_dsi: bool, whether to normalize vector norm down to a direction selectivy index between [0-1]
+
+    Returns: (vec_r, vec_th, base) with
+        - vec_r: vector norm
+        - vec_th: vector angle, in radians
+        - base: origin of vector, 0 if R only has positive values
+    '''
+
+    assert assert_iterable(R)
+    assert assert_iterable(thetas)
+    assert len(R) == len(thetas)
+
+    x, y          = pol2cart(R, thetas)
+
+    vec_r, vec_th = cart2pol(np.sum(x), np.sum(y))
+
+    amp_norm      = np.sqrt(np.sum(np.abs(x))**2 + np.sum(np.abs(y))**2)
+    if not return_dsi: amp_norm = 1
+
+    vec_r         = vec_r/amp_norm
+    vec_th        = vec_th%(2*np.pi)
+
+    return (vec_r, vec_th)
+
 
 #%% Rig-related
 

@@ -2288,7 +2288,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                      labels=True, show_ttl=True, title=None,
                      ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore',
                      acg_color=None, ccg_color='black', hide_axis=False, pad=0,
-                     prettify=True, style='line', **mplp_kwargs):
+                     prettify=True, style='line', show_hz=False, **mplp_kwargs):
 
     ## format parameters
     if acg_color is not None and not isinstance(acg_color, str) and not isinstance(acg_color, int):
@@ -2389,7 +2389,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 else:
                     y=CCGs[row,col,:]
 
-            # plotting
+            # plot content
             if style=='line':
                 ax.plot(x, y, color=color, alpha=0)
                 if normalize1 in ['Hertz','Pearson','Counts']:
@@ -2423,6 +2423,17 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 ticklab_s=18, ticklab_w='regular',
                 tight_layout=False, hide_axis=hide_axis,
                 prettify=prettify, **mplp_kwargs)
+
+            if (not on_acg) and (ccg_means is not None) and (ccg_deviations is not None) and show_hz:
+                ccg_mn = ccg_means[i]
+                ccg_std = ccg_deviations[i]
+                ax2 = ax.twinx()
+                ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
+                ax2.set_yticks(ax.get_yticks())
+                ax2.set_yticklabels(ax2ticks, fontsize=18)
+                ax2.set_ylim(ylims[i])
+                [ax2.spines[sp].set_visible(False) for sp in ['top']]
+
             i+=1
             pbar.update(1)
 
@@ -2586,7 +2597,8 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
         fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, saveDir, saveFig, _format, figsize,
                                labels=labels, show_ttl=show_ttl,title=title,
                                ylim_acg=ylim_acg, ylim_ccg=ylim_ccg, share_y=share_y, normalize=normalize,
-                               acg_color=color, hide_axis=hide_axis, pad=pad, prettify=prettify, style=style, **mplp_kwargs)
+                               acg_color=color, hide_axis=hide_axis, pad=pad, prettify=prettify, style=style,
+                               show_hz=show_hz, **mplp_kwargs)
 
     return fig
 

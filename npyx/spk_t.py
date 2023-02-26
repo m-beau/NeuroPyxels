@@ -105,6 +105,7 @@ def load_amplitudes(dp, unit, verbose=False, periods='all', again=False, enforce
     
     return amps
 
+@cache_memory.cache
 def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=0):
     '''
     ********
@@ -119,7 +120,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - periods: list [[t1,t2], [t3,t4],...] (in seconds) or 'all' for all periods.
     - again: boolean, if True recomputes data from source files without checking routines memory.
-    - enforced_rp: float, enforced refractory period - if 2 spikes are separated by less than enforced_rp ms, the first one only is kept.
+    - enforced_rp: float, enforced refractory period (ms)- if 2 spikes are separated by less than enforced_rp ms, the first one only is kept.
                    By default 0, only removed pure duplicates (they happen!).
     '''
 
@@ -139,18 +140,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
         if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
         if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
         assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
-        # if assert_multi(dp):
-        #     ds_table = get_ds_table(dp)
-        #     if ds_table.shape[0]>1: # If merged dataset
-        #         spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
-        #         spike_samples = np.load(Path(dp,'spike_times.npy'), mmap_mode='r')
-        #         train = spike_samples[spike_clusters==unit].ravel()
-        #     else:
-        #         ds_i, unt = get_dataset_id(unit)
-        #         spike_clusters = np.load(Path(ds_table['dp'][ds_i],"spike_clusters.npy"), mmap_mode='r')
-        #         spike_samples = np.load(Path(ds_table['dp'][ds_i],'spike_times.npy'), mmap_mode='r')
-        #         train = spike_samples[spike_clusters==unt].ravel()
-        # else:
+
         spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
         spike_samples = np.load(Path(dp,'spike_times.npy'), mmap_mode='r')
         train = spike_samples[spike_clusters==unit].ravel()
@@ -167,10 +157,11 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
     periods = check_periods(periods)
+    periods = periods * fs # convert from seconds to samples
     if not isinstance(periods, str): # check_periods ensures that it should be 'all' if it is a string
-        sec_bool=np.zeros(len(train), dtype=np.bool)
+        sec_bool = np.zeros(len(train), dtype=np.bool)
         for section in periods:
-            sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
+            sec_bool = sec_bool|(train>=section[0])&(train<=section[1])
         train=train[sec_bool]
 
     return train

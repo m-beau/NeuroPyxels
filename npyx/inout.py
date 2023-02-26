@@ -426,7 +426,7 @@ def unpackbits(x,num_bits = 16):
     return (x & to_and).astype(bool).astype(np.int64).reshape(xshape + [num_bits])
 
 def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds',
-                  verbose=False, again=False):
+                  verbose=False, again=False, sample_span=1e6):
     '''Unpacks neuropixels external input data, to align spikes to events.
     Parameters:
         - dp: str, datapath
@@ -435,6 +435,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
         - unit: str, 'seconds' or 'samples', units of returned onsets/offset times
         - verbose: bool, whether to print rich information
         - again: bool, whether to reload sync channel from binary file.
+        - sample_span: int, number of samples to load at once (prevents memory errors). If -1, all file loaded at once.
 
     Returns:
         Dictionnaries of length n_channels = number of channels where threshold crossings were found, [0-16]
@@ -442,89 +443,121 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
         - offsets: dict, {channel_i:np.array(offset1, offset2, ...), ...} in 'unit'
 
     '''
+
+    # process arguments
     dp = Path(dp)
     if assert_multi(dp):
-        dp=Path(get_ds_table(dp)['dp'][0])
-        if verbose: print(f'Loading npix sync channel from a merged dataset - assuming temporal reference frame of dataset 0:\n{dp}')
+        dp = Path(get_ds_table(dp)['dp'][0])
+        if verbose: print(( 'Loading npix sync channel from a merged dataset - '
+                           f'assuming temporal reference frame of dataset 0:\n{dp}'))
 
     assert filt_key in ['highpass', 'lowpass']
     filt_suffix = {'highpass':'ap', 'lowpass':'lf'}[filt_key]
     assert unit in ['seconds', 'samples']
-    fname=''
-    onsets={}
-    offsets={}
-    sync_dp=dp/'sync_chan'
-    meta = read_metadata(dp)
-    srate = meta[filt_key]['sampling_rate'] if unit=='seconds' else 1
 
-    if meta['acquisition_software']=='OpenEphys':
-        raise('OpenEphys sync channel loading not implemented yet - manually load ./Neuropix-PXI-100.0/TTL_1/timestamps.npy.')
-        filt_id = 0 if filt_key=='highpass' else 1
+    sync_dp = dp/'sync_chan'
+    meta    = read_metadata(dp)
+    srate   = meta[filt_key]['sampling_rate'] if unit=='seconds' else 1
+
+    # initialize variables
+    fname   = ''
+    onsets  = {}
+    offsets = {}
+
+    # proceed
+    if meta['acquisition_software'] == 'OpenEphys':
+        raise(('OpenEphys sync channel loading not implemented yet - '
+               'manually load ./Neuropix-PXI-100.0/TTL_1/timestamps.npy.'))
+        filt_id    = 0 if filt_key=='highpass' else 1
         timestamps = np.load(dp/f'events/Neuropix-PXI-100.{filt_id}/TTL_1/timestamps.npy')
 
-        onsets={ok:ov/srate for ok, ov in onsets.items()}
-        offsets={ok:ov/srate for ok, ov in offsets.items()}
+        onsets  = {ok:ov/srate for ok, ov in onsets.items()}
+        offsets = {ok:ov/srate for ok, ov in offsets.items()}
 
         return onsets,offsets
 
-    elif meta['acquisition_software']=='SpikeGLX':
+    elif meta['acquisition_software'] == 'SpikeGLX':
 
         # Tries to load pre-saved onsets and offsets
         if sync_dp.exists() and not output_binary:
             if verbose: print(f'Sync channel extraction directory found: {sync_dp}\n')
             for file in os.listdir(sync_dp):
+
                 if file.endswith("on_samples.npy"):
-                    filt_suffix_loaded=file.split('.')[-2][:2]
-                    if filt_suffix_loaded==filt_suffix: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
+                    filt_suffix_loaded = file.split('.')[-2][:2]
+                    # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
+                    if filt_suffix_loaded == filt_suffix:
                         if verbose: print(f'Sync channel onsets ({file}) file found and loaded.')
                         file_i = ale(file[-15])
-                        onsets[file_i]=np.load(sync_dp/file)/srate
+                        onsets[file_i] = np.load(sync_dp/file)/srate
+
                 elif file.endswith("of_samples.npy"):
-                    filt_suffix_loaded=file.split('.')[-2][:2]
-                    if filt_suffix_loaded==filt_suffix: # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
+                    filt_suffix_loaded = file.split('.')[-2][:2]
+                    # if samples are at the instructed sampling rate i.e. lf (2500) or ap (30000)!
+                    if filt_suffix_loaded == filt_suffix:
                         if verbose: print(f'Sync channel offsets ({file}) file found and loaded.')
                         file_i = ale(file[-15])
-                        offsets[file_i]=np.load(sync_dp/file)/srate
+                        offsets[file_i] = np.load(sync_dp/file)/srate
+            
             if any(onsets):
                 # else, might be that sync_dp is empty
                 return onsets, offsets
 
         # Tries to load pre-saved compressed binary
         if sync_dp.exists() and not again:
-            if verbose: print(f"No file ending in 'on_samples.npy' with the right sampling rate ({filt_suffix}) found in sync_chan directory: extracting sync channel from binary.\n")
+            if verbose: print((f"No file ending in 'on_samples.npy' with the right sampling rate ({filt_suffix}) "
+                                "found in sync_chan directory: extracting sync channel from binary.\n"))
             npz_files = list_files(sync_dp, 'npz')
             if any(npz_files):
                 if verbose: print('Compressed binary found - extracting from there...')
-                fname=npz_files[0][:-9]
+                fname      = npz_files[0][:-9]
                 sync_fname = npz_files[0][:-4]
-                binary=np.load(sync_dp/(sync_fname+'.npz'))
-                binary=binary[dir(binary.f)[0]].astype(np.int8)
+                binary     = np.load(sync_dp/(sync_fname+'.npz'))
+                binary     = binary[dir(binary.f)[0]].astype(np.int8)
 
         else: os.mkdir(sync_dp)
 
         # If still no file name, memorymaps binary directly
         if fname=='':
+            # find binary files
             ap_files = list_files(dp, 'ap.bin')
             lf_files = list_files(dp, 'lf.bin')
 
-            if filt_suffix=='ap':
+            if   filt_suffix == 'ap':
                 assert any(ap_files), f'No .ap.bin file found at {dp}!! Aborting.'
                 fname=ap_files[0]
-            elif filt_suffix=='lf':
+            elif filt_suffix == 'lf':
                 assert any(lf_files), f'No .lf.bin file found at {dp}!! Aborting.'
                 fname=lf_files[0]
 
-            nchan=meta[filt_key]['n_channels_binaryfile']
-            dt=np.dtype(meta[filt_key]['datatype'])
+            # preprocess binary file properties
+            nchan    = int(meta[filt_key]['n_channels_binaryfile'])
+            dt       = np.dtype(meta[filt_key]['datatype'])
             nsamples = os.path.getsize(dp/fname) / (nchan * dt.itemsize)
-            syncdat=np.memmap(dp/fname,
-                            mode='r',
-                            dtype=dt,
-                            shape=(int(nsamples), int(nchan)))[:,-1]
+            assert nsamples == int(nsamples),\
+                f'Non-integer number of samples in binary file given nchannels {nchan} and encoding {dt}!'
+            nsamples = int(nsamples)
 
+            # Loads binary in chunks of sample_span samples
+            print(f'Loading {dt} data at {fname}...')
+            if sample_span == -1:
+                sample_span = nsamples
+            else:
+                assert isintance(sample_span, int) and sample_span>0,\
+                    'sample_span must be a strictly positive integer!'
+            sample_slices = [[int(s_on), int(min(s_on+sample_span, nsamples))] \
+                              for s_on in  np.arange(0, nsamples, sample_span)]
+            syncdat       = np.zeros(nsamples, dtype=dt)
+            for sample_slice in sample_slices:
+                syncdat_slice = np.memmap(dp/fname,
+                                            mode='r',
+                                            dtype=dt,
+                                            shape=(nsamples, nchan))[slice(*sample_slice),-1]
+                syncdat[slice(*sample_slice)] = syncdat_slice.flatten()
 
-            print('Unpacking {}...'.format(fname))
-            binary = unpackbits(syncdat.flatten(),16).astype(np.int8)
+            # unpack loaded int16 data into 
+            print(f'Unpacking bits from {dt} data ...')
+            binary     = unpackbits(syncdat, 8*dt.itemsize).astype(np.int8)
             sync_fname = fname[:-4]+'_sync'
             np.savez_compressed(sync_dp/(sync_fname+'.npz'), binary)
 
@@ -533,7 +566,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
         # Generates onsets and offsets from binary
         mult = 1
-        sync_idx_onset = np.where(mult*np.diff(binary, axis = 0)>0)
+        sync_idx_onset  = np.where(mult*np.diff(binary, axis = 0)>0)
         sync_idx_offset = np.where(mult*np.diff(binary, axis = 0)<0)
         for ichan in np.unique(sync_idx_onset[1]):
             ons = sync_idx_onset[0][
@@ -546,8 +579,8 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
             offsets[ichan] = ofs
             np.save(Path(sync_dp, sync_fname+'{}of_samples.npy'.format(ichan)), ofs)
 
-        onsets={ok:ov/srate for ok, ov in onsets.items()}
-        offsets={ok:ov/srate for ok, ov in offsets.items()}
+        onsets  = {ok:ov/srate for ok, ov in onsets.items()}
+        offsets = {ok:ov/srate for ok, ov in offsets.items()}
 
         assert any(onsets), ("WARNING no sync channel found in dataset - "
             "make sure you are running this function on a dataset with a synchronization TTL!")

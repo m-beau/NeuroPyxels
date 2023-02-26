@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from . import inout, utils, gl, spk_t, spk_wvf, corr, plot, behav, merger, stats, datasets, ml
+from . import utils, inout, gl, spk_t, spk_wvf, corr, stats, plot,\
+              behav, merger, circuitProphyler, feat, metrics,\
+              info, model, h5, testing
 
 from .utils import *
 from .inout import *
@@ -16,6 +18,7 @@ from .circuitProphyler import *
 from .feat import *
 from .metrics import *
 from .info import *
+from .model import *
 from .h5 import *
 from .testing import *
 
@@ -37,6 +40,6 @@ npyx submodules:
  .h5
 """
 
-__version__ = '2.6.3'
+__version__ = '2.7.0'
 
 print(f'npyx version {__version__} imported.')

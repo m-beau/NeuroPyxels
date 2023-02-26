@@ -171,8 +171,9 @@ def make_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
                         putative_pairs = [str(pair) for pair in dsv["ss_cnc_put"]]
                         assert len(putative_pairs)>0, f"No connected pairs found in dataset {dsname} at {ds_master}!"
                         real_pairs = [str(pair) for pair in dsv["ss_cnc_real"]]
-                        assert np.all(np.isin(real_pairs, putative_pairs)),\
-                            f"Some real connected pairs are not in putative connected pairs: {real_pairs[~np.isin(real_pairs, putative_pairs)]}.\n Edit json file at {ds_master}!"
+                        if not np.all(np.isin(real_pairs, putative_pairs)):
+                            print(("Some real connected pairs are not in putative connected pairs: "
+                            f"{np.array(real_pairs)[~np.isin(real_pairs, putative_pairs)]}.\n Edit json file at {ds_master}!"))
                         
                         for ss,cnc in dsv["ss_cnc_put"]:
                             

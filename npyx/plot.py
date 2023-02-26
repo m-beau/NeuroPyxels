@@ -87,6 +87,11 @@ default_mplp_params = dict(
             clabel_w='regular',
             clabel_s=22,
             cticks_s=22,
+
+            # horizontal and vertical lines default parameters
+            hlines = None, # provide any iterable of values to plot horizontal lines along the y axis
+            vlines = None, # provide any iterable of values to plot vertical lines along the x axis
+            lines_kwargs = {'lw':1.5, 'ls':'--', 'color':'k'}, # add any other matplotlib.lines.Line2D arguments
 )
 
 @docstring_decorator(pprint_dic(default_mplp_params))
@@ -103,6 +108,7 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
          saveFig=None, saveDir = None, figname=None, _format=None,
          colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None,
          cbar_w=None, cbar_h=None, clabel=None, clabel_w=None, clabel_s=None, cticks_s=None,
+         hlines = None, vlines = None, lines_kwargs = None,
          prettify=True):
     """
     make plots pretty
@@ -130,7 +136,13 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         {0}
     """
 
-    if fig is None: fig=plt.gcf()
+    global default_mplp_params
+
+    if fig is None:
+        if ax is None:
+            fig = plt.gcf()
+        else:
+            fig = ax.get_figure()
     if ax is None: ax=plt.gca()
 
     # if prettify is set to True (default),
@@ -249,16 +261,20 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
 
     if xtickslabels is not None:
         if xticks is not None:
-            assert len(xtickslabels)==len(xticks), 'WARNING you provided too many/few xtickslabels! Make sure that the default/provided xticks match them.'
+            assert len(xtickslabels)==len(xticks),\
+                'WARNING you provided too many/few xtickslabels! Make sure that the default/provided xticks match them.'
         if xtickha is None: xtickha = ax.xaxis.get_ticklabels()[0].get_ha()
         if xtickva is None: xtickva = ax.xaxis.get_ticklabels()[0].get_va()
-        ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=xtickrot, ha=xtickha, va=xtickva)
+        ax.set_xticklabels(xtickslabels, fontsize=ticklab_s, fontweight=ticklab_w,
+                            color=(0,0,0), **hfont, rotation=xtickrot, ha=xtickha, va=xtickva)
     if ytickslabels is not None:
         if yticks is not None:
-            assert len(ytickslabels)==len(yticks), 'WARNING you provided too many/few ytickslabels! Make sure that the default/provided yticks match them.'
+            assert len(ytickslabels)==len(yticks),\
+                'WARNING you provided too many/few ytickslabels! Make sure that the default/provided yticks match them.'
         if ytickha is None: ytickha = ax.yaxis.get_ticklabels()[0].get_ha()
         if ytickva is None: ytickva = ax.yaxis.get_ticklabels()[0].get_va()
-        ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w, color=(0,0,0), **hfont, rotation=ytickrot, ha=ytickha, va=ytickva)
+        ax.set_yticklabels(ytickslabels, fontsize=ticklab_s, fontweight=ticklab_w,
+                            color=(0,0,0), **hfont, rotation=ytickrot, ha=ytickha, va=ytickva)
 
     # Reset x/y limits a second time
     if xlim is not None: ax.set_xlim(xlim)
@@ -282,6 +298,19 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         for sp in lw_spine_keys:
             ax.spines[sp].set_lw(lw)
 
+    # Optionally plot horizontal and vertical dashed lines
+    if lines_kwargs is None: lines_kwargs = {}
+    l_kwargs = default_mplp_params['lines_kwargs']
+    l_kwargs.update(lines_kwargs) # prevalence of passed arguments
+
+    if hlines is not None:
+        assert hasattr(hlines, '__iter__'), 'hlines must be an iterable!'
+        for hline in hlines:
+            ax.axhline(y=hline, **l_kwargs)
+    if vlines is not None:
+        assert hasattr(vlines, '__iter__'), 'vlines must be an iterable!'
+        for vline in vlines:
+            ax.axvline(x=vline, **l_kwargs)
 
     # Aligning and spacing axes and labels
     if tight_layout: fig.tight_layout(rect=[0, 0.03, 1, 0.95])
@@ -659,7 +688,7 @@ def set_ax_size(ax,w,h):
 #%% Exploratory plots
 
 def hist_MB(arr, a=None, b=None, s=None,
-            title='Histogram', xlabel='', ylabel='',
+            title='', xlabel='', ylabel='', legend_label=None,
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
             saveFig=False, saveDir='', _format='pdf', prettify=True, **mplp_kwargs):
     """
@@ -693,13 +722,15 @@ def hist_MB(arr, a=None, b=None, s=None,
         (fig, ax) = plt.subplots()
     else:
         fig, ax = ax.get_figure(), ax
-    ax.bar(x=x, height=y, width=s, color=color, edgecolor='k', alpha=alpha)
+    ax.bar(x=x, height=y, width=s, color=color, edgecolor='k', alpha=alpha, label=legend_label)
     ax.set_title(title)
     ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Binsize:{}'.format(s))
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
 
     if xlim is None: xlim = [a-s/2,b+s/2]
-    fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize, prettify=prettify, **mplp_kwargs)
+    show_legend = True if legend_label else None
+    fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize,
+                  prettify=prettify, show_legend=show_legend, **mplp_kwargs)
 
     if saveFig: save_mpl_fig(fig, title, saveDir, _format)
       
@@ -2085,8 +2116,8 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
 
     # plotting
     if style=='bar':
-        ax.step(x, y, color='black', alpha=1, where='mid')
-        ax.bar(x=x, height=y+ abs(ylim[0]), width=cbin, color=color, edgecolor=color, bottom=ylim[0]) # Potentially: set bottom=0 for zscore
+        #ax.step(x, y, color='black', alpha=1, where='mid', lw=1)
+        ax.bar(x=x, height=y+ abs(ylim[0]), width=cbin/2, color=color, edgecolor=color, bottom=ylim[0]) # Potentially: set bottom=0 for zscore
     elif style=='line':
         ax.plot(x, y, color='black', alpha=1)
         if normalize in ['Hertz','Pearson','Counts']:
@@ -2113,7 +2144,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
                 'zscore':'z-score'}
     ylabel=f"Crosscorr. ({ylabdic[normalize]})" if labels else None
 
-    if figsize is None: figsize = (2.25, 2)
+    if figsize is None: figsize = (4.5, 4)
     mplp(fig, ax, figsize=figsize,
          title=title,
          xlabel='Time (ms)', ylabel=ylabel,
@@ -2257,7 +2288,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                      labels=True, show_ttl=True, title=None,
                      ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore',
                      acg_color=None, ccg_color='black', hide_axis=False, pad=0,
-                     prettify=True, **mplp_kwargs):
+                     prettify=True, style='line', show_hz=False, **mplp_kwargs):
 
     ## format parameters
     if acg_color is not None and not isinstance(acg_color, str) and not isinstance(acg_color, int):
@@ -2270,7 +2301,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
     if figsize is None: figsize=(4.5*l/2,4*l/2)
     fig = plt.figure(figsize=figsize)
 
-    x=np.arange(-cwin/2, cwin/2+cbin, cbin)
+    x=np.round(np.linspace(-cwin/2, cwin/2, CCGs.shape[2]),1)
     if bChs is not None:
         bChs=npa(bChs).astype(np.int64)
 
@@ -2358,12 +2389,16 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 else:
                     y=CCGs[row,col,:]
 
-            # plotting
-            ax.plot(x, y, color=color, alpha=0)
-            if normalize1 in ['Hertz','Pearson','Counts']:
-                ax.fill_between(x, x*0, y, color=color)
-            elif normalize1=='zscore':
-                ax.fill_between(x, ylims[i][0]*np.ones(len(x)), y, color=color)
+            # plot content
+            if style=='line':
+                ax.plot(x, y, color=color, alpha=0)
+                if normalize1 in ['Hertz','Pearson','Counts']:
+                    ax.fill_between(x, x*0, y, color=color)
+                elif normalize1=='zscore':
+                    ax.fill_between(x, ylims[i][0]*np.ones(len(x)), y, color=color)
+            elif style=='bar':
+                if row == col: ax.step(x, y, color='black', alpha=1, where='mid', lw=1)
+                ax.bar(x=x, height=y+abs(ylims[i][0]), width=cbin, color=color, bottom=ylims[i][0])
             if row != col: ax.plot([0,0], ylims[i], c=[0.7, 0.7, 0.7], lw=1, zorder=10)
 
             # plot framing
@@ -2388,6 +2423,17 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 ticklab_s=18, ticklab_w='regular',
                 tight_layout=False, hide_axis=hide_axis,
                 prettify=prettify, **mplp_kwargs)
+
+            if (not on_acg) and (ccg_means is not None) and (ccg_deviations is not None) and show_hz:
+                ccg_mn = ccg_means[i]
+                ccg_std = ccg_deviations[i]
+                ax2 = ax.twinx()
+                ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
+                ax2.set_yticks(ax.get_yticks())
+                ax2.set_yticklabels(ax2ticks, fontsize=18)
+                ax2.set_ylim(ylims[i])
+                [ax2.spines[sp].set_visible(False) for sp in ['top']]
+
             i+=1
             pbar.update(1)
 
@@ -2551,7 +2597,8 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
         fig = plt_ccg_subplots(units, CCG, cbin, cwin, bChs, saveDir, saveFig, _format, figsize,
                                labels=labels, show_ttl=show_ttl,title=title,
                                ylim_acg=ylim_acg, ylim_ccg=ylim_ccg, share_y=share_y, normalize=normalize,
-                               acg_color=color, hide_axis=hide_axis, pad=pad, prettify=prettify, **mplp_kwargs)
+                               acg_color=color, hide_axis=hide_axis, pad=pad, prettify=prettify, style=style,
+                               show_hz=show_hz, **mplp_kwargs)
 
     return fig
 

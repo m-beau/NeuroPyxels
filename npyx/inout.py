@@ -543,7 +543,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
             if sample_span == -1:
                 sample_span = nsamples
             else:
-                assert isintance(sample_span, int) and sample_span>0,\
+                assert isinstance(sample_span, int) and sample_span>0,\
                     'sample_span must be a strictly positive integer!'
             sample_slices = [[int(s_on), int(min(s_on+sample_span, nsamples))] \
                               for s_on in  np.arange(0, nsamples, sample_span)]

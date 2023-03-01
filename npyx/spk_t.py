@@ -191,7 +191,7 @@ def isi(dp, unit, enforced_rp=0, sav=True, verbose=False, periods='all', again=F
 
 def inst_cv2(t):
     '''
-    Parameters:
+    Arguments:
         - t: (nspikes,) np array, spike times in any unit
 
     Returns:
@@ -224,7 +224,7 @@ def mfr(dp=None, U=None, exclusion_quantile=0.005, enforced_rp=0,
      - regular npyx mfr(dp, u) syntax - will grab the spike times and fs from files
      - custom mfr(train=array, fs=sampling_frequency) - for any spike train
 
-    Parameters:
+    Arguments:
         - dp: str, datapath
         - U: int or list, unit or list of units
         - exclusion_quantile: float, quantiles beyond which we exclude interspike intervals (very short or very long)
@@ -301,7 +301,7 @@ def trnb(dp, u, b, periods='all', again=False):
 
 def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs=None, t_end=None):
     '''
-    Parameters:
+    Arguments:
         - t: array of spike times, in samples
         - t_end: recording end time, in samples
         - b: float, bin size i.e. temporal resolution of presence periods, in ms | Default 1
@@ -337,7 +337,7 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
 
 def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=None):
     '''
-    Parameters:
+    Arguments:
         - t: array of spike times, in samples
         - fs: sampling rate of spike times, in Hz
         - t_end: recording end time, in samples
@@ -412,7 +412,7 @@ def train_quality(dp, unit, period_m=[0,20],
     
     ***********
     
-    Parameters:
+    Arguments:
         - dp: str, path to dataset.
         - unit: int/float, unit index.
         - period_m: [t1, t2] list of floats in minutes, period to consider

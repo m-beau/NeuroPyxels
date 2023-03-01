@@ -135,14 +135,14 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
     Additional units can be added by calling the same function with identical arguments,
     but incrementing the unit id field.
 
-    Required parameters:
+    Required Arguments:
     - h5_path: Path to the h5 file to create/append
     - dp: Path the Kilosort data directory
     - unit: The unit id/neuron unit index
     - lab_id: The lab/PI id to use to label the units
     - periods: 'all' or [[t1,t2],[t3,t4],...] in seconds
 
-    Key-value parameters:
+    Key-value Arguments:
     - unit_absolute_id: unit absolute id. Will increment from the last unit added to h5 file.
     - sync_chan_id: The channel id used to denote opto stimulation. Defaults to None.
     - again: Whether to use cached results for storage in the HDF5 file (defaults to False)
@@ -611,7 +611,7 @@ def write_to_group(group, dataset, data,
     """Write data to hdf5 group
     i.e. create a dataset +/- groups on the path to dataset
     and write data to this dataset.
-    Parameters:
+    Arguments:
     - group: h5py group
     - dataset: str, name of dataset
     - data: data to add to dataset

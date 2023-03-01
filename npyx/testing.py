@@ -18,7 +18,7 @@ def test_npyx(dp, raise_error=False):
     """
     Function for unit testing of npyx core functions.
 
-    Parameters:
+    Arguments:
     - dp: path to Neuropixels data directory
           (must be compatible with phy, e.g. kilosort output)
     - raise_error: bool, whether to pause and raise error when test fails
@@ -65,7 +65,7 @@ def test_function(fun, raise_error=False, ret=False, **kwargs):
     """
     Function to test a function with rich printed information.
 
-    Parameters:
+    Arguments:
     - fun: function to test
     - ret: bool, whether to return output of fun
     - raise_error: bool, whether to pause and raise error when test fails

@@ -60,7 +60,7 @@ def metadata(dp):
         for OpenEphys, .oebin metadata relating to the first and second dictionnaries in 'continuous' of the .oebin file
                        which match the /continuous/Neuropix-PXI-100.0 or .1 folders respectively.
 
-    Parameters:
+    Arguments:
         - dp: str, datapath to spike sorted dataset
 
     Returns:
@@ -280,7 +280,7 @@ def metadata(dp):
 def chan_map(dp=None, y_orig='surface', probe_version=None):
     '''
     Returns probe channel map.
-    Parameters:
+    Arguments:
         - dp: str, datapath
         - y_orig: 'surface' or 'tip', where to position channel 0.
                 If surface (default), channel map is flipped vertically (0 is now at the surface).
@@ -320,7 +320,7 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
 def predefined_chanmap(probe_version='1.0'):
     '''
     Returns predefined channel map.
-    Parameters:
+    Arguments:
         - probe_version: None, 'local', '3A', '1.0' or '2.0_singleshank' (other types not handled yet, reach out to give your own!).
     Returns:
         - chan_map: array of shape (N_electrodes, 3).
@@ -393,7 +393,7 @@ def get_meta_file_path(dp, filt_suffix='ap', absolute_path=True):
 def get_glx_file_path(dp, suffix, filt_suffix='ap', absolute_path=True):
     '''Return the path of a spikeGLX file (.bin or .meta) from a directory.
 
-    Parameters:
+    Arguments:
     - dp: str, directory
     - filt_suffix: 'ap' or 'lf', seek ap (highpass) or lfp (lowpass) binary file,
                    for 1.0 recordings. Always 'ap' for 2.0.
@@ -428,7 +428,7 @@ def unpackbits(x,num_bits = 16):
 def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds',
                   verbose=False, again=False, sample_span=1e6):
     '''Unpacks neuropixels external input data, to align spikes to events.
-    Parameters:
+    Arguments:
         - dp: str, datapath
         - output_binary: bool, whether to output binary sync channel as 0/1s
         - filt_key: str, 'highpass' or 'lowpass' (SpikeGLX: ap/lf, OIpenEphys: Neuropix-PXI-100.0/.1)
@@ -592,7 +592,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
                      nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=True,
                      ignore_ks_chanfilt=True, center_chans_on_0=False, verbose=False, scale=True, again=False):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
-    Parameters:
+    Arguments:
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
     - times: list of boundaries of the time window, in seconds [t1, t2].
     - channels (default: np.arange(384)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
@@ -771,7 +771,7 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
     with a 3nodes butterworth filter (bidirectional to prevent phase shifting).
 
 
-    Parameters:
+    Arguments:
     - dp: optional str, path to binary file directory. dp/*.bin file will be found and used for filtering.
     - filt_key: str, 'ap' or 'lf' (if filtering ap.bin or lf.bin file)
     - fname: optional str, absolute path of binary file to filter (if provided, *.bin will not be guessed)

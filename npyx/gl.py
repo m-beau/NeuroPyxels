@@ -63,7 +63,7 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None, warnings=True
 
     ------------------------------------------------------------------------------
 
-    Parameters:
+    Arguments:
 
         - ds_master: str, path to json file with following structure:
             {
@@ -213,7 +213,7 @@ def detect_new_spikesorting(dp, print_message=True, qualities=None):
     '''
     Detects whether a dataset has been respikesorted
     based on spike_clusters.npy and cluster_group.tsv time stamps.
-    Parameters:
+    Arguments:
         - dp: str, path to original sorted dataset (not a merged dataset)
         - print_message: whether to print a warning when new spikesorting is detected.
         - qualities: option to feed new qualities dataframe to compare to old one
@@ -257,7 +257,7 @@ def load_units_qualities(dp, again=False):
     '''
     Load unit qualities (groups tsv table) from dataset.
 
-    Parameters:
+    Arguments:
         - dp_merged: str, datapath to merged dataset
         - again: bool, whether to recompute from spike_clusters.npy (long)
 
@@ -301,7 +301,7 @@ def load_merged_units_qualities(dp_merged, ds_table=None):
     the units qualities tsv table from the source datasets
     to ensure handling of new spikesorting.
 
-    Parameters:
+    Arguments:
         - dp_merged: str, datapath to merged dataset
         - ds_table: optional panda dataframe, datasets table
                     (if None, assumed to be dp/datasets_table.csv)

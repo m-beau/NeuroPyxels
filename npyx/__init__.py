@@ -1,8 +1,24 @@
 # -*- coding: utf-8 -*-
 
-from . import utils, inout, gl, spk_t, spk_wvf, corr, stats, plot,\
-              behav, merger, circuitProphyler, feat, metrics,\
-              info, model, h5, testing
+from . import (
+    utils,
+    inout,
+    gl,
+    spk_t,
+    spk_wvf,
+    corr,
+    stats,
+    plot,
+    behav,
+    merger,
+    circuitProphyler,
+    feat,
+    metrics,
+    info,
+    model,
+    h5,
+    testing,
+)
 
 from .utils import *
 from .inout import *
@@ -22,7 +38,7 @@ from .model import *
 from .h5 import *
 from .testing import *
 
-__doc__="""
+__doc__ = """
 
 npyx submodules:
  .utils
@@ -40,6 +56,6 @@ npyx submodules:
  .h5
 """
 
-__version__ = '2.7.0'
+__version__ = "2.7.0"
 
-print(f'npyx version {__version__} imported.')
+print(f"npyx version {__version__} imported.")

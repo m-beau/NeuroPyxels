@@ -78,7 +78,12 @@ FEATURES = [
     "dendritic_comp_amp",
 ]
 
-AMPLITUDE_FEATURES = ["peak_voltage", "trough_voltage", "onset_amp"]
+AMPLITUDE_FEATURES = [
+    "peak_voltage",
+    "trough_voltage",
+    "onset_amp",
+    "multiplicative_a_recovery",
+]
 
 CORRELATED_FEATURES = [
     "mifr",

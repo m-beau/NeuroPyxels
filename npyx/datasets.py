@@ -710,11 +710,11 @@ def resample_waveforms(
     """
     It takes a dataset, resizes the waveforms to a new sampling rate, and returns a new dataset with the
     resized waveforms
-    
+
     Args:
       dataset (NeuronsDataset): the dataset to be resampled
       sampling_rate (int): the sampling rate of the new waveforms. Defaults to 30_000
-    
+
     Returns:
       A new dataset with the same properties as the original dataset, but with the waveforms resampled.
     """

@@ -26,7 +26,7 @@ def set_seed(seed=None, seed_torch=True):
     seed : Integer corresponding to the random state.
     """
     if seed is None:
-        seed = np.random.choice(2 ** 16)
+        seed = np.random.choice(2**16)
     random.seed(seed)
     np.random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
@@ -50,6 +50,8 @@ def run_cross_validation(
     oversampler=None,
     kfold=None,
     model_class=None,
+    get_importance=False,
+    **model_kwargs,
 ):
 
     """
@@ -75,6 +77,9 @@ def run_cross_validation(
     hyper_preds = []
     hyper_probabilities = []
 
+    if get_importance:
+        importances_list = []
+
     for _ in tqdm(range(n_runs), position=0, leave=True, desc="Random Forest runs"):
 
         train_accuracies = []
@@ -82,7 +87,8 @@ def run_cross_validation(
         model_pred = []
         probabilities = []
 
-        seed = np.random.choice(2 ** 32)
+
+        seed = np.random.choice(2**32)
         for fold, (train_idx, val_idx) in tqdm(
             enumerate(kfold.split(X, y)),
             leave=False,
@@ -92,9 +98,9 @@ def run_cross_validation(
         ):
 
             X_train = X.iloc[train_idx].copy()
-            y_train = y.iloc[train_idx].copy()
+            y_train = y.iloc[train_idx].copy().values
             X_test = X.iloc[val_idx]
-            y_test = y.iloc[val_idx]
+            y_test = y.iloc[val_idx].values
 
             if oversampler is None:
                 oversample = RandomOverSampler(random_state=seed)
@@ -104,7 +110,7 @@ def run_cross_validation(
             if model_class is None:
                 model_class = RandomForestClassifier
 
-            model = model_class(**best_params, random_state=seed)
+            model = model_class(**best_params, **model_kwargs, random_state=seed)
 
             # fit the model on the data
             model.fit(X_big, y_big)
@@ -119,6 +125,9 @@ def run_cross_validation(
             true_targets.append(y_test)
             model_pred.append(pred)
             probabilities.append(model.predict_proba(X_test))
+
+            if get_importance:
+                importances_list.append(model.feature_importances_)
 
         f1 = f1_score(true_targets, model_pred, average="macro")
         f1_scores.append(f1)
@@ -138,9 +147,16 @@ def run_cross_validation(
     all_targets = np.concatenate(hyper_true_targets).squeeze()
     all_probabilities = np.concatenate(hyper_probabilities).squeeze()
 
-    return {
+    results_dict = {
         "f1_scores": f1_scores,
         "train_accuracies": train_accuracies,
         "true_targets": all_targets,
         "predicted_probability": all_probabilities,
     }
+
+    if get_importance:
+        results_dict["feature_importance_list"] = importances_list
+        
+    return results_dict
+
+

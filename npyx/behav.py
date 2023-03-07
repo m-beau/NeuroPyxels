@@ -756,7 +756,7 @@ def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_wi
         elif behaviour == "running":
             v=behavdic['ROT_SPEED']
             consec=1 # s
-            run_values = thresh_consec(v, speed_th_run, consec, consec*behavdic['paq_fs'], ret_values=True)
+            run_values = thresh_consec(v, speed_th_run, 1, consec*behavdic['paq_fs'], ret_values=True)
             move_periods = np.round(npa([[r[0,0],r[0,-1]] for r in run_values])*behavdic['a']+behavdic['b'])/behavdic['npix_fs']
             nomove_periods = np.concatenate([[0], move_periods.ravel(), [rec_len]]).reshape((-1,2))
             
@@ -1032,24 +1032,26 @@ def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_tri
                       convolve=False, gsd=1, method='gaussian',
                       bsl_subtract=False, bsl_window=[-4000, 0], process_y=False):
     '''
+    Returns the "processed" (averaged and/or smoothed and/or z-scored) instantaneous firing rate of a neuron.
+
     Arguments:
-        - times: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
+        - times:  list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
         - events: list/array in seconds, events to align timestamps to
-        - b: float, binarized train bin in millisecond
+        - b:      float, binarized train bin in millisecond
         - window: [w1, w2], where w1 and w2 are in milliseconds.
         - remove_empty_trials: boolean, remove from the output trials where there were no timestamps around event. | Default: True
-        - convolve: boolean, set to True to convolve the aligned binned train with a half-gaussian window to smooth the ifr
-        - gsd: float, gaussian window standard deviation in ms
-        - method: convolution window shape: gaussian, gaussian_causal, gamma | Default: gaussian
+        - convolve:      boolean, set to True to convolve the aligned binned train with a half-gaussian window to smooth the ifr
+        - gsd:           float, gaussian window standard deviation in ms
+        - method:        convolution window shape: gaussian, gaussian_causal, gamma | Default: gaussian
         - bsl_substract: whether to baseline substract the trace. Baseline is taken as the average of the baseline window bsl_window
-        - bsl_window: [t1,t2], window on which the baseline is computed, in ms -> used for zscore and for baseline subtraction (i.e. zscoring without dividing by standard deviation)
-        - process_y: whether to also process the raw trials x bins matrix y (returned raw by default)
+        - bsl_window:    [t1,t2], window on which the baseline is computed, in ms -> used for zscore and for baseline subtraction (i.e. zscoring without dividing by standard deviation)
+        - process_y:     whether to also process the raw trials x bins matrix y (returned raw by default)
+    
     Returns:
-        - x: 1D array tiling bins, in milliseconds
-        - y: 2D array NtrialsxNbins, the unprocessed ifr (by default - can be processed if process_y is set to True)
-        - y_mn
-        - y_p
-        - y_p_sem
+        - x:       (n_bins,) array tiling bins, in milliseconds
+        - y:       (n_trials, n_bins,) array, the unprocessed ifr (by default - can be processed if process_y is set to True)
+        - y_p:     (n_bins,) array, the processed instantaneous firing rate (averaged and/or smoothed and/or z-scored)
+        - y_p_var: (n_bins,) array, the standard deviation across trials of the processed instantaneous firing rate
     '''
 
     # Window and bins translation

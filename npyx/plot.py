@@ -909,20 +909,39 @@ def plot_wvf(dp, u=None, Nchannels=12, chStart=None, n_waveforms=300, t_waveform
         - chStart: int, channel from which to plot consecutive Nchannels | Default None, will then center on the peak channel.
         - n_waveforms: int, number of randomly sampled waveforms from which the mean and std are computed
         - t_waveforms: float, time span of the waveform samples around spike onset, in ms
+
+        - periods: 'all' or list of (start, end) tuples, time periods in SECONDS to extract waveforms from
+        - spike_ids: array, ids of spikes to use for plotting (rank across all spikes in the recording, across all units).
+                     If None, falls back to other means of selection.
+        - wvf_batch_size: int, number of waveforms to load at once. If None, loads all waveforms at once.
+        - ignore_nwvf: boolean, whether to ignore n_waveforms and load all spikes in the specified periods/with the specified ids.
+        - again: boolean, whether to reload waveforms from disk
+        - whiten: boolean, whether to whiten waveforms
+        - med_sub: boolean, whether to median-subtract waveforms
+        - hpfilt: boolean, whether to high-pass filter waveforms
+        - hpfiltf: float, high-pass filter frequency
+        - nRangeWhiten: (min, max) tuple, range of channels to use for whitening
+        - nRangeMedSub: (min, max) tuple, range of channels to use for median subtraction
+
         - title: string, plot title
-        - std: boolean, whether or not to plot the underlying standard deviation area | default True
-        - mean: boolean, whether or not to plot the mean waveform | default True
-        - template: boolean, whether or not to plot the waveform template | default True
+        - plot_std: boolean, whether or not to plot the underlying standard deviation area | default True
+        - plot_mean: boolean, whether or not to plot the mean waveform | default True
+        - plot_templates: boolean, whether or not to plot the waveform template | default True
         - color: (r,g,b) tuple, hex or matplotlib litteral string, color of the mean waveform | default black
-        - sample_lines: 'all' or int, whether to plot all or sample_lines individual samples in the background. Set to 0 to plot nothing.
         - labels: boolean, whether to plot or not the axis, axis labels, title...
                   If False, only waveforms are plotted along with a scale bar. | Default False
+        - show_channels: boolean, whether to show channel numbers | Default True
+        - scalebar_w: float, width of scale bar in ms | Default 5
+        - ticks_lw: float, width of ticks | Default 1
+        - sample_lines: 'all' or int, whether to plot all or sample_lines individual samples in the background. Set to 0 to plot nothing.
         - ylim: upper limit of plots, in uV
+        
         - saveDir  | default False
         - saveFig: boolean, save figure source data to saveDir | default Downloads
         - saveData: boolean, save waveforms source data to saveDir | default Downloads
         - _format: string, figure saving format (any format accepted by matplotlib savefig). | Default: pdf
         - ignore_ks_chanfilt: bool, whether to ignore kilosort channel filtering (some are jumped if low activity)
+
         - ax_edge_um_x: float, width of subplot (electrode site) in micrometers, relatively to the electrode channel map | Default 20
         - ax_edge_um_y: float, height of subplot.
         - margin: [0-1], figure margin (in proportion of figure)
@@ -930,6 +949,7 @@ def plot_wvf(dp, u=None, Nchannels=12, chStart=None, n_waveforms=300, t_waveform
         - figh_inch: float, specify figure height instead of width
         - as_heatmap: bool, whether to display waveform as heatmap instead of collection of 2D plots
         - use_dsmatch: bool, whether to use drift-shift-matched waveform
+        - verbose: bool, whether to print details
     Returns:
         - matplotlib figure with Nchannels subplots, plotting the mean
     '''
@@ -2288,7 +2308,9 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                      labels=True, show_ttl=True, title=None,
                      ylim_acg=None, ylim_ccg=None, share_y=0, normalize='zscore',
                      acg_color=None, ccg_color='black', hide_axis=False, pad=0,
-                     prettify=True, style='line', show_hz=False, **mplp_kwargs):
+                     prettify=True, style='line',
+                     show_hz=False, ccg_means=None, ccg_deviations=None,
+                     **mplp_kwargs):
 
     ## format parameters
     if acg_color is not None and not isinstance(acg_color, str) and not isinstance(acg_color, int):
@@ -2299,6 +2321,7 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
     ## Instanciate figure and format x axis/channels
     l=CCGs.shape[0]
     if figsize is None: figsize=(4.5*l/2,4*l/2)
+    if show_hz: figsize = (figsize[0]*1.2, figsize[1])
     fig = plt.figure(figsize=figsize)
 
     x=np.round(np.linspace(-cwin/2, cwin/2, CCGs.shape[2]),1)
@@ -2416,6 +2439,17 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 ttl = None
             if not show_ttl: ttl=None
 
+            if show_hz and (not on_acg) and normalize1 == 'zscore' and \
+                (ccg_means is not None) and (ccg_deviations is not None):
+                ccg_mn = ccg_means[row,col]
+                ccg_std = ccg_deviations[row,col]
+                ax2 = ax.twinx()
+                ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
+                ax2.set_yticks(ax.get_yticks())
+                ax2.set_yticklabels(ax2ticks, fontsize=18)
+                ax2.set_ylim(ylims[i])
+                [ax2.spines[sp].set_visible(False) for sp in ['top']]
+
             mplp(ax=ax, figsize=figsize, ylim=ylims[i], xlim=[-cwin*1./2, cwin*1./2],
                 lw=1, title=ttl, ylabel=ylabel, xlabel=xlabel,
                 title_s=8, title_w='regular',
@@ -2423,16 +2457,6 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 ticklab_s=18, ticklab_w='regular',
                 tight_layout=False, hide_axis=hide_axis,
                 prettify=prettify, **mplp_kwargs)
-
-            if (not on_acg) and (ccg_means is not None) and (ccg_deviations is not None) and show_hz:
-                ccg_mn = ccg_means[i]
-                ccg_std = ccg_deviations[i]
-                ax2 = ax.twinx()
-                ax2ticks=[np.round(ccg_mn+tick*ccg_std,1) for tick in ax.get_yticks()]
-                ax2.set_yticks(ax.get_yticks())
-                ax2.set_yticklabels(ax2ticks, fontsize=18)
-                ax2.set_ylim(ylims[i])
-                [ax2.spines[sp].set_visible(False) for sp in ['top']]
 
             i+=1
             pbar.update(1)
@@ -2514,7 +2538,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
              saveDir='~/Downloads', saveFig=False, _format='pdf', figsize=None, periods='all',
              labels=True, title=None, show_ttl=True, color=None, CCG=None,
              ylim_acg=None, ylim_ccg=None, share_y=False,
-             ccg_mn=None, ccg_std=None, again=False, trains=None, as_grid=False, show_hz=False,
+             ccg_means=None, ccg_deviations=None, again=False, trains=None, as_grid=False, show_hz=False,
              use_template=True, enforced_rp=0, style='line', hide_axis=False, pad=0,
              prettify=True, **mplp_kwargs):
     """
@@ -2543,13 +2567,13 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
         - ylim_ccg: [float, float], ylim for crosscorrelogram(s)
         - share_y: bool, whether to use the same y limit for all CCGs if as_grid is True
 
-        - ccg_mn: float, optionally feed externally calculated mean to zscore the CCG
-        - ccg_std: float, optionally feed externally calculated std to zscore the CCG
+        - ccg_means: (len(units), len(units),) array, optionally feed externally calculated mean(s) to zscore the CCG(s)
+        - ccg_deviations: (len(units), len(units),) array, optionally feed externally calculated std(s) to zscore the CCG(s)
 
         - again: bool, whether to recompute the CCG
         - trains: [array1, array2...], optional externally fed list of trains to compute ACGs/CCGs (in samples). Then use any integers as 'units'.
         - as_grid: bool, also plot units autocorrelograms along the diagonal (only relevant when plotting 2 units)
-        - show_hz: bool, whether to add a second y axis and show the values corresponding to z-score units in Hz (only applies if normalize='zscore')
+        - show_hz: bool, whether to add a second y axis and show the values corresponding to z-score units in Hz (only applies if normalize='zscore' or 'mixte')
 
         - use_template: bool, whether to use the template files to find the peak channel
         - enforced_rp: float, enforced refractory period (will remove spikes happening within enforced_rp ms of another) | Default 0
@@ -2572,25 +2596,28 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
     saveDir=op.expanduser(saveDir)
 
     if trains is None:
-        bChs=get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
+        bChs = get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
     else:
-        bChs=None
+        bChs = None
 
     if CCG is None:
         normalize1 = normalize if normalize!='mixte' else 'Hertz'
-        CCG=ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, verbose=0, periods=periods, again=again, trains=trains, enforced_rp=enforced_rp)
+        CCG = ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, verbose=0, periods=periods, again=again, trains=trains, enforced_rp=enforced_rp)
     assert CCG is not None
 
-    if CCG.shape[0]==2 and not as_grid:
-        if normalize=='zscore':
-            CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', verbose=0, periods=periods, again=again, trains=trains)[0,1,:]
-            ccg25, ccg35 = CCG_hertz[:int(len(CCG_hertz)*2./5)], CCG_hertz[int(len(CCG_hertz)*3./5):]
-            ccg_std=np.std(np.append(ccg25, ccg35))
-            ccg_mn=np.mean(np.append(ccg25, ccg35))
+    if normalize in ['mixte', 'zscore']:
+        CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', verbose=0,
+                        periods=periods, again=again, trains=trains)
+        nbins = CCG_hertz.shape[2]
+        ccg25, ccg35 = CCG_hertz[:,:,:int(nbins*2./5)], CCG_hertz[:,:,int(nbins*3./5):]
+        ccg_baseline = np.concatenate((ccg25, ccg35), axis=2)
+        ccg_deviations = np.std(ccg_baseline, axis=2)
+        ccg_means = np.mean(ccg_baseline, axis=2)
 
+    if CCG.shape[0]==2 and not as_grid:
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format,
                       labels=labels, title=title, color=color, ylim=ylim_ccg,
-                      normalize=normalize, ccg_mn=ccg_mn, ccg_std=ccg_std,
+                      normalize=normalize, ccg_mn=ccg_means[0,1], ccg_std=ccg_deviations[0,1],
                       figsize=figsize, style=style, hide_axis=hide_axis, show_hz=show_hz, show_ttl=show_ttl,
                       prettify=prettify, **mplp_kwargs)
     else:
@@ -2598,7 +2625,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
                                labels=labels, show_ttl=show_ttl,title=title,
                                ylim_acg=ylim_acg, ylim_ccg=ylim_ccg, share_y=share_y, normalize=normalize,
                                acg_color=color, hide_axis=hide_axis, pad=pad, prettify=prettify, style=style,
-                               show_hz=show_hz, **mplp_kwargs)
+                               show_hz=show_hz, ccg_means=ccg_means, ccg_deviations=ccg_deviations, **mplp_kwargs)
 
     return fig
 

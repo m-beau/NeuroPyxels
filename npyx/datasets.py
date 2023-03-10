@@ -313,7 +313,27 @@ class NeuronsDataset:
                 # Extract amplitudes if requested
                 if _use_amplitudes:
                     amplitudes = get_neuron_attr(dataset, wf_n, "amplitudes")
-                    self.amplitudes_list.append(amplitudes)
+                    try:
+                        self.amplitudes_list.append(
+                            amplitudes[sane_spikes]
+                            if not quality_check
+                            else amplitudes[quality_mask]
+                        )
+                    except IndexError:
+                        # print(
+                        #     f"Shape mismatch between amplitudes and spikes for neuron {wf_n}. {len(amplitudes)} vs {len(spikes)}."
+                        # )
+                        # print("Enforcing them to be of equal size.")
+                        if quality_check:
+                            amplitudes, quality_mask = force_amplitudes_length(
+                                amplitudes, quality_mask
+                            )
+                            self.amplitudes_list.append(amplitudes[quality_mask])
+                        else:
+                            amplitudes, sane_spikes = force_amplitudes_length(
+                                amplitudes, sane_spikes
+                            )
+                            self.amplitudes_list.append(amplitudes[sane_spikes])
 
                 # Extract waveform using provided parameters
                 wf = get_neuron_attr(dataset, wf_n, "mean_waveform_preprocessed")
@@ -738,3 +758,11 @@ def resample_waveforms(
     resampled_dataset.wf_list = [wf for wf in resized_wf]
 
     return resampled_dataset
+
+
+def force_amplitudes_length(amplitudes, times):
+    if len(times) > len(amplitudes):
+        times = times[: len(amplitudes)]
+    if len(amplitudes) > len(times):
+        amplitudes = amplitudes[: len(times)]
+    return amplitudes, times

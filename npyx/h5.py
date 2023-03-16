@@ -20,8 +20,8 @@ from npyx.inout import (
     preprocess_binary_file,
     read_metadata,
 )
-from npyx.spk_t import ids, trn, trn_filtered
-from npyx.spk_wvf import wvf_dsmatch
+from npyx.spk_t import duplicates_mask, ids, trn, trn_filtered
+from npyx.spk_wvf import get_waveforms, wvf_dsmatch
 from npyx.utils import assert_float, assert_int, docstring_decorator
 
 
@@ -88,7 +88,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, genetic_line=None, periods='all',
                 sane_spikes=None, sane_periods=None, sane_before_opto=False, include_fp_fn_mask=True,
                 optostims=None, optostims_from_sync=False, optostims_threshold=None,
                 n_waveforms_for_matching=5000, selective_overwrite=None,
-                **kwargs):
+                include_fn_fp_wvf_samples=False, **kwargs):
     """
     Add a spike-sorted unit to an HDF5 file (on a phy compatible dataformat).
 
@@ -413,6 +413,43 @@ def add_unit_h5(h5_path, dp, unit, lab_id, genetic_line=None, periods='all',
             c2 = min(white_chunk.shape[0]-1, int(white_chunk.shape[0]/2+raw_snippet_halfrange+1))
             raw_snippet = white_chunk[c1:c2,:].astype(np.float32)
             write_to_group(neuron_group, 'whitened_voltage_sample', raw_snippet, change_voltage_snippets)
+            
+        pbar.set_description(f"Adding false positive and negative waveform samples for unit {unit} to {h5_path}")
+        pbar.update(1)
+        change_fn_fp_samples = overwrite_h5 or ('fn_fp_filtered_wvf_samples' in selective_overwrite)
+        if ('fn_fp_filtered_wvf_samples' not in neuron_group or overwrite_h5) and include_fn_fp_wvf_samples or change_fn_fp_samples:
+            
+            fp_fn_good_spikes = neuron_group['fn_fp_filtered_spikes'][...]
+            sane_spikes = neuron_group['sane_spikes'][...]
+            used_spikes_mask = fp_fn_good_spikes & sane_spikes
+            spike_ids = ids(dp, unit)
+            
+            if len(spike_ids) != len(used_spikes_mask):
+                fs = neuron_group['sampling_rate'][...].item()
+                train = trn(dp, unit, enforced_rp = -1)
+                duplicates_m = duplicates_mask(train, 0, fs)
+                spike_ids = spike_ids[~duplicates_m]
+                
+            used_ids = spike_ids[used_spikes_mask]
+            peak_chan = neuron_group['primary_channel'][...].item()
+            
+            chan_range = np.arange(peak_chan-mean_wvf_half_range, peak_chan+mean_wvf_half_range)
+            chan_range_m = (chan_range>=0)&(chan_range<=383)
+            chan_bottom, chan_top = chan_range[chan_range_m][0], chan_range[chan_range_m][-1]
+            
+            pbar.set_description("Reading false positive and false negative waveform samples...")
+            if len(used_ids) > 0 and len(used_ids) < 10000:
+                fp_fn_samples = get_waveforms(dp, unit, t_waveforms=180, spike_ids=used_ids)
+                fp_fn_samples = fp_fn_samples[:, :, chan_bottom:chan_top].transpose(0,2,1)
+            elif len(used_ids) > 10000:
+                fp_fn_samples = get_waveforms(dp, unit, t_waveforms=180, spike_ids=used_ids[:10000])
+                fp_fn_samples = fp_fn_samples[:,:, chan_bottom:chan_top].transpose(0,2,1)
+                if verbose:
+                    warnings.warn(f"WARNING: Only using first 10,000 spikes for unit {unit} in {dp} to get false positive and false negative waveform samples")
+            else:
+                fp_fn_samples = np.nan
+
+            write_to_group(neuron_group, 'fn_fp_filtered_wvf_samples', fp_fn_samples, change_fn_fp_samples)
 
         pbar.set_description(f"Adding labels for {unit} to {h5_path}")
         # layer

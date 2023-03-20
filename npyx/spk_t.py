@@ -561,7 +561,7 @@ def train_quality(dp, unit, period_m=[0,20],
                 #rpv_ratio_acg = round(violations_mean / baseline_mean, 4)
                 # fp_toplot.append(rpv_ratio_acg)
                 fp_rate = isi_violations(unit_train, min_time=t1, max_time=t2,
-                                         isi_threshold=violations_ms/1000, min_isi=0.0005)[0]
+                                         isi_threshold=violations_ms/1000, min_isi=0)[0]
                 fp_toplot.append(fp_rate)
                 chunk_fp_t.append(t1+(t2-t1)/2)
                 if (fp_rate <= fp_threshold):

@@ -326,7 +326,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     
     ## Subsample waveforms based on available RAM
     vmem=dict(psutil.virtual_memory()._asdict())
-    available_RAM = vmem['total']-vmem['used']
+    available_RAM = vmem['available']
     single_w_size = wvf(dp, None, t_waveforms=t_waveforms, spike_ids=[0]).nbytes
     max_n_waveforms = available_RAM//single_w_size-100 # -100 to be safe
     n_waves_used_for_matching = min(n_waves_used_for_matching, max_n_waveforms)

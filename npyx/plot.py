@@ -335,6 +335,8 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         fig = add_colorbar(fig, ax, None, vmin, vmax,
                  cbar_w, cbar_h, cticks, clabel, clabel_w, clabel_s, cticks_s, cmap) 
 
+    if prettify:
+        fig.patch.set_facecolor('white')
     if saveFig:
         save_mpl_fig(fig, figname, saveDir, _format, dpi=500)
 
@@ -618,11 +620,14 @@ def get_bounded_cmap(cmap_str, vmin, center, vmax, colorseq='linear'):
 
     return cmap
 
-def get_ncolors_cmap(cmap_str, n, plot=False):
+def get_ncolors_cmap(n, cmap_str="tab10", plot=False):
     '''Returns homogeneously distributed n colors from specified colormap.
-    - cmap_str: str, matplotlib or crameri colormap
-    - n_ int, n colors
-    - plot: bool, whether to display colormap in HTML (works in jupyter npotebooks)
+    Arguments:
+        - cmap_str: str, matplotlib or crameri colormap
+        - n_ int, n colors
+        - plot: bool, whether to display colormap in HTML (works in jupyter notebooks)
+    Returns:
+        - colors: list of n colors homogeneously tiling cmap_str
     '''
     assert n==int(n)
     n=int(n)
@@ -651,7 +656,7 @@ def get_color_families(ncolors, nfamilies, cmapstr=None, gap_between_families=4)
         colors_all=get_mpl_css_colors(sort=True, aslist=True)[15:-10]
         colors=npa(colors_all)[np.linspace(0,len(colors_all)-1,(ncolors+gap_between_families)*nfamilies).astype(np.int64)].tolist()
     else:
-        colors=get_ncolors_cmap(cmapstr, (ncolors+gap_between_families//2)*nfamilies, plot=False)
+        colors=get_ncolors_cmap((ncolors+gap_between_families//2)*nfamilies, cmapstr, plot=False)
     highsat_colors=[c for c in colors if to_hsv(c)[1]>0.4]
     seed_ids=np.linspace(0, len(highsat_colors)-ncolors, nfamilies).astype(np.int64)
 
@@ -1770,7 +1775,7 @@ def raster_plot(times, events, window=[-1000, 1000], events_toplot=[0], events_c
     print(f'{n_cells} cell(s) detected.')
     if isinstance(color, str):
         if n_cells==1: color=[color]
-        else: color=get_ncolors_cmap(palette, n_cells, plot=False)
+        else: color=get_ncolors_cmap(n_cells, palette, plot=False)
     else: assert len(color)==n_cells,\
         'WARNING the number of colors needs to match the number of cells provided (use [[r,g,b]] for 1 neuron)!'
     subplots_ratio=[4*n_cells,n_cells]

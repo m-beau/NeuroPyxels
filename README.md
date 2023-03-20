@@ -11,7 +11,7 @@ There isn't any better doc atm - post an issue if you have any question, or emai
 
 
 - **[Documentation](https://github.com/m-beau/NeuroPyxels#documentation)**
-  - [Load synchronyzation channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
+  - [Load synchronization channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
   - [Get good units from dataset](https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset)
   - [Load spike times from unit u](https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u)
   - [Load waveforms from unit u](https://github.com/m-beau/NeuroPyxels#load-waveforms-from-unit-u)

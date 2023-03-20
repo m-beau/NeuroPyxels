@@ -35,7 +35,7 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
     Extracts a sample of waveforms from the raw data file.
     ********
 
-    Parameters:
+    Arguments:
         - dp:                 str or PosixPath, path to kilosorted dataset.
         - u:                  int, unit index.
         - n_waveforms:        int, number of waveform to return, selected according to the periods parameter | Default 100
@@ -231,7 +231,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     ********
 
 
-     Parameters:
+     Arguments:
         - dp:                 str or PosixPath, path to kilosorted dataset.
         - u:                  int, unit index.
         - n_waveforms:        int, number of waveform to return, selected according to the periods parameter | Default 100
@@ -476,7 +476,7 @@ def shift_match(waves, alignment_channel,
     When shifting a wave, fills the gap
     with the bit clipped from the other end.
 
-    Parameters:
+    Arguments:
         - waves: (n_waves, n_samples, n_channels,) array
         - alignment_channel: channel to use to compute the convolution
         - chan_range: int, range of channels around alignment channel used for template matching
@@ -567,7 +567,7 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
     Returns index of peak channel, either according to the full probe channel map (0 through 383)
                                    or according to the kilosort channel map (0 through N with N<=383)
 
-    Parameters:
+    Arguments:
         - datapath, string
         - unit, integer or float (if merged dataset)
         - use_template: bool, whether to use templates instead of raw waveform to find peak channel.
@@ -621,7 +621,7 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
     Usage:
         Either feed in a list of units - the function will return their indices/channels sorted by depth in a n_units x 2 array,
         or simply indicate units 'quality' as 'all', 'mua' or good - will behave as if you had fed the list of units of this given quality.
-    Parameters:
+    Arguments:
         - datapath, string
         - units, list of integers or strings
         - quality: string, 'all', 'mua' or 'good'
@@ -704,7 +704,7 @@ def templates(dp, u, ignore_ks_chanfilt=False):
     Extracts the template used by kilosort to cluster this unit.
     ********
 
-    Parameters:
+    Arguments:
         - dp: string, datapath to kilosort output
         - unit: int, unit index
         - ignore_ks_chanfilt: bool, whether to ignore kilosort channel map (skipping unactive channels).

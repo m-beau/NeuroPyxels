@@ -63,7 +63,7 @@ def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=False, trains
 
 def make_matrix_2xNevents(dic):
     '''
-    Parameters:
+    Arguments:
         - dic: dictionnary, keys are timeseries labels (eg. trials, or unit indices) and values timeseries
 
     Returns:
@@ -231,7 +231,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
     computes crosscorrelogram (1, window/bin_size) - int64, in Hertz
     ********
 
-    Parameters:
+    Arguments:
      - dp (string): DataPath to the Neuropixels dataset.
      - u (list of ints or str): list of units indices. If str, format has to be 'datasetIndex_unitIndex'.
      - win_size: size of binarized spike train bins, in milliseconds.
@@ -538,7 +538,7 @@ def ccg_stack(dp, U_src=[], U_trg=[], cbin=0.2, cwin=80, normalize='Counts',
     between all U_src and U_trg units.
     In order to save a stack and retrieve it later, it is mandatory to provide a 'name' argument.
     It is possible to retrieve a stack with a given name without providing the corresponding units.
-    Parameters:
+    Arguments:
         - dp:        string, datapath
         - U_src:     list/array, source units of correlograms
         - U_trg:     list/array, target units of correlograms
@@ -650,7 +650,7 @@ def compute_ccgs_bulk(ccg_inputs, parallel=True):
 def get_ustack_i(U, ustack):
     '''
     Finds indices of units inside a ccg stack.
-    Parameters:
+    Arguments:
         - U: 2d array or unit pairs
         - ustack: 2d or 3d array, units matching a ccg stack (returned by ccg_stack())
     '''
@@ -692,7 +692,7 @@ def canUse_Nbins(a=0.05, w=100, b=0.2, n_bins=3):
 def KopelowitzCohen2014_ccg_significance(CCG, cbin=0.2, cwin=100, p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5,
                                          law='Normal', multi_comp=False, bin_wise=False, ret_values=True, only_max=True, plot=False):
     '''Function to assess whether a correlogram is significant or not.
-    Parameters:
+    Arguments:
     - a: alpha, confidence level
     - w: correlogram window size, ms
     - b: correlogram bin size, ms
@@ -738,7 +738,7 @@ def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, sgn=-1
     '''
     Predictor and p-values for CCG using convolution.
 
-    Parameters:
+    Arguments:
         - CCG: 1D numpy array (a single CCG) or 2D (CCGs in columns). Has to be non-negative integers (counts)
         - W: int, convolution window standard deviation (in samples). Has to be smaller than the CCG length.
         - WINTYPE: string, window type -> 'gaussian' - with SD of W/2; has optimal statistical properties
@@ -835,7 +835,7 @@ def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, sgn=-1
 
 def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_values=True, plot=False, only_max=True):
     '''
-    Parameters:
+    Arguments:
         - CCG: numpy array, crosscorrelogram in Counts
         - cbin: float, CCG bins value, in milliseconds. Used to convert W_sd (ms) in samples.
         - p_th: float [0-1], threshold of modulation, in pvalue (based on Poisson distribution with continuity correction)
@@ -875,7 +875,7 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
 
 def get_cross_features(cross, cbin, cwin):
     '''Returns features of a correlogram modulation as defined in Kopelowitz et al. 2014.
-    Parameters:
+    Arguments:
         - cross: 2d array, with cross[0] being the indices and cross[1] the values of a CCG significant modulation.
         - cbin: ccg bin size (ms)
         - cwin: ccg window size (ms)
@@ -917,7 +917,7 @@ def get_ccg_sig(CCG, cbin, cwin, p_th=0.02, n_consec_bins=3, sgn=0,
                 fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
                 ret_features=True, only_max=True, plot=False):
     '''
-    Parameters:
+    Arguments:
         - CCG: 1d array,
         - cbin: float, CCG bin size (ms)
         - cwin: float, CCG window size (ms)
@@ -972,7 +972,7 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
                   p_th=0.01, n_consec_bins=3, sgn=-1, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',
                   again=False, againCCG=False, ret_features=False, only_max=True, periods='all'):
     '''
-    Parameters:
+    Arguments:
         - dp: string, datapath to manually curated kilosort output
         - U_src: list/array of source units of the correlograms to consider for significance assessment
         - U_trg: list/array of target units of the correlograms to consider for significance assessment
@@ -1144,7 +1144,7 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
     kernel, which provides a better estimate of the average firing rate.
     This can be disabled by passing `smooth=None`.
 
-    Parameters:
+    Arguments:
     - times_1: vector of spike indices for neuron 1 (samples)
     - times_2: vector of spike indices for neuron 2 (samples)
     - clusters: corresponding array of neuron indices
@@ -1248,7 +1248,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     from a sorted Kilosort output at 'dp' containing 'N' good units
     with cdf(i,j) a list of ('l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy') tuples
 
-    Parameters:
+    Arguments:
         - dp: string, datapath to manually curated kilosort output
         - corr_type: string, amongst ['main', 'synchrony', 'excitation', 'inhibition', 'cs_pause']
             - main: among all modulations, take the biggest one.
@@ -1553,7 +1553,7 @@ def get_cisi1(spk1, spk2, direction=0, verbose=False):
     '''
     Computes cross spike intervals i.e time differences between
     every spike of spk1 and the following/preceeding spike of spk2.
-    Parameters:
+    Arguments:
         - spk1: list/array of INTEGERS, time series
         - spk2: list/array of INTEGERS, time series
         - direction: 1, -1 or 0, whether to return following or preceeding interval
@@ -1628,7 +1628,7 @@ def get_cisi(spk1, spk2, direction=0, verbose=False):
     '''
     Computes cross spike intervals i.e time differences between
     every spike of spk1 and the following/preceeding spike of spk2.
-    Parameters:
+    Arguments:
         - spk1: list/array of INTEGERS, time series
         - spk2: list/array of INTEGERS, time series
         - direction: 1, -1 or 0, whether to return following or preceeding interval
@@ -1704,7 +1704,7 @@ def get_cisi_parprocess(spk1, spk2, direction=0, verbose=False):
     '''
     Computes cross spike intervals i.e time differences between
     every spike of spk1 and the following/preceeding spike of spk2.
-    Parameters:
+    Arguments:
         - spk1: list/array of INTEGERS, time series
         - spk2: list/array of INTEGERS, time series
         - direction: 1, -1 or 0, whether to return following or preceeding interval
@@ -1896,7 +1896,7 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
         Denominator - running total N of cells firing, handles drift
         Numerator - N of cells firing withing the predefined synchrony window
 
-    Parameters:
+    Arguments:
     - t1: np array, time series in SAMPLES - MUST BE INTEGERS
     - trains: list of np arrays in, in SAMPLES - MUST BE INTEGERS
     - fs: float in Hz, t1 and trains sampling frequency

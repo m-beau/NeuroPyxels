@@ -70,7 +70,7 @@ def merge_datasets(datapaths, again=False):
 
     If datasets have already been merged, will simply return the right datapath and dataset table.
 
-    Parameters:
+    Arguments:
     - datapaths: dict of structure
         {'name_probe_1':'path/to/kilosort/output1',
          'name_probe_2':'path/to/kilosort/output2', ...}
@@ -288,7 +288,7 @@ def get_ds_table(dp):
 
 def get_dataset_id(u):
     """
-    Parameters:
+    Arguments:
         - u: float, of format u.ds_i
     Returns:
         - u: int, unit index
@@ -317,7 +317,7 @@ def get_ds_ids(U):
 
 def get_dataset_ids(dp_pro):
     """
-    Parameters:
+    Arguments:
         - dp_pro: str, path to merged dataset
     Returns:
         - dataset_ids: np array of shape (N_spikes,), indices of dataset of origin for all spikes

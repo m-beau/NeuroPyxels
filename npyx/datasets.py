@@ -177,6 +177,16 @@ def resample_acg(acg, window_size=20, keep_same_size=True):
     return new_y[idxes]
 
 
+def get_h5_absolute_ids(h5_path):
+    neuron_ids = []
+    with h5py.File(h5_path, "r") as hdf5_file:
+        for name in hdf5_file:
+            if "neuron" in name:
+                neuron_id = name.split("_")[-1]
+                neuron_ids.append(int(neuron_id))
+    return neuron_ids
+
+
 class NeuronsDataset:
     """
     Custom class for the cerebellum dataset, containing all information about the labelled and unlabelled neurons.
@@ -204,6 +214,7 @@ class NeuronsDataset:
     ):
 
         # Store useful metadata about how the dataset was extracted
+        self.dataset = dataset
         self._n_channels = n_channels
         self._central_range = central_range
         self._sampling_rate = get_neuron_attr(dataset, 0, "sampling_rate").item()
@@ -220,12 +231,7 @@ class NeuronsDataset:
         if _use_amplitudes:
             self.amplitudes_list = []
 
-        neuron_ids = []
-        with h5py.File(dataset, "r") as hdf5_file:
-            for name in hdf5_file:
-                if "neuron" in name:
-                    neuron_id = name.split("_")[-1]
-                    neuron_ids.append(int(neuron_id))
+        neuron_ids = get_h5_absolute_ids(dataset)
 
         if not quality_check:
             self.quality_checks_mask = []
@@ -721,6 +727,7 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
                 raise NotImplementedError(
                     "Attempted to merge datasets with different attributes"
                 )
+    new_dataset.dataset = "merged"
     return new_dataset
 
 

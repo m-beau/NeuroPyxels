@@ -249,12 +249,11 @@ def save_qualities(dp, qualities):
     qualities.to_csv(dp/'cluster_group.tsv', sep='\t', index=False)
 
 def generate_units_qualities(dp):
+    """
+    Creates an empty table of units qualities ("groups" as in good, mua,...).
+    """
     units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
-    if os.path.exists(Path(dp,"cluster_info.tsv")):
-        info = pd.read_csv(Path(dp,"cluster_info.tsv"), sep='\t')
-        qualities = info.loc[:,['cluster_id', 'group']]
-    else:
-        qualities=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
+    qualities=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
     return qualities
 
 def load_units_qualities(dp, again=False):
@@ -382,5 +381,5 @@ def check_periods(periods):
 
 # circular imports
 from npyx.inout import read_metadata
-from npyx.spk_wvf import get_depthSort_peakChans
 from npyx.merger import assert_multi, get_ds_table, merge_datasets
+from npyx.spk_wvf import get_depthSort_peakChans

@@ -1426,7 +1426,7 @@ def temporal_features_wrap(dp, unit, use_or_operator=True, use_consecutive=False
     """
     High level function for getting the temporal features of a unit from a dataset at dp.
 
-    Parameters:
+    Arguments:
         - use_or_operator: if True, if a chunk (10sec default) belongs to at least one 30s chunk
           passing both false positive and negative filters, it is considered good.
           Else, the 3 overlapping 30sec chunks must all pass both thresholds.
@@ -1629,6 +1629,9 @@ def h5_feature_extraction(
             _use_amplitudes=True,
             _label=_label,
         )
+
+    if labels_only:
+        dataset.make_labels_only()
 
     if labels_only:
         dataset.make_labels_only()

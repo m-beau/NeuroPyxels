@@ -40,12 +40,24 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
                      plot=False, drop_raw=True, cam_paqi_to_use=None):
     '''
     Remove artefactual licking, processes rotary encoder and wheel turn trials.
-    - dp: str, path of kilosort dataset.
-    - f_behav: str, paqIO behavioural file. If None, assumed to be at ../behavior relative to dp.
-    - again: bool, whether to recompute paqdic from paq file.
-    - plot: bool, whether to load plots regarding licking preprocessing to ensure all goes well.
-    - drop_raw: drop raw paqIO data for digital channels (huge memory saver)
-    - cam_paqi_to_use: [int, int], indices of first and last camera frames to consider for urnning analysis
+
+    Arguments:
+        - dp: str, path of kilosort dataset.
+        - f_behav: str, paqIO behavioural file. If None, assumed to be at ../behavior relative to dp.
+        - vid_path: str, path to directory with videos.
+        - again: bool, whether to recompute behavioural variables and convert them to Neuropixels temporal reference frame.
+        - again_align: bool, whether to re-align paqIO to Neuropixels trigger.
+        - again_rawpaw: bool, whether to reload data from paqIO file.
+        - lick_ili_th: float, inter lick interval threshold to exclude 'fake licks' (0.075 is the right threshold, across mice!)
+        - n_ticks: int, number of ticks of rotary encoder.
+        - diam: float, outer diameter of wheel coupled to the rotary encoder.
+        - gsd: int, gaussian standard deviation of roatry decoded speed smoothing gaussian kernel.
+        - plot: bool, whether to load plots regarding licking preprocessing to ensure all goes well.
+        - drop_raw: drop raw paqIO data for digital channels (huge memory saver)
+        - cam_paqi_to_use: [int, int], indices of first and last camera frames to consider for urnning analysis
+        
+    Returns:
+        - behavdic: dict, dictionnary holding behavioural variables.
     '''
 
     ## Try to load presaved df
@@ -67,30 +79,30 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
         npix_fs=read_metadata(dp)['highpass']['sampling_rate']
 
     # Preprocessing of extracted behavioural data (only lick onsets so far)
-    licks_on=paqdic['LICKS_Piezo_ON_npix'].copy()
-    paqdic['LICKS_Piezo_ON_npix']=licks_on[np.diff(np.append([0],licks_on))>lick_ili_th*npix_fs] # 0.075 is the right threshold, across mice!
-    paqdic['licks']=paqdic['LICKS_Piezo_ON_npix'] # for convenience
+    licks_on = paqdic['LICKS_Piezo_ON_npix'].copy()
+    paqdic['LICKS_Piezo_ON_npix'] = licks_on[np.diff(np.append([0],licks_on))>lick_ili_th*npix_fs]
+    paqdic['licks'] = paqdic['LICKS_Piezo_ON_npix'] # for convenience
 
-    licks_diff = np.diff(paqdic['licks'])
-    m_pre = np.append([True], licks_diff>0.4*fs).astype(bool)
-    m_post = np.append((licks_diff<0.25*fs)&(licks_diff>0.1*fs), [True]).astype(bool)
+    licks_diff  = np.diff(paqdic['licks'])
+    m_pre       = np.append([True], licks_diff>0.4*fs).astype(bool)
+    m_post      = np.append((licks_diff<0.25*fs)&(licks_diff>0.1*fs), [True]).astype(bool)
     m_noprepost = m_pre&m_post
     paqdic['lick_salve_onsets'] = paqdic['licks'][m_noprepost]
 
     print(f'\nInter lick interval lower threshold set at {lick_ili_th} seconds.\n')
     if plot:
-        hbins=np.logspace(np.log10(0.005),np.log10(10), 500)
-        fig,ax=plt.subplots()
+        hbins  = np.logspace(np.log10(0.005),np.log10(10), 500)
+        fig,ax = plt.subplots()
         ax.set_title('Licks distribution before filtering')
-        hist=np.histogram(np.diff(licks_on/npix_fs), bins=hbins)
+        hist   = np.histogram(np.diff(licks_on/npix_fs), bins = hbins)
         ax.hist(np.diff(licks_on/npix_fs), bins=hbins)
         ax.set_xscale('log')
         plt.xlim(0.005,10)
         plt.ylim(0,max(hist[0][hist[1][:-1]>0.05])+10)
-        fig,ax=plt.subplots()
+        fig,ax = plt.subplots()
         ax.set_title('Licks distribution after filtering')
-        hist=np.histogram(np.diff(paqdic['LICKS_Piezo_ON_npix']/npix_fs), bins=hbins)
-        ax.hist(np.diff(paqdic['LICKS_Piezo_ON_npix']/npix_fs), bins=hbins)
+        hist   = np.histogram(np.diff(paqdic['LICKS_Piezo_ON_npix']/npix_fs), bins = hbins)
+        ax.hist(np.diff(paqdic['LICKS_Piezo_ON_npix']/npix_fs), bins = hbins)
         ax.set_xscale('log')
         plt.xlim(0.005,10)
         plt.ylim(0,max(hist[0][hist[1][:-1]>0.05])+10)
@@ -101,14 +113,16 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
         print('No rotary encoder data found in paqdic. Assuming no running, no camera.')
     else:
         print('Running dataset detected.')
-        v=decode_rotary(paqdic['ROT_A'], paqdic['ROT_B'], paq_fs, n_ticks, diam, gsd, True)
-        v*=sign(abs(np.max(v))-abs(np.min(v))) # 1 if running forward is positive
-        paqdic['ROT_SPEED']=v
+        v = decode_rotary(paqdic['ROT_A'], paqdic['ROT_B'], paq_fs, n_ticks, diam, gsd, True)
+        # detect whether maximum speed is positive or negative
+        # if negative, gotta flip the sign of v so that running forward corresponds to positive values
+        v *= sign(abs(np.max(v))-abs(np.min(v)))
+        paqdic['ROT_SPEED'] = v
 
         # Process extra camera frames
         if vid_path is None:
-            vid_path=dp.parent/'videos'
-        videos=list_files(vid_path, 'avi', 1) if vid_path.exists() else []
+            vid_path = dp.parent/'videos'
+        videos = list_files(vid_path, 'avi', 1) if vid_path.exists() else []
 
         if not any(videos):
             print(f'No videos found at {vid_path} - camera triggers not processed.\n')
@@ -119,12 +133,12 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
                 assert cam_paqi_to_use[1]<=len(paqdic['CameraFrames'])-1,\
                     f"cam_paqi_to_use[0] cannot be higher than {len(paqdic['CameraFrames'])-1}!"
                 if cam_paqi_to_use[1]<0:cam_paqi_to_use[1]=len(paqdic['CameraFrames'])+cam_paqi_to_use[1]
-                ON=paqdic['CameraFrames_ON']
-                OFF=paqdic['CameraFrames_OFF']
-                mon=(ON>=cam_paqi_to_use[0])&(ON<=cam_paqi_to_use[1])
-                mof=(OFF>=cam_paqi_to_use[0])&(OFF<=cam_paqi_to_use[1])
-                paqdic['CameraFrames_ON_npix']=paqdic['CameraFrames_ON_npix'][mon]
-                paqdic['CameraFrames_OFF_npix']=paqdic['CameraFrames_OFF_npix'][mof]
+                ON  = paqdic['CameraFrames_ON']
+                OFF = paqdic['CameraFrames_OFF']
+                mon = (ON>=cam_paqi_to_use[0])&(ON<=cam_paqi_to_use[1])
+                mof = (OFF>=cam_paqi_to_use[0])&(OFF<=cam_paqi_to_use[1])
+                paqdic['CameraFrames_ON_npix']  = paqdic['CameraFrames_ON_npix'][mon]
+                paqdic['CameraFrames_OFF_npix'] = paqdic['CameraFrames_OFF_npix'][mof]
             frames_npix=paqdic['CameraFrames_ON_npix']/paqdic['npix_fs']
             nframes=[get_nframes(str(v)) for v in videos]
             print(f'Videos nframes:{nframes} -> {np.sum(nframes)} frames in video files.')
@@ -140,8 +154,8 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
             last=0
             for i,nf in enumerate(nframes):
                 if nf==nframes[-1]:last=1
-                fi+=nf
-                ii=fi+n_man_abort
+                fi += nf
+                ii =  fi+n_man_abort
                 if nf!=60000:#manually aborted
                     n_man_abort+=1
                     # ensure that where the gap between videos (>50ms)
@@ -156,24 +170,24 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
                     if not last:assert frames_npix[ii]-frames_npix[ii-1]>0.05
             frames_npix=(frames_npix[~np.isnan(frames_npix)]*paqdic['npix_fs']).astype(np.int64)
             print(f'After correction the delta between expected/actual frames is **{frames_npix.shape[0]-sum(nframes)}**.')
-            paqdic['CameraFrames_ON_npix']=frames_npix
+            paqdic['CameraFrames_ON_npix'] = frames_npix
 
         # load swing onsets if already computed
         swings_fn = dp.parent/'behavior'/'leftfrontpaw_swings.npy'
         if swings_fn.exists():
             print('Loaded swing onsets from deeplabcut data.')
             swings_onof_i=np.load(swings_fn)
-            paqdic['swing_ON_npix']=paqdic['CameraFrames_ON_npix'][swings_onof_i[:,0].ravel()]
-            paqdic['swing_OFF_npix']=paqdic['CameraFrames_ON_npix'][swings_onof_i[:,1].ravel()]
+            paqdic['swing_ON_npix']  = paqdic['CameraFrames_ON_npix'][swings_onof_i[:,0].ravel()]
+            paqdic['swing_OFF_npix'] = paqdic['CameraFrames_ON_npix'][swings_onof_i[:,1].ravel()]
 
         swings_fn = dp.parent/'behavior'/'swing_onsets_phasethreshold.npy'
         if swings_fn.exists():
             print('Loaded swing phase onsets from deeplabcut data.')
-            swing_on = np.load(swings_fn)
+            swing_on  = np.load(swings_fn)
             stance_on = np.load(swings_fn.parent/'stance_onsets_phasethreshold.npy')
-            paqdic['swing_phase_ON_npix'] = paqdic['CameraFrames_ON_npix'][swing_on]
+            paqdic['swing_phase_ON_npix']  = paqdic['CameraFrames_ON_npix'][swing_on]
             paqdic['stance_phase_ON_npix'] = paqdic['CameraFrames_ON_npix'][stance_on]
-            paqdic['deeplabcut_df'] = pd.read_csv(swings_fn.parent/'locomotion_processed.csv')
+            paqdic['deeplabcut_df']        = pd.read_csv(swings_fn.parent/'locomotion_processed.csv')
 
 
     # Process cues and rewards - only engaged events are considered!
@@ -205,11 +219,11 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
             if not any(rew_m):
                 omitted_cues.append(c)
 
-    paqdic['random_rewards']=npa(random_rewards)    
-    paqdic['omitted_cues']=npa(omitted_cues)
-    paqdic['rewarded_cues']=npa(rewarded_cues)
-    paqdic['engaged_rewards']=npa(engaged_rewards)
-    paqdic['engaged_cues']=npa(engaged_cues)
+    paqdic['random_rewards']  = npa(random_rewards)    
+    paqdic['omitted_cues']    = npa(omitted_cues)
+    paqdic['rewarded_cues']   = npa(rewarded_cues)
+    paqdic['engaged_rewards'] = npa(engaged_rewards)
+    paqdic['engaged_cues']    = npa(engaged_cues)
 
     # Process turning wheel events if turning wheel dataset
     if 'ROTreal' in paqdic.keys():
@@ -289,28 +303,28 @@ def npix_aligned_paq(dp, f_behav=None, again=False, again_rawpaq=False):
     assert len(npix_paq)>0, 'WARNING no match was found between paqIO file and npix sync channel!'
 
     # Then, pick the longest matching sync channel to align paqIO channels not acquired with npix
-    len_arr=npa([[k,len(npix_ons[k])] for k in npix_paq.keys() if k in npix_ons.keys()])
-    sync_npix_k=len_arr[np.argmax(len_arr[:,1]),0]
-    sync_npix=npix_ons[sync_npix_k]
-    sync_paq=paqdic[npix_paq[sync_npix_k]]
+    len_arr     = npa([[k,len(npix_ons[k])] for k in npix_paq.keys() if k in npix_ons.keys()])
+    sync_npix_k = len_arr[np.argmax(len_arr[:,1]),0]
+    sync_npix   = npix_ons[sync_npix_k]
+    sync_paq    = paqdic[npix_paq[sync_npix_k]]
 
     # Model drift: npix_sync = a * paq_sync + b
     (a, b) = np.polyfit(sync_paq, sync_npix, 1)
-    paqdic['a']=a
-    paqdic['b']=b
+    paqdic['a'] = a
+    paqdic['b'] = b
     print(f'Drift (assumed linear) of {round(abs(a*paq_fs/npix_fs-1)*3600*1000,2)}ms/h, \noffset of {round(b/npix_fs,2)}s between ephys and paq files.\n')
     for paqk in list(paqdic.keys()):
         paqv=paqdic[paqk]
         if '_ON' in paqk and len(paqv)>1:
             off_key=f"{paqk.split('_ON')[0]+'_OFF'}"
             if paqk in npix_paq.keys():
-                paqdic[f'{paqk}_npix']=npix_ons[npix_paq[paqk]]
-                paqdic[f"{off_key}_npix"]=npix_ofs[npix_paq[paqk]] # same key for onsets and offsets
+                paqdic[f'{paqk}_npix']    = npix_ons[npix_paq[paqk]]
+                paqdic[f"{off_key}_npix"] = npix_ofs[npix_paq[paqk]] # same key for onsets and offsets
             else:
                 #paqdic[f'{paqk}_npix_old']=align_timeseries([paqv], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(np.int64)
                 #paqdic[f"{off_key}_npix_old"]=align_timeseries([paqdic[off_key]], [sync_paq, sync_npix], [paq_fs, npix_fs]).astype(np.int64)
-                paqdic[f'{paqk}_npix']=np.round(a*paqv+b, 0).astype(np.int64)
-                paqdic[f"{off_key}_npix"]=np.round(a*paqdic[off_key]+b, 0).astype(np.int64)
+                paqdic[f'{paqk}_npix']    = np.round(a*paqv+b, 0).astype(np.int64)
+                paqdic[f"{off_key}_npix"] = np.round(a*paqdic[off_key]+b, 0).astype(np.int64)
 
     pickle.dump(paqdic, open(str(fn),"wb"))
 
@@ -322,12 +336,13 @@ def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.
     and threshold digital (piezo lick...) variables from paqIO file.
     If variables is not a list, all PackIO variables will be exported.
 
-    Parameters:
+    Arguments:
         - paq_f: string or PosixPath, path to .paq file.
         - variables: 'all' or list of strings, paqIO variables to output.
         - again: boolean, if True does not try to load pre-saved data.
         - units: units of the returned thresholded arrays
         - th_frac: threshold used on the raw signal, in fraction of min to max.
+
     Returns:
         - paqdic, dictionnary of all variables (under key var)
           as well as onset/offsets of digital variables (under keys var_ON and var_OFF)
@@ -402,7 +417,7 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
                     wheel_diam=45, difficulty=2, ballistic_thresh=100,
                     plot=False, again=False, verbose=True):
     '''
-    Parameters:
+    Arguments:
         - dp: str, path to neuropixels data directory (behavioural data is in dp/behavior)
         - paqdic: paqIO dictionnary, with data cleaned up
           including 'ROT' (wheel pos in degrees, 0 is center), 'ROTreal' (object pos in degrees, 0 is center)
@@ -473,17 +488,18 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
     paq_fs, npix_fs = paqdic['paq_fs'], paqdic['npix_fs']
     # ROTreal is object displacement in degrees
     # ROT is wheel displacement in degrees
-    wheel_turn_dic={}
-    wheel_turn_dic['vr_fs']=vr_rate
-    wheel_turn_dic['wheel_position_mm']=paqdic['ROTreal']*(np.pi*wheel_diam)/360/wheel_gain
-    wheel_turn_dic['wheel_speed_cm/s']=np.diff(wheel_turn_dic['wheel_position_mm'])*vr_rate/10 # mm to cm/s
+    wheel_turn_dic                      = {}
+    wheel_turn_dic['vr_fs']             = vr_rate
+    wheel_turn_dic['wheel_position_mm'] = paqdic['ROTreal']*(np.pi*wheel_diam)/360/wheel_gain
+    wheel_turn_dic['wheel_speed_cm/s']  = np.diff(wheel_turn_dic['wheel_position_mm'])*vr_rate/10 # mm to cm/s
 
     if Path(fn).exists() and not again:
         df = pd.read_csv(fn)
     else:
         ## Make and fill trials dataframe
         df=pd.DataFrame(columns=['trial_type', 'trialnum', 'trialside', 'trial_onset', 'object_onset',
-                                'movement_onset', 'movement_offset', 'movement_duration', 'ballistic', 'correct', 'trial_offset',
+                                'movement_onset', 'movement_offset', 'movement_duration', 'ballistic',
+                                'correct', 'trial_offset',
                                 'reward_onset', 'cue_onset', 'ghost_onset', 'lick_onsets'])
 
         # Process wheel trials
@@ -491,43 +507,43 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
         df['trial_type']=['wheel_turn']*nwheeltrials
         df["lick_onsets"]=df["lick_onsets"].astype(object) # to be able to store array
         if include_wheel_data:
-            df['object_position']=np.nan
-            df['wheel_position']=np.nan
-            df['trial_onset_relpaq']=np.nan
-            df['movement_onset_relpaq']=np.nan
-            df['movement_offset_relpaq']=np.nan
-            df['trial_offset_relpaq']=np.nan
-            df['lick_trace']=np.nan
-            df["object_position"]=df["object_position"].astype(object)
-            df["wheel_position"]=df["wheel_position"].astype(object)
-            df['lick_trace']=df["wheel_position"].astype(object)
+            df['object_position']        = np.nan
+            df['wheel_position']         = np.nan
+            df['trial_onset_relpaq']     = np.nan
+            df['movement_onset_relpaq']  = np.nan
+            df['movement_offset_relpaq'] = np.nan
+            df['trial_offset_relpaq']    = np.nan
+            df['lick_trace']             = np.nan
+            df["object_position"]        = df["object_position"].astype(object)
+            df["wheel_position"]         = df["wheel_position"].astype(object)
+            df['lick_trace']             = df["wheel_position"].astype(object)
         pad=4
         assert difficulty in [2,3]
         for tr in df.index:
             if verbose: print(f'  Wheel steering trial {tr}/{len(df.index)}...')
-            npixon=paqdic['TRIALON_ON_npix'][tr]
-            npixof=paqdic['TRIALON_OFF_npix'][tr]
-            paqon=int(paqdic['TRIALON_ON'][tr])
-            paqoff=int(paqdic['TRIALON_OFF'][tr])
-            i1,i2 = int(paqon-pad*paq_fs),int(paqoff+pad*paq_fs)
-            ob_on_vel=np.diff(paqdic['ROTreal'][paqon:paqon+500])
-            ob_on_vel=abs(ob_on_vel)/max(abs(ob_on_vel))
-            ob_on_paq=thresh(ob_on_vel, 0.5, 1)[0]+1 # add 1 because velocity is thresholded
-            start_side=sign(paqdic['ROT'][paqon+ob_on_paq+1]) # 1 or -1
+            npixon        = paqdic['TRIALON_ON_npix'][tr]
+            npixof        = paqdic['TRIALON_OFF_npix'][tr]
+            paqon         = int(paqdic['TRIALON_ON'][tr])
+            paqoff        = int(paqdic['TRIALON_OFF'][tr])
+            i1,i2         = int(paqon-pad*paq_fs),int(paqoff+pad*paq_fs)
+            ob_on_vel     = np.diff(paqdic['ROTreal'][paqon:paqon+500])
+            ob_on_vel     = abs(ob_on_vel)/max(abs(ob_on_vel))
+            ob_on_paq     = thresh(ob_on_vel, 0.5, 1)[0]+1 # add 1 because velocity is thresholded
+            start_side    = sign(paqdic['ROT'][paqon+ob_on_paq+1]) # 1 or -1
             # wheel and object positions are clipped between -4s before trial onset and 4s after trial offset
-            opos=paqdic['ROT'][i1:i2] # wheel pos in degrees
-            wpos=wheel_turn_dic['wheel_position_mm'][i1:i2] # in mm
-            wpos_mvt=paqdic['ROTreal'][paqon+ob_on_paq:paqoff]
-            wvel=np.diff(wpos)
-            wvel_mvt=wvel[int(pad*paq_fs+ob_on_paq):-int(pad*paq_fs)]
-            wvel_mvt_norm=wvel_mvt/min(abs({-1:max, 1:min}[start_side](wvel_mvt)), 2)
+            opos          = paqdic['ROT'][i1:i2] # wheel pos in degrees
+            wpos          = wheel_turn_dic['wheel_position_mm'][i1:i2] # in mm
+            wpos_mvt      = paqdic['ROTreal'][paqon+ob_on_paq:paqoff]
+            wvel          = np.diff(wpos)
+            wvel_mvt      = wvel[int(pad*paq_fs+ob_on_paq):-int(pad*paq_fs)]
+            wvel_mvt_norm = wvel_mvt/min(abs({-1:max, 1:min}[start_side](wvel_mvt)), 2)
 
             # assess trial outcome from wheel kinetics
-            wpos_outeval=paqdic['ROT'][int(paqon+ob_on_paq):int(paqoff)]
-            stay_for_rew=int(rew_frames/vr_rate*paq_fs)
-            correct=0
-            center_crossed=False
-            th0=np.append(thresh(wpos_outeval, 0, 1), thresh(wpos_outeval, 0, -1))
+            wpos_outeval   = paqdic['ROT'][int(paqon+ob_on_paq):int(paqoff)]
+            stay_for_rew   = int(rew_frames/vr_rate*paq_fs)
+            correct        = 0
+            center_crossed = False
+            th0            = np.append(thresh(wpos_outeval, 0, 1), thresh(wpos_outeval, 0, -1))
             if np.any(th0):
                 jump=wpos_outeval[th0[0]+1]-wpos_outeval[th0[0]-1]
                 if jump<300: # handles cases where the object went all the way around -> false positive threshold cross
@@ -542,28 +558,28 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
             #if non_responsive: correct=np.nan
 
             # Fill dataframe
-            df.loc[tr, 'trialnum']=tr
-            df.loc[tr, 'trial_onset']=npixon
-            df.loc[tr, 'trial_offset']=npixof
-            df.loc[tr, 'object_onset']=int(npixon+ob_on_paq*npix_fs/paq_fs)
-            df.loc[tr, 'trialside']=start_side
-            df.loc[tr, 'correct']=correct
-            lickmask=(paqdic['LICKS_Piezo_ON_npix']>npixon)&(paqdic['LICKS_Piezo_ON_npix']<npixof+5*npix_fs)
-            df.at[tr, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
+            df.loc[tr, 'trialnum']     = tr
+            df.loc[tr, 'trial_onset']  = npixon
+            df.loc[tr, 'trial_offset'] = npixof
+            df.loc[tr, 'object_onset'] = int(npixon+ob_on_paq*npix_fs/paq_fs)
+            df.loc[tr, 'trialside']    = start_side
+            df.loc[tr, 'correct']      = correct
+            lickmask                   = (paqdic['LICKS_Piezo_ON_npix']>npixon)&(paqdic['LICKS_Piezo_ON_npix']<npixof+5*npix_fs)
+            df.at[tr, "lick_onsets"]   = paqdic['LICKS_Piezo_ON_npix'][lickmask]
             if correct:
-                movonpaq=ob_on_paq+thresh(wvel_mvt_norm, -start_side*0.5, -start_side)[0]
-                movofpaq=ob_on_paq+np.append(thresh(wpos_mvt, rew_zone, -1), thresh(wpos_mvt, -rew_zone, 1)).min()
-                mov_dur=(movofpaq-movonpaq)*1000/paq_fs
-                ballistic=(mov_dur<ballistic_thresh) # in ms
-                df.loc[tr, 'movement_onset']=int(npixon+(movonpaq)*npix_fs/paq_fs)
-                df.loc[tr, 'movement_offset']=int(npixon+(movofpaq)*npix_fs/paq_fs)
-                df.loc[tr, 'movement_duration']=mov_dur
-                df.loc[tr, 'ballistic']=ballistic
+                movonpaq  = ob_on_paq+thresh(wvel_mvt_norm, -start_side*0.5, -start_side)[0]
+                movofpaq  = ob_on_paq+np.append(thresh(wpos_mvt, rew_zone, -1), thresh(wpos_mvt, -rew_zone, 1)).min()
+                mov_dur   = (movofpaq-movonpaq)*1000/paq_fs
+                ballistic = (mov_dur<ballistic_thresh) # in ms
+                df.loc[tr, 'movement_onset']    = int(npixon+(movonpaq)*npix_fs/paq_fs)
+                df.loc[tr, 'movement_offset']   = int(npixon+(movofpaq)*npix_fs/paq_fs)
+                df.loc[tr, 'movement_duration'] = mov_dur
+                df.loc[tr, 'ballistic']         = ballistic
                 if plot:
                     plt.figure()
                     plt.plot(wvel[int(pad*paq_fs+500):-int(pad*paq_fs)], c='grey')
                     plt.plot(wpos[int(pad*paq_fs+500):-int(pad*paq_fs)], c='k')
-                    ls='--' if ballistic else '-'
+                    ls = '--' if ballistic else '-'
                     plt.plot([movonpaq-500, movonpaq-500], [min(wpos), max(wpos)], c='g', ls=ls)
                     plt.plot([movofpaq-500, movofpaq-500], [min(wpos), max(wpos)], c='r', ls=ls)
                     plt.title(f'trial {tr}\nduration:{mov_dur}ms')
@@ -582,11 +598,11 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
             of=df.loc[tr, 'trial_offset']
             rew_mask=(paqdic['REW_ON_npix']>of)&(paqdic['REW_ON_npix']<(of+1*npix_fs)) # happens about 400ms after trial offset
             if np.any(rew_mask):
-                if df.loc[tr, 'correct']!=1: print(f'WARNING seems like a reward onset was found after trial {tr} offset, although incorrect...\
+                if df.loc[tr, 'correct']   != 1: print(f'WARNING seems like a reward onset was found after trial {tr} offset, although incorrect...\
                                                 Probably beause of 360deg jump of ROT channel not followed by ROTreal.')
-                df.loc[tr, 'reward_onset']=paqdic['REW_ON_npix'][rew_mask][0]
+                df.loc[tr, 'reward_onset'] = paqdic['REW_ON_npix'][rew_mask][0]
             else:
-                if df.loc[tr, 'correct']==1: print(f'WARNING no reward was found after trial {tr} offset, although correct!!! Figure out the problem ++!!')
+                if df.loc[tr, 'correct']   == 1: print(f'WARNING no reward was found after trial {tr} offset, although correct!!! Figure out the problem ++!!')
 
         # Now find random rewards and respective cues if any
         random_rewards=paqdic['REW_ON_npix'][~np.isin(paqdic['REW_ON_npix'], df['reward_onset'])]
@@ -595,13 +611,13 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
             i=df.index[-1]+1
             if np.any(cue_mask):
                 c=paqdic['CUE_ON_npix'][cue_mask][0]
-                df.loc[i, 'trial_type']='cued_reward'
-                df.loc[i, 'reward_onset']=r
-                df.loc[i, 'cue_onset']=c
+                df.loc[i, 'trial_type']   = 'cued_reward'
+                df.loc[i, 'reward_onset'] = r
+                df.loc[i, 'cue_onset']    = c
                 lickmask=(paqdic['LICKS_Piezo_ON_npix']>c)&(paqdic['LICKS_Piezo_ON_npix']<r+5*npix_fs) # from cue to 5s after reward
             else:
-                df.loc[i, 'trial_type']='random_reward'
-                df.loc[i, 'reward_onset']=r
+                df.loc[i, 'trial_type']   = 'random_reward'
+                df.loc[i, 'reward_onset'] = r
                 lickmask=(paqdic['LICKS_Piezo_ON_npix']>r)&(paqdic['LICKS_Piezo_ON_npix']<r+5*npix_fs) # from reward to 5s after reward
             df.at[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
 
@@ -609,46 +625,46 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
         cues_alone=paqdic['CUE_ON_npix'][~np.isin(paqdic['CUE_ON_npix'], df['cue_onset'])]
         for c in cues_alone:
             i=df.index[-1]+1
-            df.loc[i, 'trial_type']='cue_alone'
-            df.loc[i, 'cue_onset']=c
+            df.loc[i, 'trial_type'] = 'cue_alone'
+            df.loc[i, 'cue_onset']  = c
             lickmask=(paqdic['LICKS_Piezo_ON_npix']>c)&(paqdic['LICKS_Piezo_ON_npix']<c+5*npix_fs) # from cue to 5s after cue
-            df.at[i, "lick_onsets"]=paqdic['LICKS_Piezo_ON_npix'][lickmask]
+            df.at[i, "lick_onsets"] = paqdic['LICKS_Piezo_ON_npix'][lickmask]
 
         # Also add spontaneous licks
         if add_spont_licks:
             allocated_licks=npa([list(df.loc[i, "lick_onsets"]) for i in df.index]).flatten()
             spontaneous_licks=paqdic['LICKS_Piezo_ON_npix'][~np.isin(paqdic['LICKS_Piezo_ON_npix'], allocated_licks)]
             i=df.index[-1]+1
-            df.loc[i, 'trial_type']='spontaneous_licks'
-            df.at[i, "lick_onsets"]=spontaneous_licks
+            df.loc[i, 'trial_type'] = 'spontaneous_licks'
+            df.at[i, "lick_onsets"] = spontaneous_licks
 
         df.to_csv(fn)
 
     # finally, convert to dictionnary - more convenient
-    mask_left=(df['trialside']==1)
-    mask_right=(df['trialside']==-1)
-    mask_correct=(df['correct']==1)&(df['ballistic']==1)
-    mask_incorrect=(df['correct']==0)
-    mask_rr=(df['trial_type']=='random_reward')
-    mask_cr=(df['trial_type']=='cued_reward')
+    mask_left      = (df['trialside']==1)
+    mask_right     = (df['trialside']==-1)
+    mask_correct   = (df['correct']==1)&(df['ballistic']==1)
+    mask_incorrect = (df['correct']==0)
+    mask_rr        = (df['trial_type']=='random_reward')
+    mask_cr        = (df['trial_type']=='cued_reward')
     wheel_turn_dic={**wheel_turn_dic,
     **{'olc_on':  df.loc[mask_left&mask_correct, 'object_onset'].values.astype(float),
-     'oli_on':  df.loc[mask_left&mask_incorrect, 'object_onset'].values.astype(float),
-     'orc_on':  df.loc[mask_right&mask_correct, 'object_onset'].values.astype(float),
-     'ori_on':  df.loc[mask_right&mask_incorrect, 'object_onset'].values.astype(float),
+     'oli_on':    df.loc[mask_left&mask_incorrect, 'object_onset'].values.astype(float),
+     'orc_on':    df.loc[mask_right&mask_correct, 'object_onset'].values.astype(float),
+     'ori_on':    df.loc[mask_right&mask_incorrect, 'object_onset'].values.astype(float),
 
-     'lc_on':  df.loc[mask_left&mask_correct, 'movement_onset'].values.astype(float),
-     'rc_on':  df.loc[mask_right&mask_correct, 'movement_onset'].values.astype(float),
-     'lc_of':  df.loc[mask_left&mask_correct, 'movement_offset'].values.astype(float),
-     'rc_of':  df.loc[mask_right&mask_correct, 'movement_offset'].values.astype(float),
+     'lc_on':     df.loc[mask_left&mask_correct, 'movement_onset'].values.astype(float),
+     'rc_on':     df.loc[mask_right&mask_correct, 'movement_onset'].values.astype(float),
+     'lc_of':     df.loc[mask_left&mask_correct, 'movement_offset'].values.astype(float),
+     'rc_of':     df.loc[mask_right&mask_correct, 'movement_offset'].values.astype(float),
 
-     'c_r':  df.loc[mask_correct, 'reward_onset'].values.astype(float),
-     'i_of':  df.loc[mask_incorrect, 'trial_offset'].values.astype(float),
+     'c_r':       df.loc[mask_correct, 'reward_onset'].values.astype(float),
+     'i_of':      df.loc[mask_incorrect, 'trial_offset'].values.astype(float),
 
     # random/cued rewards are now handled in get_behav_dic
-    'rr':    df.loc[mask_rr, 'reward_onset'].values.astype(float),
-    'cr_c':    df.loc[mask_cr, 'cue_onset'].values.astype(float),
-    'cr_r':    df.loc[mask_cr, 'reward_onset'].values.astype(float)}}
+    'rr':         df.loc[mask_rr, 'reward_onset'].values.astype(float),
+    'cr_c':       df.loc[mask_cr, 'cue_onset'].values.astype(float),
+    'cr_r':       df.loc[mask_cr, 'reward_onset'].values.astype(float)}}
 
     return df, wheel_turn_dic
 
@@ -740,7 +756,7 @@ def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_wi
         elif behaviour == "running":
             v=behavdic['ROT_SPEED']
             consec=1 # s
-            run_values = thresh_consec(v, speed_th_run, consec, consec*behavdic['paq_fs'], ret_values=True)
+            run_values = thresh_consec(v, speed_th_run, 1, consec*behavdic['paq_fs'], ret_values=True)
             move_periods = np.round(npa([[r[0,0],r[0,-1]] for r in run_values])*behavdic['a']+behavdic['b'])/behavdic['npix_fs']
             nomove_periods = np.concatenate([[0], move_periods.ravel(), [rec_len]]).reshape((-1,2))
             
@@ -787,7 +803,7 @@ def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_wi
 
 def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remove_empty_trials=False):
     '''
-    Parameters:
+    Arguments:
         - events: list/array in seconds, events to align timestamps to
         - variable_t: list/array in seconds, timestamps to align around events.
         - variable: list/array, variable to bin around event.
@@ -833,7 +849,7 @@ def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remov
 
 def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
     '''
-    Parameters:
+    Arguments:
         - times: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
         - events: list/array in seconds, events to align timestamps to
         - b: float, binarized train bin in millisecond
@@ -869,7 +885,7 @@ def align_times_manyevents(times, events, b=2, window=[-1000,1000], fs=30000):
     Will run faster than align_times if many events are provided (will run in approx 800ms for 10 or for 600000 events,
                                                                   whereas align_times will run in about 1 second every 2000 event
                                                                   so in 5 minutes for 600000 events!)
-    Parameters:
+    Arguments:
         - times: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
         - events: list/array in seconds, events to align timestamps to
         - b: float, binarized train bin in millisecond
@@ -898,7 +914,7 @@ def jPSTH(spikes1, spikes2, events, b=2, window=[-1000,1000], convolve=False, me
     From A. M. H. J. AERTSEN, G. L. GERSTEIN, M. K. HABIB, AND G. PALM, 1989, Journal of Neurophysiology
     Dynamics of neuronal firing correlation: modulation of 'effective connectivity'
 
-    Parameters:
+    Arguments:
         - spikes1, spikes2: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
         - events: list/array in seconds, events to align timestamps to
         - b: float, binarized train bin in millisecond
@@ -951,7 +967,7 @@ def jPSTH(spikes1, spikes2, events, b=2, window=[-1000,1000], convolve=False, me
 @cache_memory.cache
 def get_ifr(times, events, b=2, window=[-1000,1000], remove_empty_trials=False):
     '''
-    Parameters:
+    Arguments:
         - times: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
         - events: list/array in seconds, events to align timestamps to
         - b: float, binarized train bin in millisecond
@@ -1016,24 +1032,26 @@ def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_tri
                       convolve=False, gsd=1, method='gaussian',
                       bsl_subtract=False, bsl_window=[-4000, 0], process_y=False):
     '''
-    Parameters:
-        - times: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
+    Returns the "processed" (averaged and/or smoothed and/or z-scored) instantaneous firing rate of a neuron.
+
+    Arguments:
+        - times:  list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
         - events: list/array in seconds, events to align timestamps to
-        - b: float, binarized train bin in millisecond
+        - b:      float, binarized train bin in millisecond
         - window: [w1, w2], where w1 and w2 are in milliseconds.
         - remove_empty_trials: boolean, remove from the output trials where there were no timestamps around event. | Default: True
-        - convolve: boolean, set to True to convolve the aligned binned train with a half-gaussian window to smooth the ifr
-        - gsd: float, gaussian window standard deviation in ms
-        - method: convolution window shape: gaussian, gaussian_causal, gamma | Default: gaussian
+        - convolve:      boolean, set to True to convolve the aligned binned train with a half-gaussian window to smooth the ifr
+        - gsd:           float, gaussian window standard deviation in ms
+        - method:        convolution window shape: gaussian, gaussian_causal, gamma | Default: gaussian
         - bsl_substract: whether to baseline substract the trace. Baseline is taken as the average of the baseline window bsl_window
-        - bsl_window: [t1,t2], window on which the baseline is computed, in ms -> used for zscore and for baseline subtraction (i.e. zscoring without dividing by standard deviation)
-        - process_y: whether to also process the raw trials x bins matrix y (returned raw by default)
+        - bsl_window:    [t1,t2], window on which the baseline is computed, in ms -> used for zscore and for baseline subtraction (i.e. zscoring without dividing by standard deviation)
+        - process_y:     whether to also process the raw trials x bins matrix y (returned raw by default)
+    
     Returns:
-        - x: 1D array tiling bins, in milliseconds
-        - y: 2D array NtrialsxNbins, the unprocessed ifr (by default - can be processed if process_y is set to True)
-        - y_mn
-        - y_p
-        - y_p_sem
+        - x:       (n_bins,) array tiling bins, in milliseconds
+        - y:       (n_trials, n_bins,) array, the unprocessed ifr (by default - can be processed if process_y is set to True)
+        - y_p:     (n_bins,) array, the processed instantaneous firing rate (averaged and/or smoothed and/or z-scored)
+        - y_p_var: (n_bins,) array, the standard deviation across trials of the processed instantaneous firing rate
     '''
 
     # Window and bins translation
@@ -1186,7 +1204,7 @@ def get_processed_popsync(trains, events, psthb=10, window=[-1000,1000],
                           convolve=False, gsd=1, method='gaussian',
                           bsl_subtract=False, bsl_window=[-4000, 0], process_y=False):
     '''
-    Parameters:
+    Arguments:
         - trains: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
         - events: list/array in seconds, events to align timestamps to
         - psthb: float, binarized train bin in millisecond
@@ -1280,15 +1298,19 @@ def psth_fraction_pop_sync(trains, events, psthb, psthw, events_tiling_frac=0.1,
 
 #%% Process video data
 
-def decode_rotary(A,B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
+def decode_rotary(A, B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     '''Function to decode velocity from rotary encoder channels.
-    - a: np array, analog recording of channel A at sampling frequency fs
-    - b: np array, analog recording of channel B at sampling frequency fs
-    - fs: float (Hz), sampling frequency
-    - n_ticks: int, number of ticks (periods) on rotary encoder (not number of thresholds (4x more))
-    - diam: float (mm), outer diameter of wheel coupled to the encoder
-    - gsd: float (ms), std of gaussian kernel (mandatory gaussian-causal smoothing)
-    - med_filt: bool, whether to median filter on top of mandatory gaussian smoothing
+
+    Arguments:
+        - a: np array, analog recording of channel A at sampling frequency fs
+        - b: np array, analog recording of channel B at sampling frequency fs
+        - fs: float (Hz), sampling frequency
+        - n_ticks: int, number of ticks (periods) on rotary encoder (not number of thresholds (4x more))
+        - diam: float (mm), outer diameter of wheel coupled to the encoder
+        - gsd: float (ms), std of gaussian kernel (mandatory gaussian-causal smoothing)
+        - med_filt: bool, whether to median filter on top of mandatory gaussian smoothing
+    Returns:
+        - speed: np.array, rotary speed in mm/s
     '''
 
     ## Compute channels on/offsets
@@ -1405,7 +1427,7 @@ def frame_from_vid(video_path, frame_i, plot=True):
 
 def cart2pol(x, y):
     '''
-    Parameters:
+    Arguments:
     - x: float or np array, x coord. of vector end
     - y: float or np array, y coord. of vector end
     Returns: (r, theta) with
@@ -1418,7 +1440,7 @@ def cart2pol(x, y):
 
 def pol2cart(r, theta):
     '''
-    Parameters:
+    Arguments:
     - r: float or np array, vector norm
     - theta: float or np array, vector angle IN RADIANS
     Returns: (x, y) with
@@ -1431,7 +1453,7 @@ def pol2cart(r, theta):
 
 def get_polar_vect(R, thetas, return_dsi=False):
     '''
-    Parameters:
+    Arguments:
     - R:     np array, norms of vectors on a polar plot
     - thetas: np array, list of angles IN RADIANS associated with R values
     - return_dsi: bool, whether to normalize vector norm down to a direction selectivy index between [0-1]
@@ -1634,7 +1656,7 @@ def draw_wheel_mirror(string=None, depth=None, theta=45, r=95, H=75, plot=True, 
 #     '''
 #     DEPRECATED only orks for neuropixels 3A recordings with trialON, reward and cue recorded directly on sync channel
 #     Loads the trials-related information from the matlab data structure outputted by Virmen.
-#     Parameters:
+#     Arguments:
 #         - dp: string, datapath to Neuropixels binary file (preferably LFP, faster)
 #         - f_behav: string, path to the Virmen matlab structure
 #         - trial_on_i: neuropixels sync channel index of trial onsets

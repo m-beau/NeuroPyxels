@@ -34,7 +34,7 @@ def whitening(x, nRange=None, use_ks_matrix=True,
     For instance, time should be axis 1 and channels axis 0 to whiten across channels.
     Axis 1 must be larger than axis 0 (need enough samples to properly estimate variance, covariance).
 
-    Parameters:
+    Arguments:
         - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
              Multiplying by the whitening matrix whitens across obervations.
         - nRange: if integer, number of channels to locally compute whitening filter (more robust to noise) | Default None
@@ -98,7 +98,7 @@ def whitening_matrix(x, nRange=None, use_ks_matrix=True, dp=None):
     """
     Compute the whitening matrix using ZCA.
 
-    Parameters:
+    Arguments:
         - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
              Multiplying by the whitening matrix whitens across obervations.
         - epsilon: small value added to diagonal to regularize D
@@ -127,7 +127,7 @@ def load_ks_whitening_matrix(dp, return_full=False):
     Return kilosort whitening matrix
     if return_full: also with missing channels (not preprocessed) replaced with 0s.
 
-    Parameters:
+    Arguments:
     - dp: str/Path, datapath
     - return_full: bool, whether to return full whitening matrix
                    (adding arrays of 0s off-diagonal and 1 on-diagonal for channels skipped by kilosort)
@@ -165,7 +165,7 @@ def approximated_whitening_matrix(memmap_f, Wrot_path, whiten_range,
     approximate whitening matrix from the approximated covariance between the channels
     (median of cov_all, where cov_all stores the covariance for a subset of data batches).
 
-    Parameters:
+    Arguments:
     - memmap_f: memory mapped file, n_samples x n_channels (whitening across channels)
     - Wrot_path: path to save whitening matrix to
     - whiten_range: int, range of channels to consider to compute local covaraince/whitening matrix
@@ -279,7 +279,7 @@ def whitening_matrix_cpu(x, epsilon=1e-18, nRange=None):
         - dat is a matrix nsamples x nchannels
     Apply using np.dot(dat,wmat)
     Adapted from phy
-    Parameters:
+    Arguments:
         - x: 2D array, axis 1 spans time, axis 0 observations (e.g. channel).
              Multiplying by the whitening matrix whitens across obervations.
         - epsilon: small value added to diagonal to regularize D
@@ -819,7 +819,7 @@ def adc_realign(data, version=1):
     f"""
     Realign Neuropixels data according to the small sub-sampling frequency shifts due to serial digitalization.
 
-    Parameters:
+    Arguments:
     - data: n_samples x n_channels
     - version: 1 or 2, Neuropixels version
 
@@ -887,7 +887,7 @@ def adc_shifts(version=1):
     less clear. In 1.0, it is similar, but there we have 32 ADC that sample each 12 channels."
     - Nick on Slack after talking to Carolina - ;-)
 
-    Parameters:
+    Arguments:
     - version: 1 or 2, Neuropixels 1.0 or 2.0
     """
     n_channels=384
@@ -913,7 +913,7 @@ def kfilt(x, ntr_pad=0, ntr_tap=None, lagc=300, butter_kwargs=None):
     :param ntr_pad: traces added to each side (mirrored)
     :param ntr_tap: n traces for apodization on each side
     :param lagc: window size for time domain automatic gain control (no agc otherwise)
-    :param butter_kwargs: filtering parameters: defaults: {'N': 3, 'Wn': 0.1, 'btype': 'highpass'}
+    :param butter_kwargs: filtering Arguments: defaults: {'N': 3, 'Wn': 0.1, 'btype': 'highpass'}
     :return:
     """
     if butter_kwargs is None:

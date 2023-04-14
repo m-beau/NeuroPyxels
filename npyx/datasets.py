@@ -238,6 +238,9 @@ class NeuronsDataset:
             self.fn_fp_list = []
             self.sane_spikes_list = []
 
+        if not quality_check:
+            self.quality_checks_mask = np.ones(len(neuron_ids), dtype=bool)
+
         discarded_df = pd.DataFrame(columns=["neuron_id", "label", "dataset", "reason"])
         for i, wf_n in tqdm(
             enumerate(np.sort(neuron_ids)),
@@ -540,6 +543,7 @@ class NeuronsDataset:
         self.genetic_line_list = np.array(self.genetic_line_list, dtype=object)[
             mask
         ].tolist()
+
         if hasattr(self, "amplitudes_list"):
             self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[
                 mask
@@ -596,7 +600,6 @@ class NeuronsDataset:
         granule_cell_mask = self.targets == LABELLING["GrC"]
 
         self._apply_mask(~granule_cell_mask)
-
         self.targets = (self.targets - 1).astype(int)
         self.targets[self.targets < 0] = -1  # Reset the label of unlabeled cells
 
@@ -669,6 +672,7 @@ class NeuronsDataset:
         del checked_dataset.quality_checks_mask
         del checked_dataset.fn_fp_list
         del checked_dataset.sane_spikes_list
+
         return checked_dataset
 
     def __len__(self):
@@ -728,6 +732,7 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
                     "Attempted to merge datasets with different attributes"
                 )
     new_dataset.dataset = "merged"
+
     return new_dataset
 
 

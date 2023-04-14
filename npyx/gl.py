@@ -264,14 +264,14 @@ def detect_new_spikesorting(dp, print_message=True, qualities=None):
         assert "merged" not in str(
             dp
         ), "this function should be ran on an original sorted dataset, not on a merged dataset."
-        last_spikesort  = os.path.getmtime(dp / "spike_clusters.npy")
+        last_spikesort = os.path.getmtime(dp / "spike_clusters.npy")
         last_tsv_update = os.path.getmtime(dp / "cluster_group.tsv")
-        spikesorted     = last_tsv_update == last_spikesort
+        spikesorted = last_tsv_update == last_spikesort
 
     else:
         qualities_old = pd.read_csv(dp / "cluster_group.tsv", delim_whitespace=True)
-        old_clusters  = qualities_old.loc[:, "cluster_id"]
-        new_clusters  = qualities.loc[:, "cluster_id"]
+        old_clusters = qualities_old.loc[:, "cluster_id"]
+        new_clusters = qualities.loc[:, "cluster_id"]
         if not np.all(np.isin(old_clusters, new_clusters)):
             spikesorted = True
 
@@ -287,13 +287,11 @@ def save_qualities(dp, qualities):
 
 
 def generate_units_qualities(dp):
-    units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
-    if os.path.exists(Path(dp,"cluster_info.tsv")):
-        info = pd.read_csv(Path(dp,"cluster_info.tsv"), sep='\t')
-        qualities = info.loc[:,['cluster_id', 'group']]
-    else:
-        qualities=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
-
+    """
+    Creates an empty table of units qualities ("groups" as in good, mua,...).
+    """
+    units = np.unique(np.load(Path(dp, "spike_clusters.npy")))
+    qualities = pd.DataFrame({"cluster_id": units, "group": ["unsorted"] * len(units)})
     return qualities
 
 
@@ -328,7 +326,7 @@ def load_units_qualities(dp, again=False):
         if regenerate:
             qualities_new = generate_units_qualities(dp)
 
-            sorted_clusters     = qualities.loc[qualities["group"] != "unsorted", :]
+            sorted_clusters = qualities.loc[qualities["group"] != "unsorted", :]
             unsorted_clusters_m = ~np.isin(
                 qualities_new["cluster_id"], sorted_clusters["cluster_id"]
             )
@@ -369,7 +367,7 @@ def load_merged_units_qualities(dp_merged, ds_table=None):
     if ds_table is None:
         ds_table = get_ds_table(dp_merged)
 
-    qualities = pd.DataFrame(columns = ["cluster_id", "group"])
+    qualities = pd.DataFrame(columns=["cluster_id", "group"])
     for ds_i in ds_table.index:
         cl_grp = load_units_qualities(ds_table.loc[ds_i, "dp"])
         cl_grp["cluster_id"] = cl_grp["cluster_id"] + 1e-1 * ds_i
@@ -400,7 +398,7 @@ def get_units(dp, quality="all", chan_range=None, again=False):
         units = qualities["cluster_id"].values
     else:
         quality_m = qualities["group"] == quality
-        units     = qualities.loc[quality_m, "cluster_id"].values
+        units = qualities.loc[quality_m, "cluster_id"].values
 
     if chan_range is None:
         return units
@@ -441,5 +439,5 @@ def check_periods(periods):
 
 # circular imports
 from npyx.inout import read_metadata
-from npyx.spk_wvf import get_depthSort_peakChans
 from npyx.merger import assert_multi, get_ds_table, merge_datasets
+from npyx.spk_wvf import get_depthSort_peakChans

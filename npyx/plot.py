@@ -23,8 +23,9 @@ from cmcrameri import cm as cmcr
 cmcr=cmcr.__dict__
 from IPython.core.display import HTML,display
 
-#mpl.rcParams['figure.dpi']=100
-mpl.rcParams['pdf.fonttype'] = 42 # necessary to make the text editable
+# Make matplotlib saved figures text text editable
+mpl.rcParams["svg.fonttype"] = 'none'
+mpl.rcParams['pdf.fonttype'] = 42 
 mpl.rcParams['ps.fonttype'] = 42
 
 from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, save_np_array, pprint_dic, docstring_decorator
@@ -353,6 +354,7 @@ def save_mpl_fig(fig, figname, saveDir, _format, dpi=500):
     mpl.rcParams['pdf.fonttype']=42
     mpl.rcParams['ps.fonttype']=42
 
+    if saveDir is None: saveDir = '~/Downloads'
     saveDir=Path(saveDir).expanduser()
     if not saveDir.exists():
         assert saveDir.parent.exists(), f'WARNING can only create a path of a single directory level, {saveDir.parent} must exist already!'
@@ -2689,7 +2691,8 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
                 cmapstr="RdBu_r", vmin=None, vmax=None, center=None, colorseq='nonlinear',
                 clabel='', cticks=None,
                 figsize=(6,4), aspect='auto', function='imshow',
-                ax=None, tight_layout=True, cmap_h=0.3, prettify=True,
+                ax=None, tight_layout=True, cmap_w=0.02, cmap_h=0.5, cmap_pad=0.01,
+                prettify=True, show_values=False, saveDir=None, saveFig=False, _format='pdf',
                 **kwargs):
     '''
     Essentially plt.imshow(im, cmap=cmapstr), but with a nicer and actually customizable colorbar.
@@ -2726,9 +2729,12 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
         - function: {'imshow', 'pcolormesh'}, whether to use imshow or pcolormesh to plot the image
         - ax: matplotlib axis, if None, a new figure is created
         - tight_layout: bool, whether to use plt.tight_layout() or not
-        - cmap_h: float, height of the colorbar in inches
+        - cmap_w: float, width of the colorbar in axes fraction
+        - cmap_h: float, height of the colorbar in axes fraction
+        - cmap_pad: cmap padding in axes fraction
 
         - prettify: bool, whether to apply mplp() prettification or not
+        - show_values: bool, whether to overlay the values of the pixels or not
         - **kwargs: additional arguments to be passed to the plotting function imshow or pcolormesh (e.g. interpolation='nearest')
     '''
     assert colorseq in ['linear', 'nonlinear']
@@ -2752,25 +2758,44 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
     if center is None:
         cmap = get_cmap(cmapstr)
     else:
-        cmap=get_bounded_cmap(cmapstr, vmin, center, vmax, colorseq)
+        cmap = get_bounded_cmap(cmapstr, vmin, center, vmax, colorseq)
 
     # Define pixel coordinates (default is 0 to n_rows-1 for y and n_columns=1 for x)
     if xvalues is None: xvalues=np.arange(im.shape[1])
-    assert len(xvalues)==im.shape[1], f'xvalues should contain {im.shape[1]} values but contains {len(xvalues)}!'
+    assert len(xvalues)==im.shape[1],\
+        f'xvalues should contain {im.shape[1]} values but contains {len(xvalues)}!'
     dx = (xvalues[1]-xvalues[0])/2 if len(xvalues)>1 else xvalues[0]
     if yvalues is None: yvalues=np.arange(im.shape[0])
-    assert len(yvalues)==im.shape[0], f'yvalues should contain {im.shape[0]} values but contains {len(yvalues)}!'
+    assert len(yvalues)==im.shape[0],\
+        f'yvalues should contain {im.shape[0]} values but contains {len(yvalues)}!'
     dy = (yvalues[1]-yvalues[0])/2 if len(yvalues)>1 else yvalues[0]
     extent = [xvalues[0]-dx, xvalues[-1]+dx, yvalues[-1]+dy, yvalues[0]-dy]
 
     # Plot image with custom colormap
-    fig,ax=plt.subplots(figsize=figsize) if ax is None else (ax.get_figure(), ax)
-    if function=='imshow': axim=ax.imshow(im, cmap=cmap, vmin=vmin, vmax=vmax, aspect=aspect,
-                                          origin={'top':'upper', 'bottom':'lower'}[origin],
-                                          extent=extent, interpolation='nearest',
-                                          **kwargs)
-    elif function=='pcolor': axim=ax.pcolormesh(im, X=xvalues, Y=yvalues,
-                                                cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
+    fig, ax = plt.subplots(figsize=figsize) if ax is None else (ax.get_figure(), ax)
+    if function=='imshow':
+        axim = ax.imshow(im, cmap=cmap, vmin=vmin, vmax=vmax, aspect=aspect,
+                         origin={'top':'upper', 'bottom':'lower'}[origin],
+                         extent=extent, interpolation='nearest',
+                         **kwargs)
+    elif function=='pcolor':
+        axim = ax.pcolormesh(im, X=xvalues, Y=yvalues,
+                             cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
+    if show_values:
+        min_edge = np.min([ax.get_position().width  / im.shape[0],
+                           ax.get_position().height / im.shape[1]])
+        fontsize = (0.8*min_edge)/0.01 # roughly inch to pt
+        colors = axim.cmap(axim.norm(im.ravel()))[:,:-1]
+        colors = mpl.colors.rgb_to_hsv(colors).reshape(im.shape + (3,))
+        for (j,i),label in np.ndenumerate(im):
+            if origin == 'bottom':
+                i = im.shape[0]-1-i
+            c = 'white' if colors[j, i,-1] < 0.5 else 'black'
+            ax.text(i, j, label, fontsize=fontsize,
+                    color=c, ha='center', va='center')
+            ax.text(i, j, label, fontsize=fontsize,
+                    color=c, ha='center', va='center')
+
     if any(xevents_toplot):
         for e in xevents_toplot:
             yl=ax.get_ylim()
@@ -2783,16 +2808,16 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
             ax.set_xlim(xl)
 
     if xticks is None:
-        xticks=np.arange(im.shape[1]) if im.shape[1]<=6 else get_bestticks_from_array(np.arange(im.shape[1]), step=None, light=0)
+        xticks = np.arange(im.shape[1]) if im.shape[1]<=6 else get_bestticks_from_array(np.arange(im.shape[1]), step=None, light=0)
     if yticks is None:
-        yticks=np.arange(im.shape[0]) if im.shape[0]<=6 else get_bestticks_from_array(np.arange(im.shape[0]), step=None, light=0)
+        yticks = np.arange(im.shape[0]) if im.shape[0]<=6 else get_bestticks_from_array(np.arange(im.shape[0]), step=None, light=0)
     mplp(fig, ax, figsize=figsize,
           xlim=None, ylim=None, xlabel=xlabel, ylabel=ylabel,
           xticks=xticks, yticks=yticks, xtickslabels=xticklabels, ytickslabels=yticklabels,
           reset_xticks=False, reset_yticks=False, xtickrot=xtickrot, ytickrot=0,
           xtickha={0:'center',45:'right'}[xtickrot], xtickva='top', ytickha='right', ytickva='center',
-          axlab_w='bold', axlab_s=16,
-          ticklab_w='regular', ticklab_s=12, ticks_direction='out', lw=1,
+          axlab_w='bold', axlab_s=20,
+          ticklab_w='regular', ticklab_s=16, ticks_direction='out', lw=1,
           title=title, title_w='regular', title_s=12,
           hide_top_right=False, hide_axis=False, tight_layout=False,
           prettify=prettify)
@@ -2801,14 +2826,17 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
 
     # Add colorbar, nicely formatted
     fig = add_colorbar(fig, ax, axim, vmin, vmax,
-                        0.01, cmap_h, cticks, clabel, 'bold')
+                        cmap_w, cmap_h, cticks, clabel, 'bold', pad=cmap_pad)
+
+    if saveFig:
+        save_mpl_fig(fig, 'heatmap', saveDir, _format, dpi=500)
 
     return fig
 
 def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
                  width=0.01, height=0.5, cticks=None,
-                 clabel=None, clabel_w='regular', clabel_s=16, cticks_s=14,
-                 cmap=None):
+                 clabel=None, clabel_w='regular', clabel_s=20, cticks_s=16,
+                 cmap=None, pad = 0.01):
     """
     Add colorbar to figure with a predefined axis.
     
@@ -2829,15 +2857,14 @@ def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
             "If you do not provide a mappable (e.g. ax.collections[0]), you must provide vmin and vmax!"
         assert cmap is not None,\
             "If you do not provide a mappable (e.g. ax.collections[0]), you must provide a colormap (e.g. 'viridis')!"
-        norm = plt.Normalize(vmin, vmax)
+        norm     = plt.Normalize(vmin, vmax)
         mappable = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         mappable.set_array([])
 
     # create colorbar axis
-    axpos=ax.get_position()
-    pad = 0.01
-    bottom_left_x, bottom_left_y = float(axpos.x1+pad), float(axpos.y0)
-    cbar_ax = fig.add_axes([bottom_left_x, bottom_left_y, width, height])
+    axpos   = ax.get_position()
+    cbar_ax = fig.add_axes([axpos.x1+pad*axpos.width, axpos.y0,
+                            width*axpos.width, height*axpos.height])
 
     # add colorbar
     fig.colorbar(mappable, cax=cbar_ax, ax=ax,
@@ -2850,7 +2877,7 @@ def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
         cbar_ax.yaxis.label.set_rotation(-90)
         cbar_ax.yaxis.label.set_va('bottom')
         cbar_ax.yaxis.label.set_ha('center')
-        cbar_ax.yaxis.labelpad=5
+        cbar_ax.yaxis.labelpad = 5
     cbar_ax.yaxis.set_ticklabels(cticks, ha='left')
     cbar_ax.yaxis.set_tick_params(pad=5, labelsize=cticks_s)
 

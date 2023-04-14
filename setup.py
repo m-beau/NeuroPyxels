@@ -19,7 +19,7 @@ with open("README.md", "r") as readme_file:
     readme = readme_file.read()
 
 requirements = ['ipython', 'numpy', 'scipy', 'pandas', 'numba', 'statsmodels',
-                'matplotlib', 'cmcrameri', 'opencv-python', 'scikit-learn', 'networkx',
+                'matplotlib', 'cmcrameri', 'opencv-python', 'scikit-learn', 'imbalanced-learn', 'networkx',
                 'psutil', 'joblib', 'tqdm', 'h5py']
 
 setup(name='npyx',

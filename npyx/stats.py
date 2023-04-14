@@ -231,7 +231,7 @@ def get_all_up_to_median(arr, window_a, window_b, hbin):
 def get_half_centered_on_mode(arr, window_a, window_b, hbin):
     '''
     Splits a distribution in two parts with equal AUC, centered on the mode of the distribution.
-    Parameters:
+    Arguments:
         - arr: array from which distribution will be drawn,
         between window_a and window_b with bin hbin
         - window_a, window_b, hbin: cf. above
@@ -257,7 +257,7 @@ def split_distr_N(arr, N, bin_val, window_a=None, window_b=None, windows=None, e
     '''
     Splits a distribution in N parts with equal bin window (and optionally equal AUC).
     (the AUC of all the chunks is set the the AUC of the chunk with smallest AUC).
-    Parameters:
+    Arguments:
         - arr: array from which distribution will be drawn,
         between window_a and window_b with bin hbin
         - N: integer, number of chunks the distribution will be split in

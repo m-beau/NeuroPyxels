@@ -70,7 +70,7 @@ class GLM:
              fits the model parameters and stores them in .beta.
              If use_closed_form_solution is False, simply calls the scikit learn .fit function.
              Any additional parameter can be passed to .fit as kwargs.
-             Parameters:
+             Arguments:
                 - X: (n_observations, n_predictors) array.
                 - y: (n_observations,) array.
                 
@@ -80,13 +80,13 @@ class GLM:
                 
         - predict(X, evaluate_prediction = True):
             predicts y_pred from some array of predictors X. In essence, that is X @ self.beta.
-            Parameters:
+            Arguments:
                 - X: (n_observations, n_predictors) array.
             Returns:
                 - y_predicted:  (n_observations,) array. Model prediction.
                 
         - evaluate(y_true, y_predicted): computes, prints and returns model metrics.
-            Parameters:
+            Arguments:
                 - y_true: (n_observations,) array. Actual data.
                 - y_predicted: (n_observations,) array. Model prediction.
             Returns:

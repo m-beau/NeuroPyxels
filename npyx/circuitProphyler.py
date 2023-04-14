@@ -622,7 +622,7 @@ class Prophyler:
                    _format='pdf', saveDir='~/Desktop', saveFig=False,
                    prophylerGraph='undigraph', src_graph=None):
         '''
-        Plotting parameters:
+        Plotting Arguments:
             - edge_labels: bool, display labels on edges with edge info (amplitude, time...)
             - node_labels: bool, display node labels (unit index, node attributes)
             - node_size: nodes size | Default 400
@@ -640,7 +640,7 @@ class Prophyler:
             - _format: save format | Default: pdf
             - saveFig: boolean, whether to save figure or not at saveDir
 
-        Edge selection parameters:
+        Edge selection Arguments:
             - t_asym: definition of crosscorrelogram assymmetry, defining +/- versus common_input (ms) | Default 1
             - edges_list: Provide a list of edges (fully customizable). Can be used with self.get_edges_with_attribute(at, at_val). Default: None
             - keep_edges_type: list of edge types :
@@ -659,7 +659,7 @@ class Prophyler:
 
             edges_list has the priority over edges_types.
 
-        Other parameters:
+        Other Arguments:
             - src_graph: graph to plot. | Default: None
             - prophylerGraph: as usual, used when no src_graph is provided, pick between 'undigraph' or 'digraph' stored as a prophyler attribute.
         '''

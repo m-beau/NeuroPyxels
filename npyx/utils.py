@@ -43,12 +43,12 @@ phyColorsDic = {
 
 mpl_colors=plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-DistinctColors20 = [(127,127,127),(0,0,143),(182,0,0),(0,140,0),(195,79,255),(1,165,202),(236,157,0),(118,255,0),(255,127,0),
-    (255,117,152),(148,0,115),(0,243,204),(72,83,255),(0,127,255),(0,67,1),(237,183,255),(138,104,0),(97,0,163),(92,0,17),(255,245,133)]
-DistinctColors20 = [(c[0]/255, c[1]/255, c[2]/255) for c in DistinctColors20]
-DistinctColors15 = [(127,127,127),(255,255,0),(0,0,143),(255,0,0),(50,255,255),(255,0,255),(94,0,33),(0,67,0),
-    (255,218,248),(0,178,0),(124,72,255),(211,145,0),(5,171,253),(126,73,0),(147,0,153)]
-DistinctColors15 = [(c[0]/255, c[1]/255, c[2]/255) for c in DistinctColors15]
+DistinctColors20 = [[127,127,127],[0,0,143],[182,0,0],[0,140,0],[195,79,255],[1,165,202],[236,157,0],[118,255,0],[255,127,0],
+    [255,117,152],[148,0,115],[0,243,204],[72,83,255],[0,127,255],[0,67,1],[237,183,255],[138,104,0],[97,0,163],[92,0,17],[255,245,133]]
+DistinctColors20 = [[c[0]/255, c[1]/255, c[2]/255] for c in DistinctColors20]
+DistinctColors15 = [[127,127,127],[255,255,0],[0,0,143],[255,0,0],[50,255,255],[255,0,255],[94,0,33],[0,67,0],
+    [255,218,248],[0,178,0],[124,72,255],[211,145,0],[5,171,253],[126,73,0],[147,0,153]]
+DistinctColors15 = [[c[0]/255, c[1]/255, c[2]/255] for c in DistinctColors15]
 
 mark_dict = {
 ".":"point",
@@ -118,7 +118,7 @@ def save_np_array(arr, filename, saveDir="~/Downloads", _format="npy", dtype=Non
     """
     Save a numpy array to a file.
     
-    Parameters:
+    Arguments:
         - arr: numpy array to save.
         - filename: str, name of the file to save (without extension).
         - saveDir: str, directory where to save the array.
@@ -230,7 +230,7 @@ def any_n_consec(X, n_consec, where=False):
     At least 2 consec ones: add them 1 time and check if there is a 2=2**1 somewhere.
     At least 2 consec ones: add them 3 times and check if there is a 4=2**2 somewhere.
     ...
-    Parameters:
+    Arguments:
         - X: array of booleans or binary
         - n_consec: int, number of consecutive True/False values to find
         - where: bool, returns array of indices if True
@@ -253,7 +253,7 @@ def thresh_consec0(arr, th, n_consec, sgn=1, exclude_edges=True):
     '''
     SLOWER THAN thresh_consec AND FORCED TO PROVIDE N_CONSEC -> SHITTY
     Returns indices and values of threshold crosses lasting >=n_consec consecutive samples in arr.
-    Parameters:
+    Arguments:
         - arr: numpy array to threshold
         - th: float, threshold
         - n_consec: int, minimum number of consecutive elements beyond threshold
@@ -339,7 +339,7 @@ def thresh_fast(arr, th, sgn=1, pos=1):
 def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False, ret_values=True):
     '''
     Returns indices and values of threshold crosses lasting >=n_consec consecutive samples in arr.
-    Parameters:
+    Arguments:
         - arr: numpy array to threshold
         - th: float, threshold
         - sgn: 1 or -1, positive (for cases above threshold) or negative (below threshold)
@@ -410,7 +410,7 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
 def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
     '''
     Returns z-scored (centered, reduced) array using outer edges of array to compute mean and std.
-    Parameters:
+    Arguments:
         - arr: 1D np array
         - frac: fraction of array used to compute mean and standard deviation
         - mn_ext: optional, provide mean computed outside of function
@@ -425,7 +425,7 @@ def zscore(arr, frac=4./5, mn_ext=None, sd_ext=None):
 def smooth(arr, method='gaussian_causal', sd=5, axis=1, gamma_a=5):
     '''
     Smoothes a 1D array or a 2D array along specified axis.
-    Parameters:
+    Arguments:
         - arr: ndarray/list, array to smooth
         - method: string, see methods implemented below | Default 'gaussian'
         - sd: int, gaussian window sd (in unit of array samples - e.g. use 10 for a 1ms std if bin size is 0.1ms) | Default 5
@@ -625,7 +625,7 @@ def make_2D_array(arr_lis, accept_heterogeneous=False):
 @njit(cache=True)
 def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, verbose=True):
     '''
-    Parameters:
+    Arguments:
         - arr: array to split into EITHER n_samples OR samples of size sample_size.
                samples_size has priority over n_samples.
         - s_samples: int, size of of samples to split the array into.
@@ -761,7 +761,7 @@ def  align_timeseries_interpol(timeseries, sync_signals, fs=None):
     Assumes that the drift is going to be linear, it is interpolated for times far from sync signals
     (sync_signal1 = a * sync_signal0 + b).
 
-    Parameters:
+    Arguments:
     - timeseries: list[array[int]], list of np arrays (len N), timeseries to align. In SAMPLES to ensure accurate alignment
     - sync_signals: list[array[int]], list of np arrays (len N), sync signals respective to timeseries. In SAMPLES to ensure accurate alignment
     fs: float or list of floats (len N), sampling frequencies of time series.

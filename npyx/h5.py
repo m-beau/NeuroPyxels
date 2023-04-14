@@ -1,3 +1,4 @@
+import gc
 import json
 import re
 import gc
@@ -11,12 +12,18 @@ import numpy as np
 from tqdm import tqdm
 
 from npyx.gl import check_periods, get_units
-from npyx.inout import (chan_map, detect_hardware_filter, extract_rawChunk,
-                        get_binary_file_path, get_npix_sync,
-                        preprocess_binary_file, read_metadata)
-from npyx.spk_t import ids, trn, trn_filtered
-from npyx.spk_wvf import wvf_dsmatch
-from npyx.utils import assert_float, assert_int
+from npyx.inout import (
+    chan_map,
+    detect_hardware_filter,
+    extract_rawChunk,
+    get_binary_file_path,
+    get_npix_sync,
+    preprocess_binary_file,
+    read_metadata,
+)
+from npyx.spk_t import duplicates_mask, ids, trn, trn_filtered
+from npyx.spk_wvf import get_waveforms, wvf_dsmatch
+from npyx.utils import assert_float, assert_int, docstring_decorator
 
 
 # High level C4 functions
@@ -41,33 +48,6 @@ def reset_optotagged_labels(h5_path):
             if 'hausser_neuron' not in neuron: continue
             data_path = f"{neuron}/optotagged_label"
             write_to_dataset(h5_f, data_path, 0, overwrite=True)
-
-def add_units_to_h5(h5_path, dp, units=None, **kwargs):
-    f"""
-    Add all or specified units at the respective data path to an HDF5 file.
-
-    This is a high-level function designed to add many units at the
-    specified datapath to an HDF5 file. All additional key-value 
-    arguments are passed to `add_unit_h5`
-
-    Example:
-      add_units_to_h5('my_lab_data.h5', '/path/to/dataset_id', lab_id='pi_last_name')
-    Will add all sorted units in the 'kilosort_results' directory 
-    to the HDF5 file called 'my_lab_data.h5' (in the current directory).
-
-    Other arguments from add_unit_h5:
-    {add_unit_h5.__doc__}
-    """
-
-    if units is None:
-        units = get_units(dp)
-    
-    for u in units:
-        add_unit_h5(h5_path, dp, u, **kwargs)
-
-
-def relative_unit_path_h5(dataset, unit):
-    return f"datasets/{dataset}/{unit}"
 
 
 def get_unit_paths_h5(h5_file, dataset, unit,
@@ -99,7 +79,7 @@ def remove_unit_h5(h5_path, dp, unit, lab_id='hausser'):
             del h5_file[dataset_path]
 
 
-def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
+def add_unit_h5(h5_path, dp, unit, lab_id, genetic_line=None, periods='all',
                 sync_chan_id=None, overwrite_h5=False,
                 again=False, again_wvf=False, plot_debug=False, verbose=False,
                 dataset=None,
@@ -109,7 +89,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
                 sane_spikes=None, sane_periods=None, sane_before_opto=False, include_fp_fn_mask=True,
                 optostims=None, optostims_from_sync=False, optostims_threshold=None,
                 n_waveforms_for_matching=5000, selective_overwrite=None,
-                **kwargs):
+                include_fn_fp_wvf_samples=False, **kwargs):
     """
     Add a spike-sorted unit to an HDF5 file (on a phy compatible dataformat).
 
@@ -137,6 +117,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
     - dp: Path the Kilosort data directory
     - unit: The unit id/neuron unit index
     - lab_id: The lab/PI id to use to label the units
+    - genetic_line: The genetic line of the animal used to record this data. None by default.
     - periods: 'all' or [[t1,t2],[t3,t4],...] in seconds
 
     Key-value Arguments:
@@ -232,6 +213,7 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
         pbar.update(1)
         write_to_group(neuron_group, 'lab_id', lab_id, overwrite_h5)
         write_to_group(neuron_group, 'dataset_id', dataset, overwrite_h5)
+        write_to_group(neuron_group, 'line', genetic_line, overwrite_h5)
         write_to_group(neuron_group, 'neuron_id', unit, overwrite_h5)
         write_to_group(neuron_group, 'neuron_absolute_id', neuron_group.name, overwrite_h5)
         write_to_group(neuron_group, 'sampling_rate', samp_rate, overwrite_h5)
@@ -432,6 +414,43 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
             c2 = min(white_chunk.shape[0]-1, int(white_chunk.shape[0]/2+raw_snippet_halfrange+1))
             raw_snippet = white_chunk[c1:c2,:].astype(np.float32)
             write_to_group(neuron_group, 'whitened_voltage_sample', raw_snippet, change_voltage_snippets)
+            
+        pbar.set_description(f"Adding false positive and negative waveform samples for unit {unit} to {h5_path}")
+        pbar.update(1)
+        change_fn_fp_samples = overwrite_h5 or ('fn_fp_filtered_wvf_samples' in selective_overwrite)
+        if ('fn_fp_filtered_wvf_samples' not in neuron_group or overwrite_h5) and include_fn_fp_wvf_samples or change_fn_fp_samples:
+            
+            fp_fn_good_spikes = neuron_group['fn_fp_filtered_spikes'][...]
+            sane_spikes = neuron_group['sane_spikes'][...]
+            used_spikes_mask = fp_fn_good_spikes & sane_spikes
+            spike_ids = ids(dp, unit)
+            
+            if len(spike_ids) != len(used_spikes_mask):
+                fs = neuron_group['sampling_rate'][...].item()
+                train = trn(dp, unit, enforced_rp = -1)
+                duplicates_m = duplicates_mask(train, 0, fs)
+                spike_ids = spike_ids[~duplicates_m]
+                
+            used_ids = spike_ids[used_spikes_mask]
+            peak_chan = neuron_group['primary_channel'][...].item()
+            
+            chan_range = np.arange(peak_chan-mean_wvf_half_range, peak_chan+mean_wvf_half_range)
+            chan_range_m = (chan_range>=0)&(chan_range<=383)
+            chan_bottom, chan_top = chan_range[chan_range_m][0], chan_range[chan_range_m][-1]
+            
+            pbar.set_description("Reading false positive and false negative waveform samples...")
+            if len(used_ids) > 0 and len(used_ids) < 10000:
+                fp_fn_samples = get_waveforms(dp, unit, t_waveforms=180, spike_ids=used_ids)
+                fp_fn_samples = fp_fn_samples[:, :, chan_bottom:chan_top].transpose(0,2,1)
+            elif len(used_ids) > 10000:
+                fp_fn_samples = get_waveforms(dp, unit, t_waveforms=180, spike_ids=used_ids[:10000])
+                fp_fn_samples = fp_fn_samples[:,:, chan_bottom:chan_top].transpose(0,2,1)
+                if verbose:
+                    warnings.warn(f"WARNING: Only using first 10,000 spikes for unit {unit} in {dp} to get false positive and false negative waveform samples")
+            else:
+                fp_fn_samples = np.nan
+
+            write_to_group(neuron_group, 'fn_fp_filtered_wvf_samples', fp_fn_samples, change_fn_fp_samples)
 
         pbar.set_description(f"Adding labels for {unit} to {h5_path}")
         # layer
@@ -455,6 +474,34 @@ def add_unit_h5(h5_path, dp, unit, lab_id, periods='all',
 
     return relative_unit_path
 
+@docstring_decorator(add_unit_h5.__doc__)
+def add_units_to_h5(h5_path, dp, units=None, **kwargs):
+    """
+    Add all or specified units at the respective data path to an HDF5 file.
+
+    This is a high-level function designed to add many units at the
+    specified datapath to an HDF5 file. All additional key-value 
+    arguments are passed to `add_unit_h5`
+
+    Example:
+      add_units_to_h5('my_lab_data.h5', '/path/to/dataset_id', lab_id='pi_last_name')
+    Will add all sorted units in the 'kilosort_results' directory 
+    to the HDF5 file called 'my_lab_data.h5' (in the current directory).
+
+    Other arguments from add_unit_h5:
+    {0}
+    """
+
+    if units is None:
+        units = get_units(dp)
+    
+    for u in units:
+        add_unit_h5(h5_path, dp, u, **kwargs)
+
+
+def relative_unit_path_h5(dataset, unit):
+    return f"datasets/{dataset}/{unit}"
+
 def load_json_datasets(json_path, include_missing_datasets=False):
     with open(json_path) as f:
         json_f = json.load(f)
@@ -464,7 +511,7 @@ def load_json_datasets(json_path, include_missing_datasets=False):
     DSs = {}
     for ds in json_f.values():
 
-        for key in ['dp', 'ct', 'units', 'ss', 'cs']:
+        for key in ['dp', 'ct', 'line', 'units', 'ss', 'cs']:
             assert key in ds, f"{key} not in json file for dataset #{ds}!"
         
         dp=Path(ds['dp'])
@@ -473,7 +520,8 @@ def load_json_datasets(json_path, include_missing_datasets=False):
             print(f"Dataset {dp} not found on system!\n")
             if include_missing_datasets: DSs[dp.name] = ds
             continue
-        DSs[dp.name] = ds
+        DSs[dp.name+'&'+ds['ct']] = ds
+        
         units = list(ds['units'])
         ss = list(ds['ss'])
         cs = list(ds['cs'])
@@ -492,7 +540,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
 
     DSs = load_json_datasets(json_path, include_missing_datasets=False)
 
-    for ds_name, ds in DSs.items():
+    for ds_name_ct, ds in DSs.items():
         dp=Path(ds['dp'])
 
         if preprocess_if_raw:
@@ -503,8 +551,10 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
                     data_deletion_double_check=data_deletion_double_check,
                     median_subtract=False, filter_forward=True, filter_backward=False, order=1)
 
-        optolabel=ds['ct']
+        ds_name, optolabel = ds_name_ct.split('&')
+        assert optolabel == ds['ct']
         if optolabel=="PkC": optolabel="PkC_ss"
+        genetic_line = ds['line']
         units=ds['units']
         ss=ds['ss']
         cs=ds['cs']
@@ -517,7 +567,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
             units_for_h5 = units+ss+cs
 
         for u in units_for_h5:
-            add_unit_h5(h5_path, dp, u, lab_id, periods='all',
+            add_unit_h5(h5_path, dp, u, lab_id, genetic_line, periods='all',
                     again=again, again_wvf=again, verbose=verbose,
                     include_raw_snippets=include_raw_snippets, include_whitened_snippets=include_raw_snippets,
                     sane_periods=sane_times, **kwargs)

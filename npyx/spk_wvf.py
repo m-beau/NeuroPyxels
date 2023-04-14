@@ -44,7 +44,7 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
                               Either 'regular' (homogeneous selection or in batches) or 'random'.
         - periods:            recording periods to sample waveforms from. Either 'all' (default)
                               or [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
-        - spike_ids:          list/array, relative indices of spikes in the whole recording.
+        - spike_ids:          list/array, absolute indices of spikes in the whole recording.
                                           Takes precedence over every other parameter: if provided, u, n_waveforms and periods will be ignored.
         - wvf_batch_size:     int, if >1 and 'regular' selection, selects ids as batches of spikes. | Default 10
         - save:               bool, whether to save to NeuroPyxels cache. | Default True

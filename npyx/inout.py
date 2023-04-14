@@ -7,24 +7,25 @@ Created on Fri May  3 16:30:50 2019
 Input/output utilitaries to deal with Neuropixels files.
 """
 
-import psutil
-import shutil
 import os
+import shutil
 from ast import literal_eval as ale
+from math import ceil
 from pathlib import Path
+
+import numpy as np
+import psutil
 from tqdm.auto import tqdm
 
-from math import ceil
-import numpy as np
 try:
     import cupy as cp
 except ImportError:
     print(("cupy could not be imported - "
     "some functions dealing with the binary file (filtering, whitening...) will not work."))
 
-from npyx.utils import npa, read_pyfile, list_files
-
 import json
+
+from npyx.utils import list_files, npa, read_pyfile
 
 #%% Load metadata and channel map
 
@@ -426,7 +427,7 @@ def unpackbits(x,num_bits = 16):
     return (x & to_and).astype(bool).astype(np.int64).reshape(xshape + [num_bits])
 
 def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds',
-                  verbose=False, again=False, sample_span=1e6):
+                  verbose=False, again=False, sample_span=int(1e6)):
     '''Unpacks neuropixels external input data, to align spikes to events.
     Arguments:
         - dp: str, datapath
@@ -1097,5 +1098,11 @@ class ImplementationError(Exception):
     pass
 
 from npyx.gl import assert_multi, get_ds_table, get_npyx_memory
-from npyx.preprocess import whitening, approximated_whitening_matrix, med_substract,\
-                            gpufilter, adc_realign, kfilt
+from npyx.preprocess import (
+    adc_realign,
+    approximated_whitening_matrix,
+    gpufilter,
+    kfilt,
+    med_substract,
+    whitening,
+)

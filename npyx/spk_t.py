@@ -149,7 +149,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
         # by default, only pure duplicates (yeah they happen!!)
         assert len(train)!=0, f'unit {unit} not found in spike_clusters.npy - probably a merger bug.'
         duplicates_m = duplicates_mask(train, enforced_rp, fs)
-        train=train[~duplicates_m]
+        train = train[~duplicates_m]
         # Save it
         if sav:
             np.save(dpnm/fn, train)

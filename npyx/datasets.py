@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+"""
+2022-12
+Authors: @fededagos
+
+This module contains the functions to load the data from the hdf5 files used
+in the C4 collaboration. It also contains the functions to preprocess the data.
+"""
 import copy
 import pickle
 
@@ -169,6 +177,16 @@ def resample_acg(acg, window_size=20, keep_same_size=True):
     return new_y[idxes]
 
 
+def get_h5_absolute_ids(h5_path):
+    neuron_ids = []
+    with h5py.File(h5_path, "r") as hdf5_file:
+        for name in hdf5_file:
+            if "neuron" in name:
+                neuron_id = name.split("_")[-1]
+                neuron_ids.append(int(neuron_id))
+    return neuron_ids
+
+
 class NeuronsDataset:
     """
     Custom class for the cerebellum dataset, containing all information about the labelled and unlabelled neurons.
@@ -188,11 +206,18 @@ class NeuronsDataset:
         _label="optotagged_label",
         _labelling=LABELLING,
         _use_amplitudes=False,
+        _bin_size=1,
+        _win_size=200,
+        _debug=False,
+        _lisberger=False,
+        _labels_only=False,
     ):
 
         # Store useful metadata about how the dataset was extracted
+        self.dataset = dataset
         self._n_channels = n_channels
         self._central_range = central_range
+        self._sampling_rate = get_neuron_attr(dataset, 0, "sampling_rate").item()
 
         # Initialise empty lists to extract data
         self.wf_list = []
@@ -200,22 +225,29 @@ class NeuronsDataset:
         self.spikes_list = []
         self.labels_list = []
         self.info = []
+        self.chanmap_list = []
+        self.genetic_line_list = []
 
         if _use_amplitudes:
             self.amplitudes_list = []
 
-        neuron_ids = []
-        with h5py.File(dataset, "r") as hdf5_file:
-            for name in hdf5_file:
-                if "neuron" in name:
-                    neuron_id = name.split("_")[-1]
-                    neuron_ids.append(int(neuron_id))
+        neuron_ids = get_h5_absolute_ids(dataset)
+
+        if not quality_check:
+            self.quality_checks_mask = []
+            self.fn_fp_list = []
+            self.sane_spikes_list = []
 
         if not quality_check:
             self.quality_checks_mask = np.ones(len(neuron_ids), dtype=bool)
 
         discarded_df = pd.DataFrame(columns=["neuron_id", "label", "dataset", "reason"])
-        for wf_n in tqdm(np.sort(neuron_ids), desc="Reading dataset", leave=False):
+        for i, wf_n in tqdm(
+            enumerate(np.sort(neuron_ids)),
+            total=len(neuron_ids),
+            desc="Reading dataset",
+            leave=False,
+        ):
             try:
                 # Get the label for this wvf
                 label = get_neuron_attr(dataset, wf_n, _label).ravel()[0]
@@ -229,20 +261,25 @@ class NeuronsDataset:
                     label = label.item()
                     self.labels_list.append(label)
                 else:
+                    if _labels_only:
+                        continue
                     self.labels_list.append("unlabelled")
 
-                spike_idxes = get_neuron_attr(dataset, wf_n, "spike_indices")
+                spikes = get_neuron_attr(dataset, wf_n, "spike_indices")
 
-                sane_spikes = get_neuron_attr(dataset, wf_n, "sane_spikes")
-                fn_fp_spikes = get_neuron_attr(dataset, wf_n, "fn_fp_filtered_spikes")
+                if not _lisberger:
+                    sane_spikes = get_neuron_attr(dataset, wf_n, "sane_spikes")
+                    fn_fp_spikes = get_neuron_attr(
+                        dataset, wf_n, "fn_fp_filtered_spikes"
+                    )
+                else:
+                    sane_spikes = np.ones_like(spikes, dtype=bool)
+                    fn_fp_spikes = np.ones_like(spikes, dtype=bool)
+
                 quality_mask = fn_fp_spikes & sane_spikes
 
-                spikes = (
-                    spike_idxes[quality_mask].copy() if quality_check else spike_idxes
-                )
-
                 # if spikes is void after quality checks, skip this neuron (if quality checks are enabled)
-                if len(spikes) == 0 and quality_check:
+                if len(spikes[quality_mask].copy()) == 0 and quality_check:
                     dataset_name = (
                         get_neuron_attr(dataset, wf_n, "dataset_id")
                         .ravel()[0]
@@ -269,13 +306,43 @@ class NeuronsDataset:
                     del self.labels_list[-1]
                     continue
 
-                if len(spike_idxes[quality_mask].copy()) == 0:
-                    self.quality_checks_mask[wf_n] = False
+                # Even without quality checks, we want to save only the spikes in the spontaneous period
+                if quality_check:
+                    self.spikes_list.append(spikes[quality_mask].astype(int))
+                else:
+                    self.spikes_list.append(spikes[sane_spikes].astype(int))
+                    self.fn_fp_list.append(fn_fp_spikes)
+                    self.sane_spikes_list.append(sane_spikes)
+
+                    if len(spikes[quality_mask].copy()) == 0:
+                        self.quality_checks_mask.append(False)
+                    else:
+                        self.quality_checks_mask.append(True)
 
                 # Extract amplitudes if requested
                 if _use_amplitudes:
                     amplitudes = get_neuron_attr(dataset, wf_n, "amplitudes")
-                    self.amplitudes_list.append(amplitudes)
+                    try:
+                        self.amplitudes_list.append(
+                            amplitudes[sane_spikes]
+                            if not quality_check
+                            else amplitudes[quality_mask]
+                        )
+                    except IndexError:
+                        # print(
+                        #     f"Shape mismatch between amplitudes and spikes for neuron {wf_n}. {len(amplitudes)} vs {len(spikes)}."
+                        # )
+                        # print("Enforcing them to be of equal size.")
+                        if quality_check:
+                            amplitudes, quality_mask = force_amplitudes_length(
+                                amplitudes, quality_mask
+                            )
+                            self.amplitudes_list.append(amplitudes[quality_mask])
+                        else:
+                            amplitudes, sane_spikes = force_amplitudes_length(
+                                amplitudes, sane_spikes
+                            )
+                            self.amplitudes_list.append(amplitudes[sane_spikes])
 
                 # Extract waveform using provided parameters
                 wf = get_neuron_attr(dataset, wf_n, "mean_waveform_preprocessed")
@@ -338,14 +405,40 @@ class NeuronsDataset:
                         del self.amplitudes_list[-1]
                     continue
 
-                if normalise_acg:
-                    acg = npyx.corr.acg("hello", 4, 1, 200, train=spikes)
-                    normal_acg = np.clip(acg / np.max(acg), 0, 10)
-                    self.acg_list.append(normal_acg.astype(float))
+                # Extract ACG. Even if we don't apply quality checks, we still want to use spikes from the spontaneous period
+
+                acg_spikes = (
+                    spikes[quality_mask] if quality_check else spikes[sane_spikes]
+                )
+
+                if len(acg_spikes) == 0:
+                    self.acg_list.append(
+                        np.zeros(int(_win_size / _bin_size + 1)).astype(float)
+                    )
+
                 else:
-                    acg = npyx.corr.acg("hello", 4, 1, 200, train=spikes)
-                    self.acg_list.append(acg.astype(float))
-                self.spikes_list.append(spikes.astype(int))
+                    if normalise_acg:
+                        acg = npyx.corr.acg(
+                            ".npyx_placeholder",
+                            4,
+                            _bin_size,
+                            _win_size,
+                            train=acg_spikes,
+                        )
+                        normal_acg = np.clip(acg / np.max(acg), 0, 10)
+                        # For some bin and window sizes, the ACG is all zeros. In this case, we want to set it to a constant value
+                        normal_acg = np.nan_to_num(normal_acg, nan=0)
+                        self.acg_list.append(normal_acg.astype(float))
+                    else:
+                        acg = npyx.corr.acg(
+                            ".npyx_placeholder",
+                            4,
+                            _bin_size,
+                            _win_size,
+                            train=acg_spikes,
+                        )
+                        self.acg_list.append(acg.astype(float))
+
                 # Extract useful metadata
                 dataset_name = (
                     get_neuron_attr(dataset, wf_n, "dataset_id")
@@ -358,7 +451,18 @@ class NeuronsDataset:
                 neuron_metadata = dataset_name + "/" + str(neuron_id)
                 self.info.append(str(neuron_metadata))
 
+                chanmap = get_neuron_attr(dataset, wf_n, "channelmap")
+                self.chanmap_list.append(np.array(chanmap))
+
+                try:
+                    genetic_line = get_neuron_attr(dataset, wf_n, "line")
+                    self.genetic_line_list.append(genetic_line.item().decode("utf-8"))
+                except KeyError:
+                    self.genetic_line_list.append("unknown")
+
             except KeyError:
+                if _debug:
+                    raise
                 dataset_name = (
                     get_neuron_attr(dataset, wf_n, "dataset_id")
                     .ravel()[0]
@@ -400,6 +504,9 @@ class NeuronsDataset:
         self.wf = np.stack(self.wf_list, axis=0)
         self.acg = np.stack(acg_list_resampled, axis=0)
 
+        if hasattr(self, "quality_checks_mask"):
+            self.quality_checks_mask = np.array(self.quality_checks_mask)
+
         print(
             f"{len(self.wf_list)} neurons loaded, of which labelled: {sum(self.targets != -1)} \n"
             f"{len(discarded_df)} neurons discarded, of which labelled: {len(discarded_df[discarded_df.label != 0])}. More details at the 'discarded_df' attribute."
@@ -426,12 +533,29 @@ class NeuronsDataset:
         self.info = np.array(self.info)[mask].tolist()
         self.spikes_list = np.array(self.spikes_list, dtype=object)[mask].tolist()
         self.labels_list = np.array(self.labels_list)[mask].tolist()
+        self.acg_list = np.array(self.acg_list)[mask].tolist()
+        try:
+            self.chanmap_list = np.array(self.chanmap_list, dtype=object)[mask].tolist()
+        # Numpy has still a bug in treating arrays as objects
+        except ValueError:
+            self.chanmap_list = [self.chanmap_list[i] for i in np.where(mask)[0]]
+
+        self.genetic_line_list = np.array(self.genetic_line_list, dtype=object)[
+            mask
+        ].tolist()
+
         if hasattr(self, "amplitudes_list"):
             self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[
                 mask
             ].tolist()
         if hasattr(self, "quality_checks_mask"):
             self.quality_checks_mask = self.quality_checks_mask[mask]
+            self.fn_fp_list = np.array(self.fn_fp_list, dtype=object)[mask].tolist()
+            self.sane_spikes_list = np.array(self.sane_spikes_list, dtype=object)[
+                mask
+            ].tolist()
+        if hasattr(self, "full_dataset"):
+            self.full_dataset = self.full_dataset[mask]
 
     def make_full_dataset(self, wf_only=False, acg_only=False):
         """
@@ -475,8 +599,7 @@ class NeuronsDataset:
 
         granule_cell_mask = self.targets == LABELLING["GrC"]
 
-        self._apply_mask(granule_cell_mask)
-
+        self._apply_mask(~granule_cell_mask)
         self.targets = (self.targets - 1).astype(int)
         self.targets[self.targets < 0] = -1  # Reset the label of unlabeled cells
 
@@ -524,7 +647,7 @@ class NeuronsDataset:
 
         npyx.plot.plt_wvf(wvf.T)
         plt.show()
-        npyx.plot.plot_acg("hello", 0, train=train)
+        npyx.plot.plot_acg(".npyx_placeholder", 0, train=train)
         plt.show()
 
     def apply_quality_checks(self):
@@ -539,8 +662,17 @@ class NeuronsDataset:
             self, "quality_checks_mask"
         ), "No quality checks mask found, perhaps you have applied them already?"
         checked_dataset = copy.deepcopy(self)
+        checked_dataset.spikes_list = [
+            train[fn_fp_mask[sane_mask]]
+            for train, fn_fp_mask, sane_mask in zip(
+                self.spikes_list, self.fn_fp_list, self.sane_spikes_list
+            )
+        ]
         checked_dataset._apply_mask(checked_dataset.quality_checks_mask)
         del checked_dataset.quality_checks_mask
+        del checked_dataset.fn_fp_list
+        del checked_dataset.sane_spikes_list
+
         return checked_dataset
 
     def __len__(self):
@@ -555,8 +687,15 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         new_dataset.wf = np.vstack((new_dataset.wf, dataset.wf))
         new_dataset.acg = np.vstack((new_dataset.acg, dataset.acg))
         new_dataset.targets = np.hstack((new_dataset.targets, dataset.targets))
+        new_dataset.chanmap_list = new_dataset.chanmap_list + dataset.chanmap_list
+        new_dataset.genetic_line_list = (
+            new_dataset.genetic_line_list + dataset.genetic_line_list
+        )
         new_dataset.info = np.hstack(
             (np.array(new_dataset.info), np.array(dataset.info))
+        ).tolist()
+        new_dataset.acg_list = np.vstack(
+            (np.array(new_dataset.acg_list), np.array(dataset.acg_list))
         ).tolist()
         new_dataset.spikes_list = np.hstack(
             (
@@ -569,25 +708,73 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         )
         new_dataset.labels_list = new_dataset.labels_list + dataset.labels_list
 
-        if hasattr(new_dataset, "amplitudes_list") and hasattr(
-            dataset, "amplitudes_list"
-        ):
-            new_dataset.amplitudes_list = (
-                new_dataset.amplitudes_list + dataset.amplitudes_list
-            )
-        else:
-            raise NotImplementedError(
-                "Attempted to merge datasets with different attributes"
-            )
+        if hasattr(new_dataset, "amplitudes_list"):
+            if hasattr(dataset, "amplitudes_list"):
+                new_dataset.amplitudes_list = (
+                    new_dataset.amplitudes_list + dataset.amplitudes_list
+                )
+            else:
+                raise NotImplementedError(
+                    "Attempted to merge datasets with different attributes"
+                )
 
-        if hasattr(new_dataset, "quality_checks_mask") and hasattr(
-            dataset, "quality_checks_mask"
-        ):
-            new_dataset.quality_checks_mask = np.hstack(
-                (new_dataset.quality_checks_mask, dataset.quality_checks_mask)
-            )
-        else:
-            raise NotImplementedError(
-                "Attempted to merge datasets with different attributes"
-            )
+        if hasattr(new_dataset, "quality_checks_mask"):
+            if hasattr(dataset, "quality_checks_mask"):
+                new_dataset.quality_checks_mask = np.hstack(
+                    (new_dataset.quality_checks_mask, dataset.quality_checks_mask)
+                )
+                new_dataset.fn_fp_list = new_dataset.fn_fp_list + dataset.fn_fp_list
+                new_dataset.sane_spikes_list = (
+                    new_dataset.sane_spikes_list + dataset.sane_spikes_list
+                )
+            else:
+                raise NotImplementedError(
+                    "Attempted to merge datasets with different attributes"
+                )
+    new_dataset.dataset = "merged"
+
     return new_dataset
+
+
+def resample_waveforms(
+    dataset: NeuronsDataset, sampling_rate: int = 30_000
+) -> NeuronsDataset:
+    """
+    It takes a dataset, resizes the waveforms to a new sampling rate, and returns a new dataset with the
+    resized waveforms
+
+    Args:
+      dataset (NeuronsDataset): the dataset to be resampled
+      sampling_rate (int): the sampling rate of the new waveforms. Defaults to 30_000
+
+    Returns:
+      A new dataset with the same properties as the original dataset, but with the waveforms resampled.
+    """
+
+    import torch
+    from torchvision import transforms
+
+    original_wf = dataset.wf.reshape(-1, 1, dataset._n_channels, dataset._central_range)
+
+    new_range = int(dataset._central_range * sampling_rate / dataset._sampling_rate)
+
+    resize = transforms.Resize((dataset._n_channels, new_range))
+
+    resized_wf = resize(torch.tensor(original_wf)).squeeze().numpy()
+
+    resized_wf = resized_wf.reshape(-1, dataset._n_channels * new_range)
+
+    resampled_dataset = copy.deepcopy(dataset)
+    resampled_dataset.wf = resized_wf
+    resampled_dataset._central_range = new_range
+    resampled_dataset.wf_list = [wf for wf in resized_wf]
+
+    return resampled_dataset
+
+
+def force_amplitudes_length(amplitudes, times):
+    if len(times) > len(amplitudes):
+        times = times[: len(amplitudes)]
+    if len(amplitudes) > len(times):
+        amplitudes = amplitudes[: len(times)]
+    return amplitudes, times

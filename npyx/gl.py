@@ -287,13 +287,11 @@ def save_qualities(dp, qualities):
 
 
 def generate_units_qualities(dp):
-    units=np.unique(np.load(Path(dp,"spike_clusters.npy")))
-    if os.path.exists(Path(dp,"cluster_info.tsv")):
-        info = pd.read_csv(Path(dp,"cluster_info.tsv"), sep='\t')
-        qualities = info.loc[:,['cluster_id', 'group']]
-    else:
-        qualities=pd.DataFrame({'cluster_id':units, 'group':['unsorted']*len(units)})
-
+    """
+    Creates an empty table of units qualities ("groups" as in good, mua,...).
+    """
+    units = np.unique(np.load(Path(dp, "spike_clusters.npy")))
+    qualities = pd.DataFrame({"cluster_id": units, "group": ["unsorted"] * len(units)})
     return qualities
 
 

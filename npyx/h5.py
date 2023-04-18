@@ -467,7 +467,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
     
     Arguments:
         - json_path: str, path to the json file containing the datasets info
-            according to the following structure:
+            according to the following structure ("sane_periods" is optional):
             "0": {
                 "ct": "celltype", see format at www.tinyurl.com/c4database
                 "line": "mouseline", see format at www.tinyurl.com/c4database
@@ -560,12 +560,9 @@ def add_json_datasets_to_h5_hausser(json_path, h5_path,
                             optostims_from_sync = optostims_from_sync,
                             optostims_threshold = optostims_threshold,
                             sane_before_opto    = sane_before_opto,
-                            include_all_good    = include_all_good,
                             selective_overwrite = selective_overwrite,
                             overwrite_h5        = overwrite_h5,
                             **kwargs)
-
-
 
 
 def load_json_datasets(json_path, include_missing_datasets=False):

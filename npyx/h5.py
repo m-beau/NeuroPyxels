@@ -21,8 +21,8 @@ from npyx.inout import (
     preprocess_binary_file,
     read_metadata,
 )
-from npyx.spk_t import duplicates_mask, ids, trn, trn_filtered
-from npyx.spk_wvf import get_waveforms, wvf_dsmatch
+from npyx.spk_t import duplicates_mask, ids, trn, trn_filtered, find_stable_recording_period
+from npyx.spk_wvf import get_waveforms, wvf_dsmatch, across_channels_SNR
 from npyx.utils import assert_float, assert_int, docstring_decorator
 
 
@@ -54,7 +54,7 @@ def get_unit_paths_h5(h5_file, dataset, unit,
                       lab_id = 'hausser', unit_absolute_id = None):
     relative_unit_path = relative_unit_path_h5(dataset, unit)
     if relative_unit_path in h5_file:
-            absolute_unit_path = h5_file[f'{relative_unit_path}/neuron_absolute_id'][()].decode()
+            absolute_unit_path = h5_file[f'{relative_unit_path}/neuron_id'][()].decode()
     else:
         if unit_absolute_id is None:
             if f"{lab_id}_neuron_0" not in h5_file:
@@ -68,8 +68,9 @@ def get_unit_paths_h5(h5_file, dataset, unit,
     return relative_unit_path, absolute_unit_path
 
 
-def remove_unit_h5(h5_path, dp, unit, lab_id='hausser'):
-    dataset = Path(dp).name
+def remove_unit_h5(h5_path, dp, unit, lab_id='hausser', dataset=None):
+    if dataset is None:
+        dataset = Path(dp).name
     with h5py.File(h5_path, "a") as h5_file:
         relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
         del h5_file[relative_unit_path]
@@ -79,24 +80,40 @@ def remove_unit_h5(h5_path, dp, unit, lab_id='hausser'):
             del h5_file[dataset_path]
 
 
-def add_unit_h5(h5_path, dp, unit, lab_id, genetic_line=None, periods='all',
-                sync_chan_id=None, overwrite_h5=False,
-                again=False, again_wvf=False, plot_debug=False, verbose=False,
-                dataset=None,
-                raw_window=[0.1, 30.1], center_raw_window_on_spikes=True,
-                include_raw_snippets=True, include_whitened_snippets=True,
-                raw_snippet_halfrange=2, mean_wvf_half_range=11,
-                sane_spikes=None, sane_periods=None, sane_before_opto=False, include_fp_fn_mask=True,
-                optostims=None, optostims_from_sync=False, optostims_threshold=None,
-                n_waveforms_for_matching=5000, selective_overwrite=None,
-                include_fn_fp_wvf_samples=False, **kwargs):
-    """
-    Add a spike-sorted unit to an HDF5 file (on a phy compatible dataformat).
+def add_unit_h5(h5_path, dp, unit_id, lab_id,
+                genetic_line              = "",
+                dataset                   = None,
+                
+                sane_periods              = None,
+                sane_spikes               = None,
+                sane_before_opto          = False,
+                
+                again_npyx                = False,
+                again_npyx_wvf            = False,
+                overwrite_h5              = False,
+                selective_overwrite       = None,
 
+                include_fp_fn_mask        = True,
+                include_raw_snippets      = True,
+
+                raw_window                = None,
+                raw_snippet_halfrange     = 3,
+                mean_wvf_half_range       = 11,
+                
+                opto_sync_chan_id         = None,
+                optostims                 = None,
+                optostims_from_sync       = False,
+                optostims_threshold       = None,
+
+                n_waveforms_for_matching  = 5000,
+                n_raw_waveforms           = 1000,
+                plot_debug                = False,
+                **kwargs):
+    """
     Adds a spike-sorted unit to a new or existing HDF5 five file using the
     file format specified by the C4 collaboration.
     
-     ---->>> data format details here www.tinyurl.com/c4database <<<---
+    Data format details here ---->>> www.tinyurl.com/c4database <<<---
 
     Each unit can be accessed from 2 paths which point to the same data:
     - an absolute path, {unit_absolute_id}/
@@ -109,62 +126,70 @@ def add_unit_h5(h5_path, dp, unit, lab_id, genetic_line=None, periods='all',
     Example:
         add_unit_h5('my_lab_data.h5', '/path/to/kilosort_results', 1, lab_id='pi_last_name')
     Adds the unit with id 1 to the HDF5 file in the current directory called 'my_lab_data.h5'.
-    Additional units can be added by calling the same function with identical arguments,
-    but incrementing the unit id field.
+    Additional units can be added by calling the same function with identical
+    arguments, but incrementing the unit_id field.
 
     Required Arguments:
     - h5_path: Path to the h5 file to create/append
     - dp: Path the Kilosort data directory
-    - unit: The unit id/neuron unit index
+    - unit_id: The unit id/neuron unit index
     - lab_id: The lab/PI id to use to label the units
-    - genetic_line: The genetic line of the animal used to record this data. None by default.
-    - periods: 'all' or [[t1,t2],[t3,t4],...] in seconds
-
-    Key-value Arguments:
-    - unit_absolute_id: unit absolute id. Will increment from the last unit added to h5 file.
-    - sync_chan_id: The channel id used to denote opto stimulation. Defaults to None.
-    - again: Whether to use cached results for storage in the HDF5 file (defaults to False)
-    - again_wvf: Whether to recompute drift-shift matched waveform in particular (very computationally intensive, defaults to False)
-    - verbose: Additional verbosity/progress
-    - dataset: A unique ID for this dataset. By default this value is None, in which case
-      the dataset id is assumed to the dirname of the data directory passed as the dp argument
-      
-    - raw_window: A two item list containing the start and stop times (in SECONDS) of the snippet of raw data used for
-                  1) computing noise RMS (-> SNR)
-                  2) extracting representative examples of raw data (raw, and whitened).
-    - center_raw_window_on_spikes: bool, whether to roughly center the raw voltage snippets window (raw_window) on neuron's first spike
-    - raw_snippet_halfrange: int, range of channels around peak channel to consider for the snippet of raw data (max 10)
-    - include_raw_snippets: bool, whether to include (memory heavy) raw data snippets (normally median subtracted and forward high pass filtered).
-    - include_whitened_snippets: bool, whether to include (memory heavy) preprocessed (whitened, filtered backward) data snippets (raw).
     
-    - sane_spikes: optional bool array, custom definition of 'sane spikes' for whatever reason.
-                   By default, will be all spikes within 'periods'.
-    - sane_periods: optional list of [start, stop] periods, in seconds, to define 'sane spikes'. Will prevail over "sane_before_opto" if both are defined.
+
+    Optional Arguments:
+
+    - genetic_line: The genetic line of the animal used to record this data. None by default.
+    - dataset: A unique ID for this dataset. By default this value is None, in which case
+                the dataset id is assumed to the dirname of the data directory passed as the dp argument.
+
+    - sane_periods: optional list of [start, stop] periods, in seconds, to define the 'sane spikes' boolean mask.
+                    These will be the spikes used to compute the mean waveform and included in any futher analysis.
+                    Will prevail over "sane_before_opto" if both are defined.
+    - sane_spikes: optional bool array, custom definition of 'sane spikes'.
+                   By default, will be all spikes within 'sane_periods' and will prevail over them if both are defined.
     - sane_before_opto: bool, whether to consider all spikes before the 1st optostim
                         to constitute the sane_spikes boolean mask.
                         Will only work if optostims are provided (or alternatively optostims_from_sync is True.)
+    
+    - again_npyx: Whether to recompute data from scratch rather than load NeuroPyxels cached results for storage in the HDF5 file (defaults to False)
+    - again_npyx_wvf: Whether to recompute drift-shift matched waveform in particular (very computationally intensive, defaults to False)
+    - overwrite_h5: Whether to fully delete any pre-existing unit data and overwrite it (defaults to False).
+    - selective_overwrite: list of strings, which fields to specifically recompute even if again is False (much faster if only one field to overwrite).
+    
     - include_fp_fn_mask: bool, whether to compute the false positive and false negative rates for recording periods
                           and subsequently compute the 'fn_fp_filtered_spikes', which is True for spikes in periods
                           passing the 5% fp and 5% fn quality requirement and False for other spikes.
-                   
+    - include_raw_snippets: bool, whether to include 30sec raw data snippets
+                            alongside a 3d matrix of 1000 randomly sampled waveforms.
+      
+    - raw_window: A two item list containing the start and stop times (in SECONDS) of the snippet of raw data used for
+                  1) computing single channel noise RMS (-> SNR)
+                  2) extracting representative examples of raw data (raw, and whitened).
+                  If None, will use a period of 30 seconds within sane_periods with the most spikes.
+    - raw_snippet_halfrange: int, range of channels around peak channel to consider for the snippet
+                             of raw data (max 10, default 3 resulting in 7 channels total)
+    - mean_wvf_half_range: int, range of channels around peak channel to consider for the mean waveform. Default 11 (23 channels total).
+    
+    - opto_sync_chan_id: The index of the npix binary channel where the optostim triggers are written. Defaults to None.        
     - optostims: an optional 2D array (n_stims, 2) containing the optostimuli times in seconds
                  (1st column: onsets, 2nd column: offsets).
-                 By default None, will be read from sync channel (at sync_chan_id) if optostims_from_sync is True.
+                 By default None, will be read from sync channel (at opto_sync_chan_id) if optostims_from_sync is True.
     - optostims_from_sync: bool, whether to pick up optostims from sync channel if None are provided.
     - optostims_threshold: float, time before which optostims will be ignored (same units as optostims, seconds if optostims_from_sync=True).
                            (handles sync signals without light at beginning of recording)
                            
     - n_waveforms_for_matching: int, number of waveforms to subsample for drift-shift matching
-    - selective_overwrite: list of strings, which fields to specifically recompute even if again is False (much faster if only one field to overwrite).
+    - n_raw_waveforms: int, number of raw waveforms to store in the HDF5 file at "raw_waveforms"
+    - plot_debug: bool, whether to save the debugging plots showing the the false positive/negative rate estimations
 
-    Additional key-value parameteters:
+    Additional key-value parameters:
     - *any_key* = *any_value*
-    All additional key-value parameters passed to this function are stored in the HDF5 file.
-    Therefore, custom keys can be stored in the HDF5 file should additional
-    information be required for an individual neuron. E.g., calling
-        add_unit_h5('my_lab_data.h5', '/path_to_kilosort_results', 1, my_note="Cool info")
-    will result in a key of 'my_note' and a value of "Cool info" being stored in the HDF5 file
-    for this unit.
+        All additional key-value parameters passed to this function are stored in the HDF5 file.
+        Therefore, custom keys can be stored in the HDF5 file should additional
+        information be required for an individual neuron. E.g., calling
+            add_unit_h5('my_lab_data.h5', '/path_to_kilosort_results', 1, my_note="Cool info")
+        will result in a key of 'my_note' and a value of "Cool info" being stored in the HDF5 file
+        for this unit.
     """
     
     if selective_overwrite is not None:
@@ -172,10 +197,9 @@ def add_unit_h5(h5_path, dp, unit, lab_id, genetic_line=None, periods='all',
     else:
         selective_overwrite = []
     
-    dp=Path(dp)
-    meta = read_metadata(dp) 
+    dp   = Path(dp)
+    meta = read_metadata(dp)
     samp_rate = meta['highpass']['sampling_rate']
-    pbar = tqdm(total=11, desc=f"Adding unit {unit} to {h5_path}", position=0, leave=False, disable=(not verbose))
     # hard-coded parameters
     waveform_samples = 6  # ms
     waveform_samples = int(waveform_samples*samp_rate/1000)
@@ -185,19 +209,21 @@ def add_unit_h5(h5_path, dp, unit, lab_id, genetic_line=None, periods='all',
     assert_h5_file(h5_path)
     with h5py.File(h5_path, "a") as h5_file:
         
+        #--------------- h5 preformatting ---------------#
+
         # format dataset name
         if dataset is None:
             dataset = dp.name
         check_dataset_format(dataset)
         
         # Define or fetch unit h5 paths
-        relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
+        relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit_id, lab_id)
         if relative_unit_path in h5_file:
             if overwrite_h5:
                 del h5_file[relative_unit_path]
                 del h5_file[absolute_unit_path]
             else:
-                print(f"Neuron found in h5 file: {relative_unit_path} ({absolute_unit_path})")
+                print(f"Neuron found in h5 file: '{relative_unit_path}' ({absolute_unit_path})")
                 neuron_group = h5_file[absolute_unit_path]
         # redefine unit paths in case the unit got deleted
         #relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
@@ -206,273 +232,250 @@ def add_unit_h5(h5_path, dp, unit, lab_id, genetic_line=None, periods='all',
         if relative_unit_path not in h5_file:
             neuron_group = h5_file.create_group(absolute_unit_path)
             h5_file[relative_unit_path] = neuron_group
-            print(f"Adding data at {relative_unit_path} ({absolute_unit_path})...")
+            print(f"Adding neuron at '{relative_unit_path}' ({absolute_unit_path})...")
+        pbar = tqdm(total=7,
+                    desc=f"Adding unit at '{relative_unit_path}' ({absolute_unit_path})...",
+                    position=0, leave=True, disable=False)
 
-        # metadata
-        pbar.set_description(f"Adding metadata for unit {unit} to {h5_path}")
+        #--------------- metadata ---------------#
+
+        pbar.set_description(f"Adding metadata for unit '{relative_unit_path}'...")
         pbar.update(1)
-        write_to_group(neuron_group, 'lab_id', lab_id, overwrite_h5)
-        write_to_group(neuron_group, 'dataset_id', dataset, overwrite_h5)
-        write_to_group(neuron_group, 'line', genetic_line, overwrite_h5)
-        write_to_group(neuron_group, 'neuron_id', unit, overwrite_h5)
-        write_to_group(neuron_group, 'neuron_absolute_id', neuron_group.name, overwrite_h5)
-        write_to_group(neuron_group, 'sampling_rate', samp_rate, overwrite_h5)
-        write_to_group(neuron_group, 'periods', samp_rate, overwrite_h5)
+        write_to_group(neuron_group, 'lab_id',             lab_id,            overwrite_h5)
+        write_to_group(neuron_group, 'line',               genetic_line,      overwrite_h5)
+        write_to_group(neuron_group, 'dataset_id',         dataset,           overwrite_h5)
+        write_to_group(neuron_group, 'neuron_relative_id', unit_id,           overwrite_h5)
+        write_to_group(neuron_group, 'neuron_id',          neuron_group.name, overwrite_h5) # now neuron_id is the absolute id! careful!
+        write_to_group(neuron_group, 'sampling_rate',      samp_rate,         overwrite_h5)
+        
         
         # add any additional keys passed to this function
         for key, value in kwargs.items():
             write_to_group(neuron_group, key, value, overwrite_h5)
 
-        # spike_times
-        change_spike_train = overwrite_h5 or ("spike_times" in selective_overwrite)
-        periods = check_periods(periods)
-        pbar.set_description(f"Adding spike times for unit {unit} to {h5_path}")
+
+        #--------------- spike time-related ---------------#
+
+        pbar.set_description(f"Adding spike times for unit '{relative_unit_path}'...")
         pbar.update(1)
-        if 'spike_indices' not in neuron_group or change_spike_train:
-            t = trn(dp, unit, periods=periods, again=again)
-            write_to_group(neuron_group, 'spike_indices', t, change_spike_train)
-        else:
-            t = neuron_group['spike_indices']
+
+        # sane periods
+        if sane_periods is None:
+            sane_periods = 'all'
+        sane_periods = check_periods(sane_periods)
+        write_to_group(neuron_group, 'sane_periods', sane_periods, overwrite_h5)
+
+        # spike_times
+        key = 'spike_indices'
+        if assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
+            t = trn(dp, unit_id, again=again_npyx).astype(np.uint32)
+            write_to_group(neuron_group, key, t)
 
         # optostims
-        pbar.set_description(f"Adding optostims for unit {unit} to {h5_path}")
+        pbar.set_description(f"Adding optostims for unit '{relative_unit_path}'...")
         pbar.update(1)
-        change_optostims = overwrite_h5 or ("optostims" in selective_overwrite)
-        if 'optostims' not in neuron_group or change_optostims:
-            pbar.set_description("Reading optostims...")
+        keys = ['optostims', 'sane_spikes']
+        if assert_recompute_any(keys, neuron_group, overwrite_h5, selective_overwrite):
             if optostims is None and optostims_from_sync:
-                ons, offs = get_npix_sync(dp, verbose=False)
-                if sync_chan_id is None:
-                    sync_chan_id = get_stim_chan(ons)
-                ons, offs = ons[sync_chan_id], offs[sync_chan_id]
+                ons, offs = get_npix_sync(dp)
+                if opto_sync_chan_id is None:
+                    opto_sync_chan_id = get_stim_chan(ons)
+                ons, offs = ons[opto_sync_chan_id], offs[opto_sync_chan_id]
                 if ons[0] > offs[0]:
                     ons, offs = offs, ons 
                 if len(offs) == len(ons) - 1:
                     offs = np.append(offs, meta['recording_length_seconds'])
                 optostims = np.hstack([ons[:, None], offs[:, None]])
             if optostims is not None and optostims_threshold is not None:
-                opto_m = optostims[:,0] > optostims_threshold
+                opto_m    = optostims[:,0] > optostims_threshold
                 optostims = optostims[opto_m,:]
 
             if optostims is not None:
-                write_to_group(neuron_group, 'optostims', optostims, change_optostims)
-    
-        # usable spikes mask
-        pbar.set_description(f"Adding sane spikes for unit {unit} to {h5_path}")
-        pbar.update(1)
-        change_mask = overwrite_h5 or ("sane_spikes" in selective_overwrite)
-        if 'sane_spikes' not in neuron_group or change_mask:
-            if sane_spikes is None and\
-                sane_periods is not None:
-                sane_periods = check_periods(sane_periods)
-                sane_periods*=samp_rate
-                sane_spikes = (t*0).astype(bool)
-                for sane_period in sane_periods:
-                    sane_spikes = sane_spikes|(t>=sane_period[0])&(t<=sane_period[1])
-            elif sane_spikes is None and\
-                optostims is not None and\
-                sane_before_opto:
-                # Only consider spikes 10s before first opto onset
-                sane_spikes = (t < (optostims[0,0]-10)*samp_rate)
-            else:
-                sane_spikes = (t*0+1).astype(bool)
-            write_to_group(neuron_group, 'sane_spikes', sane_spikes, change_mask)
+                write_to_group(neuron_group, 'optostims', optostims)
 
+        # sane spikes
+        key = 'sane_spikes'
+        if assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
+            t = neuron_group['spike_indices'][...]
+            if sane_spikes is None:
+                if sane_before_opto:
+                    if 'optostims' in neuron_group:
+                        optostims   = neuron_group['optostims'][...]
+                    # Only consider spikes 10s before first opto onset
+                    end_spont_period = (optostims[0,0]-10)*samp_rate
+                    sane_spikes      = (t < end_spont_period)
+                elif sane_periods is not None and sane_periods != 'all':
+                    sane_spikes     = (t*0).astype(bool)
+                    for sane_period in sane_periods:
+                        sane_spikes = sane_spikes|(t>=sane_period[0]*samp_rate)&(t<=sane_period[1]*samp_rate)
+                else:
+                    # if sane_periods is None or 'all', keep them all
+                    sane_spikes = (t*0+1).astype(bool)
+            write_to_group(neuron_group, key, sane_spikes)
 
-        # waveforms
-        pbar.set_description(f"Adding waveforms for unit {unit} to {h5_path}")
+        #--------------- quality metrics 1/2 ---------------#
+        # required to define the snippet raw_window and the single waveforms to pick
+
+        pbar.set_description(f"Computing false positive/negative rate estimates for unit '{relative_unit_path}'...")
         pbar.update(1)
-        include_sample = ["voltage_sample"] if include_raw_snippets else []
-        k = ['mean_waveform_preprocessed', 'amplitudes', 'peakchan_SNR'] + include_sample
-        change_waveforms = overwrite_h5 or any([key in selective_overwrite for key in k])
-        if not all_keys_in_group(k, neuron_group) or change_waveforms:
-            pbar.set_description("Reading waveforms...")
+        # false positive and negative estimation
+        key = 'fn_fp_filtered_spikes'
+        if assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite) and include_fp_fn_mask:
+            # get good spikes mask for all spikes
+            # because trn_filtered can only work on a contiguous chunk
+            periods_m_range = [0, meta['recording_length_seconds']/60]
+            fp_fn_good_spikes = trn_filtered(dp, unit_id, plot_debug=plot_debug,
+                                             again=again_npyx, period_m=periods_m_range)[1]
+            write_to_group(neuron_group, key, fp_fn_good_spikes)
+
+        #--------------- waveform-related ---------------#
+
+        pbar.set_description(f"Extracting waveform-related data for unit '{relative_unit_path}'...")
+        pbar.update(1)
+
+        # make sure that peak channel is reloaded if raw voltage data must be included
+        raw_voltage_keys = ["raw_voltage_snippet", 'raw_waveforms'] if include_raw_snippets else []
+        # extract waveforms (and also load peak channel found by dsmatching)
+        keys = ['mean_waveform_preprocessed', 'channel_ids', 'channelmap',
+                'amplitudes', 'peakchan_SNR'] + raw_voltage_keys
+        if assert_recompute_any(keys, neuron_group, overwrite_h5, selective_overwrite):
             # must recompute chan_bottom and chan_top - suboptimal, can be rewritten
-            dsm_tuple = wvf_dsmatch(dp, unit, t_waveforms=waveform_samples, periods=periods,
-                                    again=again_wvf, plot_debug=plot_debug, verbose=verbose,
+            dsm_tuple = wvf_dsmatch(dp, unit_id, t_waveforms=waveform_samples, periods=sane_periods,
+                                    again=again_npyx_wvf, plot_debug=plot_debug,
                                     n_waves_used_for_matching=n_waveforms_for_matching, 
                                     med_sub = True, nRangeMedSub=None)
             dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
-            write_to_group(neuron_group, 'primary_channel', peak_chan)
-            chan_range = np.arange(peak_chan-mean_wvf_half_range, peak_chan+mean_wvf_half_range)
-            chan_range_m = (chan_range>=0)&(chan_range<=383)
-            chan_bottom, chan_top = chan_range[chan_range_m][0], chan_range[chan_range_m][-1]
-            peak_chan_rel = np.nonzero(peak_chan == chan_range[chan_range_m])[0]
-            dsm_waveform_chunk = dsm_waveform[:, chan_bottom:chan_top]
-            write_to_group(neuron_group, 'mean_waveform_preprocessed',
-                           dsm_waveform_chunk.T, change_waveforms)
-            write_to_group(neuron_group, 'consensus_waveform',
-                           dsm_waveform_chunk.T*np.nan, change_waveforms)
-            cm = chan_map(dp)
-            write_to_group(neuron_group, 'channel_ids',
-                           np.arange(chan_bottom, chan_top, dtype=np.dtype('uint16')),
-                           change_waveforms)
-            write_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, 1:2], change_waveforms)
+            chan_range              = np.arange(peak_chan-mean_wvf_half_range, peak_chan+mean_wvf_half_range)
+            chan_range_m            = (chan_range>=0)&(chan_range<=383)
+            chan_bottom, chan_top   = chan_range[chan_range_m][0], chan_range[chan_range_m][-1]
+            peak_chan_rel           = np.nonzero(peak_chan == chan_range[chan_range_m])[0]
+            dsm_waveform_chunk      = dsm_waveform[:, chan_bottom:chan_top]
+            cm                      = chan_map(dp)
 
-        # Extract voltage snippets
-        pbar.set_description(f"Extracting voltage snippets for unit {unit} to {h5_path}")
-        pbar.update(1)
-        k = ['amplitudes', 'channel_noise_std', 'peakchan_SNR'] + include_sample
-        change_snippet = overwrite_h5 or any([key in selective_overwrite for key in k])
-        if not all_keys_in_group(k, neuron_group)\
-            or change_snippet:
-            pbar.set_description("Reading voltage sample...")
-            if center_raw_window_on_spikes:
-                t = h5_file[relative_unit_path+'/spike_indices'][...]/samp_rate
-                if raw_window[1]>t[0]: # spike starting after end of original window
-                    raw_window = np.array(raw_window)+t[0]
-                    raw_window[1]=min(raw_window[1], t[-1])
+            write_to_group(neuron_group, 'mean_waveform_preprocessed', dsm_waveform_chunk.T)
+            write_to_group(neuron_group, 'channel_ids', np.arange(chan_bottom, chan_top, dtype=np.dtype('uint16')))
+            write_to_group(neuron_group, 'channelmap', cm[chan_bottom:chan_top, 1:3])
+
+        # scaling factor
+        write_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor'], overwrite_h5)
+
+        # Extraction of voltage snippet
+        keys = ['channel_noise_std', 'peakchan_SNR', 'raw_voltage_snippet']
+        if assert_recompute_any(keys, neuron_group, overwrite_h5, selective_overwrite):
+
+            # find optimal window for raw snippet
+            if raw_window is None:
+                good_t = neuron_group['spike_indices'][...][neuron_group['fn_fp_filtered_spikes'][...]]
+                # handle cases where there is no good fp/fn section
+                if not np.any(good_t):
+                    good_t = neuron_group['spike_indices'][...]
+                raw_window = find_stable_recording_period(good_t,
+                                                          samp_rate, meta['recording_length_seconds']*samp_rate,
+                                                          target_period = 30, b=1000, sd=10000, minimum_fr = 0.4)
+                raw_window = np.array(raw_window) / samp_rate # converge to seconds
             chunk = extract_rawChunk(dp, raw_window, channels=np.arange(chan_bottom, chan_top), 
                                         scale=False, med_sub=False, whiten=False, center_chans_on_0=False,
-                                        hpfilt=False, verbose=False)
-
-        # quality metrics
-        pbar.set_description(f"Adding quality metrics for unit {unit} to {h5_path}")
-        pbar.update(1)
-        k = ['amplitudes', 'channel_noise_std', 'peakchan_SNR']
-        change_metrics = overwrite_h5 or any([key in selective_overwrite for key in k])
-        if not all_keys_in_group(k, neuron_group) or change_metrics:
-            pbar.set_description("Reading quality metrics...")
-            amps = np.load(dp/'amplitudes.npy').squeeze()[ids(dp, unit, periods=periods)]
+                                        hpfilt=False)
+            # recast to int16
+            chunk = chunk / meta['bit_uV_conv_factor']
+            chunk = chunk.astype(np.int16)
             
-            mad = np.median(np.abs(chunk) - np.median(chunk, axis=1)[:, None], axis=1) 
-            std_estimate = (mad / 0.6745) # Convert to std
-            peakchan_S = np.ptp(dsm_waveform[:,peak_chan])
-            peakchan_N = std_estimate[peak_chan_rel]
-            peakchan_SNR = peakchan_S / peakchan_N
-            
-            write_to_group(neuron_group, 'amplitudes', amps, change_metrics)
-            write_to_group(neuron_group, 'channel_noise_std', std_estimate, change_metrics)
-            write_to_group(neuron_group, 'peakchan_SNR', peakchan_SNR, change_metrics)
-
-        pbar.set_description(f"Adding false positive and negative spikes for unit {unit} to {h5_path}")
-        pbar.update(1)
-        change_fn_fp = overwrite_h5 or ('fn_fp_filtered_spikes' in selective_overwrite)
-        if ('fn_fp_filtered_spikes' not in neuron_group or overwrite_h5) and include_fp_fn_mask or change_fn_fp:
-            pbar.set_description("Reading false positive and false negative spikes...")
-            # get good spikes mask for all spikes
-            # because trn_filtered can only work on a contiguous chunk
-            if isinstance(periods, str): # can only be 'all', given check_periods
-                periods_m_range = [0, meta['recording_length_seconds']/60]
-            else:
-                periods_m_range = [periods.min()/60, periods.max()/60]
-            fp_fn_good_spikes = trn_filtered(dp, unit, plot_debug=plot_debug,
-                                             again=again, period_m=periods_m_range)[1]
-
-
-            # if periods is not all, trim down the mask to spikes in periods
-            if not isinstance(periods, str): # if str, can only be 'all', given check_periods
-                t = trn(dp, unit, periods=periods) # if again, as recomputed just above anyway, so don't pass the argument
-                t_all = trn(dp, unit) # grab all spikes
-                periods_mask = np.isin(t_all, t)
-                fp_fn_good_spikes = fp_fn_good_spikes[periods_mask]
-
-            write_to_group(neuron_group, 'fn_fp_filtered_spikes', fp_fn_good_spikes, change_fn_fp)
-            
-        # voltage snippets
-        pbar.set_description(f"Adding voltage snippets for unit {unit} to {h5_path}")
-        pbar.update(1)
-        change_voltage_snippets = overwrite_h5 or ('voltage_sample' in selective_overwrite)
-        if ('voltage_sample' not in neuron_group or change_voltage_snippets)\
-            and include_raw_snippets:
-            pbar.set_description("Processing voltage snippets...")
-            # Only store the voltage sample for the primary channel
-            peak_chan = neuron_group['primary_channel']
+        # inclusion of voltage snippet
+        keys = ['raw_voltage_snippet', 'voltage_snippet_start_index']
+        if assert_recompute_any(keys, neuron_group, overwrite_h5, selective_overwrite) and include_raw_snippets:
             raw_snippet_halfrange = np.clip(raw_snippet_halfrange, 0, 10)
-            c1 = max(0,int(chunk.shape[0]/2-raw_snippet_halfrange))
-            c2 = min(chunk.shape[0]-1, int(chunk.shape[0]/2+raw_snippet_halfrange+1))
+            c1          = max(0,int(chunk.shape[0]/2-raw_snippet_halfrange))
+            c2          = min(chunk.shape[0]-1, int(chunk.shape[0]/2+raw_snippet_halfrange+1))
             raw_snippet = chunk[c1:c2,:]
-            write_to_group(neuron_group, 'voltage_sample', raw_snippet, change_voltage_snippets) # still centered on peak channel, but half the size
-            write_to_group(neuron_group, 'voltage_sample_start_index', int(raw_window[0] * samp_rate), change_voltage_snippets)
-            write_to_group(neuron_group, 'scaling_factor', meta['bit_uV_conv_factor'], change_voltage_snippets)
-        
-        pbar.set_description(f"Adding whitened voltage snippets for unit {unit} to {h5_path}")
-        pbar.update(1)    
-        if ('whitened_voltage_sample' not in neuron_group or change_voltage_snippets)\
-            and include_whitened_snippets:
-            pbar.set_description("Reading whitened voltage snippets...")
-            if center_raw_window_on_spikes:
-                t = h5_file[relative_unit_path+'/spike_indices'][...]/samp_rate
-                if raw_window[1]>t[0]: # spike starting after end of original window
-                    raw_window = np.array(raw_window)+t[0]
-                    raw_window[1]=min(raw_window[1], t[-1])
-            # check that file filtered properly
-            bin_f = get_binary_file_path(dp)
-            if 'medsub' not in bin_f.name:
-                warnings.warn((f"WARNING file {bin_f.name} is expected to have been median subtracted,"
-                                " but its file name does not contain medsub..."))
-            if 'tempfiltNone300TrueFalse' not in bin_f.name:
-                warnings.warn((f"WARNING file {bin_f.name} is expected to have been highpass filtered forward only at 300Hz,"
-                                " but its file name does not contain tempfiltNone300TrueFalse..."))
-            # reprocess it
-            white_chunk = extract_rawChunk(dp, raw_window, channels=np.arange(chan_bottom, chan_top), 
-                                    scale=True, med_sub=False, hpfilt=True, filter_forward=False, filter_backward=True,
-                                    whiten=True, use_ks_w_matrix=True,
-                                    verbose=False)
-            raw_snippet_halfrange = np.clip(raw_snippet_halfrange, 0, 10)
-            c1 = max(0,int(white_chunk.shape[0]/2-raw_snippet_halfrange))
-            c2 = min(white_chunk.shape[0]-1, int(white_chunk.shape[0]/2+raw_snippet_halfrange+1))
-            raw_snippet = white_chunk[c1:c2,:].astype(np.float32)
-            write_to_group(neuron_group, 'whitened_voltage_sample', raw_snippet, change_voltage_snippets)
-            
-        pbar.set_description(f"Adding false positive and negative waveform samples for unit {unit} to {h5_path}")
-        pbar.update(1)
-        change_fn_fp_samples = overwrite_h5 or ('fn_fp_filtered_wvf_samples' in selective_overwrite)
-        if ('fn_fp_filtered_wvf_samples' not in neuron_group or overwrite_h5) and include_fn_fp_wvf_samples or change_fn_fp_samples:
-            
-            fp_fn_good_spikes = neuron_group['fn_fp_filtered_spikes'][...]
-            sane_spikes = neuron_group['sane_spikes'][...]
-            used_spikes_mask = fp_fn_good_spikes & sane_spikes
-            spike_ids = ids(dp, unit)
+            write_to_group(neuron_group, 'raw_voltage_snippet', raw_snippet) # still centered on peak channel, but half the size
+            write_to_group(neuron_group, 'voltage_snippet_start_index', int(raw_window[0] * samp_rate))
+
+        # extraction of raw waveforms 3d matrix
+        key = 'raw_waveforms'
+        if assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite) and include_raw_snippets:
+            fp_fn_good_spikes  = neuron_group['fn_fp_filtered_spikes'][...]
+            sane_spikes        = neuron_group['sane_spikes'][...]
+            used_spikes_mask   = fp_fn_good_spikes & sane_spikes
+            spike_ids          = ids(dp, unit_id, enforced_rp = 0)
             
             if len(spike_ids) != len(used_spikes_mask):
-                fs = neuron_group['sampling_rate'][...].item()
-                train = trn(dp, unit, enforced_rp = -1)
-                duplicates_m = duplicates_mask(train, 0, fs)
-                spike_ids = spike_ids[~duplicates_m]
+                train          = trn(dp, unit_id, enforced_rp = 0)
+                duplicates_m   = duplicates_mask(train, 0, samp_rate)
+                spike_ids      = spike_ids[~duplicates_m]
                 
             used_ids = spike_ids[used_spikes_mask]
-            peak_chan = neuron_group['primary_channel'][...].item()
             
-            chan_range = np.arange(peak_chan-mean_wvf_half_range, peak_chan+mean_wvf_half_range)
-            chan_range_m = (chan_range>=0)&(chan_range<=383)
-            chan_bottom, chan_top = chan_range[chan_range_m][0], chan_range[chan_range_m][-1]
-            
-            pbar.set_description("Reading false positive and false negative waveform samples...")
-            if len(used_ids) > 0 and len(used_ids) < 10000:
-                fp_fn_samples = get_waveforms(dp, unit, t_waveforms=180, spike_ids=used_ids)
-                fp_fn_samples = fp_fn_samples[:, :, chan_bottom:chan_top].transpose(0,2,1)
-            elif len(used_ids) > 10000:
-                fp_fn_samples = get_waveforms(dp, unit, t_waveforms=180, spike_ids=used_ids[:10000])
-                fp_fn_samples = fp_fn_samples[:,:, chan_bottom:chan_top].transpose(0,2,1)
-                if verbose:
-                    warnings.warn(f"WARNING: Only using first 10,000 spikes for unit {unit} in {dp} to get false positive and false negative waveform samples")
+            if len(used_ids) == 0:
+                raw_waveforms = np.nan
             else:
-                fp_fn_samples = np.nan
+                assert n_raw_waveforms > 0, "n_raw_waveforms must be > 0"
+                chan_range    = np.arange(peak_chan-mean_wvf_half_range, peak_chan+mean_wvf_half_range)
+                chan_range_m  = (chan_range>=0)&(chan_range<=383)
+                chan_bottom, chan_top = chan_range[chan_range_m][0], chan_range[chan_range_m][-1]
+                if len(used_ids) > n_raw_waveforms:
+                    used_ids  = used_ids[:int(n_raw_waveforms)]
+                raw_waveforms = get_waveforms(dp, unit_id, t_waveforms=180, spike_ids=used_ids)
+                raw_waveforms = raw_waveforms[:, :, chan_bottom:chan_top].transpose(0,2,1)
 
-            write_to_group(neuron_group, 'fn_fp_filtered_wvf_samples', fp_fn_samples, change_fn_fp_samples)
+                # recast to int16
+                raw_waveforms = raw_waveforms / meta['bit_uV_conv_factor']
+                raw_waveforms = raw_waveforms.astype(np.int16)
 
-        pbar.set_description(f"Adding labels for {unit} to {h5_path}")
+            write_to_group(neuron_group, key, raw_waveforms)
+        
+
+        #--------------- quality metrics 2/2 ---------------#
+
+        pbar.set_description(f"Computing SNR for unit '{relative_unit_path}'...")
+        pbar.update(1)
+
+        # SNR
+        keys = ['channel_noise_std', 'peakchan_SNR']
+        if assert_recompute_any(keys, neuron_group, overwrite_h5, selective_overwrite):
+            
+            mad          = np.median(np.abs(chunk) - np.median(chunk, axis=1)[:, None], axis=1) 
+            std_estimate = (mad / 0.6745) # Convert to std
+            peakchan_S   = np.ptp(dsm_waveform[:,peak_chan])
+            peakchan_N   = std_estimate[peak_chan_rel]
+            peakchan_SNR = (peakchan_S / peakchan_N)[0]
+            
+            write_to_group(neuron_group, 'channel_noise_std', std_estimate)
+            write_to_group(neuron_group, 'peakchan_SNR', peakchan_SNR)
+        
+        # across channels SNR
+        key = 'acrosschan_SNR'
+        if assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
+            acrosschan_SNR = across_channels_SNR(dp, unit_id)
+            write_to_group(neuron_group, key, acrosschan_SNR)
+
+        # amplitudes
+        key = 'amplitudes'
+        if assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
+            amps = np.load(dp/'amplitudes.npy').squeeze()[ids(dp, unit_id, enforced_rp=0)]
+            write_to_group(neuron_group, key, amps)
+
+
+        #--------------- unit labels ---------------#
+
+        pbar.set_description(f"Adding labels for unit '{relative_unit_path}'...")
+        pbar.update(1)
         # layer
-        write_to_group(neuron_group, 'phyllum_layer', 0, overwrite_h5)
-        write_to_group(neuron_group, 'human_layer', 0, overwrite_h5)
+        write_to_group(neuron_group, 'phyllum_layer',       "", overwrite_h5)
+        write_to_group(neuron_group, 'human_layer',         "", overwrite_h5)
 
         # ground truth labels
-        write_to_group(neuron_group, 'expert_label', 0, overwrite_h5)
-        write_to_group(neuron_group, 'optotagged_label', 0, overwrite_h5)
+        write_to_group(neuron_group, 'expert_label',        "", overwrite_h5)
+        write_to_group(neuron_group, 'ground_truth_label',  "", overwrite_h5)
+        write_to_group(neuron_group, 'ground_truth_source', "", overwrite_h5)
+        write_to_group(neuron_group, 'mli_cluster',         "", overwrite_h5)
 
-        # predicted labels
-        write_to_group(neuron_group, 'lisberger_label', 0, overwrite_h5)
-        write_to_group(neuron_group, 'hausser_label', 0, overwrite_h5)
-        write_to_group(neuron_group, 'medina_label', 0, overwrite_h5)
-
-        pbar.update(1)
-        pbar.set_description(f"Done adding {unit} to {h5_path}")
+        pbar.set_description(f"Done with '{relative_unit_path}'.")
         pbar.refresh()
         time.sleep(0.01)
         pbar.close()
 
     return relative_unit_path
+
 
 @docstring_decorator(add_unit_h5.__doc__)
 def add_units_to_h5(h5_path, dp, units=None, **kwargs):
@@ -498,6 +501,11 @@ def add_units_to_h5(h5_path, dp, units=None, **kwargs):
     for u in units:
         add_unit_h5(h5_path, dp, u, **kwargs)
 
+def assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
+    return (key not in neuron_group) or overwrite_h5 or (key in selective_overwrite)
+
+def assert_recompute_any(keys, neuron_group, overwrite_h5, selective_overwrite):
+    return np.any([assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite) for key in keys])
 
 def relative_unit_path_h5(dataset, unit):
     return f"datasets/{dataset}/{unit}"
@@ -514,7 +522,7 @@ def load_json_datasets(json_path, include_missing_datasets=False):
         for key in ['dp', 'ct', 'line', 'units', 'ss', 'cs']:
             assert key in ds, f"{key} not in json file for dataset #{ds}!"
         
-        dp=Path(ds['dp'])
+        dp = Path(ds['dp'])
         
         if not dp.exists():
             print(f"Dataset {dp} not found on system!\n")
@@ -523,11 +531,11 @@ def load_json_datasets(json_path, include_missing_datasets=False):
         DSs[dp.name+'&'+ds['ct']] = ds
         
         units = list(ds['units'])
-        ss = list(ds['ss'])
-        cs = list(ds['cs'])
+        ss    = list(ds['ss'])
+        cs    = list(ds['cs'])
         print(f"Dataset {dp} found with opto responsive units {units}, simple spikes {ss}, complex spikes {cs}.\n")
         all_units = units+ss+cs
-        units_m=np.isin(all_units, get_units(dp))
+        units_m   = np.isin(all_units, get_units(dp))
         assert all(units_m), f"Units {np.array(all_units)[~units_m]} not found in {dp}!"
 
     return DSs
@@ -535,13 +543,13 @@ def load_json_datasets(json_path, include_missing_datasets=False):
 
 def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
                             delete_original_data=False, data_deletion_double_check=False,
-                            again=False, include_raw_snippets=False, verbose=False,
+                            again=False, include_raw_snippets=False,
                             include_all_good = False, **kwargs):
 
     DSs = load_json_datasets(json_path, include_missing_datasets=False)
 
     for ds_name_ct, ds in DSs.items():
-        dp=Path(ds['dp'])
+        dp = Path(ds['dp'])
 
         if preprocess_if_raw:
             if not detect_hardware_filter(dp):
@@ -553,11 +561,11 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
 
         ds_name, optolabel = ds_name_ct.split('&')
         assert optolabel == ds['ct']
-        if optolabel=="PkC": optolabel="PkC_ss"
+        if optolabel=="PkC": optolabel = "PkC_ss"
         genetic_line = ds['line']
-        units=ds['units']
-        ss=ds['ss']
-        cs=ds['cs']
+        units        = ds['units']
+        ss           = ds['ss']
+        cs         = ds['cs']
         good_units = list(get_units(dp, 'good', again=again))
         sane_times = ds["sane_times"] if "sane_times" in ds else None
 
@@ -568,15 +576,15 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
 
         for u in units_for_h5:
             add_unit_h5(h5_path, dp, u, lab_id, genetic_line, periods='all',
-                    again=again, again_wvf=again, verbose=verbose,
+                    again=again, again_npyx_wvf=again,
                     include_raw_snippets=include_raw_snippets, include_whitened_snippets=include_raw_snippets,
                     sane_periods=sane_times, **kwargs)
             if u in units:
                 label = optolabel
             elif u in ss:
-                label="PkC_ss"
+                label = "PkC_ss"
             elif u in cs:
-                label="PkC_cs"
+                label = "PkC_cs"
             else:
                 continue
             label_optotagged_unit_h5(h5_path, ds_name, u, label)

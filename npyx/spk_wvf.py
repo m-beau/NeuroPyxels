@@ -113,18 +113,18 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     f"{wvf.__doc__}"
 
     # Extract and process metadata
-    dp = Path(dp)
-    meta = read_metadata(dp)
-    dat_path = get_binary_file_path(dp, 'ap')
+    dp             = Path(dp)
+    meta           = read_metadata(dp)
+    dat_path       = get_binary_file_path(dp, 'ap')
 
-    dp_source = get_source_dp_u(dp, u)[0]
-    meta=read_metadata(dp_source)
-    dtype=np.dtype(meta['highpass']['datatype'])
-    n_channels_dat=meta['highpass']['n_channels_binaryfile']
+    dp_source      = get_source_dp_u(dp, u)[0]
+    meta           = read_metadata(dp_source)
+    dtype          = np.dtype(meta['highpass']['datatype'])
+    n_channels_dat = meta['highpass']['n_channels_binaryfile']
     n_channels_rec = n_channels_dat-1 if meta['acquisition_software']=='SpikeGLX' else n_channels_dat
-    sample_rate=meta['highpass']['sampling_rate']
-    item_size = dtype.itemsize
-    fileSizeBytes=meta['highpass']['binary_byte_size']
+    sample_rate    = meta['highpass']['sampling_rate']
+    item_size      = dtype.itemsize
+    fileSizeBytes  = meta['highpass']['binary_byte_size']
     assert not isinstance(fileSizeBytes, str), f"It seems like there isn't any binary file at {dp}."
     if meta['acquisition_software']=='SpikeGLX':
         if meta['highpass']['fileSizeBytes'] != fileSizeBytes:
@@ -137,16 +137,16 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     # Select subset of spikes
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
     if spike_ids is None:
-        spike_ids_subset=get_ids_subset(dp, u, n_waveforms, wvf_batch_size, selection, periods, ignore_nwvf, verbose)
+        spike_ids_subset = get_ids_subset(dp, u, n_waveforms, wvf_batch_size, selection, periods, ignore_nwvf, verbose)
     else:
         assert isinstance(spike_ids, Iterable), "WARNING spike_ids must be a list/array of ids!"
-        spike_ids_subset=np.array(spike_ids)
+        spike_ids_subset = np.array(spike_ids)
     n_spikes = len(spike_ids_subset)
 
     # Get waveforms times in bytes
     # and check that, for this waveform width,
     # they no not go beyond file limits
-    waveforms_t = spike_samples[spike_ids_subset].astype(np.int64)
+    waveforms_t  = spike_samples[spike_ids_subset].astype(np.int64)
     waveforms_t1 = (waveforms_t-t_waveforms//2)*n_channels_dat*item_size
     waveforms_t2 = (waveforms_t+t_waveforms//2)*n_channels_dat*item_size
     wcheck_m=(0<=waveforms_t1)&(waveforms_t2<fileSizeBytes)
@@ -163,34 +163,35 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
             if n_spikes>10:
                 if i%(n_spikes//10)==0 and verbose: print(f'{round((i/n_spikes)*100)}%...', end=' ')
             f.seek(t1, 0) # 0 for absolute file positioning
-            wave=f.read(n_channels_dat*t_waveforms*item_size)
-            wave=np.frombuffer(wave, dtype=dtype).reshape((t_waveforms,n_channels_dat))
-            wave = wave-np.median(wave, axis = 0)[np.newaxis,:] # center the waveforms on 0
+            wave = f.read(n_channels_dat*t_waveforms*item_size)
+            wave = np.frombuffer(wave, dtype=dtype).reshape((t_waveforms,n_channels_dat))
             # get rid of sync channel
             waveforms[i,:,:] = wave[:,:-1] if meta['acquisition_software']=='SpikeGLX' else wave
+    medians = np.median(waveforms, axis = 1)
+    waveforms = waveforms - medians[:,np.newaxis,:]
     if verbose: print('\n')
 
     # Preprocess waveforms
     if hpfilt|med_sub|whiten:
-        waveforms=waveforms.reshape((n_spikes*t_waveforms, n_channels_rec))
+        waveforms     = waveforms.reshape((n_spikes*t_waveforms, n_channels_rec))
         if hpfilt:
-            waveforms=apply_filter(waveforms, bandpass_filter(rate=sample_rate, low=None, high=hpfiltf, order=3), axis=0)
+            waveforms = apply_filter(waveforms, bandpass_filter(rate=sample_rate, low=None, high=hpfiltf, order=3), axis=0)
         if med_sub:
-            waveforms=med_substract(waveforms, axis=1, nRange=nRangeMedSub)
+            waveforms = med_substract(waveforms, axis=1, nRange=nRangeMedSub)
         if whiten:
-            waveforms=whitening(waveforms.T, nRange=nRangeWhiten).T # whitens across channels so gotta transpose
-        waveforms=waveforms.reshape((n_spikes,t_waveforms, n_channels_rec))
+            waveforms = whitening(waveforms.T, nRange=nRangeWhiten).T # whitens across channels so gotta transpose
+        waveforms     = waveforms.reshape((n_spikes,t_waveforms, n_channels_rec))
 
     # Filter channels ignored by kilosort if necesssary
     if not ignore_ks_chanfilt:
         channel_ids_ks = np.load(Path(dp, 'channel_map.npy'), mmap_mode='r').squeeze()
-        channel_ids_ks=channel_ids_ks[channel_ids_ks!=384]
-        waveforms=waveforms[:,:,channel_ids_ks] # only AFTER processing, filter out channels
+        channel_ids_ks = channel_ids_ks[channel_ids_ks!=384]
+        waveforms      = waveforms[:,:,channel_ids_ks] # only AFTER processing, filter out channels
 
     # Correct voltage scaling
-    waveforms*=meta['bit_uV_conv_factor']
+    waveforms *= meta['bit_uV_conv_factor']
 
-    return  waveforms.astype(np.float32)
+    return waveforms.astype(np.float32)
 
 def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
                 wvf_batch_size=10, ignore_nwvf=True, med_sub = False, spike_ids = None,
@@ -555,6 +556,75 @@ def shift_match(waves, alignment_channel,
         fig.get_axes()[0].set_ylim(ylim)
 
     return aligned_waves
+
+def across_channels_SNR(dp, u, n_waveforms=500, t_waveforms=90,
+                        periods='all', spike_ids=None,
+                        c = 1, chan_range = 5, return_distributions = False):
+    
+    dp = Path(dp)
+    
+    # load spike ids
+    if spike_ids is None:
+        spike_ids = get_ids_subset(dp, u, n_waveforms, 10, 'regular', periods, True)
+    n_spikes = len(spike_ids)
+    
+    # get waveforms
+    waves = get_waveforms(dp, u, n_waveforms, t_waveforms, 'regular',
+                          periods, spike_ids, ignore_ks_chanfilt=True)
+    
+    # get random selection of voltage snippets in the vicinity of the waveforms
+    meta           = read_metadata(dp)
+    dat_path       = get_binary_file_path(dp, 'ap')
+    n_channels_dat = meta['highpass']['n_channels_binaryfile']
+    n_channels_rec = n_channels_dat-1 if meta['acquisition_software']=='SpikeGLX' else n_channels_dat
+    dtype          = np.dtype(meta['highpass']['datatype'])
+    item_size      = dtype.itemsize
+    fileSizeBytes  = meta['highpass']['binary_byte_size']
+
+    spike_samples  = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
+    spike_times    = spike_samples[spike_ids].astype(np.int64)
+    random_times   = spike_times + np.random.randint(-30000, 30000, size=len(spike_times))
+
+    T1       = (random_times-t_waveforms//2)*n_channels_dat*item_size
+    T2       = (random_times+t_waveforms//2)*n_channels_dat*item_size
+    wcheck_m = (0<=T1)&(T2<fileSizeBytes)
+    if not np.all(wcheck_m):
+        T1   = T1[wcheck_m]
+        T2   = T2[wcheck_m]
+
+    noise = np.zeros((n_spikes, t_waveforms, n_channels_rec), dtype=np.float32)
+    with open(dat_path, "rb") as f:
+        for i,t1 in enumerate(T1):
+            f.seek(t1, 0) # 0 for absolute file positioning
+            snip = f.read(n_channels_dat*t_waveforms*item_size)
+            snip = np.frombuffer(snip, dtype=dtype).reshape((t_waveforms, n_channels_dat))
+            noise[i,:,:]     = snip[:,:-1] if meta['acquisition_software']=='SpikeGLX' else snip
+    # center on 0 like original waveform
+    medians = np.median(noise, axis = 1)
+    noise = noise - medians[:,np.newaxis,:]
+    # convert to microvolts
+    noise *= meta['bit_uV_conv_factor']
+
+    # compute SNR
+    s_mean     = waves.mean(0)
+    peak_chan  = np.argmax(np.ptp(s_mean, axis=0))
+    chan_range = np.arange(peak_chan-chan_range, peak_chan+chan_range+1)
+    used_channels = np.unique(np.clip(chan_range, 0, s_mean.shape[1]-1))
+
+    s = np.zeros(waves.shape[0])
+    for i, v in enumerate(waves):
+        s[i] = np.sum(s_mean[:,used_channels] * v[:,used_channels])
+
+    n = np.zeros(waves.shape[0])
+    for i, v in enumerate(noise):
+        n[i] = np.sum(s_mean[:,used_channels] * v[:,used_channels])
+
+    snr = (s.mean() - n.mean())/(c * n.std())
+
+    if return_distributions:
+        return snr, s, n, waves, noise
+
+    return snr
 
 def get_pc(waveforms):
     wvf_m = np.mean(waveforms, axis=0)

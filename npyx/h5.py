@@ -26,7 +26,8 @@ from npyx.spk_wvf import get_waveforms, wvf_dsmatch, across_channels_SNR
 from npyx.utils import assert_float, assert_int, docstring_decorator
 
 
-# High level C4 functions
+## Ground truth labelling functions
+
 def label_optotagged_unit_h5(h5_path, dataset, unit, label, prnt=False):
     """
     Add optotagged label to neuron.
@@ -50,35 +51,7 @@ def reset_optotagged_labels(h5_path):
             write_to_dataset(h5_f, data_path, 0, overwrite=True)
 
 
-def get_unit_paths_h5(h5_file, dataset, unit,
-                      lab_id = 'hausser', unit_absolute_id = None):
-    relative_unit_path = relative_unit_path_h5(dataset, unit)
-    if relative_unit_path in h5_file:
-            absolute_unit_path = h5_file[f'{relative_unit_path}/neuron_id'][()].decode()
-    else:
-        if unit_absolute_id is None:
-            if f"{lab_id}_neuron_0" not in h5_file:
-                unit_absolute_id = 0
-            else:
-                root_groups = list(h5_file.keys())
-                neuron_ids = [int(x.split('_')[-1]) for x in root_groups if f"{lab_id}_neuron" in x]
-                unit_absolute_id = np.sort(neuron_ids)[-1] + 1
-        absolute_unit_path = f'{lab_id}_neuron_{unit_absolute_id}'
-            
-    return relative_unit_path, absolute_unit_path
-
-
-def remove_unit_h5(h5_path, dp, unit, lab_id='hausser', dataset=None):
-    if dataset is None:
-        dataset = Path(dp).name
-    with h5py.File(h5_path, "a") as h5_file:
-        relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
-        del h5_file[relative_unit_path]
-        del h5_file[absolute_unit_path]
-        dataset_path = str(Path(relative_unit_path).parent)
-        if len(h5_file[dataset_path].keys()) == 0:
-            del h5_file[dataset_path]
-
+### Major C4 database generation function
 
 def add_unit_h5(h5_path, dp, unit_id, lab_id,
                 genetic_line              = "",
@@ -476,39 +449,124 @@ def add_unit_h5(h5_path, dp, unit_id, lab_id,
 
     return relative_unit_path
 
+### json wrapper functions
 
-@docstring_decorator(add_unit_h5.__doc__)
-def add_units_to_h5(h5_path, dp, units=None, **kwargs):
+def add_json_datasets_to_h5(json_path, h5_path, lab_id,
+                            preprocess_if_raw=False,
+                            delete_original_data=False,
+                            data_deletion_double_check=False,
+                            include_all_good = True,
+                            selective_overwrite = None,
+                            overwrite_h5=False,
+                            **kwargs):
     """
-    Add all or specified units at the respective data path to an HDF5 file.
+    Wrapper function to loop over all datasets in a json file
+    and add them to an HDF5 file according to the C4 data format specification.
 
-    This is a high-level function designed to add many units at the
-    specified datapath to an HDF5 file. All additional key-value 
-    arguments are passed to `add_unit_h5`
-
-    Example:
-      add_units_to_h5('my_lab_data.h5', '/path/to/dataset_id', lab_id='pi_last_name')
-    Will add all sorted units in the 'kilosort_results' directory 
-    to the HDF5 file called 'my_lab_data.h5' (in the current directory).
-
-    Other arguments from add_unit_h5:
-    {0}
-    """
-
-    if units is None:
-        units = get_units(dp)
+    Data format details here ---->>> www.tinyurl.com/c4database <<<---
     
-    for u in units:
-        add_unit_h5(h5_path, dp, u, **kwargs)
+    Arguments:
+        - json_path: str, path to the json file containing the datasets info
+            according to the following structure:
+            "0": {
+                "ct": "celltype", see format at www.tinyurl.com/c4database
+                "line": "mouseline", see format at www.tinyurl.com/c4database
+                "dp": "/path/to/dataset",
+                "units": [u1, u2, u3, u4],
+                "ss": [u5, u6],
+                "cs": [u7, u8],
+                "sane_periods":{u1:[[t1,t2], [t3,t4]], u2:[], u3:[], u4:[], u5:[], u6:[], u7:[], u8:[]}
+                }
+        - h5_path: path/to/database_file.h5
+        - lab_id: str, lab id. see format at www.tinyurl.com/c4database
+        - preprocess_if_raw: bool, whether to high-pass filter the raw data
+                             if it is found to be so (for Hull lab)
+        - delete_original_data: bool, whether to delete the original raw file if it is preprocessed
+                                according to preprocess_if_raw
+        - data_deletion_double_check: bool, double check which must also be set to True
+                                      to allow deletion of the original data.
+        - include_all_good: bool, whether to include all good units in the dataset.
+                            Useful for unlabelled data, to train variational autoencoders.
+        - selective_overwrite: list of fields (e.g. spike_indices...) to recompute
+                                and overwrite if they already exist in the h5 file.
+        - overwrite_h5: bool, whether to recompute everything from scratch and overwrite the data
+                         (only for the reworked units, the other units will be left untouched in the file)
+    """
 
-def assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
-    return (key not in neuron_group) or overwrite_h5 or (key in selective_overwrite)
+    DSs = load_json_datasets(json_path, include_missing_datasets=False)
 
-def assert_recompute_any(keys, neuron_group, overwrite_h5, selective_overwrite):
-    return np.any([assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite) for key in keys])
+    for ds_name_ct, ds in DSs.items():
+        dp = Path(ds['dp'])
 
-def relative_unit_path_h5(dataset, unit):
-    return f"datasets/{dataset}/{unit}"
+        if preprocess_if_raw:
+            if not detect_hardware_filter(dp):
+                print("\033[34;1mRaw file detected - filtering with 1st order butterworth highpass at 300Hz...\033[0m")
+                preprocess_binary_file(dp,
+                    delete_original_data=delete_original_data,
+                    data_deletion_double_check=data_deletion_double_check,
+                    median_subtract=False, filter_forward=True, filter_backward=False, order=1)
+
+        ds_name, optolabel = ds_name_ct.split('&')
+        assert optolabel == ds['ct']
+        if optolabel     == "PkC": optolabel = "PkC_ss"
+        genetic_line     = ds['line']
+        units            = ds['units']
+        ss               = ds['ss']
+        cs               = ds['cs']
+        good_units       = list(get_units(dp, 'good', again=True))
+        sane_periods_dic = ds["sane_periods"] if "sane_periods" in ds else {}
+
+        if include_all_good:
+            units_for_h5 = np.unique(units+ss+cs+good_units)
+        else:
+            units_for_h5 = units+ss+cs
+
+        for u in units_for_h5:
+
+            sane_periods = sane_periods_dic[u] if u in sane_periods_dic else None
+
+            add_unit_h5(h5_path, dp, u, lab_id,
+                        genetic_line        = genetic_line,
+                        dataset             = None, # end of dp by default
+                        sane_periods        = sane_periods,
+                        selective_overwrite = selective_overwrite,
+                        overwrite_h5        = overwrite_h5,
+                        **kwargs)
+            if u in units:
+                label = optolabel
+            elif u in ss:
+                label = "PkC_ss"
+            elif u in cs:
+                label = "PkC_cs"
+            else:
+                continue
+            label_optotagged_unit_h5(h5_path, ds_name, u, label)
+            gc.collect()
+
+def add_json_datasets_to_h5_hausser(json_path, h5_path,
+                                    include_all_good    = True,
+                                    selective_overwrite = None,
+                                    overwrite_h5        = False,
+                                    **kwargs):
+    
+    # parameters ensuring that only the
+    # spontaneous period before opto is used
+    sane_before_opto = True
+    optostims_from_sync = True
+    optostims_threshold = 20*60
+
+    add_json_datasets_to_h5(json_path, h5_path, "hausser",
+                            include_all_good    = include_all_good,
+                            optostims_from_sync = optostims_from_sync,
+                            optostims_threshold = optostims_threshold,
+                            sane_before_opto    = sane_before_opto,
+                            include_all_good    = include_all_good,
+                            selective_overwrite = selective_overwrite,
+                            overwrite_h5        = overwrite_h5,
+                            **kwargs)
+
+
+
 
 def load_json_datasets(json_path, include_missing_datasets=False):
     with open(json_path) as f:
@@ -541,65 +599,31 @@ def load_json_datasets(json_path, include_missing_datasets=False):
     return DSs
 
 
-def add_json_datasets_to_h5(json_path, h5_path, lab_id, preprocess_if_raw=False,
-                            delete_original_data=False, data_deletion_double_check=False,
-                            again=False, include_raw_snippets=False,
-                            include_all_good = False, **kwargs):
+### h5 unit management wrapper functions
 
-    DSs = load_json_datasets(json_path, include_missing_datasets=False)
+@docstring_decorator(add_unit_h5.__doc__)
+def add_units_to_h5(h5_path, dp, units=None, **kwargs):
+    """
+    Add all or specified units at the respective data path to an HDF5 file.
 
-    for ds_name_ct, ds in DSs.items():
-        dp = Path(ds['dp'])
+    This is a high-level function designed to add many units at the
+    specified datapath to an HDF5 file. All additional key-value 
+    arguments are passed to `add_unit_h5`
 
-        if preprocess_if_raw:
-            if not detect_hardware_filter(dp):
-                print("\033[34;1mRaw file detected - filtering with 1st order butterworth highpass at 300Hz...\033[0m")
-                preprocess_binary_file(dp,
-                    delete_original_data=delete_original_data,
-                    data_deletion_double_check=data_deletion_double_check,
-                    median_subtract=False, filter_forward=True, filter_backward=False, order=1)
+    Example:
+      add_units_to_h5('my_lab_data.h5', '/path/to/dataset_id', lab_id='pi_last_name')
+    Will add all sorted units in the 'kilosort_results' directory 
+    to the HDF5 file called 'my_lab_data.h5' (in the current directory).
 
-        ds_name, optolabel = ds_name_ct.split('&')
-        assert optolabel == ds['ct']
-        if optolabel=="PkC": optolabel = "PkC_ss"
-        genetic_line = ds['line']
-        units        = ds['units']
-        ss           = ds['ss']
-        cs         = ds['cs']
-        good_units = list(get_units(dp, 'good', again=again))
-        sane_times = ds["sane_times"] if "sane_times" in ds else None
+    Other arguments from add_unit_h5:
+    {0}
+    """
 
-        if include_all_good:
-            units_for_h5 = np.unique(units+ss+cs+good_units)
-        else:
-            units_for_h5 = units+ss+cs
-
-        for u in units_for_h5:
-            add_unit_h5(h5_path, dp, u, lab_id, genetic_line, periods='all',
-                    again=again, again_npyx_wvf=again,
-                    include_raw_snippets=include_raw_snippets, include_whitened_snippets=include_raw_snippets,
-                    sane_periods=sane_times, **kwargs)
-            if u in units:
-                label = optolabel
-            elif u in ss:
-                label = "PkC_ss"
-            elif u in cs:
-                label = "PkC_cs"
-            else:
-                continue
-            label_optotagged_unit_h5(h5_path, ds_name, u, label)
-            gc.collect()
-
-def add_json_datasets_to_h5_hausser(json_path, h5_path, again=False, include_raw_snippets=False,
-                                    delete_original_data=False, data_deletion_double_check=False,
-                                    include_all_good=False, overwrite_h5=False, **kwargs):
-
-    add_json_datasets_to_h5(json_path, h5_path, "hausser", preprocess_if_raw=False,
-                            delete_original_data=delete_original_data, data_deletion_double_check=data_deletion_double_check,
-                            again=again, include_raw_snippets=include_raw_snippets,
-                            optostims_from_sync=True, optostims_threshold=20*60, sane_before_opto=True,
-                            include_all_good=include_all_good, overwrite_h5=overwrite_h5, **kwargs)
-
+    if units is None:
+        units = get_units(dp)
+    
+    for u in units:
+        add_unit_h5(h5_path, dp, u, **kwargs)
 
 def add_data_to_unit_h5(h5_path, dataset, unit, data, field):
     """
@@ -617,7 +641,36 @@ def add_data_to_unit_h5(h5_path, dataset, unit, data, field):
         assert unit_path in h5_file, f"WARNING unit {unit_path} does not seem to be present in the file. To add it, use add_unit_h5()."
         write_to_group(h5_file[unit_path], field, data, True)
 
-# h5 vizualisattion functions
+def get_unit_paths_h5(h5_file, dataset, unit,
+                      lab_id = 'hausser', unit_absolute_id = None):
+    relative_unit_path = relative_unit_path_h5(dataset, unit)
+    if relative_unit_path in h5_file:
+            absolute_unit_path = h5_file[f'{relative_unit_path}/neuron_id'][()].decode()
+    else:
+        if unit_absolute_id is None:
+            if f"{lab_id}_neuron_0" not in h5_file:
+                unit_absolute_id = 0
+            else:
+                root_groups = list(h5_file.keys())
+                neuron_ids = [int(x.split('_')[-1]) for x in root_groups if f"{lab_id}_neuron" in x]
+                unit_absolute_id = np.sort(neuron_ids)[-1] + 1
+        absolute_unit_path = f'{lab_id}_neuron_{unit_absolute_id}'
+            
+    return relative_unit_path, absolute_unit_path
+
+def remove_unit_h5(h5_path, dp, unit, lab_id='hausser', dataset=None):
+    if dataset is None:
+        dataset = Path(dp).name
+    with h5py.File(h5_path, "a") as h5_file:
+        relative_unit_path, absolute_unit_path = get_unit_paths_h5(h5_file, dataset, unit, lab_id)
+        del h5_file[relative_unit_path]
+        del h5_file[absolute_unit_path]
+        dataset_path = str(Path(relative_unit_path).parent)
+        if len(h5_file[dataset_path].keys()) == 0:
+            del h5_file[dataset_path]
+
+### h5 vizualisation functions
+
 def print_h5_contents(h5_path, txt_output=False):
     """
     h5_path: str, path to .h5 file
@@ -685,7 +738,8 @@ def check_h5_file(h5_path):
     """
     return h5_path.name[-3:] == '.h5'
 
-# h5 writing functions
+
+### h5 writing functions
 def write_to_h5(h5_path, data_path, data,
                 overwrite=False, must_exist=False):
     """
@@ -726,7 +780,8 @@ def write_to_dataset(group, dataset, data, overwrite=True):
     write_to_group(group, dataset, data,
                          overwrite, True)
 
-# h5 reading functions
+
+### h5 reading functions
 def read_h5(h5_path, datapath):
     """
     Returns data at datapath from h5 file at h5_path
@@ -742,6 +797,22 @@ def read_h5(h5_path, datapath):
             data = data.decode() # for strings
     return data
     
+
+### C4 utilities
+def get_stim_chan(ons, min_th=20):
+    chan = -1
+    for k, v in ons.items():
+        if len(v) > min_th:
+            chan = k
+    assert chan != -1
+    return chan
+
+def assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
+    return (key not in neuron_group) or overwrite_h5 or (key in selective_overwrite)
+
+def assert_recompute_any(keys, neuron_group, overwrite_h5, selective_overwrite):
+    return np.any([assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite) for key in keys])
+
 def h5_group_keys(group):
     """
     Returns list of keys of h5 file group
@@ -756,11 +827,5 @@ def all_keys_in_group(keys, group):
         b = b & (k in group)
     return b
 
-# C4 utilities
-def get_stim_chan(ons, min_th=20):
-    chan = -1
-    for k, v in ons.items():
-        if len(v) > min_th:
-            chan = k
-    assert chan != -1
-    return chan
+def relative_unit_path_h5(dataset, unit):
+    return f"datasets/{dataset}/{unit}"

@@ -335,7 +335,8 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
 
     return periods
 
-def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=None):
+def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
+                   again=False, dp=None, u=None, return_smoothed_rate = False):
     '''
     Arguments:
         - t: array of spike times, in samples
@@ -344,6 +345,8 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=
         - b: float, bin size i.e. temporal resolution of presence periods, in ms | Default 1
         - sd: float, standard deviation of gaussian smoothing window, in ms | Default 1000
         - th: threshold to define presence, in fraction of mean firing rate
+    Returns:
+        - periods, in samples
     '''
     sav=False
     if u is not None:
@@ -355,25 +358,92 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u=
         if op.exists(Path(dpnm,fn)) and not again:
             return np.load(Path(dpnm,fn))
 
-    assert 1<sd<10000
+    assert 1<sd<100000
     assert 0<=th<1
     assert t.ndim==1
-    t=np.asarray(t)
+    t     = np.asarray(t)
 
     assert b>=1000/fs
-    tb = binarize(t, b, fs, t_end)
-    sd=int(sd/b) # convert from ms to bin units
-    b_s=b/1000 # bin seconds
-    tbs=smooth(tb, 'gaussian', sd=sd)/b_s # result is inst. firing rate in Hz - speed bottleneck
-    fr_th=mean_firing_rate(t, 0.005, fs)*th
+    tb    = binarize(t, b, fs, t_end)
+    sd    = int(sd/b) # convert from ms to bin units
+    b_s   = b/1000 # bin seconds
+    tbs   = smooth(tb, 'gaussian', sd=sd)/b_s # result is inst. firing rate in Hz - speed bottleneck
+    fr_th = mean_firing_rate(t, 0.005, fs)*th
 
     periods = thresh_consec(tbs, fr_th, sgn=1, n_consec=0, exclude_edges=False, only_max=False, ret_values=False)
     if not any(periods): periods=[[0,len(tbs)-1]]
-    periods=(np.array(periods)*(b_s*fs)).astype(np.int64) # conversion from bins to samples
+    periods = (np.array(periods)*(b_s*fs)).astype(np.int64) # conversion from bins to samples
 
     if sav: np.save(Path(dpnm,fn), periods)
 
+    if return_smoothed_rate:
+        return periods, tbs
+
     return periods
+
+def find_stable_recording_period(t, fs, t_end, target_period = 30,
+                                 b=1000, sd=10000, minimum_fr = 0.4,
+                                 return_rate=False):
+    
+    """
+    Finds a locally optimal recording period (in terms of stability i.e. low std) of at least 'target_period' seconds.
+    Arguments:
+        - t: array of spike times, in samples
+        - fs: sampling rate of spike times, in Hz
+        - t_end: recording end time, in samples
+        - target_period: float, minimum length of stable period, in seconds | Default 30.
+                        If the algorithm does not find any period lasting at least this amount of time
+                        for at least minimum_fr fraction of the mean firing rate,
+                        it ties to decrease this period.
+        - b: float, bin size i.e. temporal resolution of presence periods, in ms | Default 1
+        - sd: float, standard deviation of gaussian smoothing window, in ms | Default 1000
+        - th: threshold to define presence, in fraction of mean firing rate
+    Returns:
+        - periods: (2,) array of stable period on/offset, in samples
+    """
+    if not np.any(t):
+        if return_rate:
+            return np.array([np.nan, np.nan]), np.nan
+        return np.array([np.nan, np.nan])       
+
+    target_period = target_period*fs
+
+    # find candidate periods
+    fr_th = 0.9
+    periods, tbs = firing_periods(t, fs, t_end, b, sd, th=fr_th, return_smoothed_rate=True)
+    periods_t = np.diff(periods, axis=1).ravel()
+    while not np.any(periods_t>target_period):
+        periods, tbs = firing_periods(t, fs, t_end, b, sd, th=fr_th, return_smoothed_rate=True)
+        periods_t = np.diff(periods, axis=1).ravel()
+        fr_th -= 0.05
+        if fr_th<=minimum_fr: # do not tolerate less then x% of mfr
+            target_period -= 2
+            fr_th = 0.9
+            if target_period<=1:
+                print("Could not find a long enough stable recording period!")
+                break
+
+    # if none was found, return nans
+    if not np.any(periods_t>target_period):
+        if return_rate:
+            return np.array([np.nan, np.nan]), tbs
+        return np.array([np.nan, np.nan])
+    
+    # find the most stable period
+    candidate_periods = periods[periods_t>target_period]
+    variances = np.zeros(len(candidate_periods))
+    for i, p in enumerate(candidate_periods):
+        period_ms = p * 1000 / fs
+        period_bins = (period_ms / b).astype(int)
+        variances[i] = np.std(tbs[period_bins[0]:period_bins[1]])
+    
+    most_stable_period = candidate_periods[np.argmin(variances)]
+
+    most_stable_period_trimmed = np.array([most_stable_period[0], most_stable_period[0]+target_period])
+
+    if return_rate:
+        return most_stable_period_trimmed, tbs
+    return most_stable_period_trimmed
 
 
 def train_quality(dp, unit, period_m=[0,20],

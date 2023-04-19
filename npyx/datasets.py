@@ -238,9 +238,6 @@ class NeuronsDataset:
             self.fn_fp_list = []
             self.sane_spikes_list = []
 
-        if not quality_check:
-            self.quality_checks_mask = np.ones(len(neuron_ids), dtype=bool)
-
         discarded_df = pd.DataFrame(columns=["neuron_id", "label", "dataset", "reason"])
         for i, wf_n in tqdm(
             enumerate(np.sort(neuron_ids)),

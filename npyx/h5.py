@@ -230,11 +230,11 @@ def add_unit_h5(
             h5_file[relative_unit_path] = neuron_group
             print(f"Adding neuron at '{relative_unit_path}' ({absolute_unit_path})...")
         pbar = tqdm(
-            total=7,
-            desc=f"Adding unit at '{relative_unit_path}' ({absolute_unit_path})...",
-            position=0,
-            leave=True,
-            disable=False,
+            total    = 7,
+            desc     = f"Adding unit at '{relative_unit_path}' ({absolute_unit_path})...",
+            position = 0,
+            leave    = True,
+            disable  = False,
         )
 
 
@@ -477,8 +477,8 @@ def add_unit_h5(
         pbar.update(1)
         
         # layer
-        write_to_group(neuron_group, "phyllum_layer", "", overwrite_h5)
-        write_to_group(neuron_group, "human_layer",   "", overwrite_h5)
+        write_to_group(neuron_group, "phyllum_layer",       "", overwrite_h5)
+        write_to_group(neuron_group, "human_layer",         "", overwrite_h5)
 
         # ground truth labels
         write_to_group(neuron_group, "expert_label",        "", overwrite_h5)

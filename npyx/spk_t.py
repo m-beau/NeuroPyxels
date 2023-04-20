@@ -321,7 +321,7 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
         if op.exists(Path(dpnm,fn)) and not again:
             return np.load(Path(dpnm,fn))
         t = trn(dp, u, enforced_rp=1, again=again)
-        dp_source = get_source_dp_u(dp, u)[0]
+        dp_source = npyx.merger.get_source_dp_u(dp, u)[0]
         fs=read_metadata(dp_source)['highpass']['sampling_rate']
         t_end = np.load(Path(dp,'spike_times.npy'), mmap_mode='r').ravel()[-1]
     else:
@@ -563,7 +563,7 @@ def train_quality(dp, unit, period_m=[0,20],
         good_fp_start_end_plot=None if len(good_fp_start_end)==1 else good_fp_start_end
         good_fn_start_end_plot=None if len(good_fn_start_end)==1 else good_fn_start_end
         if plot_debug:
-            plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
+            npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      None, None, None,None,
                      fp_threshold, fn_threshold,
                      good_fp_start_end_plot, good_fn_start_end_plot, title)
@@ -612,13 +612,13 @@ def train_quality(dp, unit, period_m=[0,20],
         # get the periods where the ACG filter passed
         
         # Compute denominator of FP on total period
-        acg_tot = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[period_s])
-        x_block = np.round(np.arange(-c_win/2, c_win/2 + c_bin, c_bin), 8) # round to fix binary imprecisions
-        # rp_mask = (x_block >= -violations_ms) & (x_block <= violations_ms)
-        baseline_mask = (acg_tot*0).astype(bool)
-        baseline_mask[:n_bins_acg_baseline] = True
-        baseline_mask[-n_bins_acg_baseline:] = True
-        # baseline_mean = np.mean(acg_tot[baseline_mask])
+        # acg_tot = npyx.corr.acg(dp, unit, c_bin, c_win, verbose = False,  periods=[period_s])
+        # x_block = np.round(np.arange(-c_win/2, c_win/2 + c_bin, c_bin), 8) # round to fix binary imprecisions
+        # # rp_mask = (x_block >= -violations_ms) & (x_block <= violations_ms)
+        # baseline_mask = (acg_tot*0).astype(bool)
+        # baseline_mask[:n_bins_acg_baseline] = True
+        # baseline_mask[-n_bins_acg_baseline:] = True
+        # # baseline_mean = np.mean(acg_tot[baseline_mask])
         
         # False positive estimation
         for i, (t1,t2) in enumerate(fp_chunks):
@@ -628,11 +628,7 @@ def train_quality(dp, unit, period_m=[0,20],
 
             if n_spikes_chunk > 15:
 
-                # ACG = acg(dp, unit, c_bin, c_win, verbose = False,  periods=[(t1, t2)])
-                # violations_mean = np.mean(ACG[rp_mask])
-                #rpv_ratio_acg = round(violations_mean / baseline_mean, 4)
-                # fp_toplot.append(rpv_ratio_acg)
-                fp_rate = isi_violations(unit_train, min_time=t1, max_time=t2,
+                fp_rate = npyx.metrics.isi_violations(unit_train, min_time=t1, max_time=t2,
                                          isi_threshold=violations_ms/1000, min_isi=0)[0]
                 fp_toplot.append(fp_rate)
                 chunk_fp_t.append(t1+(t2-t1)/2)
@@ -699,7 +695,7 @@ def train_quality(dp, unit, period_m=[0,20],
             np.save(dpnm/fn_spikes, good_spikes_m)
 
         if plot_debug:
-            plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
+            npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
                      fp_threshold, fn_threshold,
                      good_fp_start_end, good_fn_start_end, title)
@@ -713,7 +709,7 @@ def train_quality(dp, unit, period_m=[0,20],
             np.save(dpnm/fn_spikes, good_spikes_m)
             
         if plot_debug and n_spikes>0:
-            plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
+            npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
                      fp_threshold, fn_threshold,
                      None, None, title)
@@ -932,10 +928,7 @@ def estimate_bins(x, rule):
         b = int(np.sqrt(n))
         return b
 
-
-
-from npyx.corr import acg
-from npyx.merger import (assert_multi, get_dataset_id, get_ds_table,
-                         get_source_dp_u)
-from npyx.metrics import isi_violations
-from npyx.plot import plot_fp_fn_rates
+# circular import
+import npyx.merger
+import npyx.metrics
+import npyx.plot

@@ -726,7 +726,7 @@ def KopelowitzCohen2014_ccg_significance(CCG, cbin=0.2, cwin=100, p_th=0.01, n_c
         crosses=[] # bin_wise not handled yet
 
     if plot:
-        fig=plot_pval_borders(CCG, p_th, dist='normal', gauss_baseline_fract=fract_baseline, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
+        fig=npyx.plot.plot_pval_borders(CCG, p_th, dist='normal', gauss_baseline_fract=fract_baseline, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
                           xlabel='Time (ms)', ylabel='crosscorrelation (z-score)', title='Test: Kopelowitz et al. 2014'.format(p_th))
         return fig
 
@@ -859,7 +859,7 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
     pred, pvals = pred.flatten(), pvals.flatten()
 
     if plot:
-        fig=plot_pval_borders(CCG, p_th, dist='poisson', Y_pred=pred, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
+        fig=npyx.plot.plot_pval_borders(CCG, p_th, dist='poisson', Y_pred=pred, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
                           xlabel='Time (ms)', ylabel='crosscorrelation (Counts)', title='Test: Stark et al. 2009'.format(p_th))
         return fig
 
@@ -1322,7 +1322,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     if units is not None:
         assert np.all(np.isin(units, get_units(dp))), 'Some of the provided units are not found in this dataset.'
         assert name is not None, 'You MUST provide a custom name for the provided list of units to ensure that your results can be saved.'
-        peakChs = get_depthSort_peakChans(dp, units=units, use_template=use_template_for_peakchan)
+        peakChs = npyx.spk_wvf.get_depthSort_peakChans(dp, units=units, use_template=use_template_for_peakchan)
         gu = peakChs[:,0]
     if name is not None:
         if units is None:
@@ -1331,7 +1331,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             gu=[]
     else:
         name='good-all_to_all'
-        peakChs = get_depthSort_peakChans(dp, quality='good', use_template=use_template_for_peakchan)
+        peakChs = npyx.spk_wvf.get_depthSort_peakChans(dp, quality='good', use_template=use_template_for_peakchan)
         gu = peakChs[:,0]
 
     sigstack, sigustack, sfc = ccg_sig_stack(dp, gu, gu, cbin, cwin, name,
@@ -1392,7 +1392,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             sfc=drop_dic[drop](sfc, drop_dic[drop+'filt'], corr_type)
 
     if (pre_chanrange is not None)|(post_chanrange is not None):
-        peakChs = get_depthSort_peakChans(dp, use_template=use_template_for_peakchan)
+        peakChs = npyx.spk_wvf.get_depthSort_peakChans(dp, use_template=use_template_for_peakchan)
         if pre_chanrange is not None:
             pre_units=sfc.uSrc[sfc.t_ms_center>=0].append(sfc.uTrg[sfc.t_ms_center<0]).sort_index().values
             peak_m=(peakChs[:,1]>pre_chanrange[0])&(peakChs[:,1]<pre_chanrange[1])
@@ -2230,6 +2230,5 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
 
 
 #%% Circular imports
-from npyx.plot import plot_pval_borders
-from npyx.spk_wvf import get_depthSort_peakChans
-from npyx.behav import get_processed_ifr
+import npyx.plot
+import npyx.spk_wvf

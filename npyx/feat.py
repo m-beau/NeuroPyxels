@@ -29,7 +29,8 @@ from tqdm.auto import tqdm
 from .datasets import NeuronsDataset
 from .gl import get_units
 from .inout import chan_map
-from .spk_t import acg, trn_filtered
+from .spk_t import trn_filtered
+from .corr import acg
 from .spk_wvf import wvf_dsmatch
 
 # pylint: disable=unsupported-binary-operation

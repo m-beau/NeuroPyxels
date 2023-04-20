@@ -4,26 +4,29 @@
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
 
+import multiprocessing
 import os
-import os.path as op; opj=op.join
-import psutil
+from collections.abc import Iterable
 from pathlib import Path
+
+import psutil
 from tqdm.notebook import tqdm
 
-from collections.abc import Iterable
+import os.path as op; opj=op.join
 
-import multiprocessing
+
 num_cores = multiprocessing.cpu_count()
 
-import numpy as np
 from math import ceil
 
 import matplotlib.pyplot as plt
+import numpy as np
 
+from npyx.gl import get_npyx_memory, get_units
+from npyx.inout import chan_map, get_binary_file_path, read_metadata
+from npyx.preprocess import apply_filter, bandpass_filter, med_substract, whitening
 from npyx.utils import npa, split, xcorr_1d_loop
-from npyx.inout import read_metadata, get_binary_file_path, chan_map
-from npyx.preprocess import whitening, bandpass_filter, apply_filter, med_substract
-from npyx.gl import get_units, get_npyx_memory
+
 
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', periods='all',
         spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
@@ -109,7 +112,8 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
 def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', periods='all',
                   spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
                   whiten=0, med_sub=0, hpfilt=0, hpfiltf=300,
-                  nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=0, verbose=False):
+                  nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=0, verbose=False,
+                  med_sub_in_time=True):
     f"{wvf.__doc__}"
 
     # Extract and process metadata
@@ -167,8 +171,9 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
             wave = np.frombuffer(wave, dtype=dtype).reshape((t_waveforms,n_channels_dat))
             # get rid of sync channel
             waveforms[i,:,:] = wave[:,:-1] if meta['acquisition_software']=='SpikeGLX' else wave
-    medians = np.median(waveforms, axis = 1)
-    waveforms = waveforms - medians[:,np.newaxis,:]
+    if med_sub_in_time:
+        medians = np.median(waveforms, axis = 1)
+        waveforms = waveforms - medians[:,np.newaxis,:]
     if verbose: print('\n')
 
     # Preprocess waveforms
@@ -559,7 +564,7 @@ def shift_match(waves, alignment_channel,
 
 def across_channels_SNR(dp, u, n_waveforms=500, t_waveforms=90,
                         periods='all', spike_ids=None,
-                        c = 1, chan_range = 5, return_distributions = False):
+                        c = 1, chan_range = 3, return_distributions = False):
     
     dp = Path(dp)
     
@@ -881,5 +886,5 @@ def _excerpt_step(n_samples, n_excerpts=None, excerpt_size=None):
 
 # Recurrent imports
 from npyx.merger import assert_multi, get_ds_ids, get_source_dp_u
-from npyx.spk_t import ids
 from npyx.plot import hist_MB, imshow_cbar, quickplot_n_waves
+from npyx.spk_t import ids

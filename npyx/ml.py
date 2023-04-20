@@ -51,9 +51,9 @@ def run_cross_validation(
     kfold=None,
     model_class=None,
     get_importance=False,
+    scaler=None,
     **model_kwargs,
 ):
-
     """
     It runs a sklearn model with the best parameters found in the hyperparameter tuning step, and
     then runs a leave-one-out cross validation on the model
@@ -81,12 +81,10 @@ def run_cross_validation(
         importances_list = []
 
     for _ in tqdm(range(n_runs), position=0, leave=True, desc="Random Forest runs"):
-
         train_accuracies = []
         true_targets = []
         model_pred = []
         probabilities = []
-
 
         seed = np.random.choice(2**32)
         for fold, (train_idx, val_idx) in tqdm(
@@ -96,11 +94,14 @@ def run_cross_validation(
             desc="Cross-validating",
             total=len(X),
         ):
-
             X_train = X.iloc[train_idx].copy()
             y_train = y.iloc[train_idx].copy().values
             X_test = X.iloc[val_idx]
             y_test = y.iloc[val_idx].values
+
+            if scaler is not None:
+                X_train = scaler.fit_transform(X_train)
+                X_test = scaler.transform(X_test)
 
             if oversampler is None:
                 oversample = RandomOverSampler(random_state=seed)
@@ -156,7 +157,5 @@ def run_cross_validation(
 
     if get_importance:
         results_dict["feature_importance_list"] = importances_list
-        
+
     return results_dict
-
-

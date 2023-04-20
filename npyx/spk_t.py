@@ -3,25 +3,27 @@
 2018-07-20
 @author: Maxime Beau, Neural Computations Lab, University College London
 """
-from IPython.core.debugger import set_trace as breakpoint 
 import os.path as op
+
+from IPython.core.debugger import set_trace as breakpoint
+
 opj=op.join
 from pathlib import Path, PosixPath, WindowsPath
 
 from joblib import Memory
+
 cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
 cache_memory = Memory(cachedir, verbose=0)
 
 import matplotlib.pyplot as plt
-
 import numpy as np
 import pandas as pd
-from scipy.stats import iqr
-from scipy.optimize import curve_fit
-from scipy.stats import norm
-from npyx.utils import smooth, thresh_consec, npa, assert_int, assert_float, docstring_decorator
-from npyx.gl import get_units, get_npyx_memory, check_periods
+from npyx.gl import check_periods, get_npyx_memory, get_units
 from npyx.inout import read_metadata
+from npyx.utils import (assert_float, assert_int, docstring_decorator, npa,
+                        smooth, thresh_consec)
+from scipy.optimize import curve_fit
+from scipy.stats import iqr, norm
 
 
 def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=-1):
@@ -932,7 +934,8 @@ def estimate_bins(x, rule):
 
 
 
-from  npyx.corr import acg
-from npyx.merger import assert_multi, get_dataset_id, get_ds_table, get_source_dp_u
-from npyx.plot import plot_fp_fn_rates
+from npyx.corr import acg
+from npyx.merger import (assert_multi, get_dataset_id, get_ds_table,
+                         get_source_dp_u)
 from npyx.metrics import isi_violations
+from npyx.plot import plot_fp_fn_rates

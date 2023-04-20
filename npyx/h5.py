@@ -42,7 +42,8 @@ def label_optotagged_unit_h5(h5_path, dataset, unit, label, source=None, prnt=Fa
     - unit: neuron unit index
     - label: label to add
     """
-    authorized_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC"]
+    authorized_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC",
+                         "unlabelled", ""]
     assert (
         label in authorized_labels
     ), f"{label} must match either of the following: {authorized_labels}"
@@ -230,11 +231,11 @@ def add_unit_h5(
             h5_file[relative_unit_path] = neuron_group
             print(f"Adding neuron at '{relative_unit_path}' ({absolute_unit_path})...")
         pbar = tqdm(
-            total=7,
-            desc=f"Adding unit at '{relative_unit_path}' ({absolute_unit_path})...",
-            position=0,
-            leave=True,
-            disable=False,
+            total    = 7,
+            desc     = f"Adding unit at '{relative_unit_path}' ({absolute_unit_path})...",
+            position = 0,
+            leave    = True,
+            disable  = False,
         )
 
 
@@ -477,8 +478,8 @@ def add_unit_h5(
         pbar.update(1)
         
         # layer
-        write_to_group(neuron_group, "phyllum_layer", "", overwrite_h5)
-        write_to_group(neuron_group, "human_layer",   "", overwrite_h5)
+        write_to_group(neuron_group, "phyllum_layer",       "", overwrite_h5)
+        write_to_group(neuron_group, "human_layer",         "", overwrite_h5)
 
         # ground truth labels
         write_to_group(neuron_group, "expert_label",        "", overwrite_h5)
@@ -515,13 +516,15 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
         - json_path: str, path to the json file containing the datasets info
             according to the following structure ("sane_periods" is optional):
             "0": {
-                "ct": "celltype", see format at www.tinyurl.com/c4database
-                "line": "mouseline", see format at www.tinyurl.com/c4database
-                "dp": "/path/to/dataset",
-                "units": [u1, u2, u3, u4],
-                "ss": [u5, u6],
-                "cs": [u7, u8],
-                "sane_periods":{u1:[[t1,t2], [t3,t4]], u2:[], u3:[], u4:[], u5:[], u6:[], u7:[], u8:[]}
+                "ct": "celltype", # must be either of the following: ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC", "unlabelled", ""]
+                "line": "mouseline", # can be anything
+                "dp": "/path/to/dataset", # path to neuropixels dataset
+                "units": [u1, u2, u3, u4], # optotagged/unlabelled units to add to h5
+                "ss": [u5, u6], # simple spikes to add to h5
+                "cs": [u7, u8], # complex spikes to add to h5
+                "sane_periods":{u1:[[t1,t2], [t3,t4]], u2:[], u3:[],
+                                u4:[], u5:[], u6:[], u7:[], u8:[]} # windows of time to use to compute features etc for any particular neuron, in seconds.
+                "global_sane_period": [[t1,t2], [t3,t4]], # windows of time to use to compute features etc for all neurons, in seconds
                 }
         - h5_path: path/to/database_file.h5
         - lab_id: str, lab id. see format at www.tinyurl.com/c4database
@@ -560,15 +563,16 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
                 )
 
         ds_name, optolabel = ds_name_ct.split("&")
-        assert optolabel == ds["ct"]
-        if optolabel == "PkC":
+        assert optolabel   == ds["ct"]
+        if optolabel       == "PkC":
             optolabel = "PkC_ss"
-        genetic_line = ds["line"]
-        units = ds["units"]
-        ss = ds["ss"]
-        cs = ds["cs"]
-        good_units = list(get_units(dp, "good", again=True))
-        sane_periods_dic = ds["sane_periods"] if "sane_periods" in ds else {}
+        genetic_line       = ds["line"]
+        units              = ds["units"]
+        ss                 = ds["ss"]
+        cs                 = ds["cs"]
+        good_units         = list(get_units(dp, "good", again=True))
+        sane_periods_dic   = ds["sane_periods"] if "sane_periods" in ds else {}
+        global_sane_period = sane_periods_dic["global"] if "global_sane_period" in sane_periods_dic else []
 
         if include_all_good:
             units_for_h5 = np.unique(units + ss + cs + good_units)
@@ -577,6 +581,8 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
 
         for u in units_for_h5:
             sane_periods = sane_periods_dic[u] if u in sane_periods_dic else None
+            if sane_periods is None and np.any(global_sane_period):
+                sane_periods = global_sane_period
 
             add_unit_h5(
                 h5_path,

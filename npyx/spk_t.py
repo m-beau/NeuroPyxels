@@ -77,7 +77,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
             np.save(dpnm/fn, indices)
             
     # Optional selection of spies without duplicates
-    dp_source = get_source_dp_u(dp, unit)[0]
+    dp_source = npyx.merger.get_source_dp_u(dp, unit)[0]
     fs=read_metadata(dp_source)["highpass"]['sampling_rate']
     train = trn(dp, unit, again=again, enforced_rp=-1)
     duplicates_m = duplicates_mask(train, enforced_rp, fs)
@@ -128,7 +128,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
     # Search if the variable is already saved in dp/routinesMemory
     dpnm = get_npyx_memory(dp)
-    dp_source = get_source_dp_u(dp, unit)[0]
+    dp_source = npyx.merger.get_source_dp_u(dp, unit)[0]
     fs=read_metadata(dp_source)['highpass']['sampling_rate']
 
     fn=f'trn{unit}_{enforced_rp}+.npy'
@@ -249,7 +249,7 @@ def mfr(dp=None, U=None, exclusion_quantile=0.005, enforced_rp=0,
     MFR=[]
     for u in U:
         t=trn(dp, u, periods=periods, again=again, enforced_rp=enforced_rp)
-        dp_source = get_source_dp_u(dp, u)[0]
+        dp_source = npyx.merger.get_source_dp_u(dp, u)[0]
         fs=read_metadata(dp_source)['highpass']['sampling_rate']
         MFR.append(mean_firing_rate(t, exclusion_quantile, fs))
 
@@ -294,7 +294,7 @@ def trnb(dp, u, b, periods='all', again=False):
     - u (int): unit index
     - bin_size: size of binarized spike train bins, in milliseconds.
     '''
-    dp_source = get_source_dp_u(dp, u)[0]
+    dp_source = npyx.merger.get_source_dp_u(dp, u)[0]
     fs=read_metadata(dp_source)['highpass']['sampling_rate']
     assert b>=1000/fs
     t = trn(dp, u, enforced_rp=1, periods=periods, again=again)

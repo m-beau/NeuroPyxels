@@ -2481,7 +2481,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
              saveDir='~/Downloads', saveFig=False, _format='pdf', figsize=None, verbose=False,
              color=0, labels=True, title=None, ref_per=True, ylim=[0, 0], ax=None,
              acg_mn=None, acg_std=None, again=False,
-             train=None, hide_axis=False, prettify=True, **mplp_kwargs):
+             train=None, hide_axis=False, prettify=True, enforced_rp=0, **mplp_kwargs):
     """
     Plots precomputed autocorrelogram.
     Arguments:
@@ -2527,7 +2527,7 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
     ylim1, ylim2 = ylim[0], ylim[1]
 
     ACG = acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize,
-              verbose=verbose, periods=periods, again=again, train=train)
+              verbose=verbose, periods=periods, again=again, train=train, enforced_rp=enforced_rp)
     if normalize == 'zscore':
         ACG_hertz = acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', verbose=verbose, periods=periods)
         acg25, acg35 = ACG_hertz[:int(len(ACG_hertz) * 2. / 5)], ACG_hertz[int(len(ACG_hertz) * 3. / 5):]

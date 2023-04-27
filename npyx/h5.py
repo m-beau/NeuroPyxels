@@ -426,7 +426,7 @@ def add_unit_h5(
                 
             # load waveforms
             raw_waveforms = get_waveforms(dp, unit_id, t_waveforms=180,
-                                            spike_ids=spike_ids, med_sub_in_time=False)
+                                            spike_ids=spike_ids, med_sub_in_time=False,  ignore_ks_chanfilt=True)
             raw_waveforms = raw_waveforms[:, :, chan_bottom:chan_top].transpose(0,2,1)
 
             # recast to int16

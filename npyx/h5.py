@@ -629,12 +629,12 @@ def add_json_datasets_to_h5_hausser(
         json_path,
         h5_path,
         "hausser",
-        include_all_good=include_all_good,
-        optostims_from_sync=optostims_from_sync,
-        optostims_threshold=optostims_threshold,
-        sane_before_opto=sane_before_opto,
-        selective_overwrite=selective_overwrite,
-        overwrite_h5=overwrite_h5,
+        include_all_good    = include_all_good,
+        optostims_from_sync = optostims_from_sync,
+        optostims_threshold = optostims_threshold,
+        sane_before_opto    = sane_before_opto,
+        selective_overwrite = selective_overwrite,
+        overwrite_h5        = overwrite_h5,
         **kwargs,
     )
 

@@ -3,7 +3,14 @@ import random
 
 import numpy as np
 import pandas as pd
-import torch
+
+try:
+    import torch
+except ImportError:
+    print(("PyTorch could not be imported - "
+    "some functions from the submodule npyx.ml will not work.\n"
+    "To install PyTorch, follow the instructions at http://pytorch.org"))
+
 from imblearn.over_sampling import RandomOverSampler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score

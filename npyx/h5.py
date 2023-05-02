@@ -5,6 +5,10 @@ import sys
 import time
 import warnings
 from pathlib import Path
+from io import StringIO
+
+import warnings
+warnings.filterwarnings("ignore")
 
 import h5py
 import numpy as np
@@ -572,7 +576,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
         cs                 = ds["cs"]
         good_units         = list(get_units(dp, "good", again=True))
         sane_periods_dic   = ds["sane_periods"] if "sane_periods" in ds else {}
-        global_sane_period = sane_periods_dic["global"] if "global_sane_period" in sane_periods_dic else []
+        global_sane_period = ds["global_sane_periods"] if "global_sane_periods" in ds else []
 
         if include_all_good:
             units_for_h5 = np.unique(units + ss + cs + good_units)
@@ -756,25 +760,67 @@ def remove_unit_h5(h5_path, dp, unit, lab_id="hausser", dataset=None):
 
 ### h5 vizualisation functions
 
+def get_absolute_neuron_ids(h5_path):
+    h5_contents = print_h5_contents(h5_path, txt_output=False)
+    return [p.split('/')[0] for p in h5_contents if ('_neuron_' in p.split('/')[0])]
 
-def print_h5_contents(h5_path, txt_output=False):
+def get_neuron_id_dict(h5_path):
+    
+    absolute_neuron_ids = get_absolute_neuron_ids(h5_path)
+
+    neuron_id_dict = {}
+    with h5py.File(h5_path, "r") as hdf:
+        for neuron_id in absolute_neuron_ids:
+
+            neuron_relative_id = int(hdf[neuron_id]['neuron_relative_id'][()])
+            dataset = hdf[neuron_id]['dataset_id'][()].decode()
+
+            relative_id_path = f"datasets/{dataset}/{neuron_relative_id}"
+            neuron_id_dict[neuron_id] = relative_id_path
+
+            if dataset not in neuron_id_dict: neuron_id_dict[dataset] = {}
+            neuron_id_dict[dataset][neuron_relative_id] = neuron_id
+
+    return neuron_id_dict
+
+def print_h5_contents(h5_path, display = False, txt_output=False):
     """
     h5_path: str, path to .h5 file
     txt_output: bool, if True prints contents to file
     (same name as h5 name_content.txt)
+
+    Returns:
+        - list of paths in h5 file
     """
     h5_path = Path(h5_path)
     if txt_output:
         txt_output_path = h5_path.parent / f"{h5_path.name[:-3]}_content.txt"
+
+    
     with h5py.File(h5_path, "a") as hdf:
+
+        # save to variable
+        print_output    = StringIO()
+        original_stdout = sys.stdout
+        sys.stdout      = print_output
+        visititems(hdf, visitor_func)
+        print_string   = print_output.getvalue().split('\n')
+        sys.stdout      = original_stdout
+
+        # save to txt file
         if txt_output:
             with open(txt_output_path, "w") as txt:
                 original_stdout = sys.stdout
-                sys.stdout = txt
+                sys.stdout      = txt
                 visititems(hdf, visitor_func)
-                sys.stdout = original_stdout
-        else:
+                sys.stdout      = original_stdout
+
+        # print to console
+        if display:
             visititems(hdf, visitor_func)
+
+    return print_string
+            
 
 
 def visititems(group, func):

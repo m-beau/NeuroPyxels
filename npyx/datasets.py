@@ -128,7 +128,7 @@ def crop_original_wave(waveform, central_range=60, n_channels=10):
     """
     # First argsort to find the peak channels
     # Then if the absolute max amplitude channel is "too close to the edge", find the second max and so on.
-    # If the peak channel is in the middle, then just take the central 10 channels
+    # If the peak channel is in the middle, then just take the central channels
     centre = waveform.shape[1] // 2
     if waveform.shape[0] <= n_channels:
         return waveform[
@@ -167,7 +167,7 @@ def resample_acg(acg, window_size=20, keep_same_size=True):
     # Create new_y enhanced with interpolating points
     new_y = np.concatenate((avg_enhanced.ravel(), y[window_size:].ravel()), axis=0)
 
-    if keep_same_size == False:
+    if keep_same_size is False:
         return new_y
 
     # Select final points to remove
@@ -203,7 +203,7 @@ class NeuronsDataset:
         central_range=CENTRAL_RANGE,
         n_channels=N_CHANNELS,
         reshape_fortran_to_c=False,
-        _label="optotagged_label",
+        _label="ground_truth_label",
         _labelling=LABELLING,
         _use_amplitudes=False,
         _bin_size=1,
@@ -211,8 +211,8 @@ class NeuronsDataset:
         _debug=False,
         _lisberger=False,
         _labels_only=False,
+        _id_type="neuron_relative_id",
     ):
-
         # Store useful metadata about how the dataset was extracted
         self.dataset = dataset
         self._n_channels = n_channels
@@ -248,15 +248,21 @@ class NeuronsDataset:
             try:
                 # Get the label for this wvf
                 label = get_neuron_attr(dataset, wf_n, _label).ravel()[0]
+                if type(label) in (bytes, np.bytes_):
+                    label = str(label.decode("utf-8"))
+                    if len(label) == 0:
+                        label = 0
+                    if label == "unlabeled":
+                        label = 0
 
                 # If the neuron is labelled we extract it anyways
                 if label != 0 and not isinstance(label, (np.ndarray, np.int64)):
-                    label = str(label.decode("utf-8"))
                     self.labels_list.append(label)
 
                 elif label != 0:
                     label = label.item()
                     self.labels_list.append(label)
+
                 else:
                     if _labels_only:
                         continue
@@ -289,7 +295,9 @@ class NeuronsDataset:
                                 {
                                     "neuron_id": [
                                         get_neuron_attr(
-                                            dataset, wf_n, "neuron_id"
+                                            dataset,
+                                            wf_n,
+                                            _id_type,
                                         ).ravel()[0]
                                     ],
                                     "label": [label],
@@ -385,7 +393,9 @@ class NeuronsDataset:
                                 {
                                     "neuron_id": [
                                         get_neuron_attr(
-                                            dataset, wf_n, "neuron_id"
+                                            dataset,
+                                            wf_n,
+                                            _id_type,
                                         ).ravel()[0]
                                     ],
                                     "label": [label],
@@ -442,8 +452,12 @@ class NeuronsDataset:
                     .ravel()[0]
                     .decode("utf-8")
                 )
-                neuron_id = get_neuron_attr(dataset, wf_n, "neuron_id").ravel()[0]
-                if not isinstance(neuron_id, (np.ndarray, np.int64, int)):
+                neuron_id = get_neuron_attr(
+                    dataset,
+                    wf_n,
+                    _id_type,
+                ).ravel()[0]
+                if not isinstance(neuron_id, (np.ndarray, np.int64, np.int32, int)):
                     neuron_id = neuron_id.decode("utf-8")
                 neuron_metadata = dataset_name + "/" + str(neuron_id)
                 self.info.append(str(neuron_metadata))
@@ -471,9 +485,11 @@ class NeuronsDataset:
                         pd.DataFrame(
                             {
                                 "neuron_id": [
-                                    get_neuron_attr(dataset, wf_n, "neuron_id").ravel()[
-                                        0
-                                    ]
+                                    get_neuron_attr(
+                                        dataset,
+                                        wf_n,
+                                        _id_type,
+                                    ).ravel()[0]
                                 ],
                                 "label": [label],
                                 "dataset": [dataset_name],
@@ -734,7 +750,7 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
 
 
 def resample_waveforms(
-    dataset: NeuronsDataset, sampling_rate: int = 30_000
+    dataset: NeuronsDataset, new_sampling_rate: int = 30_000
 ) -> NeuronsDataset:
     """
     It takes a dataset, resizes the waveforms to a new sampling rate, and returns a new dataset with the
@@ -742,7 +758,7 @@ def resample_waveforms(
 
     Args:
       dataset (NeuronsDataset): the dataset to be resampled
-      sampling_rate (int): the sampling rate of the new waveforms. Defaults to 30_000
+      new_sampling_rate (int): the sampling rate of the new waveforms. Defaults to 30_000
 
     Returns:
       A new dataset with the same properties as the original dataset, but with the waveforms resampled.
@@ -753,7 +769,7 @@ def resample_waveforms(
 
     original_wf = dataset.wf.reshape(-1, 1, dataset._n_channels, dataset._central_range)
 
-    new_range = int(dataset._central_range * sampling_rate / dataset._sampling_rate)
+    new_range = int(dataset._central_range * new_sampling_rate / dataset._sampling_rate)
 
     resize = transforms.Resize((dataset._n_channels, new_range))
 

@@ -26,11 +26,11 @@ from scipy.stats import skew
 from sklearn.metrics import mean_squared_error
 from tqdm.auto import tqdm
 
+from .corr import acg
 from .datasets import NeuronsDataset
 from .gl import get_units
 from .inout import chan_map
 from .spk_t import trn_filtered
-from .corr import acg
 from .spk_wvf import wvf_dsmatch
 
 # pylint: disable=unsupported-binary-operation
@@ -860,7 +860,6 @@ def recover_chanmap(partial_chanmap: np.ndarray) -> np.ndarray:
 
 
 def dendritic_component(waveform_2d, peak_chan, somatic_mask):
-
     dendritic_waves = waveform_2d[~somatic_mask]
     max_dendritic_amp = np.ptp(dendritic_waves, axis=1)
 
@@ -1648,6 +1647,10 @@ def h5_feature_extraction(
             try:
                 if isinstance(dataset_path, NeuronsDataset):
                     chanmap = dataset.chanmap_list[i]
+                    if waveform.shape[0] > chanmap.shape[0]:
+                        # If this happened, the waveform was tiled and we need to recover
+                        # the original one to match the chanmap
+                        waveform = waveform[waveform.shape[0] - chanmap.shape[0] :, :]
                 else:
                     chanmap_path = f"datasets/{dataset.info[i]}/channelmap"
                     with h5py.File(dataset_path, "r") as hdf5_file:

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 from imblearn.over_sampling import RandomOverSampler
+from sklearn.base import TransformerMixin
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score
 from sklearn.model_selection import LeaveOneOut
@@ -51,7 +52,7 @@ def run_cross_validation(
     kfold=None,
     model_class=None,
     get_importance=False,
-    scaler=None,
+    scaler: TransformerMixin = None,
     **model_kwargs,
 ):
     """
@@ -80,7 +81,7 @@ def run_cross_validation(
     if get_importance:
         importances_list = []
 
-    for _ in tqdm(range(n_runs), position=0, leave=True, desc="Random Forest runs"):
+    for _ in tqdm(range(n_runs), position=0, leave=True, desc="Classifier runs"):
         train_accuracies = []
         true_targets = []
         model_pred = []
@@ -92,12 +93,12 @@ def run_cross_validation(
             leave=False,
             position=1,
             desc="Cross-validating",
-            total=len(X),
+            total=kfold.get_n_splits(X),
         ):
-            X_train = X.iloc[train_idx].copy()
-            y_train = y.iloc[train_idx].copy().values
-            X_test = X.iloc[val_idx]
-            y_test = y.iloc[val_idx].values
+            X_train = X.iloc[train_idx].copy().to_numpy()
+            y_train = y.iloc[train_idx].copy().values.astype(int)
+            X_test = X.iloc[val_idx].to_numpy()
+            y_test = y.iloc[val_idx].values.astype(int)
 
             if scaler is not None:
                 X_train = scaler.fit_transform(X_train)
@@ -130,6 +131,9 @@ def run_cross_validation(
             if get_importance:
                 importances_list.append(model.feature_importances_)
 
+        true_targets = np.concatenate(true_targets).squeeze()
+        model_pred = np.concatenate(model_pred).squeeze()
+
         f1 = f1_score(true_targets, model_pred, average="macro")
         f1_scores.append(f1)
         hyper_true_targets.append(np.array(true_targets))
@@ -141,9 +145,7 @@ def run_cross_validation(
     print(
         f"Mean train accuracy is {mean_train:.3f} while LOO accuracy is {mean_validation:.3f}"
     )
-    print(
-        f"Mean LOO f1 score across random forests is {np.array(f1_scores).mean():.3f}"
-    )
+    print(f"Mean LOO F1 score across {n_runs} runs is {np.array(f1_scores).mean():.3f}")
 
     all_targets = np.concatenate(hyper_true_targets).squeeze()
     all_probabilities = np.concatenate(hyper_probabilities).squeeze()

@@ -165,7 +165,7 @@ def run_cross_validation(
         "train_accuracies": run_train_accuracies,
         "true_targets": all_targets,
         "predicted_probability": all_probabilities,
-        "folds_variance": folds_variance,
+        "folds_variance": np.array(folds_variance),
     }
 
     if get_importance:

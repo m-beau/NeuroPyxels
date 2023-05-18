@@ -27,7 +27,7 @@ from sklearn.metrics import mean_squared_error
 from tqdm.auto import tqdm
 
 from .corr import acg
-from .datasets import NeuronsDataset
+from .datasets import NeuronsDataset, preprocess_template
 from .gl import get_units
 from .inout import chan_map
 from .spk_t import trn_filtered
@@ -79,7 +79,7 @@ FEATURES = [
     "dendritic_comp_amp",
 ]
 
-AMPLITUDE_FEATURES = [
+WAVEFORM_AMPLITUDE_FEATURES = [
     "peak_voltage",
     "trough_voltage",
     "onset_amp",
@@ -1200,6 +1200,7 @@ def waveform_features(
     chanmap: np.ndarray,
     interp_coeff: int = 100,
     plot_debug: bool = False,
+    waveform_type="relevant",
 ) -> list:
     """
     > Given a 2D array of waveforms, the channel with the peak, and a boolean flag for whether to plot
@@ -1213,6 +1214,11 @@ def waveform_features(
     False
     """
 
+    if waveform_type not in ["relevant", "flipped", "peak"]:
+        raise NotImplementedError(
+            f"Waveform type {waveform_type} not implemented. Please choose one of the following: 'relevant', 'flipped', 'peak'"
+        )
+
     high_amp_channels = filter_out_waves(waveform_2d, peak_channel)
 
     (
@@ -1222,17 +1228,25 @@ def waveform_features(
         max_peaks,
     ) = detect_peaks_2d(waveform_2d, high_amp_channels)
 
-    # First find working waveform
-    relevant_waveform, somatic, relevant_channel = find_relevant_waveform(
-        waveform_2d,
-        candidate_channel_somatic,
-        candidate_channel_non_somatic,
-        somatic_mask,
-    )
+    peak_waveform = waveform_2d[peak_channel, :]
 
-    # If None is found features cannot be extracted
-    if relevant_waveform is None:
-        return [peak_channel, *[0] * 18]
+    if waveform_type == "relevant":
+        # First find working waveform
+        relevant_waveform, somatic, relevant_channel = find_relevant_waveform(
+            waveform_2d,
+            candidate_channel_somatic,
+            candidate_channel_non_somatic,
+            somatic_mask,
+        )
+        # If None is found features cannot be extracted
+        if relevant_waveform is None:
+            return [peak_channel, *[0] * 18]
+    elif waveform_type == "flipped":
+        relevant_waveform = preprocess_template(
+            peak_waveform, clip_size=(1e-3, 1e-3), normalize=False
+        )
+    elif waveform_type == "peak":
+        relevant_waveform = peak_waveform
 
     peak_channel_features = extract_single_channel_features(
         relevant_waveform, plot_debug, interp_coeff
@@ -1594,6 +1608,7 @@ def h5_feature_extraction(
     _label=None,
     _sampling_rate=30_000,
     _use_chanmap=True,
+    _wvf_type="relevant",
 ):
     """
     It takes a NeuronsDataset instance coming from an h5 dataset and extracts the features.
@@ -1633,9 +1648,6 @@ def h5_feature_extraction(
     if labels_only:
         dataset.make_labels_only()
 
-    if labels_only:
-        dataset.make_labels_only()
-
     for i in tqdm(range(len(dataset)), desc="Extracting features"):
         dp = "/".join(dataset.info[i].split("/")[:-1])
         unit = int(dataset.info[i].split("/")[-1])
@@ -1647,6 +1659,7 @@ def h5_feature_extraction(
             try:
                 if isinstance(dataset_path, NeuronsDataset):
                     chanmap = dataset.chanmap_list[i]
+                    chanmap = np.array(chanmap)
                     if waveform.shape[0] > chanmap.shape[0]:
                         # If this happened, the waveform was tiled and we need to recover
                         # the original one to match the chanmap
@@ -1667,6 +1680,7 @@ def h5_feature_extraction(
                 dataset._n_channels // 2,
                 chanmap,
                 plot_debug=_debug,
+                waveform_type=_wvf_type,
             )
             tmp_features = temporal_features(spike_train, _sampling_rate)
 

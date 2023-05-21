@@ -866,22 +866,23 @@ def preprocess_template(
     # We only align to peaks, so our goal is to find a set of local peaks
     # first and then choose the optimal one
 
-    # peaks = []
-    # for i in range(1, len(template) - 1):
-    #     if (
-    #         (template[i] > template[i - 1])
-    #         and (template[i] >= template[i + 1])
-    #         and (template[i] > 0)
-    #     ):
-    #         peaks.append(i)  # Positive peak
-    #     elif (
-    #         (template[i] < template[i - 1])
-    #         and (template[i] <= template[i + 1])
-    #         and (template[i] < 0)
-    #     ):
-    #         peaks.append(i)  # Negative peak
-
     peaks, _ = npyx.feat.detect_peaks(template, margin=0.5, onset=0.2)
+    # If we don't find any peaks, we will search for them in a more brute force way
+    if len(peaks) == 0:
+        peaks = []
+        for i in range(1, len(template) - 1):
+            if (
+                (template[i] > template[i - 1])
+                and (template[i] >= template[i + 1])
+                and (template[i] > 0)
+            ):
+                peaks.append(i)  # Positive peak
+            elif (
+                (template[i] < template[i - 1])
+                and (template[i] <= template[i + 1])
+                and (template[i] < 0)
+            ):
+                peaks.append(i)  # Negative peak
 
     # Given our list of peaks, our goal is to find the optimal peak,
     # typically this will be the maximum value, but we align to the first

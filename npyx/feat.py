@@ -1201,6 +1201,7 @@ def waveform_features(
     interp_coeff: int = 100,
     plot_debug: bool = False,
     waveform_type="relevant",
+    _clip_size=(1e-3, 2e-3),
 ) -> list:
     """
     > Given a 2D array of waveforms, the channel with the peak, and a boolean flag for whether to plot
@@ -1229,24 +1230,25 @@ def waveform_features(
     ) = detect_peaks_2d(waveform_2d, high_amp_channels)
 
     peak_waveform = waveform_2d[peak_channel, :]
-
+    # First find working waveform
+    relevant_waveform, somatic, relevant_channel = find_relevant_waveform(
+        waveform_2d,
+        candidate_channel_somatic,
+        candidate_channel_non_somatic,
+        somatic_mask,
+    )
     if waveform_type == "relevant":
-        # First find working waveform
-        relevant_waveform, somatic, relevant_channel = find_relevant_waveform(
-            waveform_2d,
-            candidate_channel_somatic,
-            candidate_channel_non_somatic,
-            somatic_mask,
-        )
         # If None is found features cannot be extracted
         if relevant_waveform is None:
             return [peak_channel, *[0] * 18]
     elif waveform_type == "flipped":
         relevant_waveform = preprocess_template(
-            peak_waveform, clip_size=(1e-3, 1e-3), normalize=False
+            peak_waveform, clip_size=_clip_size, normalize=False
         )
+        relevant_channel = peak_channel
     elif waveform_type == "peak":
         relevant_waveform = peak_waveform
+        relevant_channel = peak_channel
 
     peak_channel_features = extract_single_channel_features(
         relevant_waveform, plot_debug, interp_coeff
@@ -1609,6 +1611,7 @@ def h5_feature_extraction(
     _sampling_rate=30_000,
     _use_chanmap=True,
     _wvf_type="relevant",
+    _clip_size=(1e-3, 2e-3),
 ):
     """
     It takes a NeuronsDataset instance coming from an h5 dataset and extracts the features.
@@ -1681,6 +1684,7 @@ def h5_feature_extraction(
                 chanmap,
                 plot_debug=_debug,
                 waveform_type=_wvf_type,
+                _clip_size=_clip_size,
             )
             tmp_features = temporal_features(spike_train, _sampling_rate)
 

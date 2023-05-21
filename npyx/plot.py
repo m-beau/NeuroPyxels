@@ -339,6 +339,8 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
     if prettify:
         fig.patch.set_facecolor('white')
     if saveFig:
+        if figname is None and title is not None:
+            figname = title
         save_mpl_fig(fig, figname, saveDir, _format, dpi=500)
 
     return fig, ax
@@ -901,7 +903,7 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
 def plot_wvf(dp, u=None, Nchannels=12, chStart=None, n_waveforms=300, t_waveforms=2.8,
              periods='all', spike_ids=None, wvf_batch_size=10, ignore_nwvf=True, again=False,
              whiten=False, med_sub=False, hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
-             title = '', plot_std=True, plot_mean=True, plot_templates=False, color='dodgerblue',
+             title = None, plot_std=True, plot_mean=True, plot_templates=False, color='dodgerblue',
              labels=False, show_channels=True, scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf',
              ignore_ks_chanfilt = True,
@@ -1034,6 +1036,10 @@ def plot_wvf(dp, u=None, Nchannels=12, chStart=None, n_waveforms=300, t_waveform
         tplts = None
         tplt_chani_rel = None
 
+    # define a title
+    if title is None:
+        title = f"wvf {int(u)}@{int(cm[peak_chan_i, 0])}"
+
     return plt_wvf(data, subcm, datastd,
              x_tplts, tplts, tplt_chani_rel, fs,
              title, plot_std, plot_mean, plot_templates,
@@ -1045,7 +1051,7 @@ def plot_wvf(dp, u=None, Nchannels=12, chStart=None, n_waveforms=300, t_waveform
 
 def plt_wvf(waveforms, subcm=None, waveforms_std=None,
             x_tplts=None, tplts=None, tplt_chani_rel=None, fs=30000,
-            title = '', plot_std=True, plot_mean=True, plot_templates=False,
+            title = None, plot_std=True, plot_mean=True, plot_templates=False,
             color='dodgerblue', labels=False, show_channels=True,
             scalebar_w=5, ticks_lw=1, sample_lines=0, ylim=[0,0],
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf',
@@ -1198,6 +1204,7 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
         fig.suptitle(t=title, x=0.5, y=0.92+0.02*(len(title.split('\n'))-1), size=18, weight='bold', va='top')
 
     # Save figure
+    if title is None: title="waveforms"
     if saveFig:
         save_mpl_fig(fig, title, saveDir, _format)
     if saveData:
@@ -1485,7 +1492,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
     rc+=plt_offsets
 
     fig=plot_raw(dp, times, None, None, channels, filt_key='highpass',
-             offset=450, color=bg_color, lw=lw, bg_alpha=bg_alpha,
+             offset=offset, color=bg_color, lw=lw, bg_alpha=bg_alpha,
              title=title, _format='pdf',  saveDir=saveDir, saveFig=0, figsize=figsize, again=False,
              center_chans_on_0=True, whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
              nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub, use_ks_w_matrix=False, ignore_ks_chanfilt=ignore_ks_chanfilt,
@@ -1525,7 +1532,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
 
     for iu, u in enumerate(units):
         print('plotting unit {}...'.format(u))
-        peakChan=get_peak_chan(dp,u, use_template=False)
+        peakChan=get_peak_chan(dp,u, use_template=True)
         assert peakChan in channels, "WARNING the peak channel of {}, {}, is not in the set of channels plotted here!".format(u, peakChan)
         peakChan_rel=np.nonzero(peakChan==channels)[0][0]
         ch1, ch2 = max(0,peakChan_rel-Nchan_plot//2), min(rc.shape[0], peakChan_rel-Nchan_plot//2+Nchan_plot)
@@ -1533,7 +1540,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
         twin=t[(t>t1+spk_w1)&(t<t2-spk_w2)] # get spikes starting minimum spk_w1 after window start and ending maximum spk_w2 before window end
         twin-=t1 # set t1 as time 0
         for t_spki, t_spk in enumerate(twin):
-            print('plotting spike {}/{}...'.format(t_spki, len(twin)))
+            print('plotting spike {}/{}...'.format(t_spki+1, len(twin)), end='  ')
             spk_id=(tx>=t_spk-spk_w1)&(tx<=t_spk+spk_w2)
             if pyqtgraph:
                 win,p = fig
@@ -1544,6 +1551,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                 ax.plot(tx_ms[ch1:ch2, spk_id].T, rc[ch1:ch2, spk_id].T, lw=lw_color, color=colors[iu])
                 #ax.plot(tx_ms[peakChan_rel, spk_id].T, rc[peakChan_rel, spk_id].T, lw=1.5, color=color)
                 fig.tight_layout()
+        print("\n")
 
     ax.set_ylim([-offset, rc.max()+offset/2])
 
@@ -1973,7 +1981,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
         if overlap_events: (nrows, ncols) = (1,ncols) if not transpose else (nrows, 1)
 
         if figh is None: figh=nrows*1.5 # 10 for 7 is good
-        if figratio is None: figratio=1.2
+        if figratio is None: figratio=3
         figw=figh*(ncols/nrows)*figratio
         figsize=(figw,figh)
 
@@ -2779,7 +2787,8 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
                          extent=extent, interpolation='nearest',
                          **kwargs)
     elif function=='pcolor':
-        axim = ax.pcolormesh(im, X=xvalues, Y=yvalues,
+        pmeshy = yvalues[::-1] if origin=='top' else yvalues
+        axim = ax.pcolormesh(xvalues, pmeshy, im,
                              cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
     if show_values:
         min_edge = np.min([ax.get_position().width  / im.shape[0],
@@ -2808,9 +2817,9 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
             ax.set_xlim(xl)
 
     if xticks is None:
-        xticks = np.arange(im.shape[1]) if im.shape[1]<=6 else get_bestticks_from_array(np.arange(im.shape[1]), step=None, light=0)
+        xticks = get_bestticks_from_array(xvalues, light=1)
     if yticks is None:
-        yticks = np.arange(im.shape[0]) if im.shape[0]<=6 else get_bestticks_from_array(np.arange(im.shape[0]), step=None, light=0)
+        yticks = get_bestticks_from_array(yvalues, light=1)
     mplp(fig, ax, figsize=figsize,
           xlim=None, ylim=None, xlabel=xlabel, ylabel=ylabel,
           xticks=xticks, yticks=yticks, xtickslabels=xticklabels, ytickslabels=yticklabels,

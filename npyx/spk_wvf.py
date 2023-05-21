@@ -203,7 +203,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
                 save=True, verbose=False, again=False,
                 whiten=False,  hpfilt=False, hpfiltf=300, nRangeWhiten=None, nRangeMedSub=None,
                 n_waves_used_for_matching = 5000, peakchan_allowed_range=6,
-                use_average_peakchan = False, max_allowed_amplitude = 1800, max_allowed_shift=3,
+                use_average_peakchan = False, max_allowed_amplitude = 3000, max_allowed_shift=3,
                 n_waves_to_average=800, plot_debug=False, do_shift_match=True, n_waveforms_per_batch=10,
                 subselect_max_template=False, amp_max_percentile=0.95):
     """

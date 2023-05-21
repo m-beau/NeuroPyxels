@@ -23,6 +23,8 @@ from matplotlib.patches import Ellipse
 import scipy.stats as stats
 from numpy import pi, cos, sin
 
+from numba import njit
+
 import cv2
 
 from npyx.utils import npa, thresh, thresh_consec, smooth, sign, assert_int, assert_iterable
@@ -860,22 +862,22 @@ def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=Fal
         - aligned_tb: a len(events) x window/b matrix where the spikes have been aligned, in counts.
     '''
     assert np.any(events), 'You provided an empty array of events!'
-    t = np.sort(times)
-    aligned_t = {}
-    tbins=np.arange(window[0], window[1], b)
-    aligned_tb = np.zeros((len(events), len(tbins))).astype(float)
+    t          = np.sort(times)
+    aligned_t  = {}
+    tbins      = np.arange(window[0], window[1]+b, b)
+    aligned_tb = np.zeros((len(events), len(tbins)-1)).astype(float)
     for i, e in enumerate(events):
         ts = t-e # ts: t shifted
         tsc = ts[(ts>=window[0]/1000)&(ts<=window[1]/1000)] # tsc: ts clipped
         if np.any(tsc) or not remove_empty_trials:
             aligned_t[e]=tsc.tolist()
-            tscb = np.histogram(tsc*1000, bins=np.arange(window[0],window[1]+b,b))[0] # tscb: tsc binned
+            tscb = np.histogram(tsc*1000, bins=tbins)[0] # tscb: tsc binned
             aligned_tb[i,:] = tscb
         else:
             aligned_tb[i,:] = np.nan
     aligned_tb=aligned_tb[~np.isnan(aligned_tb).any(axis=1)]
 
-    if not np.any(aligned_tb): aligned_tb = np.zeros((len(events), len(tbins)))
+    if not np.any(aligned_tb): aligned_tb = np.zeros((len(events), len(tbins)-1))
 
     return aligned_t, aligned_tb
 
@@ -894,20 +896,49 @@ def align_times_manyevents(times, events, b=2, window=[-1000,1000], fs=30000):
     Returns:
         - aligned_tb: a 1 x window/b matrix where the spikes have been aligned, in counts.
     '''
-    tfs, efs = np.round(times*fs, 2), np.round(events*fs, 2)
+    tfs, efs       = np.round(times*fs, 2), np.round(events*fs, 2)
     assert np.all(tfs==tfs.astype(np.int64)), 'WARNING sampling rate must be wrong or provided times are not in seconds!'
-    indices=np.append(0*events, 0*times+1).astype(np.int64)
-    times=np.append(efs, tfs).astype(np.int64)
+    indices        = np.append(0*events, 0*times+1).astype(np.int64)
+    times          = np.append(efs, tfs).astype(np.int64)
 
-    sorti=np.argsort(times)
+    sorti          = np.argsort(times)
     indices, times = indices[sorti], times[sorti]
 
-    win_size=np.diff(window)[0]
-    bin_size=b
+    win_size       = np.diff(window)[0]
+    bin_size       = b
 
-    aligned_tb=crosscorr_cyrille(times, indices, win_size, bin_size, fs=fs, symmetrize=True)[0,1,:]
+    aligned_tb     = crosscorr_cyrille(times, indices, win_size, bin_size, fs=fs, symmetrize=True)[0,1,:]
 
     return aligned_tb
+
+
+@njit(cache=True)
+def fast_align_times(times, events, b=2, window=[-1000,1000]):
+    '''
+    Arguments:
+        - times: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
+        - events: list/array in seconds, events to align timestamps to
+        - b: float, binarized train bin in millisecond
+        - window: [w1, w2], where w1 and w2 are in milliseconds.
+        - remove_empty_trials: boolean, remove from the output trials where there were no timestamps around event. | Default: True
+    Returns:
+        - aligned_t: dictionnaries where each key is an event in absolute time and value the times aligned to this event within window.
+        - aligned_tb: a len(events) x window/b matrix where the spikes have been aligned, in counts.
+    '''
+    assert np.any(events), 'You provided an empty array of events!'
+    t          = np.sort(times)
+    aligned_t  = {}
+    tbins      = np.arange(window[0], window[1]+b, b)
+    aligned_tb = np.zeros((len(events), len(tbins)-1), dtype=np.float64)
+
+    for i, e in enumerate(events):
+        ts = t-e # ts: t shifted
+        tsc = ts[(ts>=window[0]/1000)&(ts<=window[1]/1000)] # tsc: ts clipped
+        aligned_t[e]=tsc
+        tscb = np.histogram(tsc*1000, bins=tbins)[0] # tscb: tsc binned
+        aligned_tb[i,:] = tscb
+
+    return aligned_t, aligned_tb
 
 def jPSTH(spikes1, spikes2, events, b=2, window=[-1000,1000], convolve=False, method='gaussian', gsd=2):
     '''

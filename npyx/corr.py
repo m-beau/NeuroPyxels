@@ -99,7 +99,8 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
 
 def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=True,
                       log_window_end=None, n_log_bins=10):
-    '''Returns the crosscorrelation function of two spike trains.
+    '''
+    Returns the crosscorrelation function of two spike trains.
        - times: array of concatenated times of all neurons, sorted in time, in samples.
        - clusters: corresponding array of neuron indices
        - win_size (float): window size, in milliseconds
@@ -108,7 +109,8 @@ def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=
        - fs: sampling rate (Hertz). Default 30000.
        - symmetrize (bool): symmetrize the semi correlograms. Default=True.
        - log_window_end: float, end of CCG window in ms (will yield a series of n_log_bins log10 bins between 0 and log_window_end)
-       - n_log_bins: int, number of log bins'''
+       - n_log_bins: int, number of log bins
+    '''
     phy_ss, spike_clusters = times, clusters
     units = _unique(spike_clusters)#_as_array(U) # Order of the correlogram: order of the inputted list U (replaced by its indices - see make_phy_like_spikeClustersTimes)
     n_units = len(units)

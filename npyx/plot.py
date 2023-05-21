@@ -2787,7 +2787,8 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
                          extent=extent, interpolation='nearest',
                          **kwargs)
     elif function=='pcolor':
-        axim = ax.pcolormesh(im, X=xvalues, Y=yvalues,
+        pmeshy = yvalues[::-1] if origin=='top' else yvalues
+        axim = ax.pcolormesh(xvalues, pmeshy, im,
                              cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
     if show_values:
         min_edge = np.min([ax.get_position().width  / im.shape[0],
@@ -2816,9 +2817,9 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
             ax.set_xlim(xl)
 
     if xticks is None:
-        xticks = np.arange(im.shape[1]) if im.shape[1]<=6 else get_bestticks_from_array(np.arange(im.shape[1]), step=None, light=0)
+        xticks = get_bestticks_from_array(xvalues, light=1)
     if yticks is None:
-        yticks = np.arange(im.shape[0]) if im.shape[0]<=6 else get_bestticks_from_array(np.arange(im.shape[0]), step=None, light=0)
+        yticks = get_bestticks_from_array(yvalues, light=1)
     mplp(fig, ax, figsize=figsize,
           xlim=None, ylim=None, xlabel=xlabel, ylabel=ylabel,
           xticks=xticks, yticks=yticks, xtickslabels=xticklabels, ytickslabels=yticklabels,

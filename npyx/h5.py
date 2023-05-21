@@ -268,7 +268,9 @@ def add_unit_h5(
         if sane_periods is None:
             sane_periods = "all"
         sane_periods = check_periods(sane_periods)
-        write_to_group(neuron_group, "sane_periods", sane_periods, overwrite_h5)
+        write_to_group(neuron_group, "sane_periods", sane_periods,
+                       assert_recompute("sane_periods", neuron_group, overwrite_h5, selective_overwrite)
+                       )
 
         # spike_times
         key = "spike_indices"
@@ -378,7 +380,7 @@ def add_unit_h5(
             write_to_group(neuron_group, "channelmap", cm[chan_bottom:chan_top, 1:3])
 
         # scaling factor
-        write_to_group(neuron_group, "scaling_factor", meta["bit_uV_conv_factor"], overwrite_h5)
+        write_to_group(neuron_group, "scaling_factor", meta["bit_uV_conv_factor"], True)
 
         # Extraction of voltage snippet
         keys = ["channel_noise_std", "peakchan_SNR", "raw_voltage_snippet", "fn_fp_filtered_spikes", "sane_spikes"]
@@ -450,7 +452,7 @@ def add_unit_h5(
         pbar.update(1)
 
         # SNR
-        keys = ["channel_noise_std", "peakchan_SNR", "fn_fp_filtered_spikes", "sane_spikes"]
+        keys = ["channel_noise_std", "peakchan_SNR", "raw_waveforms", "fn_fp_filtered_spikes", "sane_spikes"]
         if assert_recompute_any(keys, neuron_group, overwrite_h5, selective_overwrite):
             # both chunk and raw waveforms are in bits (int16)
             mad           = np.median(np.abs(chunk - np.median(chunk, axis=1)[:, None]), axis=1)
@@ -488,8 +490,10 @@ def add_unit_h5(
         # layer and ground truth labels
         for key in ["phyllum_layer", "human_layer",
                     "expert_label", "ground_truth_label", "ground_truth_source", "mli_cluster"]:
+            value = kwargs[key] if key in kwargs else ""
             if assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
-                write_to_group(neuron_group, key,       "", overwrite_h5)
+                print(key, value)
+                write_to_group(neuron_group, key, value)
 
         pbar.set_description(f"Done with '{relative_unit_path}'.")
         pbar.refresh()
@@ -529,6 +533,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
                 "sane_periods":{u1:[[t1,t2], [t3,t4]], u2:[], u3:[],
                                 u4:[], u5:[], u6:[], u7:[], u8:[]} # windows of time to use to compute features etc for any particular neuron, in seconds.
                 "global_sane_periods": [[t1,t2], [t3,t4]], # windows of time to use to compute features etc for all neurons, in seconds
+                "phyllum_layers": "layer", # can be ["ML", "PCL", "GCL", "unknown", "not_cortex", ""]
                 }
         - h5_path: path/to/database_file.h5
         - lab_id: str, lab id. see format at www.tinyurl.com/c4database
@@ -566,27 +571,50 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
                     order=1,
                 )
 
+        # extract metadata
         ds_name, optolabel = ds_name_ct.split("&")
         assert optolabel   == ds["ct"]
         if optolabel       == "PkC":
             optolabel = "PkC_ss"
-        genetic_line       = ds["line"]
-        units              = ds["units"]
-        ss                 = ds["ss"]
-        cs                 = ds["cs"]
-        good_units         = list(get_units(dp, "good", again=True))
-        sane_periods_dic   = ds["sane_periods"] if "sane_periods" in ds else {}
-        global_sane_periods = ds["global_sane_periods"] if "global_sane_periods" in ds else []
+        genetic_line        = ds["line"]
+
+        # extract units
+        units               = ds["units"]
+        ss                  = ds["ss"]
+        cs                  = ds["cs"]
+        good_units          = list(get_units(dp, "good", again=True))
 
         if include_all_good:
             units_for_h5 = np.unique(units + ss + cs + good_units)
         else:
             units_for_h5 = units + ss + cs
 
+        # extract periods
+        sane_periods_dic    = ds["sane_periods"] if "sane_periods" in ds else {}
+        sane_periods_dic    = {int(k):v for k,v in sane_periods_dic.items()}
+        if len(sane_periods_dic)>0:
+            assert np.all(np.isin(list(sane_periods_dic.keys()), units_for_h5)),\
+                f"sane_periods is {sane_periods_dic} but units must be in {units_for_h5}!"
+        global_sane_periods = ds["global_sane_periods"] if "global_sane_periods" in ds else []
+
+        # extract layers
+        allowed_layers = ["ML", "PCL", "GCL", "unknown", "not_cortex", ""]
+        if "phyllum_layers" in ds:
+            phyllum_layers  = ds["phyllum_layers"]
+            phyllum_layers  = {int(k):v for k,v in phyllum_layers.items()}
+            assert np.all(np.isin(list(phyllum_layers.values()), allowed_layers)),\
+                f"phyllum_layers is {phyllum_layers} but layers must be in {allowed_layers}!"
+            assert np.all(np.isin(list(phyllum_layers.keys()), units_for_h5)),\
+                f"phyllum_layers is {phyllum_layers} but units must be in {units_for_h5}!"
+
         for u in units_for_h5:
             sane_periods = sane_periods_dic[u] if u in sane_periods_dic else None
             if sane_periods is None and np.any(global_sane_periods):
                 sane_periods = global_sane_periods
+
+            if "phyllum_layers" in ds:
+                phyllum_layer = phyllum_layers[u] if u in phyllum_layers else ""
+                kwargs["phyllum_layer"] = phyllum_layer
 
             add_unit_h5(
                 h5_path,

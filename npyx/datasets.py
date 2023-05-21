@@ -8,11 +8,13 @@ in the C4 collaboration. It also contains the functions to preprocess the data.
 """
 import copy
 import pickle
+from typing import Tuple, Union
 
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.signal import resample
 from tqdm.auto import tqdm
 
 import npyx
@@ -128,12 +130,13 @@ def crop_original_wave(waveform, central_range=60, n_channels=10):
     """
     # First argsort to find the peak channels
     # Then if the absolute max amplitude channel is "too close to the edge", find the second max and so on.
-    # If the peak channel is in the middle, then just take the central 10 channels
+    # If the peak channel is in the middle, then just take the central channels
     centre = waveform.shape[1] // 2
     if waveform.shape[0] <= n_channels:
-        return waveform[
-            :, (centre - central_range // 2) : (centre + central_range // 2)
-        ]
+        return (
+            waveform[:, (centre - central_range // 2) : (centre + central_range // 2)],
+            waveform.shape[0] // 2,
+        )
 
     channels_by_amplitude = np.argsort(np.max(np.abs(waveform), axis=1))
 
@@ -147,7 +150,16 @@ def crop_original_wave(waveform, central_range=60, n_channels=10):
         ].copy()
         i += 1
 
-    return cropped_wvf
+    return cropped_wvf, peak_channel
+
+
+def crop_chanmap(chanmap, peak_channel_idx, n_channels=10):
+    return np.array(
+        chanmap[
+            (peak_channel_idx - n_channels // 2) : (peak_channel_idx + n_channels // 2),
+            :,
+        ]
+    )
 
 
 def resample_acg(acg, window_size=20, keep_same_size=True):
@@ -167,7 +179,7 @@ def resample_acg(acg, window_size=20, keep_same_size=True):
     # Create new_y enhanced with interpolating points
     new_y = np.concatenate((avg_enhanced.ravel(), y[window_size:].ravel()), axis=0)
 
-    if keep_same_size == False:
+    if keep_same_size is False:
         return new_y
 
     # Select final points to remove
@@ -203,7 +215,7 @@ class NeuronsDataset:
         central_range=CENTRAL_RANGE,
         n_channels=N_CHANNELS,
         reshape_fortran_to_c=False,
-        _label="optotagged_label",
+        _label="ground_truth_label",
         _labelling=LABELLING,
         _use_amplitudes=False,
         _bin_size=1,
@@ -211,8 +223,8 @@ class NeuronsDataset:
         _debug=False,
         _lisberger=False,
         _labels_only=False,
+        _id_type="neuron_relative_id",
     ):
-
         # Store useful metadata about how the dataset was extracted
         self.dataset = dataset
         self._n_channels = n_channels
@@ -248,15 +260,21 @@ class NeuronsDataset:
             try:
                 # Get the label for this wvf
                 label = get_neuron_attr(dataset, wf_n, _label).ravel()[0]
+                if type(label) in (bytes, np.bytes_):
+                    label = str(label.decode("utf-8"))
+                    if len(label) == 0:
+                        label = 0
+                    if label == "unlabeled":
+                        label = 0
 
                 # If the neuron is labelled we extract it anyways
                 if label != 0 and not isinstance(label, (np.ndarray, np.int64)):
-                    label = str(label.decode("utf-8"))
                     self.labels_list.append(label)
 
                 elif label != 0:
                     label = label.item()
                     self.labels_list.append(label)
+
                 else:
                     if _labels_only:
                         continue
@@ -289,7 +307,9 @@ class NeuronsDataset:
                                 {
                                     "neuron_id": [
                                         get_neuron_attr(
-                                            dataset, wf_n, "neuron_id"
+                                            dataset,
+                                            wf_n,
+                                            _id_type,
                                         ).ravel()[0]
                                     ],
                                     "label": [label],
@@ -361,17 +381,15 @@ class NeuronsDataset:
                     wf = np.concatenate((*repeats, wf), axis=0)
 
                 if normalise_wvf:
-                    self.wf_list.append(
-                        crop_original_wave(normalise_wf(wf), central_range, n_channels)
-                        .ravel()
-                        .astype(float)
+                    cropped_wave, peak_idx = crop_original_wave(
+                        normalise_wf(wf), central_range, n_channels
                     )
+                    self.wf_list.append(cropped_wave.ravel().astype(float))
                 else:
-                    self.wf_list.append(
-                        crop_original_wave(wf, central_range, n_channels)
-                        .ravel()
-                        .astype(float)
+                    cropped_wave, peak_idx = crop_original_wave(
+                        wf, central_range, n_channels
                     )
+                    self.wf_list.append(cropped_wave.ravel().astype(float))
                 if self.wf_list[-1].shape[0] != n_channels * central_range:
                     dataset_name = (
                         get_neuron_attr(dataset, wf_n, "dataset_id")
@@ -385,7 +403,9 @@ class NeuronsDataset:
                                 {
                                     "neuron_id": [
                                         get_neuron_attr(
-                                            dataset, wf_n, "neuron_id"
+                                            dataset,
+                                            wf_n,
+                                            _id_type,
                                         ).ravel()[0]
                                     ],
                                     "label": [label],
@@ -420,6 +440,7 @@ class NeuronsDataset:
                             4,
                             _bin_size,
                             _win_size,
+                            fs=self._sampling_rate,
                             train=acg_spikes,
                         )
                         normal_acg = np.clip(acg / np.max(acg), 0, 10)
@@ -432,6 +453,7 @@ class NeuronsDataset:
                             4,
                             _bin_size,
                             _win_size,
+                            fs=self._sampling_rate,
                             train=acg_spikes,
                         )
                         self.acg_list.append(acg.astype(float))
@@ -442,14 +464,19 @@ class NeuronsDataset:
                     .ravel()[0]
                     .decode("utf-8")
                 )
-                neuron_id = get_neuron_attr(dataset, wf_n, "neuron_id").ravel()[0]
-                if not isinstance(neuron_id, (np.ndarray, np.int64, int)):
+                neuron_id = get_neuron_attr(
+                    dataset,
+                    wf_n,
+                    _id_type,
+                ).ravel()[0]
+                if not isinstance(neuron_id, (np.ndarray, np.int64, np.int32, int)):
                     neuron_id = neuron_id.decode("utf-8")
                 neuron_metadata = dataset_name + "/" + str(neuron_id)
                 self.info.append(str(neuron_metadata))
 
                 chanmap = get_neuron_attr(dataset, wf_n, "channelmap")
-                self.chanmap_list.append(np.array(chanmap))
+                chanmap = crop_chanmap(np.array(chanmap), peak_idx, n_channels)
+                self.chanmap_list.append(chanmap)
 
                 try:
                     genetic_line = get_neuron_attr(dataset, wf_n, "line")
@@ -471,9 +498,11 @@ class NeuronsDataset:
                         pd.DataFrame(
                             {
                                 "neuron_id": [
-                                    get_neuron_attr(dataset, wf_n, "neuron_id").ravel()[
-                                        0
-                                    ]
+                                    get_neuron_attr(
+                                        dataset,
+                                        wf_n,
+                                        _id_type,
+                                    ).ravel()[0]
                                 ],
                                 "label": [label],
                                 "dataset": [dataset_name],
@@ -672,6 +701,16 @@ class NeuronsDataset:
 
         return checked_dataset
 
+    def save(self, path):
+        """
+        Saves the dataset to a given path
+
+        Args:
+            path: Path to save the dataset to
+        """
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+
     def __len__(self):
         return len(self.wf)
 
@@ -734,7 +773,7 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
 
 
 def resample_waveforms(
-    dataset: NeuronsDataset, sampling_rate: int = 30_000
+    dataset: NeuronsDataset, new_sampling_rate: int = 30_000
 ) -> NeuronsDataset:
     """
     It takes a dataset, resizes the waveforms to a new sampling rate, and returns a new dataset with the
@@ -742,7 +781,7 @@ def resample_waveforms(
 
     Args:
       dataset (NeuronsDataset): the dataset to be resampled
-      sampling_rate (int): the sampling rate of the new waveforms. Defaults to 30_000
+      new_sampling_rate (int): the sampling rate of the new waveforms. Defaults to 30_000
 
     Returns:
       A new dataset with the same properties as the original dataset, but with the waveforms resampled.
@@ -753,7 +792,7 @@ def resample_waveforms(
 
     original_wf = dataset.wf.reshape(-1, 1, dataset._n_channels, dataset._central_range)
 
-    new_range = int(dataset._central_range * sampling_rate / dataset._sampling_rate)
+    new_range = int(dataset._central_range * new_sampling_rate / dataset._sampling_rate)
 
     resize = transforms.Resize((dataset._n_channels, new_range))
 
@@ -775,3 +814,133 @@ def force_amplitudes_length(amplitudes, times):
     if len(amplitudes) > len(times):
         amplitudes = amplitudes[: len(times)]
     return amplitudes, times
+
+
+def preprocess_template(
+    template: np.ndarray,
+    original_sampling_rate: float = 30000,
+    output_sampling_rate: float = 30000,
+    clip_size: Tuple[float, float] = (1e-3, 3e-3),
+    peak_sign: Union[None, str] = "negative",
+    normalize: bool = True,
+) -> np.ndarray:
+    """
+    This function preprocesses a given template by resampling it, aligning it to a peak, flipping it if
+    necessary, and normalizing it.
+
+    Args:
+      template (np.ndarray): A numpy array representing a waveform template.
+      original_sampling_rate (float): The original sampling rate of the input template waveform in Hz
+    (Hertz). Defaults to 30000
+      output_sampling_rate (float): The desired sampling rate of the output template. The function will
+    resample the input template to match this sampling rate if the original sampling rate is different.
+    Defaults to 30000
+      clip_size (Tuple[float, float]): The clip_size parameter is a tuple of two floats representing the
+    start and end times (in seconds) of the desired clip from the original template waveform. The
+    preprocess_template function uses this parameter to construct an output template of a specific
+    length based on the desired sampling rate.
+      peak_sign (Union[None, str]): The parameter "peak_sign" is used to specify whether the peak in the
+    template should be positive or negative. It can take on the values "positive", "negative", or None.
+    If it is set to "positive", the template will be flipped if the peak is negative, and if it is.
+    Defaults to negative
+      normalize (bool): A boolean parameter that determines whether or not to normalize the output
+    template. If set to True, the output template will be normalized by dividing it by the absolute
+    value of the peak amplitude. Defaults to True
+
+    Returns:
+      a preprocessed template as a numpy array.
+
+    Authors:
+       Original Julia Implementation by David J. Herzfeld <herzfeldd@gmail.com>
+    """
+    assert original_sampling_rate >= output_sampling_rate
+
+    if original_sampling_rate != output_sampling_rate:
+        template = resample(
+            template, int(output_sampling_rate / original_sampling_rate * len(template))
+        )
+
+    alignment_idx = int(round(abs(clip_size[0]) * output_sampling_rate))
+
+    # Search through our template to find our desired alignment point
+    # We only align to peaks, so our goal is to find a set of local peaks
+    # first and then choose the optimal one
+
+    peaks, _ = npyx.feat.detect_peaks(template, margin=0.5, onset=0.2)
+    # If we don't find any peaks, we will search for them in a more brute force way
+    if len(peaks) == 0:
+        peaks = []
+        for i in range(1, len(template) - 1):
+            if (
+                (template[i] > template[i - 1])
+                and (template[i] >= template[i + 1])
+                and (template[i] > 0)
+            ):
+                peaks.append(i)  # Positive peak
+            elif (
+                (template[i] < template[i - 1])
+                and (template[i] <= template[i + 1])
+                and (template[i] < 0)
+            ):
+                peaks.append(i)  # Negative peak
+
+    # Given our list of peaks, our goal is to find the optimal peak,
+    # typically this will be the maximum value, but we align to the first
+    # peak that is at least 75% of the maximum value
+
+    peak_values = np.abs(template[peaks])
+    extremum = np.max(peak_values)
+    reference_peak_idx = peaks[np.where(peak_values > 0.75 * extremum)[0][0]]
+
+    peak_val = np.abs(template[reference_peak_idx])
+
+    # Determine if we need to flip our template based on the value of the peak
+    # ensuring that the peak is negative
+    if (
+        peak_sign is not None
+        and peak_sign == "negative"
+        and template[reference_peak_idx] > 0
+    ):
+        template = template * -1
+    elif (
+        peak_sign is not None
+        and peak_sign == "positive"
+        and template[reference_peak_idx] < 0
+    ):
+        template = template * -1
+
+    # Construct our output template based on our desired clip_size
+    num_indices = int(
+        round((abs(clip_size[0]) + abs(clip_size[1])) * output_sampling_rate)
+    )
+    if reference_peak_idx < alignment_idx:
+        template = np.concatenate(
+            (np.ones(alignment_idx - reference_peak_idx) * template[0], template)
+        )
+    elif reference_peak_idx > alignment_idx:
+        shift = reference_peak_idx - alignment_idx
+        template = np.concatenate((template[shift:], np.full(shift, template[-1])))
+
+    assert np.abs(template[alignment_idx]) == peak_val
+
+    if len(template) > num_indices:
+        template = template[:num_indices]
+    elif len(template) < num_indices:
+        template = np.pad(
+            template,
+            (0, num_indices - len(template)),
+            mode="constant",
+            constant_values=template[-1],
+        )
+
+    assert len(template) == num_indices
+
+    # Remove any (noisy) offset
+    num_indices = int(round(abs(clip_size[0]) * output_sampling_rate))
+    template = template - np.median(template[:num_indices])
+
+    if normalize:
+        # Normalize the result
+        template = template / np.abs(template[alignment_idx])
+
+    return template

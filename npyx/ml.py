@@ -12,6 +12,7 @@ except ImportError:
     "To install PyTorch, follow the instructions at http://pytorch.org"))
 
 from imblearn.over_sampling import RandomOverSampler
+from sklearn.base import TransformerMixin
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score
 from sklearn.model_selection import LeaveOneOut
@@ -58,7 +59,7 @@ def run_cross_validation(
     kfold=None,
     model_class=None,
     get_importance=False,
-    scaler=None,
+    scaler: TransformerMixin = None,
     **model_kwargs,
 ):
     """
@@ -78,20 +79,21 @@ def run_cross_validation(
     if kfold is None:
         kfold = LeaveOneOut()
 
-    f1_scores = []
-
-    hyper_true_targets = []
-    hyper_preds = []
-    hyper_probabilities = []
+    all_runs_f1_scores = []
+    all_runs_targets = []
+    all_runs_predictions = []
+    all_runs_probabilities = []
+    folds_variance = []
 
     if get_importance:
         importances_list = []
 
-    for _ in tqdm(range(n_runs), position=0, leave=True, desc="Random Forest runs"):
-        train_accuracies = []
-        true_targets = []
-        model_pred = []
-        probabilities = []
+    for _ in tqdm(range(n_runs), position=0, leave=True, desc="Classifier runs"):
+        run_train_accuracies = []
+        run_true_targets = []
+        run_model_pred = []
+        run_probabilites = []
+        folds_f1 = []
 
         seed = np.random.choice(2**32)
         for fold, (train_idx, val_idx) in tqdm(
@@ -99,12 +101,12 @@ def run_cross_validation(
             leave=False,
             position=1,
             desc="Cross-validating",
-            total=len(X),
+            total=kfold.get_n_splits(X),
         ):
-            X_train = X.iloc[train_idx].copy()
-            y_train = y.iloc[train_idx].copy().values
-            X_test = X.iloc[val_idx]
-            y_test = y.iloc[val_idx].values
+            X_train = X.iloc[train_idx].copy().to_numpy()
+            y_train = y.iloc[train_idx].copy().values.astype(int)
+            X_test = X.iloc[val_idx].to_numpy()
+            y_test = y.iloc[val_idx].values.astype(int)
 
             if scaler is not None:
                 X_train = scaler.fit_transform(X_train)
@@ -127,39 +129,50 @@ def run_cross_validation(
             pred = model.predict(X_test)
 
             # score
-            train_accuracies.append(model.score(X_train, y_train))
+            run_train_accuracies.append(model.score(X_train, y_train))
 
             # Append results
-            true_targets.append(y_test)
-            model_pred.append(pred)
-            probabilities.append(model.predict_proba(X_test))
+            run_true_targets.append(y_test)
+            run_model_pred.append(pred)
+            run_probabilites.append(model.predict_proba(X_test))
+
+            fold_f1 = f1_score(y_test, pred, average="macro")
+            folds_f1.append(fold_f1)
 
             if get_importance:
                 importances_list.append(model.feature_importances_)
 
-        f1 = f1_score(true_targets, model_pred, average="macro")
-        f1_scores.append(f1)
-        hyper_true_targets.append(np.array(true_targets))
-        hyper_preds.append(np.array(model_pred))
-        hyper_probabilities.append(np.array(probabilities))
+        run_true_targets = np.concatenate(run_true_targets).squeeze()
+        run_model_pred = np.concatenate(run_model_pred).squeeze()
 
-    mean_train = np.array(train_accuracies).mean()
-    mean_validation = (np.array(true_targets) == np.array(model_pred)).mean()
+        run_f1 = f1_score(run_true_targets, run_model_pred, average="macro")
+        all_runs_f1_scores.append(run_f1)
+        all_runs_targets.append(np.array(run_true_targets))
+        all_runs_predictions.append(np.array(run_model_pred))
+        all_runs_probabilities.append(np.concatenate(run_probabilites, axis=0))
+        folds_variance.append(np.array(folds_f1).std())
+
+    mean_train = np.array(run_train_accuracies).mean()
+    mean_validation = (np.array(run_true_targets) == np.array(run_model_pred)).mean()
     print(
-        f"Mean train accuracy is {mean_train:.3f} while LOO accuracy is {mean_validation:.3f}"
+        f"Mean train accuracy is {mean_train:.3f} while cross-validation accuracy is {mean_validation:.3f}"
     )
     print(
-        f"Mean LOO f1 score across random forests is {np.array(f1_scores).mean():.3f}"
+        f"Mean cross-validation F1 score across {n_runs} runs is {np.array(all_runs_f1_scores).mean():.3f}, with std {np.array(all_runs_f1_scores).std():.3f}"
+    )
+    print(
+        f"Average variance in F1 score across folds is {np.array(folds_variance).mean():.3f}"
     )
 
-    all_targets = np.concatenate(hyper_true_targets).squeeze()
-    all_probabilities = np.concatenate(hyper_probabilities).squeeze()
+    all_targets = np.concatenate(all_runs_targets).squeeze()
+    all_probabilities = np.concatenate(all_runs_probabilities).squeeze()
 
     results_dict = {
-        "f1_scores": f1_scores,
-        "train_accuracies": train_accuracies,
+        "f1_scores": all_runs_f1_scores,
+        "train_accuracies": run_train_accuracies,
         "true_targets": all_targets,
         "predicted_probability": all_probabilities,
+        "folds_variance": np.array(folds_variance),
     }
 
     if get_importance:

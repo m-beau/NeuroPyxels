@@ -538,6 +538,20 @@ class NeuronsDataset:
             f"{len(discarded_df)} neurons discarded, of which labelled: {len(discarded_df[discarded_df.label != 0])}. More details at the 'discarded_df' attribute."
         )
 
+        # Compute conformed_waveforms
+        self.conformed_waveforms = np.stack(
+            [
+                preprocess_template(
+                    wf,
+                    self._sampling_rate,
+                )
+                for wf in self.wf.reshape(-1, self._n_channels, self._central_range)[
+                    :, self._n_channels // 2, :
+                ]
+            ],
+            axis=0,
+        )
+
     def make_labels_only(self):
         """
         It removes all the data points that have no labels
@@ -554,6 +568,7 @@ class NeuronsDataset:
 
     def _apply_mask(self, mask):
         self.wf = self.wf[mask]
+        self.conformed_waveforms = self.conformed_waveforms[mask]
         self.acg = self.acg[mask]
         self.targets = self.targets[mask]
         self.info = np.array(self.info)[mask].tolist()
@@ -724,6 +739,9 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         new_dataset.acg = np.vstack((new_dataset.acg, dataset.acg))
         new_dataset.targets = np.hstack((new_dataset.targets, dataset.targets))
         new_dataset.chanmap_list = new_dataset.chanmap_list + dataset.chanmap_list
+        new_dataset.conformed_waveforms = np.vstack(
+            (new_dataset.conformed_waveforms, dataset.conformed_waveforms)
+        )
         new_dataset.genetic_line_list = (
             new_dataset.genetic_line_list + dataset.genetic_line_list
         )
@@ -820,7 +838,7 @@ def preprocess_template(
     template: np.ndarray,
     original_sampling_rate: float = 30000,
     output_sampling_rate: float = 30000,
-    clip_size: Tuple[float, float] = (1e-3, 3e-3),
+    clip_size: Tuple[float, float] = (1e-3, 2e-3),
     peak_sign: Union[None, str] = "negative",
     normalize: bool = True,
 ) -> np.ndarray:

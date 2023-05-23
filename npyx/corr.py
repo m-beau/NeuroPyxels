@@ -40,7 +40,7 @@ from npyx.spk_t import trn, trnb, binarize, firing_periods,\
                         isi, mfr, train_quality
 from npyx.merger import get_source_dp_u, assert_same_dataset, assert_multi
 
-import scipy.signal as sgnl
+import scipy.signal as sgnl, fftconvolve
 from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
 
 def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=False, trains=None, enforced_rp=0):
@@ -1201,19 +1201,18 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
         kernel_size = int(np.ceil(smooth / bin_size))
         half_kernel_size = kernel_size // 2
         kernel = np.ones(kernel_size) / kernel_size
-        smoothed_firing_rate = np.convolve(firing_rate, kernel, mode='same')
+        
+        # Pad the input firing rate array
+        padded_firing_rate = np.pad(firing_rate, pad_width=kernel_size, mode="edge")
+        
+        smoothed_firing_rate = fftconvolve(firing_rate, kernel, mode='valid')
 
-        # Correct manually for possible artefacts at the edges
-        for i in range(kernel_size):
-            start = max(0, i - half_kernel_size)
-            stop = min(len(firing_rate), i + half_kernel_size)
-            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
-        for i in range(len(firing_rate) - kernel_size, len(firing_rate)):
-            start = max(0, i - half_kernel_size)
-            stop = min(len(firing_rate), i + half_kernel_size)
+        # Trim the edges of the smoothed firing rate array to remove the padded values
+        trimmed_smoothed_firing_rate = smoothed_firing_rate[
+            half_kernel_size:-half_kernel_size
+        ]
 
-            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
-        firing_rate = smoothed_firing_rate
+        firing_rate = trimmed_smoothed_firing_rate
 
     # Get firing rate quantiles
     quantile_bins = np.linspace(0, 1, num_firing_rate_bins + 2)[1:-1]

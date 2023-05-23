@@ -40,7 +40,8 @@ from npyx.spk_t import trn, trnb, binarize, firing_periods,\
                         isi, mfr, train_quality
 from npyx.merger import get_source_dp_u, assert_same_dataset, assert_multi
 
-import scipy.signal as sgnl, fftconvolve
+import scipy.signal as sgnl
+from scipy.signal import fftconvolve
 from npyx.stats import pdf_normal, pdf_poisson, cdf_poisson, fractile_normal
 
 def make_phy_like_spikeClustersTimes(dp, U, periods='all', verbose=False, trains=None, enforced_rp=0):

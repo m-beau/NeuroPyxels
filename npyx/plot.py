@@ -374,6 +374,115 @@ def save_mpl_fig(fig, figname, saveDir, _format, dpi=500):
     #     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     #     output, error = process.communicate()
 
+def plot_scalebar(ax, xscalebar=None, yscalebar=None,
+                  x_unit="ms", y_unit="\u03BCV",
+                  scalepad=0.025, fontsize=14, lw=3,
+                  loc='right',
+                  offset_x = 0, offset_y = 0):
+    
+    """
+    Add x and/or y scalebar at the bottom of a matplotlib axis.
+    
+    Arguments:
+        - ax: matplotlib axis
+        - xscalebar: float, length of x scalebar in units of x axis.
+                        If None, no x scalebar is added.
+        - yscalebar: float, length of y scalebar in units of y axis
+                        If None, no y scalebar is added.
+        - x_unit: str, unit of x axis
+        - y_unit: str, unit of y axis
+        - scalepad: float, padding between scalebar and axis,
+                    in fraction of axis height (arbitrary, could have been width)
+        - fontsize: float, fontsize of scalebar text
+        - lw: float, linewidth of scalebar
+        - loc: str, location of scalebar, either 'left' or 'right'
+        - offset_x: float, additional offset of scalebar in x direction,
+                    in fraction of axis width (+ or -)
+        - offset_y: float, additional offset of scalebar in y direction,
+                    in fraction of axis height (+ or -)
+    """
+    
+    # process arguments
+    assert xscalebar is not None or yscalebar is not None,\
+        "WARNING you must provide either xscalebar or yscalebar. Don't you want to plot a scalebar?"
+    xlim, ylim = ax.get_xlim(), ax.get_ylim()
+    axw, axh = np.diff(xlim)[0], np.diff(ylim)[0]
+    bbox = ax.get_window_extent().transformed(ax.get_figure().dpi_scale_trans.inverted())
+    axw_inch, axh_inch = bbox.width, bbox.height
+
+    vpad = scalepad*axh
+    hpad = scalepad*axw * (axh_inch/axw_inch)
+
+    offset_x = float(offset_x*axw)
+    offset_y = float(offset_y*axh)
+    assert loc in ['left', 'right']
+    if loc == 'right':
+        offset_x = offset_x-0.1
+    else:
+        offset_x = offset_x+0.1
+    offset_y = 0.1
+
+    # x scalebar
+    if xscalebar is not None:
+        xscale_y = [ylim[0], ylim[0]]
+        if yscalebar is None:
+            text_pos_sign = 1
+            xscale_va = "bottom"
+        else:
+            text_pos_sign = -1
+            xscale_va = "top"
+        if loc == 'right':
+            xscale_x = [xlim[1]-xscalebar, xlim[1]]
+        else:
+            xscale_x = [xlim[0], xlim[0]+xscalebar]
+
+        # optional offset
+        xscale_x = [x+offset_x for x in xscale_x]
+        xscale_y = [y+offset_y for y in xscale_y]
+
+        # plot xscalebar
+        plt.plot(xscale_x, xscale_y, c='k', lw=lw)
+        # plot xscalebar text
+        ax.text(xscale_x[0]+np.diff(xscale_x)/2,
+                xscale_y[0]+vpad*text_pos_sign,
+                f"{xscalebar}{x_unit}",
+                ha="center", va=xscale_va, fontsize=fontsize)
+
+    # y scalebar
+    if yscalebar is not None:
+        yscale_y = [ylim[0], ylim[0]+yscalebar]
+        if xscalebar is None:
+            if loc == 'right':
+                text_pos_sign = -1
+                yscale_ha = "right"
+            else:
+                text_pos_sign = 1
+                yscale_ha = "left"
+        else:
+            if loc == 'right':
+                text_pos_sign = 1
+                yscale_ha = "left"
+            else:
+                text_pos_sign = -1
+                yscale_ha = "right"
+        if loc == 'right':
+            yscale_x = [xlim[1], xlim[1]]
+        else:
+            yscale_x = [xlim[0], xlim[0]]
+
+        # optional offset
+        yscale_x = [x+offset_x for x in yscale_x]
+        yscale_y = [y+offset_y for y in yscale_y]
+
+        # plot yscalebar
+        plt.plot(yscale_x, yscale_y, c='k', lw=lw)
+        # plot yscalebar text
+        ax.text(yscale_x[0]+hpad*text_pos_sign, yscale_y[0]+np.diff(yscale_y)/2,
+                f"{yscalebar}{y_unit}",
+                ha=yscale_ha, va="center", fontsize=fontsize)
+    
+        print(yscale_x, yscale_ha, hpad)
+
 def mplshow(fig):
 
     # create a dummy figure and use its
@@ -435,6 +544,7 @@ def mpl_axi_axpos(nrows, ncols, i):
     assert any(pos), f'WARNING index {i} is too big given {nrows} rows and {ncols} columns!'
     return pos
 
+#### Plot ticks and colors utilities ####
 
 def myround(x, base=5):
     return base * np.round(x/base)

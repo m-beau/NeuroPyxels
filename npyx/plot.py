@@ -724,9 +724,9 @@ def hist_MB(arr, a=None, b=None, s=None,
     if a is None: a=np.min(arr)
     if b is None: b=np.max(arr)
     if s is None: s=(b-a)/100
-    hist=np.histogram(arr, bins=np.arange(a,b,s))
+    hist=np.histogram(arr, bins=np.arange(a,b+s,s))
     y=hist[0]
-    x=hist[1][:-1]
+    x=hist[1][:-1] + np.diff(hist[1][:2])/2
     if ax is None:
         (fig, ax) = plt.subplots()
     else:
@@ -736,7 +736,7 @@ def hist_MB(arr, a=None, b=None, s=None,
     ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Binsize:{}'.format(s))
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
 
-    if xlim is None: xlim = [a-s/2,b+s/2]
+    if xlim is None: xlim = [a,b]
     show_legend = True if legend_label else None
     fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize,
                   prettify=prettify, show_legend=show_legend, **mplp_kwargs)

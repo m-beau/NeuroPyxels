@@ -557,19 +557,19 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
         dp = Path(ds["dp"])
 
         if preprocess_if_raw:
-            if not detect_hardware_filter(dp):
-                print(
-                    "\033[34;1mRaw file detected - filtering with 1st order butterworth highpass at 300Hz...\033[0m"
-                )
-                preprocess_binary_file(
-                    dp,
-                    delete_original_data=delete_original_data,
-                    data_deletion_double_check=data_deletion_double_check,
-                    median_subtract=False,
-                    filter_forward=True,
-                    filter_backward=False,
-                    order=1,
-                )
+            assert not detect_hardware_filter(dp),\
+                ("ERROR preprocess_if_raw set to True but hardware filter on binary file detected "
+                  "(last column of .ap.meta ~imro field is set to 1)! Check your .ap.meta file or set preprocess_if_raw to False.")
+            "\033[34;1mUnfiltered file detected - filtering with 1st order butterworth highpass at 300Hz...\033[0m"
+            preprocess_binary_file(
+                dp,
+                delete_original_data=delete_original_data,
+                data_deletion_double_check=data_deletion_double_check,
+                median_subtract=False,
+                filter_forward=True,
+                filter_backward=False,
+                order=1,
+            )
 
         # extract metadata
         ds_name, optolabel = ds_name_ct.split("&")
@@ -790,7 +790,7 @@ def remove_unit_h5(h5_path, dp, unit, lab_id="hausser", dataset=None):
 
 def get_absolute_neuron_ids(h5_path):
     h5_contents = print_h5_contents(h5_path, txt_output=False)
-    return [p.split('/')[0] for p in h5_contents if ('_neuron_' in p.split('/')[0])]
+    return [p.split('/')[0] for p in h5_contents if ('_neuron_' in p.split('/')[0] and len(p.split('/'))==1)]
 
 def get_neuron_id_dict(h5_path):
     

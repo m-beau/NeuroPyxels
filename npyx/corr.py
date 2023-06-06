@@ -34,6 +34,8 @@ from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \
                     assert_int, assert_float, assert_iterable, smooth
 
+import matplotlib.pyplot as plt
+
 from npyx.inout import read_metadata
 from npyx.gl import get_units, get_npyx_memory
 from npyx.spk_t import trn, trnb, binarize, firing_periods,\
@@ -1238,6 +1240,85 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
     acg_3d[:,acg_3d.shape[1]//2] = 0
 
     return firing_rate_bins, acg_3d
+
+
+def convert_acg_log(lin_acg, cbin, cwin, n_log_bins=100,
+                    start_log_ms=None, smooth_sd=None, plot=False):
+    """
+    Interpolates an autocorrelogram computed with linear bins on a log-scale
+    The logscale is defined as:
+        np.logspace(np.log10(first_linear_bin_above_0), np.log10(last_linear_bin), n_log_bins)
+
+    Arguments:
+        - lin_acg: 1D (n_bins) or 2D (n_bins, n_freqs) array, the autocorrelogram computed with linear bins.
+        - cbin: int, the size of the linear bins in ms
+        - cwin: int, the size of the autocorrelogram full window in ms (e.g. 100 for -50 to 50ms)
+        - n_log_bins: int, the number of bins to interpolate on the final log scale
+        - start_log_ms: int, the number of ms to skip at the beginning of the log scale
+        - smooth_sd: int, the standard deviation of the gaussian kernel used to smooth the log acg (in log bins)
+    """
+
+    if start_log_ms is not None:
+        assert start_log_ms>0, "start_log_ms must be strictly positive"
+    assert cbin <= cwin, "cbin must be smaller than cwin"
+    assert n_log_bins>1, "n_log_bins must be strictly larger than 1"
+
+    original_bins = np.arange(-cwin//2, cwin//2+cbin, cbin)
+    assert original_bins.shape[0] == lin_acg.shape[0],\
+        ("Mismatch between the expected acg array shape given cbin and cwin and the provided acg array"
+         " - make sure that cbin and cwin are correct and that the axis are (n_bins,) or (n_bins, n_frequencies,)")
+    half_i = len(original_bins)//2 + 1
+    lin_bins = original_bins[half_i:]
+    log_bins = np.logspace(np.log10(lin_bins[0]), np.log10(lin_bins[-1]), n_log_bins)
+
+    if lin_acg.ndim ==2:
+        log_acg = np.zeros((len(log_bins), lin_acg.shape[1]))
+        for acg_i, lin_a in enumerate(lin_acg[half_i:, :].T):
+            # Compute the logarithmic resampling
+            log_a = np.interp(log_bins, lin_bins, lin_a)
+            #log_a[log_bins<start_log_ms] = 0
+            log_acg[:, acg_i] = log_a
+    else:
+        log_acg = np.interp(log_bins, lin_bins, lin_a)
+
+    if start_log_ms is not None:
+        remove_m = (log_bins<start_log_ms)
+        log_bins = log_bins[~remove_m]
+        log_acg = log_acg[~remove_m]
+
+    if smooth_sd is not None:
+        log_acg = smooth(log_acg, 'gaussian', smooth_sd, axis=0)
+
+    t_log = np.concatenate((-log_bins[::-1], [0], log_bins))
+    log_acg = np.concatenate((log_acg[::-1], np.zeros((1,log_acg.shape[1])), log_acg), axis=0)
+
+    if plot:
+        if lin_acg.ndim == 2:
+            alin = lin_acg.mean(1)
+            alog = log_acg.mean(1)
+        else:
+            alin = lin_acg
+            alog = log_acg
+        plt.figure()
+        plt.plot(original_bins, alin)
+        plt.plot(t_log, alog)
+        plt.scatter(t_log, alog,
+                    color='k', marker='+',
+                    zorder=100, alpha=0.8, s=60, lw=2)
+        npyx.plot.mplp(figsize=(20, 6), xlim=[-cwin//2, cwin//2], xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
+
+        plt.figure()
+        plt.plot(original_bins, alin)
+        plt.plot(t_log, alog)
+        plt.scatter(t_log, alog,
+                    color='k', marker='+',
+                    zorder=100, alpha=0.8, s=60, lw=2)
+        plt.xscale('symlog')
+        npyx.plot.mplp(figsize=(20, 6),
+             xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
+
+
+    return log_acg, t_log
 
 def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',

@@ -44,6 +44,23 @@ CORRESPONDENCE = {
     -1: "unlabelled",
 }
 
+LABELLING_NO_GRC = {
+    "PkC_cs": 4,
+    "PkC_ss": 3,
+    "MFB": 2,
+    "MLI": 1,
+    "GoC": 0,
+    "unlabelled": -1,
+}
+CORRESPONDENCE_NO_GRC = {
+    4: "PkC_cs",
+    3: "PkC_ss",
+    2: "MFB",
+    1: "MLI",
+    0: "GoC",
+    -1: "unlabelled",
+}
+
 # pylint: disable=no-member
 
 
@@ -210,7 +227,7 @@ class NeuronsDataset:
         quality_check=True,
         normalise_wvf=False,
         normalise_acg=False,
-        resample_acgs=True,
+        resample_acgs=False,
         cut_acg=True,
         central_range=CENTRAL_RANGE,
         n_channels=N_CHANNELS,
@@ -538,6 +555,20 @@ class NeuronsDataset:
             f"{len(discarded_df)} neurons discarded, of which labelled: {len(discarded_df[discarded_df.label != 0])}. More details at the 'discarded_df' attribute."
         )
 
+        # Compute conformed_waveforms
+        self.conformed_waveforms = np.stack(
+            [
+                preprocess_template(
+                    wf,
+                    self._sampling_rate,
+                )
+                for wf in self.wf.reshape(-1, self._n_channels, self._central_range)[
+                    :, self._n_channels // 2, :
+                ]
+            ],
+            axis=0,
+        )
+
     def make_labels_only(self):
         """
         It removes all the data points that have no labels
@@ -554,6 +585,7 @@ class NeuronsDataset:
 
     def _apply_mask(self, mask):
         self.wf = self.wf[mask]
+        self.conformed_waveforms = self.conformed_waveforms[mask]
         self.acg = self.acg[mask]
         self.targets = self.targets[mask]
         self.info = np.array(self.info)[mask].tolist()
@@ -618,7 +650,7 @@ class NeuronsDataset:
             self.wf = self.wf / self._scale_value_wf
         self.acg = self.acg / self._scale_value_acg
 
-    def filter_out_granule_cells(self):
+    def filter_out_granule_cells(self, return_mask=False):
         """
         Filters out granule cells from the dataset and returns new LABELLING and CORRESPONDENCE dictionaries for plotting.
         """
@@ -630,22 +662,11 @@ class NeuronsDataset:
         self.targets[self.targets < 0] = -1  # Reset the label of unlabeled cells
 
         # To convert text labels to numbers
-        new_labelling = {
-            "PkC_cs": 4,
-            "PkC_ss": 3,
-            "MFB": 2,
-            "MLI": 1,
-            "GoC": 0,
-            "unlabelled": -1,
-        }
-        new_correspondence = {
-            4: "PkC_cs",
-            3: "PkC_ss",
-            2: "MFB",
-            1: "MLI",
-            0: "GoC",
-            -1: "unlabelled",
-        }
+        new_labelling = LABELLING_NO_GRC
+        new_correspondence = CORRESPONDENCE_NO_GRC
+        if return_mask:
+            return new_labelling, new_correspondence, granule_cell_mask
+
         return new_labelling, new_correspondence
 
     def wvf_from_info(self, dp, unit):
@@ -724,6 +745,9 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         new_dataset.acg = np.vstack((new_dataset.acg, dataset.acg))
         new_dataset.targets = np.hstack((new_dataset.targets, dataset.targets))
         new_dataset.chanmap_list = new_dataset.chanmap_list + dataset.chanmap_list
+        new_dataset.conformed_waveforms = np.vstack(
+            (new_dataset.conformed_waveforms, dataset.conformed_waveforms)
+        )
         new_dataset.genetic_line_list = (
             new_dataset.genetic_line_list + dataset.genetic_line_list
         )
@@ -820,7 +844,7 @@ def preprocess_template(
     template: np.ndarray,
     original_sampling_rate: float = 30000,
     output_sampling_rate: float = 30000,
-    clip_size: Tuple[float, float] = (1e-3, 3e-3),
+    clip_size: Tuple[float, float] = (1e-3, 2e-3),
     peak_sign: Union[None, str] = "negative",
     normalize: bool = True,
 ) -> np.ndarray:

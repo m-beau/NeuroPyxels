@@ -36,7 +36,7 @@ from npyx.gl import get_units
 from npyx.merger import assert_multi, get_ds_ids
 from npyx.spk_wvf import get_depthSort_peakChans, wvf, wvf_dsmatch, get_peak_chan, templates
 from npyx.spk_t import trn, train_quality
-from npyx.corr import acg, ccg, gen_sfc, get_cm, scaled_acg
+from npyx.corr import acg, ccg, gen_sfc, get_cm, scaled_acg, acg_3D, convert_acg_log
 from npyx.behav import align_times, get_processed_ifr, get_processed_popsync
 
 #%% plotting utilities ##############################################################################################
@@ -2800,6 +2800,53 @@ def plot_scaled_acg( dp, units, cut_at = 150, bs = 0.5, min_sec = 180, again = F
         ax[2].vlines(100, 0,np.max(good_acgs[unit_id]), color = 'red')
         fig.tight_layout()
 
+def plot_3d_acg(dp, u, cbin, cwin, normalize='Hertz',
+                num_firing_rate_bins=10, smooth_sd=250,
+                periods='all',
+                n_log_bins=None, start_log_ms=1, smooth_sd_log=1,
+                train=None, enforced_rp=0, again=False, plot_1D=False):
+
+    acg3d, t, f = acg_3D(dp, u, cbin, cwin, normalize=normalize,
+            verbose=False, periods=periods, again=again,
+            train=train, enforced_rp=enforced_rp,
+            num_firing_rate_bins=num_firing_rate_bins, smooth=smooth_sd)
+        
+    return plt_3d_acg(acg3d, t, f, cbin, cwin,
+                n_log_bins=n_log_bins, start_log_ms=start_log_ms,
+                smooth_sd_log=smooth_sd_log, plot_1D=plot_1D)
+
+def plt_3d_acg(acg3d, t, f, cbin, cwin,
+                n_log_bins=None, start_log_ms=1, smooth_sd_log=1,
+                plot_1D=False):
+
+    if n_log_bins is None:
+        fig = imshow_cbar(acg3d, xvalues=t,
+                    yticks=np.arange(len(f)), yvalues=np.arange(len(f)), 
+                    yticklabels=np.round(f).astype(int),
+                    origin='bottom', cmapstr='viridis', vmin=0,
+                    xtickrot=0,
+                    xlabel="Time (ms)", ylabel="Rate (sp/s)", clabel="Autocorr. (sp/s)")
+
+    else:
+        assert n_log_bins > 1
+        log_acg, t_log = convert_acg_log(acg3d, cbin, cwin,
+                                     n_log_bins=n_log_bins, start_log_ms=start_log_ms,
+                                     smooth_sd=smooth_sd_log, plot=plot_1D)
+        log_ticks_i = np.arange(10, t_log.shape[0]//2, 20)
+        log_ticks = t_log[t_log.shape[0]//2+1:][log_ticks_i]
+        log_ticks = np.concatenate((-log_ticks[::-1], [0], log_ticks))
+        log_ticks_i = np.concatenate((-log_ticks_i[::-1]-1, [0], log_ticks_i+1))
+        log_ticks_i = log_ticks_i + len(t_log)//2
+        fig = imshow_cbar(log_acg,
+                        xticks = log_ticks_i,
+                        xvalues=np.arange(len(t_log)), xticklabels = np.round(log_ticks).astype(int),
+                        yticks=np.arange(len(f)), yvalues=np.arange(len(f)),
+                        yticklabels=np.round(f).astype(int),
+                        origin='bottom', cmapstr='viridis', vmin=0,
+                        xtickrot=0,
+                        xlabel="Time (ms)", ylabel="Rate (sp/s)", clabel="Autocorr. (sp/s)")
+        
+    return fig
 
 #%% Heatmaps including correlation matrices ##############################################################################################
 
@@ -2935,7 +2982,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
           xticks=xticks, yticks=yticks, xtickslabels=xticklabels, ytickslabels=yticklabels,
           reset_xticks=False, reset_yticks=False, xtickrot=xtickrot, ytickrot=0,
           xtickha={0:'center',45:'right'}[xtickrot], xtickva='top', ytickha='right', ytickva='center',
-          axlab_w='bold', axlab_s=20,
+          axlab_w='regular', axlab_s=20,
           ticklab_w='regular', ticklab_s=16, ticks_direction='out', lw=1,
           title=title, title_w='regular', title_s=12,
           hide_top_right=False, hide_axis=False, tight_layout=False,
@@ -2945,7 +2992,7 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
 
     # Add colorbar, nicely formatted
     fig = add_colorbar(fig, ax, axim, vmin, vmax,
-                        cmap_w, cmap_h, cticks, clabel, 'bold', pad=cmap_pad)
+                        cmap_w, cmap_h, cticks, clabel, 'regular', pad=cmap_pad)
 
     if saveFig:
         save_mpl_fig(fig, 'heatmap', saveDir, _format, dpi=500)

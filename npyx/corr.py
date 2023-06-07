@@ -521,6 +521,232 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
 
     return np.vstack(return_acgs), np.array(return_isi_mode), np_isi_hist_counts, np_isi_hist_range_clipped, np_cut_acg_unnormed
 
+### 3D ACG functions
+
+def acg_3D(dp, u, cbin, cwin, normalize='Probability',
+            verbose=False, periods='all', again=False,
+            train=None, enforced_rp=0, num_firing_rate_bins=10, smooth=250):
+    f"""
+    Wrapper for 3D acg.
+    
+    See doc of crosscorr_vs_firing_rate:
+    {crosscorr_vs_firing_rate.__doc__}"""
+
+    dp = get_source_dp_u(dp, u)[0]
+    fs = read_metadata(dp)['highpass']['sampling_rate']
+    dpnm = get_npyx_memory(dp)
+
+    periods_str = str(periods).replace(' ', '').replace('\n','')
+    periods_hash = hashlib.sha1(periods_str.encode()).hexdigest()[:20]
+    fn = f"acg3d_{u}_{cbin}_{cwin}_{normalize}_{periods_hash}_{enforced_rp}.npy"
+    if (dpnm/fn).exists() and not again:
+        bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
+        bins_f = np.load(dpnm/("f_"+fn))
+        acg_3d =  np.load(dpnm/fn)
+        return acg_3d, bins_t, bins_f
+
+    sav = False
+    if train is None:
+        train = trn(dp, u, 1, verbose, periods, again, enforced_rp)
+        sav = True
+    bins_f, acg_3d = crosscorr_vs_firing_rate(train, train, cwin, cbin, fs, num_firing_rate_bins, smooth)
+    bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
+
+    if sav:
+        np.save(dpnm/("f_"+fn), bins_f)
+        np.save(dpnm/fn, acg_3d)
+
+    return acg_3d, bins_t, bins_f
+
+def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num_firing_rate_bins=10, smooth=250):
+    """
+    Computes a "three dimensional" cross-correlogram that shows firing regularity when the neuron is
+    firing at different firing rates. The output is a 2D matrix
+    where the first dimensions is the number of bins specified (defaults to 10)
+    and the second dimension is the time axis. This function all returns
+    the binning used for the first dimension.
+    By default, we calculate the firing rate using a box-car smoothing
+    kernel, which provides a better estimate of the average firing rate.
+    This can be disabled by passing `smooth=None`.
+
+    Arguments:
+    - times_1: vector of spike indices for neuron 1 (samples)
+    - times_2: vector of spike indices for neuron 2 (samples)
+    - clusters: corresponding array of neuron indices
+    - win_size (float): window size, in milliseconds
+    - bin_size (float): bin size, in milliseconds
+    - U (list of integers): list of units indices.
+    - fs: sampling rate (Hertz). Default 30000.
+    - num_firing_rate_bins (integer): number of quantiles to use across firing rate, default = 10
+    - smooth (float): width of the boxcar filter to use for smoothing (in milliseconds). Default=250.
+
+    Returns:
+    - The bins of firing rate used for the first dimension
+    - 2D array with dimension (num_firing_rate_bins x num_timepoints), each point is
+      the probability of observing a spike for neuron 2 given a spike for neuron 1 
+      at t=0 and neuron 2's current firing rate (e.g., Pr(s_2(t) | s_1(0), fr_2(t))))
+
+       :Authors:
+       David J. Herzfeld <herzfeldd@gmail.com>
+    """
+    assert fs > 0.
+    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
+    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
+    winsize_bins = 2 * int(.5 * win_size *1./ bin_size) + 1 # Both in millisecond
+    assert winsize_bins >= 1
+    assert winsize_bins % 2 == 1
+    time_axis = np.linspace(-win_size / 2, win_size / 2, num=winsize_bins)
+    spike_counts = np.zeros((num_firing_rate_bins, len(time_axis))) # Counts number of occurences of spikes in a given bin in time axis
+    times = np.zeros(num_firing_rate_bins, dtype=np.int64) # total occurence 
+
+    # Samples per bin
+    samples_per_bin = int(np.ceil(fs / (1000 / bin_size)))
+
+    # Convert times_1 and times_2 (which are in units of fs to units of bin_size)
+    times_1 = np.floor(times_1 / samples_per_bin).astype(np.int64)
+    times_2 = np.floor(times_2 / samples_per_bin).astype(np.int64)
+
+    # Convert times_1 into a binary spike train
+    max_indices = int(np.ceil(max(times_1[-1], times_2[-1]) + 1))
+    spiketrain = np.zeros(max_indices, dtype=bool)
+    spiketrain[times_2] = True
+
+    # Convert neuron_2 spikes to firing rate using the inverse ISI method
+    firing_rate = np.zeros(max_indices)
+    for i in range(1, len(times_2)-1):
+        start = 0 if i == 0 else (times_2[i-1] + (times_2[i] - times_2[i-1])//2)
+        stop = max_indices if i == len(times_2) - 1 else (times_2[i] + (times_2[i+1] - times_2[i])//2)
+        current_firing_rate = 1.0 / ((stop - start) * (bin_size / 1000))
+        firing_rate[start:stop] = current_firing_rate
+            
+    # Smooth the firing rate using numpy convolution function if requested
+    if (type(smooth) == int or type(smooth) == float) and smooth > 0:
+        kernel_size = int(np.ceil(smooth / bin_size))
+        half_kernel_size = kernel_size // 2
+        kernel = np.ones(kernel_size) / kernel_size
+        smoothed_firing_rate = np.convolve(firing_rate, kernel, mode='same')
+
+        # Correct manually for possible artefacts at the edges
+        for i in range(kernel_size):
+            start = max(0, i - half_kernel_size)
+            stop = min(len(firing_rate), i + half_kernel_size)
+            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
+        for i in range(len(firing_rate) - kernel_size, len(firing_rate)):
+            start = max(0, i - half_kernel_size)
+            stop = min(len(firing_rate), i + half_kernel_size)
+
+            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
+        firing_rate = smoothed_firing_rate
+
+    # Get firing rate quantiles
+    quantile_bins = np.linspace(0, 1, num_firing_rate_bins + 2)[1:-1]
+    firing_rate_bins = np.quantile(firing_rate[times_1], quantile_bins)
+    for (i, spike_index) in enumerate(times_1):
+        start = spike_index + int(np.ceil(time_axis[0] / bin_size))
+        stop = start + len(time_axis)
+        if (start < 0) or (stop >= len(spiketrain)) or spike_index < times_2[0] or spike_index >= times_2[-1]:
+            continue # Skip these spikes to avoid edge artifacts
+        current_firing_rate = firing_rate[spike_index] # Firing of neuron 2 at neuron 1's spike index
+        current_firing_rate_bin_number = np.argmax(firing_rate_bins >= current_firing_rate)
+        if current_firing_rate_bin_number == 0 and current_firing_rate > firing_rate_bins[0]:
+            current_firing_rate_bin_number = len(firing_rate_bins) - 1
+        spike_counts[current_firing_rate_bin_number, :] += spiketrain[start:stop]
+        times[current_firing_rate_bin_number] += 1
+
+    
+    acg_3d = spike_counts / (np.ones((len(time_axis), num_firing_rate_bins)) * times).T
+    # Divison by zero cases will return nans, so we fix this
+    acg_3d = np.nan_to_num(acg_3d)
+    # remove bin 0, which will always be 1
+    acg_3d[:,acg_3d.shape[1]//2] = 0
+
+    return firing_rate_bins, acg_3d
+
+
+def convert_acg_log(lin_acg, cbin, cwin, n_log_bins=100,
+                    start_log_ms=0.8, smooth_sd=1, plot=False):
+    """
+    Interpolates an autocorrelogram computed with linear bins on a log-scale
+    The logscale is defined as:
+        np.logspace(np.log10(first_linear_bin_above_0), np.log10(last_linear_bin), n_log_bins)
+
+    Arguments:
+        - lin_acg: 1D (n_bins) or 2D (n_freqs, n_bins) array, the autocorrelogram computed with linear bins.
+        - cbin: int, the size of the linear bins in ms
+        - cwin: int, the size of the autocorrelogram full window in ms (e.g. 100 for -50 to 50ms)
+        - n_log_bins: int, the number of bins to interpolate on the final log scale
+        - start_log_ms: int, the number of ms to skip at the beginning of the log scale
+        - smooth_sd: int, the standard deviation of the gaussian kernel used to smooth the log acg (in log bins)
+    """
+
+    if start_log_ms is not None:
+        assert start_log_ms>0, "start_log_ms must be strictly positive"
+    assert cbin <= cwin, "cbin must be smaller than cwin"
+    assert n_log_bins>1, "n_log_bins must be strictly larger than 1"
+
+    original_bins = np.arange(-cwin//2, cwin//2+cbin, cbin)
+    lin_acg = lin_acg.T # (n_freqs, n_bins) to (n_bins, n_freqs) if 2D
+    assert original_bins.shape[0] == lin_acg.shape[0],\
+        ("Mismatch between the expected acg array shape given cbin and cwin and the provided acg array"
+         " - make sure that cbin and cwin are correct and that the axis are (n_bins,) or (n_bins, n_frequencies,)")
+    half_i = len(original_bins)//2 + 1
+    lin_bins = original_bins[half_i:]
+    log_bins = np.logspace(np.log10(lin_bins[0]), np.log10(lin_bins[-1]), n_log_bins)
+
+    if lin_acg.ndim ==2:
+        log_acg = np.zeros((len(log_bins), lin_acg.shape[1]))
+        for acg_i, lin_a in enumerate(lin_acg[half_i:, :].T):
+            # Compute the logarithmic resampling
+            log_a = np.interp(log_bins, lin_bins, lin_a)
+            #log_a[log_bins<start_log_ms] = 0
+            log_acg[:, acg_i] = log_a
+    else:
+        log_acg = np.interp(log_bins, lin_bins, lin_acg[half_i:])
+
+    if start_log_ms is not None:
+        remove_m = (log_bins<start_log_ms)
+        log_bins = log_bins[~remove_m]
+        log_acg = log_acg[~remove_m]
+
+    if smooth_sd is not None:
+        log_acg = smooth(log_acg, 'gaussian', smooth_sd, axis=0)
+
+    t_log = np.concatenate((-log_bins[::-1], [0], log_bins))
+    zeros = [0] if lin_acg.ndim == 1 else np.zeros((1, log_acg.shape[1]))
+    log_acg = np.concatenate((log_acg[::-1], zeros, log_acg), axis=0)
+
+    log_acg = log_acg.T # (n_bins, n_freqs) to (n_freqs, n_bins) if 2D
+
+    if plot:
+        if lin_acg.ndim == 2:
+            alin = lin_acg.mean(0)
+            alog = log_acg.mean(0)
+        else:
+            alin = lin_acg
+            alog = log_acg
+        plt.figure()
+        plt.plot(original_bins, alin)
+        plt.plot(t_log, alog)
+        plt.scatter(t_log, alog,
+                    color='k', marker='+',
+                    zorder=100, alpha=0.8, s=60, lw=2)
+        npyx.plot.mplp(figsize=(20, 6), xlim=[-cwin//2, cwin//2], xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
+
+        plt.figure()
+        plt.plot(original_bins, alin)
+        plt.plot(t_log, alog)
+        plt.scatter(t_log, alog,
+                    color='k', marker='+',
+                    zorder=100, alpha=0.8, s=60, lw=2)
+        plt.xscale('symlog')
+        npyx.plot.mplp(figsize=(20, 6),
+             xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
+
+    return log_acg, t_log
+
+
+### Functions to compute groups of CCGs, fast
+
 def get_ccgstack_fullname(name=None, cbin=0.2, cwin=80,
                           normalize='Counts', periods='all'):
     norm={'Counts':'c', 'zscore':'z', 'Hertz':'h', 'Pearson':'p'}[normalize]
@@ -1101,224 +1327,6 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
         return sigstack, sigustack, features
 
     return sigstack, sigustack
-
-def acg_3D(dp, u, cbin, cwin, normalize='Probability',
-            verbose=False, periods='all', again=False,
-            train=None, enforced_rp=0, num_firing_rate_bins=10, smooth=250):
-    f"""
-    Wrapper for 3D acg.
-    
-    See doc of crosscorr_vs_firing_rate:
-    {crosscorr_vs_firing_rate.__doc__}"""
-
-    dp = get_source_dp_u(dp, u)[0]
-    fs = read_metadata(dp)['highpass']['sampling_rate']
-    dpnm = get_npyx_memory(dp)
-
-    periods_str = str(periods).replace(' ', '').replace('\n','')
-    periods_hash = hashlib.sha1(periods_str.encode()).hexdigest()[:20]
-    fn = f"acg3d_{u}_{cbin}_{cwin}_{normalize}_{periods_hash}_{enforced_rp}.npy"
-    if (dpnm/fn).exists() and not again:
-        bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
-        bins_f = np.load(dpnm/("f_"+fn))
-        acg_3d =  np.load(dpnm/fn)
-        return acg_3d, bins_t, bins_f
-
-    sav = False
-    if train is None:
-        train = trn(dp, u, 1, verbose, periods, again, enforced_rp)
-        sav = True
-    bins_f, acg_3d = crosscorr_vs_firing_rate(train, train, cwin, cbin, fs, num_firing_rate_bins, smooth)
-    bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
-
-    if sav:
-        np.save(dpnm/("f_"+fn), bins_f)
-        np.save(dpnm/fn, acg_3d)
-
-    return acg_3d, bins_t, bins_f
-
-def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num_firing_rate_bins=10, smooth=250):
-    """
-    Computes a "three dimensional" cross-correlogram that shows firing regularity when the neuron is
-    firing at different firing rates. The output is a 2D matrix
-    where the first dimensions is the number of bins specified (defaults to 10)
-    and the second dimension is the time axis. This function all returns
-    the binning used for the first dimension.
-    By default, we calculate the firing rate using a box-car smoothing
-    kernel, which provides a better estimate of the average firing rate.
-    This can be disabled by passing `smooth=None`.
-
-    Arguments:
-    - times_1: vector of spike indices for neuron 1 (samples)
-    - times_2: vector of spike indices for neuron 2 (samples)
-    - clusters: corresponding array of neuron indices
-    - win_size (float): window size, in milliseconds
-    - bin_size (float): bin size, in milliseconds
-    - U (list of integers): list of units indices.
-    - fs: sampling rate (Hertz). Default 30000.
-    - num_firing_rate_bins (integer): number of quantiles to use across firing rate, default = 10
-    - smooth (float): width of the boxcar filter to use for smoothing (in milliseconds). Default=250.
-
-    Returns:
-    - The bins of firing rate used for the first dimension
-    - 2D array with dimension (num_firing_rate_bins x num_timepoints), each point is
-      the probability of observing a spike for neuron 2 given a spike for neuron 1 
-      at t=0 and neuron 2's current firing rate (e.g., Pr(s_2(t) | s_1(0), fr_2(t))))
-
-       :Authors:
-       David J. Herzfeld <herzfeldd@gmail.com>
-    """
-    assert fs > 0.
-    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
-    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
-    winsize_bins = 2 * int(.5 * win_size *1./ bin_size) + 1 # Both in millisecond
-    assert winsize_bins >= 1
-    assert winsize_bins % 2 == 1
-    time_axis = np.linspace(-win_size / 2, win_size / 2, num=winsize_bins)
-    spike_counts = np.zeros((num_firing_rate_bins, len(time_axis))) # Counts number of occurences of spikes in a given bin in time axis
-    times = np.zeros(num_firing_rate_bins, dtype=np.int64) # total occurence 
-
-    # Samples per bin
-    samples_per_bin = int(np.ceil(fs / (1000 / bin_size)))
-
-    # Convert times_1 and times_2 (which are in units of fs to units of bin_size)
-    times_1 = np.floor(times_1 / samples_per_bin).astype(np.int64)
-    times_2 = np.floor(times_2 / samples_per_bin).astype(np.int64)
-
-    # Convert times_1 into a binary spike train
-    max_indices = int(np.ceil(max(times_1[-1], times_2[-1]) + 1))
-    spiketrain = np.zeros(max_indices, dtype=bool)
-    spiketrain[times_2] = True
-
-    # Convert neuron_2 spikes to firing rate using the inverse ISI method
-    firing_rate = np.zeros(max_indices)
-    for i in range(1, len(times_2)-1):
-        start = 0 if i == 0 else (times_2[i-1] + (times_2[i] - times_2[i-1])//2)
-        stop = max_indices if i == len(times_2) - 1 else (times_2[i] + (times_2[i+1] - times_2[i])//2)
-        current_firing_rate = 1.0 / ((stop - start) * (bin_size / 1000))
-        firing_rate[start:stop] = current_firing_rate
-            
-    # Smooth the firing rate using numpy convolution function if requested
-    if (type(smooth) == int or type(smooth) == float) and smooth > 0:
-        kernel_size = int(np.ceil(smooth / bin_size))
-        half_kernel_size = kernel_size // 2
-        kernel = np.ones(kernel_size) / kernel_size
-        smoothed_firing_rate = np.convolve(firing_rate, kernel, mode='same')
-
-        # Correct manually for possible artefacts at the edges
-        for i in range(kernel_size):
-            start = max(0, i - half_kernel_size)
-            stop = min(len(firing_rate), i + half_kernel_size)
-            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
-        for i in range(len(firing_rate) - kernel_size, len(firing_rate)):
-            start = max(0, i - half_kernel_size)
-            stop = min(len(firing_rate), i + half_kernel_size)
-
-            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
-        firing_rate = smoothed_firing_rate
-
-    # Get firing rate quantiles
-    quantile_bins = np.linspace(0, 1, num_firing_rate_bins + 2)[1:-1]
-    firing_rate_bins = np.quantile(firing_rate[times_1], quantile_bins)
-    for (i, spike_index) in enumerate(times_1):
-        start = spike_index + int(np.ceil(time_axis[0] / bin_size))
-        stop = start + len(time_axis)
-        if (start < 0) or (stop >= len(spiketrain)) or spike_index < times_2[0] or spike_index >= times_2[-1]:
-            continue # Skip these spikes to avoid edge artifacts
-        current_firing_rate = firing_rate[spike_index] # Firing of neuron 2 at neuron 1's spike index
-        current_firing_rate_bin_number = np.argmax(firing_rate_bins >= current_firing_rate)
-        if current_firing_rate_bin_number == 0 and current_firing_rate > firing_rate_bins[0]:
-            current_firing_rate_bin_number = len(firing_rate_bins) - 1
-        spike_counts[current_firing_rate_bin_number, :] += spiketrain[start:stop]
-        times[current_firing_rate_bin_number] += 1
-
-    
-    acg_3d = spike_counts / (np.ones((len(time_axis), num_firing_rate_bins)) * times).T
-    # Divison by zero cases will return nans, so we fix this
-    acg_3d = np.nan_to_num(acg_3d)
-    # remove bin 0, which will always be 1
-    acg_3d[:,acg_3d.shape[1]//2] = 0
-
-    return firing_rate_bins, acg_3d
-
-
-def convert_acg_log(lin_acg, cbin, cwin, n_log_bins=100,
-                    start_log_ms=None, smooth_sd=None, plot=False):
-    """
-    Interpolates an autocorrelogram computed with linear bins on a log-scale
-    The logscale is defined as:
-        np.logspace(np.log10(first_linear_bin_above_0), np.log10(last_linear_bin), n_log_bins)
-
-    Arguments:
-        - lin_acg: 1D (n_bins) or 2D (n_bins, n_freqs) array, the autocorrelogram computed with linear bins.
-        - cbin: int, the size of the linear bins in ms
-        - cwin: int, the size of the autocorrelogram full window in ms (e.g. 100 for -50 to 50ms)
-        - n_log_bins: int, the number of bins to interpolate on the final log scale
-        - start_log_ms: int, the number of ms to skip at the beginning of the log scale
-        - smooth_sd: int, the standard deviation of the gaussian kernel used to smooth the log acg (in log bins)
-    """
-
-    if start_log_ms is not None:
-        assert start_log_ms>0, "start_log_ms must be strictly positive"
-    assert cbin <= cwin, "cbin must be smaller than cwin"
-    assert n_log_bins>1, "n_log_bins must be strictly larger than 1"
-
-    original_bins = np.arange(-cwin//2, cwin//2+cbin, cbin)
-    assert original_bins.shape[0] == lin_acg.shape[0],\
-        ("Mismatch between the expected acg array shape given cbin and cwin and the provided acg array"
-         " - make sure that cbin and cwin are correct and that the axis are (n_bins,) or (n_bins, n_frequencies,)")
-    half_i = len(original_bins)//2 + 1
-    lin_bins = original_bins[half_i:]
-    log_bins = np.logspace(np.log10(lin_bins[0]), np.log10(lin_bins[-1]), n_log_bins)
-
-    if lin_acg.ndim ==2:
-        log_acg = np.zeros((len(log_bins), lin_acg.shape[1]))
-        for acg_i, lin_a in enumerate(lin_acg[half_i:, :].T):
-            # Compute the logarithmic resampling
-            log_a = np.interp(log_bins, lin_bins, lin_a)
-            #log_a[log_bins<start_log_ms] = 0
-            log_acg[:, acg_i] = log_a
-    else:
-        log_acg = np.interp(log_bins, lin_bins, lin_a)
-
-    if start_log_ms is not None:
-        remove_m = (log_bins<start_log_ms)
-        log_bins = log_bins[~remove_m]
-        log_acg = log_acg[~remove_m]
-
-    if smooth_sd is not None:
-        log_acg = smooth(log_acg, 'gaussian', smooth_sd, axis=0)
-
-    t_log = np.concatenate((-log_bins[::-1], [0], log_bins))
-    log_acg = np.concatenate((log_acg[::-1], np.zeros((1,log_acg.shape[1])), log_acg), axis=0)
-
-    if plot:
-        if lin_acg.ndim == 2:
-            alin = lin_acg.mean(1)
-            alog = log_acg.mean(1)
-        else:
-            alin = lin_acg
-            alog = log_acg
-        plt.figure()
-        plt.plot(original_bins, alin)
-        plt.plot(t_log, alog)
-        plt.scatter(t_log, alog,
-                    color='k', marker='+',
-                    zorder=100, alpha=0.8, s=60, lw=2)
-        npyx.plot.mplp(figsize=(20, 6), xlim=[-cwin//2, cwin//2], xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
-
-        plt.figure()
-        plt.plot(original_bins, alin)
-        plt.plot(t_log, alog)
-        plt.scatter(t_log, alog,
-                    color='k', marker='+',
-                    zorder=100, alpha=0.8, s=60, lw=2)
-        plt.xscale('symlog')
-        npyx.plot.mplp(figsize=(20, 6),
-             xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
-
-
-    return log_acg, t_log
 
 def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             p_th=0.02, n_consec_bins=3, fract_baseline=4./5, W_sd=10, test='Poisson_Stark',

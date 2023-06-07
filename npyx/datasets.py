@@ -32,17 +32,7 @@ LABELLING = {
     "GrC": 0,
     "unlabelled": -1,
 }
-
-# To do the inverse
-CORRESPONDENCE = {
-    5: "PkC_cs",
-    4: "PkC_ss",
-    3: "MFB",
-    2: "MLI",
-    1: "GoC",
-    0: "GrC",
-    -1: "unlabelled",
-}
+CORRESPONDENCE = {value: key for key, value in LABELLING.items()}
 
 LABELLING_NO_GRC = {
     "PkC_cs": 4,
@@ -52,13 +42,36 @@ LABELLING_NO_GRC = {
     "GoC": 0,
     "unlabelled": -1,
 }
-CORRESPONDENCE_NO_GRC = {
-    4: "PkC_cs",
-    3: "PkC_ss",
-    2: "MFB",
-    1: "MLI",
-    0: "GoC",
-    -1: "unlabelled",
+
+CORRESPONDENCE_NO_GRC = {value: key for key, value in LABELLING_NO_GRC.items()}
+
+LABELLING_MLI_CLUSTER = {
+    "PkC_cs": 6,
+    "PkC_ss": 5,
+    "MFB": 4,
+    "MLI_B": 3,
+    "MLI_A": 2,
+    "GoC": 1,
+    "GrC": 0,
+    "unlabelled": -1,
+}
+
+
+CORRESPONDENCE_MLI_CLUSTER = {
+    value: key for key, value in LABELLING_MLI_CLUSTER.items()
+}
+
+LABELLING_MLI_CLUSTER_NO_GRC = {
+    "PkC_cs": 5,
+    "PkC_ss": 4,
+    "MFB": 3,
+    "MLI_B": 2,
+    "MLI_A": 1,
+    "GoC": 0,
+}
+
+CORRESPONDENCE_MLI_CLUSTER_NO_GRC = {
+    value: key for key, value in LABELLING_MLI_CLUSTER_NO_GRC.items()
 }
 
 # pylint: disable=no-member
@@ -241,12 +254,14 @@ class NeuronsDataset:
         _lisberger=False,
         _labels_only=False,
         _id_type="neuron_relative_id",
+        _extract_mli_clusters=False,
     ):
         # Store useful metadata about how the dataset was extracted
         self.dataset = dataset
         self._n_channels = n_channels
         self._central_range = central_range
         self._sampling_rate = get_neuron_attr(dataset, 0, "sampling_rate").item()
+        self.mli_clustering = _extract_mli_clusters
 
         # Initialise empty lists to extract data
         self.wf_list = []
@@ -259,6 +274,9 @@ class NeuronsDataset:
 
         if _use_amplitudes:
             self.amplitudes_list = []
+
+        if _extract_mli_clusters:
+            _labelling = LABELLING_MLI_CLUSTER
 
         neuron_ids = get_h5_absolute_ids(dataset)
 
@@ -286,6 +304,15 @@ class NeuronsDataset:
 
                 # If the neuron is labelled we extract it anyways
                 if label != 0 and not isinstance(label, (np.ndarray, np.int64)):
+                    if _extract_mli_clusters and label == "MLI":
+                        mli_cluster = get_neuron_attr(dataset, wf_n, "mli_cluster")
+                        if type(mli_cluster) in (bytes, np.bytes_):
+                            mli_cluster = str(mli_cluster.decode("utf-8"))
+                        elif type(mli_cluster) == np.ndarray:
+                            mli_cluster = mli_cluster.item()
+                            mli_cluster = str(mli_cluster.decode("utf-8"))
+                        mli_cluster = mli_cluster.replace("1", "A").replace("2", "B")
+                        label = mli_cluster
                     self.labels_list.append(label)
 
                 elif label != 0:
@@ -662,8 +689,16 @@ class NeuronsDataset:
         self.targets[self.targets < 0] = -1  # Reset the label of unlabeled cells
 
         # To convert text labels to numbers
-        new_labelling = LABELLING_NO_GRC
-        new_correspondence = CORRESPONDENCE_NO_GRC
+        new_labelling = (
+            LABELLING_NO_GRC
+            if not self.mli_clustering
+            else LABELLING_MLI_CLUSTER_NO_GRC
+        )
+        new_correspondence = (
+            CORRESPONDENCE_NO_GRC
+            if not self.mli_clustering
+            else CORRESPONDENCE_MLI_CLUSTER_NO_GRC
+        )
         if return_mask:
             return new_labelling, new_correspondence, granule_cell_mask
 

@@ -523,7 +523,7 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
 
 ### 3D ACG functions
 
-def acg_3D(dp, u, cbin, cwin, normalize='Probability',
+def acg_3D(dp, u, cbin, cwin, normalize='Hertz',
             verbose=False, periods='all', again=False,
             train=None, enforced_rp=0, num_firing_rate_bins=10, smooth=250):
     f"""
@@ -531,6 +531,8 @@ def acg_3D(dp, u, cbin, cwin, normalize='Probability',
     
     See doc of crosscorr_vs_firing_rate:
     {crosscorr_vs_firing_rate.__doc__}"""
+
+    assert normalize in ['Probability', 'Hertz']
 
     dp = get_source_dp_u(dp, u)[0]
     fs = read_metadata(dp)['highpass']['sampling_rate']
@@ -551,6 +553,9 @@ def acg_3D(dp, u, cbin, cwin, normalize='Probability',
         sav = True
     bins_f, acg_3d = crosscorr_vs_firing_rate(train, train, cwin, cbin, fs, num_firing_rate_bins, smooth)
     bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
+
+    if normalize == 'Hertz':
+        acg_3d = acg_3d / (cbin/1000)
 
     if sav:
         np.save(dpnm/("f_"+fn), bins_f)
@@ -719,7 +724,7 @@ def convert_acg_log(lin_acg, cbin, cwin, n_log_bins=100,
 
     if plot:
         if lin_acg.ndim == 2:
-            alin = lin_acg.mean(0)
+            alin = lin_acg.T.mean(0)
             alog = log_acg.mean(0)
         else:
             alin = lin_acg

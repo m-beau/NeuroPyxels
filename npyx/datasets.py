@@ -74,6 +74,8 @@ CORRESPONDENCE_MLI_CLUSTER_NO_GRC = {
     value: key for key, value in LABELLING_MLI_CLUSTER_NO_GRC.items()
 }
 
+
+LAYERS = {0: "unknown", 1: "GCL", 2: "PCL", 3: "ML"}
 # pylint: disable=no-member
 
 
@@ -229,6 +231,30 @@ def get_h5_absolute_ids(h5_path):
     return neuron_ids
 
 
+def decode_string(value):
+    """
+    The function decodes a given value to a string if it is of type bytes or numpy bytes, and returns
+    the original value otherwise.
+
+    Args:
+      value: The input value that needs to be decoded.
+
+    Returns:
+      The decoded string value of the input `value`.
+    """
+    if type(value) in (bytes, np.bytes_):
+        return str(value.decode("utf-8"))
+    elif type(value) == np.ndarray:
+        return str(value.item().decode("utf-8"))
+    return value
+
+
+def process_label(label):
+    if len(label) == 0 or label == "unlabeled":
+        return 0
+    return label
+
+
 class NeuronsDataset:
     """
     Custom class for the cerebellum dataset, containing all information about the labelled and unlabelled neurons.
@@ -255,6 +281,7 @@ class NeuronsDataset:
         _labels_only=False,
         _id_type="neuron_relative_id",
         _extract_mli_clusters=False,
+        _extract_layer=False,
     ):
         # Store useful metadata about how the dataset was extracted
         self.dataset = dataset
@@ -274,6 +301,9 @@ class NeuronsDataset:
 
         if _use_amplitudes:
             self.amplitudes_list = []
+
+        if _extract_layer:
+            self.layer_list = []
 
         if _extract_mli_clusters:
             _labelling = LABELLING_MLI_CLUSTER
@@ -295,22 +325,14 @@ class NeuronsDataset:
             try:
                 # Get the label for this wvf
                 label = get_neuron_attr(dataset, wf_n, _label).ravel()[0]
-                if type(label) in (bytes, np.bytes_):
-                    label = str(label.decode("utf-8"))
-                    if len(label) == 0:
-                        label = 0
-                    if label == "unlabeled":
-                        label = 0
+                label = decode_string(label)
+                label = process_label(label)
 
                 # If the neuron is labelled we extract it anyways
                 if label != 0 and not isinstance(label, (np.ndarray, np.int64)):
                     if _extract_mli_clusters and label == "MLI":
                         mli_cluster = get_neuron_attr(dataset, wf_n, "mli_cluster")
-                        if type(mli_cluster) in (bytes, np.bytes_):
-                            mli_cluster = str(mli_cluster.decode("utf-8"))
-                        elif type(mli_cluster) == np.ndarray:
-                            mli_cluster = mli_cluster.item()
-                            mli_cluster = str(mli_cluster.decode("utf-8"))
+                        mli_cluster = decode_string(mli_cluster)
                         mli_cluster = mli_cluster.replace("1", "A").replace("2", "B")
                         label = mli_cluster
                     self.labels_list.append(label)
@@ -528,6 +550,11 @@ class NeuronsDataset:
                 except KeyError:
                     self.genetic_line_list.append("unknown")
 
+                if _extract_layer:
+                    layer = get_neuron_attr(dataset, wf_n, "phyllum_layer")
+                    layer = decode_string(layer)
+                    self.layer_list.append(layer)
+
             except KeyError:
                 if _debug:
                     raise
@@ -579,7 +606,7 @@ class NeuronsDataset:
 
         print(
             f"{len(self.wf_list)} neurons loaded, of which labelled: {sum(self.targets != -1)} \n"
-            f"{len(discarded_df)} neurons discarded, of which labelled: {len(discarded_df[discarded_df.label != 0])}. More details at the 'discarded_df' attribute."
+            f"{len(discarded_df)} neurons discarded, of which labelled: {len(discarded_df[discarded_df.label != 0])}. More details at the 'discarded_df' attribute. \n"
         )
 
         # Compute conformed_waveforms
@@ -641,6 +668,8 @@ class NeuronsDataset:
             ].tolist()
         if hasattr(self, "full_dataset"):
             self.full_dataset = self.full_dataset[mask]
+        if hasattr(self, "layer_list"):
+            self.layer_list = np.array(self.layer_list, dtype=object)[mask].tolist()
 
     def make_full_dataset(self, wf_only=False, acg_only=False):
         """
@@ -773,59 +802,60 @@ class NeuronsDataset:
 
 def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
     """Merges multiple NeuronsDatasets instances into one"""
+
+    def merge_attributes(attr_name, merge_func, dtype=None):
+        if hasattr(new_dataset, attr_name):
+            if hasattr(dataset, attr_name):
+                attr_value = getattr(new_dataset, attr_name)
+                other_attr_value = getattr(dataset, attr_name)
+                if dtype:
+                    attr_value = np.array(attr_value, dtype=dtype)
+                    other_attr_value = np.array(other_attr_value, dtype=dtype)
+                if merge_func in (np.hstack, np.vstack):
+                    setattr(
+                        new_dataset,
+                        attr_name,
+                        merge_func((attr_value, other_attr_value)),
+                    )
+                else:
+                    setattr(
+                        new_dataset, attr_name, merge_func(attr_value, other_attr_value)
+                    )
+            else:
+                raise NotImplementedError(
+                    "Attempted to merge datasets with different attributes"
+                )
+
     new_dataset = copy.deepcopy(args[0])
     for dataset in args[1:]:
         assert isinstance(dataset, NeuronsDataset)
         new_dataset.wf = np.vstack((new_dataset.wf, dataset.wf))
         new_dataset.acg = np.vstack((new_dataset.acg, dataset.acg))
         new_dataset.targets = np.hstack((new_dataset.targets, dataset.targets))
-        new_dataset.chanmap_list = new_dataset.chanmap_list + dataset.chanmap_list
+        new_dataset.chanmap_list += dataset.chanmap_list
         new_dataset.conformed_waveforms = np.vstack(
             (new_dataset.conformed_waveforms, dataset.conformed_waveforms)
         )
-        new_dataset.genetic_line_list = (
-            new_dataset.genetic_line_list + dataset.genetic_line_list
-        )
+        new_dataset.genetic_line_list += dataset.genetic_line_list
         new_dataset.info = np.hstack(
             (np.array(new_dataset.info), np.array(dataset.info))
         ).tolist()
         new_dataset.acg_list = np.vstack(
             (np.array(new_dataset.acg_list), np.array(dataset.acg_list))
         ).tolist()
-        new_dataset.spikes_list = np.hstack(
-            (
-                np.array(new_dataset.spikes_list, dtype=object),
-                np.array(dataset.spikes_list, dtype=object),
-            )
-        ).tolist()
+
+        merge_attributes("spikes_list", np.hstack, dtype=object)
         new_dataset.discarded_df = pd.concat(
             (new_dataset.discarded_df, dataset.discarded_df), axis=0
         )
-        new_dataset.labels_list = new_dataset.labels_list + dataset.labels_list
+        new_dataset.labels_list += dataset.labels_list
 
-        if hasattr(new_dataset, "amplitudes_list"):
-            if hasattr(dataset, "amplitudes_list"):
-                new_dataset.amplitudes_list = (
-                    new_dataset.amplitudes_list + dataset.amplitudes_list
-                )
-            else:
-                raise NotImplementedError(
-                    "Attempted to merge datasets with different attributes"
-                )
+        merge_attributes("amplitudes_list", lambda x, y: x + y)
+        merge_attributes("quality_checks_mask", np.hstack)
+        merge_attributes("fn_fp_list", lambda x, y: x + y)
+        merge_attributes("sane_spikes_list", lambda x, y: x + y)
+        merge_attributes("layer_list", lambda x, y: x + y)
 
-        if hasattr(new_dataset, "quality_checks_mask"):
-            if hasattr(dataset, "quality_checks_mask"):
-                new_dataset.quality_checks_mask = np.hstack(
-                    (new_dataset.quality_checks_mask, dataset.quality_checks_mask)
-                )
-                new_dataset.fn_fp_list = new_dataset.fn_fp_list + dataset.fn_fp_list
-                new_dataset.sane_spikes_list = (
-                    new_dataset.sane_spikes_list + dataset.sane_spikes_list
-                )
-            else:
-                raise NotImplementedError(
-                    "Attempted to merge datasets with different attributes"
-                )
     new_dataset.dataset = "merged"
 
     return new_dataset

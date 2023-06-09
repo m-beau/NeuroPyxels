@@ -788,8 +788,8 @@ def remove_unit_h5(h5_path, dp, unit, lab_id="hausser", dataset=None):
 
 ### h5 vizualisation functions
 
-def get_absolute_neuron_ids(h5_path):
-    h5_contents = print_h5_contents(h5_path, txt_output=False)
+def get_absolute_neuron_ids(h5_path, again=False):
+    h5_contents = print_h5_contents(h5_path, again=again)
     return [p.split('/')[0] for p in h5_contents if ('_neuron_' in p.split('/')[0] and len(p.split('/'))==1)]
 
 def get_neuron_id_dict(h5_path):
@@ -811,43 +811,45 @@ def get_neuron_id_dict(h5_path):
 
     return neuron_id_dict
 
-def print_h5_contents(h5_path, display = False, txt_output=False):
+def print_h5_contents(h5_path, display = False, txt_output=False, again=False):
     """
-    h5_path: str, path to .h5 file
-    txt_output: bool, if True prints contents to file
-    (same name as h5 name_content.txt)
+    Arguments:
+        - h5_path: str, path to .h5 file
+        - display: bool, if True prints contents to console
+        - txt_output: bool, if True prints contents to file
+                            (same name as h5 name_content.txt)
+        - again: bool, if False reloads data from txt file when found
+                        rather than recomputing from h5 file.
 
     Returns:
         - list of paths in h5 file
     """
     h5_path = Path(h5_path)
-    if txt_output:
-        txt_output_path = h5_path.parent / f"{h5_path.name[:-3]}_content.txt"
-
+    txt_output_path = h5_path.parent / f"{h5_path.name[:-3]}_content.txt"
+    if txt_output_path.exists() and not again:
+        with open(txt_output_path, "r") as f:
+            print_string = f.read()
     
-    with h5py.File(h5_path, "a") as hdf:
-
-        # save to variable
-        print_output    = StringIO()
-        original_stdout = sys.stdout
-        sys.stdout      = print_output
-        visititems(hdf, visitor_func)
-        print_string   = print_output.getvalue().split('\n')
-        sys.stdout      = original_stdout
-
-        # save to txt file
-        if txt_output:
-            with open(txt_output_path, "w") as txt:
-                original_stdout = sys.stdout
-                sys.stdout      = txt
-                visititems(hdf, visitor_func)
-                sys.stdout      = original_stdout
-
-        # print to console
-        if display:
+    else:
+        with h5py.File(h5_path, "a") as hdf:
+            # save to variable
+            print_output    = StringIO()
+            original_stdout = sys.stdout
+            sys.stdout      = print_output
             visititems(hdf, visitor_func)
+            print_string   = print_output.getvalue()
+            sys.stdout      = original_stdout
 
-    return print_string
+    # save to txt file
+    if txt_output and again:
+        with open(txt_output_path, "w") as f:
+            f.write(print_string)
+
+    # print to console
+    if display:
+        print(print_string)
+
+    return print_string.split('\n')
             
 
 

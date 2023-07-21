@@ -914,7 +914,7 @@ def resample_waveforms(
     resampled_dataset = copy.deepcopy(dataset)
     resampled_dataset.wf = resized_wf
     resampled_dataset._central_range = new_range
-    resampled_dataset.wf_list = [wf for wf in resized_wf]
+    resampled_dataset.wf_list = list(resized_wf)
 
     return resampled_dataset
 

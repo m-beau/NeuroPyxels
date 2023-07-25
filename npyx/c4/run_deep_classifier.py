@@ -1,6 +1,10 @@
+import os
+
+if __name__ == "__main__":
+    __package__ = "npyx.c4"
+
 import argparse
 import gc
-import os
 import re
 import shutil
 import tarfile
@@ -18,6 +22,7 @@ import torch.optim as optim
 import torch.utils.data as data
 from imblearn.over_sampling import RandomOverSampler
 from laplace import BaseLaplace, Laplace
+from laplace.utils import FeatureExtractor, KronDecomposed
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import f1_score
 from sklearn.model_selection import LeaveOneOut, StratifiedKFold
@@ -331,6 +336,19 @@ def load_laplace(filepath):
     return la
 
 
+def get_kronecker_hessian_attributes(*kronecker_hessians: KronDecomposed):
+    hessians = []
+    for h in kronecker_hessians:
+        hess_dict = {
+            "eigenvalues": h.eigenvalues,
+            "eigenvectors": h.eigenvectors,
+            "deltas": h.deltas,
+            "damping": h.damping,
+        }
+        hessians.append(hess_dict)
+    return hessians
+
+
 def predict_unlabelled(
     model: Union[BaseLaplace, torch.nn.Module],
     test_loader: data.DataLoader,
@@ -574,6 +592,7 @@ def load_ensemble(
     n_classes=5,
     use_layer=False,
     fast=False,
+    laplace=False,
     **model_kwargs,
 ):
     if device is None:
@@ -604,9 +623,8 @@ def load_ensemble(
         ensemble_paths = sorted(os.listdir(nested_folder))
 
         if fast and len(ensemble_paths) > 100:
-            ensemble_paths = np.random.choice(
-                ensemble_paths, 100, replace=False
-            ).tolist()
+            models_mask = np.random.choice(np.arange(len(ensemble_paths)), 100)
+            ensemble_paths = np.array(ensemble_paths)[models_mask].tolist()
 
         # Load each model from the nested folder
         models = []
@@ -648,50 +666,59 @@ def load_ensemble(
         # Remove the temporary directory
         shutil.rmtree(temp_dir)
 
-    return models
-
-
-def load_calibrated_ensemble(
-    file_path,
-    fast=False,
-):
-    # Create a temporary directory to extract the models
-    temp_dir = "models"
-    os.makedirs(temp_dir, exist_ok=True)
-
-    # Extract the tar archive containing the models
-    with tarfile.open(file_path, "r:gz") as tar:
-        file_count = len(tar.getmembers())
-        progress_bar = tqdm(total=file_count, desc="Extracting files", unit="file")
-
-        for file in tar:
-            tar.extract(file, temp_dir)
-            progress_bar.update(1)
-
-        progress_bar.close()
-
-    try:
-        ensemble_paths = sorted(os.listdir(temp_dir))
+    if laplace:
+        hessians = torch.load(
+            file_path.replace("trained_models.tar.gz", "hessians.pt"),
+            map_location=device,
+        )
 
         if fast and len(ensemble_paths) > 100:
-            ensemble_paths = np.random.choice(
-                ensemble_paths, 100, replace=False
-            ).tolist()
-
-        # Load each model from the nested folder
-        models = []
-        for model_file in tqdm(ensemble_paths, desc="Loading models"):
-            model_path = os.path.join(temp_dir, model_file)
-            if os.path.isfile(model_path):
-                model = load_laplace(model_path)
-                models.append(model)
-            else:
-                print(f"Skipping: {model_path}")
-    finally:
-        # Remove the temporary directory
-        shutil.rmtree(temp_dir)
+            hessians = (
+                hessians[:, :, models_mask]
+                if type(hessians) == torch.Tensor
+                else np.array(hessians, dtype=object)[models_mask].tolist()
+            )
+        models = load_calibrated_ensemble(models, hessians)
 
     return models
+
+
+def load_calibrated_ensemble(models, hessians):
+    calibrated_models = []
+
+    for model, hessian in zip(models, hessians):
+        # Create new laplace instance and then load the pre-fitted Hessian
+        calibrated_model = Laplace(
+            model,
+            "classification",
+            subset_of_weights="last_layer",
+            hessian_structure="kron",
+            last_layer_name="fc2",
+        )
+        hessian = (
+            hessian if isinstance(hessian, torch.Tensor) else KronDecomposed(**hessian)
+        )
+        # calibrated_model.__setattr__("H", hessian)
+        setattr(calibrated_model, "H", hessian)
+        # Load also the mean for compatibility with internal functions
+        # calibrated_model.__setattr__("model", FeatureExtractor(model, last_layer_name="fc2"))
+        # calibrated_model.__setattr__(
+        #     "mean",
+        #     torch.nn.utils.parameters_to_vector(
+        #         calibrated_model.model.last_layer.parameters()
+        #     ).detach(),
+        # )
+        setattr(
+            calibrated_model,
+            "mean",
+            torch.nn.utils.parameters_to_vector(
+                calibrated_model.model.last_layer.parameters()
+            ).detach(),
+        )
+        calibrated_model.optimize_prior_precision(method="marglik")
+        calibrated_models.append(calibrated_model)
+
+    return calibrated_models
 
 
 def ensemble_predict(
@@ -824,6 +851,7 @@ def cross_validate(
     unit_idxes = []
     if save_models:
         models_states = []
+        hessians = []
     total_runs = 0
 
     set_seed(SEED, seed_torch=True)
@@ -836,9 +864,6 @@ def cross_validate(
         run_model_pred = []
         run_probabilites = []
         folds_f1 = []
-
-        if save_models:
-            calibrated_models = []
 
         cross_seed = SEED + np.random.randint(0, 100)
         kfold = (
@@ -979,20 +1004,15 @@ def cross_validate(
 
             if save_models:
                 models_states.append(model.cpu().eval().state_dict())
-                calibrated_models.append(model_calibrated)
+                hessians.append(model_calibrated.H)
 
             del model
             del train_iterator
             del val_iterator
+            del model_calibrated
             torch.cuda.empty_cache()
             gc.collect()
 
-        if save_models:
-            save_calibrated_ensemble(
-                calibrated_models,
-                os.path.join(save_folder, f"calibrated_models_{run_i}.tar.gz"),
-            )
-            del calibrated_models
         run_model_pred = np.concatenate(run_model_pred).squeeze()
         run_true_targets = np.concatenate(run_true_targets).squeeze()
 
@@ -1007,7 +1027,11 @@ def cross_validate(
 
     if save_models:
         save_ensemble(models_states, os.path.join(save_folder, "trained_models.tar.gz"))
-        join_calibrated_models(save_folder)
+        if type(hessians[0]) == torch.Tensor:
+            hessians = torch.stack(hessians, dim=2)
+        elif type(hessians[0]) == KronDecomposed:
+            hessians = get_kronecker_hessian_attributes(*hessians)
+        torch.save(hessians, os.path.join(save_folder, "hessians.pt"))
 
     all_targets = np.concatenate(all_runs_targets).squeeze()
     all_probabilities = np.concatenate(all_runs_probabilities).squeeze()
@@ -1104,20 +1128,15 @@ def ensemble_inference(
         batch_size=len(dataset_test),
     )
 
-    if laplace:
-        ensemble = load_calibrated_ensemble(
-            ensemble_path,
-            fast=fast,
-        )
-    else:
-        ensemble = load_ensemble(
-            ensemble_path,
-            device=torch.device("cpu"),
-            pool_type=args.pool_type,
-            n_classes=n_classes,
-            use_layer=args.use_layer,
-            fast=fast,
-        )
+    ensemble = load_ensemble(
+        ensemble_path,
+        device=torch.device("cpu"),
+        pool_type=args.pool_type,
+        n_classes=n_classes,
+        use_layer=args.use_layer,
+        laplace=laplace,
+        fast=fast,
+    )
 
     # Calculate predictions and append results
     raw_probabilities = ensemble_predict(
@@ -1284,32 +1303,32 @@ def main():
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
 
-    results_dict = cross_validate(
-        dataset,
-        targets,
-        spikes,
-        ACG_VAE_PATH,
-        args,
-        layer_info=one_hot_layer if args.use_layer else None,
-        epochs=20,
-        batch_size=64,
-        loo=args.loo,
-        n_runs=10,
-        random_init=args.random_init,
-        freeze_heads=args.freeze,
-        save_folder=save_folder,
-        save_models=True,
-        enforce_layer=False,
-        labelling=LABELLING,
-    )
+    # results_dict = cross_validate(
+    #     dataset,
+    #     targets,
+    #     spikes,
+    #     ACG_VAE_PATH,
+    #     args,
+    #     layer_info=one_hot_layer if args.use_layer else None,
+    #     epochs=20,
+    #     batch_size=64,
+    #     loo=args.loo,
+    #     n_runs=10,
+    #     random_init=args.random_init,
+    #     freeze_heads=args.freeze,
+    #     save_folder=save_folder,
+    #     save_models=True,
+    #     enforce_layer=False,
+    #     labelling=LABELLING,
+    # )
 
-    plot_confusion_matrices(
-        results_dict,
-        save_folder,
-        model_name,
-        labelling=LABELLING,
-        correspondence=CORRESPONDENCE,
-    )
+    # plot_confusion_matrices(
+    #     results_dict,
+    #     save_folder,
+    #     model_name,
+    #     labelling=LABELLING,
+    #     correspondence=CORRESPONDENCE,
+    # )
 
     # Apply hard layer correction as well if user requested to use layer
     if args.use_layer:
@@ -1338,7 +1357,7 @@ def main():
     # Predict monkey data
     #
 
-    from monkey_dataset_init import get_lisberger_dataset
+    from .monkey_dataset_init import get_lisberger_dataset
 
     MONKEY_WAVEFORM_SAMPLES = int(WAVEFORM_SAMPLES * 40_000 / 30_000)
 
@@ -1418,7 +1437,7 @@ def main():
         dataset_test,
         y_test,
         args,
-        ensemble_path=os.path.join(save_folder, "calibrated_models.tar.gz"),
+        ensemble_path=os.path.join(save_folder, "trained_models.tar.gz"),
         n_classes=len(np.unique(y_training)),
         layer_test=monkey_one_hot_layer if args.use_layer else None,
         save_folder=save_folder_monkey,

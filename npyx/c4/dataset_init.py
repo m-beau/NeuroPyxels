@@ -1,8 +1,10 @@
-# To name dataset_init.py
-# File needs to be put into the same folder as the dataset folder
+import os
+
+if __name__ == "__main__":
+    __package__ = "npyx.c4"
+
 import argparse
 import datetime
-import os
 import pickle
 import warnings
 from pathlib import Path

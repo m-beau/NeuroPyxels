@@ -1,5 +1,9 @@
-import argparse
 import os
+
+if __name__ == "__main__":
+    __package__ = "npyx.c4"
+
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -13,15 +17,19 @@ from tqdm.auto import tqdm
 
 import npyx
 
+from . import dl_models
 from .run_deep_classifier import (
     CustomDataset,
     encode_layer_info,
     ensemble_predict,
-    load_calibrated_ensemble,
+    load_ensemble,
 )
 
-URL_DICT = {
+MODELS_URL_DICT = {
     "base": "https://figshare.com/ndownloader/files/41611977?private_link=9a9dfce1c64cb807fc96"
+}
+HESSIANS_URL_DICT = {
+    "base": "",
 }
 
 
@@ -219,17 +227,22 @@ def main():
         correspondence = npyx.datasets.CORRESPONDENCE_NO_GRC
 
     # Determine the URL from which we should download the models
-    models_url = URL_DICT[model_type]
+    models_url = MODELS_URL_DICT[model_type]
+    hessians_url = HESSIANS_URL_DICT[model_type]
 
     # First download the models if they are not already downloaded
     models_folder = os.path.join(
         Path.home(), ".npyx_c4_resources", "models", model_type
     )
-    models_archive = os.path.join(models_folder, "calibrated_models.tar.gz")
+    models_archive = os.path.join(models_folder, "trained_models.tar.gz")
+    hessians_archive = os.path.join(models_folder, "hessians.pt")
 
     if not os.path.exists(models_archive):
         os.makedirs(models_folder, exist_ok=True)
         download_file(models_url, models_archive, description="Downloading models")
+    if not os.path.exists(hessians_archive):
+        os.makedirs(models_folder, exist_ok=True)
+        download_file(hessians_url, models_archive, description="Downloading hessians")
 
     # Prepare the data for prediction
     if args.units is not None:
@@ -251,7 +264,14 @@ def main():
         batch_size=len(prediction_dataset),
     )
 
-    ensemble = load_calibrated_ensemble(models_archive, fast=False)
+    ensemble = load_ensemble(
+        models_archive,
+        device=torch.device("cpu"),
+        n_classes=6 if args.use_layer else 5,
+        use_layer=args.use_layer,
+        fast=False,
+        laplace=True,
+    )
 
     raw_probabilities = ensemble_predict(
         ensemble,

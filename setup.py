@@ -60,7 +60,7 @@ setup(
     long_description=readme,
     long_description_content_type="text/markdown",
     url="https://github.com/Npix-routines/NeuroPyxels",
-    packages=["npyx"],
+    packages=["npyx", "npyx.c4"],
     # package_dir={'rtn': 'rtn'},
     install_requires=requirements,
     dependency_links=dependency_links,

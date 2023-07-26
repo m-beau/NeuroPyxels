@@ -242,7 +242,9 @@ def main():
         download_file(models_url, models_archive, description="Downloading models")
     if not os.path.exists(hessians_archive):
         os.makedirs(models_folder, exist_ok=True)
-        download_file(hessians_url, models_archive, description="Downloading hessians")
+        download_file(
+            hessians_url, hessians_archive, description="Downloading hessians"
+        )
 
     # Prepare the data for prediction
     if args.units is not None:

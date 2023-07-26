@@ -66,7 +66,7 @@ def prepare_dataset(dp, units):
         leave=False,
     ):
         t = npyx.spk_t.trn(dp, u)
-        if len(t) < 10:
+        if len(t) < 100:
             bad_units.append(u)
             continue
         t, _ = npyx.spk_t.trn_filtered(dp, u)

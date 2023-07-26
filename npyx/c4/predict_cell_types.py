@@ -26,10 +26,10 @@ from .run_deep_classifier import (
 )
 
 MODELS_URL_DICT = {
-    "base": "https://figshare.com/ndownloader/files/41611977?private_link=9a9dfce1c64cb807fc96"
+    "base": "https://figshare.com/ndownloader/files/41706915?private_link=2530fd0da03e18296d51"
 }
 HESSIANS_URL_DICT = {
-    "base": "",
+    "base": "https://figshare.com/ndownloader/files/41706540?private_link=2530fd0da03e18296d51",
 }
 
 

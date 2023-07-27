@@ -209,7 +209,7 @@ def extract_and_merge_datasets(
 
 def make_dataset_df(dataset: datasets.NeuronsDataset):
     columns = ["h5_unit_id", "label", "dataset", "unit", "genetic_line", "included"]
-    feat_df = pd.DataFrame(columns=columns)
+    rows = []
 
     include = 1
 
@@ -221,9 +221,9 @@ def make_dataset_df(dataset: datasets.NeuronsDataset):
         label = dataset.labels_list[i]
         line = dataset.genetic_line_list[i]
         curr_feat = [i, label, dp, unit, line, include]
-        feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
+        rows.append(dict(zip(columns, curr_feat)))
 
-    return feat_df
+    return pd.DataFrame(rows, columns=columns)
 
 
 def extract_and_check(

@@ -11,6 +11,9 @@ from sklearn.preprocessing import StandardScaler
 
 import npyx.feat as feat
 import npyx.plot as npyx_plot
+from npyx.datasets import CORRESPONDENCE_NO_GRC
+from npyx.plot import mplp
+from npyx.utils import npa
 
 from .dataset_init import BIN_SIZE, N_CHANNELS, WAVEFORM_SAMPLES, WIN_SIZE
 
@@ -34,22 +37,7 @@ def make_plotting_df(
 ) -> pd.DataFrame:
     dataframe = df.copy()
 
-    # colors_dict = {
-    #     "PkC_cs": "orangered",
-    #     "PkC_ss": "darkblue",
-    #     "GoC": "darkgreen",
-    #     "GrC": "saddlebrown",
-    #     "MLI": "crimson",
-    #     "MFB": "indigo",
-    # }
-    colors_dict = {
-        "PkC_cs": "orange",
-        "PkC_ss": "blue",
-        "GoC": "green",
-        "GrC": "brown",
-        "MLI": "red",
-        "MFB": "purple",
-    }
+    colors_dict = C4_COLORS
     # Add an 'absolute id' like column for plotting purposes, so that each neuron has an unique identifier
     abs_id = np.arange(len(dataframe))
 
@@ -430,6 +418,18 @@ def plot_results_from_threshold(
         _shuffle_matrix=_shuffle_matrix,
     )
 
+    # ax[1] = plot_confusion_matrix(
+    #     predicted_proba,
+    #     true_targets,
+    #     correspondence,
+    #     confidence_threshold=threshold,
+    #     label_order=_shuffle_matrix,
+    #     normalize=True,
+    #     axis=ax[1],
+    #     saveDir=None,
+    #     saveFig=False,
+    # )
+
     if f1_scores is not None:
         if type(f1_scores) not in [np.ndarray, list]:
             f1_string = f"F1 score: {f1_scores:.3f}"
@@ -669,3 +669,158 @@ def plot_acgs(acgs, title, col=None, win_size=WIN_SIZE, bin_size=BIN_SIZE, ax=No
     )
 
     return ax
+
+
+def plot_features_1cell_vertical(
+    i,
+    acg_3ds,
+    waveforms,
+    predictions=None,
+    saveDir=None,
+    fig_name=None,
+    plot=True,
+    cbin=1,
+    cwin=2000,
+    figsize=(10, 4),
+    LABELMAP=CORRESPONDENCE_NO_GRC,
+    C4_COLORS=C4_COLORS,
+    fs=30000,
+):
+    # parameters
+    ticklab_s = 20
+    log_ticks = [10, 1000]
+
+    if predictions is not None:
+        n_obs, n_classes, n_models = predictions.shape
+        mean_predictions = predictions.mean(2)
+        pred_dict = {
+            v: np.round(mean_predictions[i, k], 2) for k, v in LABELMAP.items()
+        }
+        pred_str = str(pred_dict).replace("{", "").replace("}", "").replace("'", "")
+        pred = np.argmax(mean_predictions[i])
+        confidence = mean_predictions[i, pred]
+        delta_conf = np.diff(np.sort(mean_predictions[i]))[-1]
+        n_votes = np.sum(np.argmax(predictions[i, :, :], axis=0) == pred)
+        ct = LABELMAP[pred]
+        color = [c / 255 for c in C4_COLORS[ct]]
+        ttl = (
+            f"Cell {i} | Prediction: {ct}\n"
+            f"Confidence: \u03BC = {confidence:.2f}, \u0394\u03BC = {delta_conf:.2f}, votes = {n_votes}/{n_models}\n"
+            f" {pred_str}"
+        )
+    else:
+        color = "k"
+        ttl = f"Cell {i}"
+        n_classes = 5
+
+    fig = plt.figure()
+    n_rows = 5  # math.lcm(5, n_classes)
+    grid = plt.GridSpec(n_rows, 6, wspace=0.1, hspace=0.8)
+
+    # confidence
+    if predictions is not None:
+        row_width = n_rows // n_classes
+        for cti in range(n_classes):
+            ct = LABELMAP[cti]
+            color_ = [c / 255 for c in C4_COLORS[ct]]
+            neuron_predictions = predictions[i, cti, :]
+            axx = fig.add_subplot(
+                grid[cti * row_width : cti * row_width + row_width, -1]
+            )
+            npyx_plot.hist_MB(
+                neuron_predictions, 0, 1, 0.05, ax=axx, color=color_, lw=2
+            )
+            mean_color = "k" if sum(color_) != 0 else "grey"
+            axx.axvline(np.mean(neuron_predictions), color=mean_color, ls="--", lw=1.5)
+            xtickslabels = (
+                ["0"] + [""] * 4 + ["1"] if (cti == n_classes - 1) else [""] * 6
+            )
+            xlabel = "Confidence" if (cti == n_classes - 1) else ""
+            mplp(
+                fig,
+                axx,
+                xticks=np.arange(0, 1.2, 0.2),
+                title=ct,
+                title_s=10,
+                yticks=[0],
+                ytickslabels=[""],
+                xtickslabels=xtickslabels,
+                ticklab_s=14,
+                axlab_s=16,
+                ylabel="",
+                xlabel=xlabel,
+            )
+
+    # ACG
+    log_bins = np.logspace(np.log10(cbin), np.log10(cwin // 2), acg_3ds.shape[2] // 2)
+    t_log = np.concatenate((-log_bins[::-1], [0], log_bins))
+    log_ticks = npa(log_ticks)
+    log_ticks = np.concatenate((-log_ticks[::-1], [0], log_ticks))
+
+    acg_3d = acg_3ds[i]
+    ax0 = fig.add_subplot(grid[0:2, 0:2])
+    ax0.plot(t_log, acg_3d.mean(0), color=color)
+    plt.xscale("symlog")
+    ax0.xaxis.set_ticklabels([])
+    mplp(
+        fig,
+        ax0,
+        xticks=log_ticks,
+        ticklab_s=ticklab_s,
+        ylabel="Autocorr. (sp/s)",
+        xlim=[t_log[0], t_log[-1]],
+    )
+
+    ax1 = fig.add_subplot(grid[2:, 0:2])
+    vmax = np.max(acg_3d) * 1.1
+    vmax = int(np.ceil(vmax / 10) * 10)
+    plt.xscale("symlog")
+    npyx_plot.imshow_cbar(
+        acg_3d,
+        ax=ax1,
+        function="pcolor",
+        xvalues=t_log,
+        origin="bottom",
+        xticks=log_ticks,
+        xticklabels=log_ticks,
+        cmapstr="viridis",
+        vmin=0,
+        vmax=vmax,
+        cticks=[0, vmax],
+    )
+
+    mplp(fig, ax1, ticklab_s=ticklab_s, xlabel="Time (ms)", ytickslabels=[""] * 5)
+
+    # WVF
+    n_samples = waveforms.shape[1]
+    t = np.arange(n_samples) / (fs / 1000)
+
+    ax2 = fig.add_subplot(grid[1:4, 2:5])
+    ax2.plot(t, waveforms[i], color=color)
+
+    # add scalebar
+    # conveniently, the axis are already in ms and microvolts
+    npyx_plot.plot_scalebar(
+        ax2,
+        xscalebar=1,
+        yscalebar=None,
+        x_unit="ms",
+        y_unit="\u03BCV",
+        scalepad=0.025,
+        fontsize=14,
+        lw=3,
+        loc="right",
+        offset_x=0,
+        offset_y=0.1,
+    )
+
+    mplp(fig, ax2, figsize, ticklab_s=ticklab_s, hide_axis=True)
+
+    fig.suptitle(ttl, fontsize=16, va="bottom")
+
+    if saveDir is not None:
+        fig_name = f"cell {i}" if fig_name is None else fig_name
+        npyx_plot.save_mpl_fig(fig, fig_name, saveDir, "pdf")
+
+    if not plot:
+        plt.close(fig)

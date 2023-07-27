@@ -620,7 +620,10 @@ def load_ensemble(
         # Find the nested folder containing the models
         nested_folder = os.path.join(temp_dir, os.listdir(temp_dir)[0])
 
-        ensemble_paths = sorted(os.listdir(nested_folder))
+        ensemble_paths = sorted(
+            os.listdir(nested_folder),
+            key=lambda x: int(x.split("model_")[1].split(".")[0]),
+        )
 
         if fast and len(ensemble_paths) > 100:
             models_mask = np.random.choice(np.arange(len(ensemble_paths)), 100)
@@ -686,7 +689,11 @@ def load_ensemble(
 def load_calibrated_ensemble(models, hessians):
     calibrated_models = []
 
-    for model, hessian in zip(models, hessians):
+    for model, hessian in tqdm(
+        zip(models, hessians),
+        total=len(models),
+        desc="Applying uncertainty calibration",
+    ):
         # Create new laplace instance and then load the pre-fitted Hessian
         calibrated_model = Laplace(
             model,
@@ -698,16 +705,6 @@ def load_calibrated_ensemble(models, hessians):
         hessian = (
             hessian if isinstance(hessian, torch.Tensor) else KronDecomposed(**hessian)
         )
-        # calibrated_model.__setattr__("H", hessian)
-        setattr(calibrated_model, "H", hessian)
-        # Load also the mean for compatibility with internal functions
-        # calibrated_model.__setattr__("model", FeatureExtractor(model, last_layer_name="fc2"))
-        # calibrated_model.__setattr__(
-        #     "mean",
-        #     torch.nn.utils.parameters_to_vector(
-        #         calibrated_model.model.last_layer.parameters()
-        #     ).detach(),
-        # )
         setattr(
             calibrated_model,
             "mean",
@@ -715,6 +712,7 @@ def load_calibrated_ensemble(models, hessians):
                 calibrated_model.model.last_layer.parameters()
             ).detach(),
         )
+        setattr(calibrated_model, "H", hessian)
         calibrated_model.optimize_prior_precision(method="marglik")
         calibrated_models.append(calibrated_model)
 
@@ -731,7 +729,9 @@ def ensemble_predict(
 ):
     predicted_probabilities = []
 
-    for model in tqdm(ensemble, leave=False, position=0, desc="Predicting"):
+    for model in tqdm(
+        ensemble, leave=True, position=0, desc="Predicting with ensemble"
+    ):
         if not isinstance(model, BaseLaplace):
             model.eval()
         probabilities = predict_unlabelled(
@@ -1057,13 +1057,24 @@ def plot_confusion_matrices(
 
     save_results(results_dict, save_folder)
 
+    n_models = len(results_dict["f1_scores"])
+    n_classes = results_dict["predicted_probability"].shape[1]
+    n_observations = results_dict["predicted_probability"].shape[0] // n_models
+    predictions_matrix = results_dict["predicted_probability"].reshape(
+        (n_models, n_observations, n_classes)
+    )
+
+    predictions_matrix = predictions_matrix.transpose(1, 2, 0)
+    predicted_probabilities = predictions_matrix.mean(axis=2)
+    true_labels = results_dict["true_targets"][:n_observations]
+
     for threshold in tqdm(
         list(np.arange(0.5, 1, 0.1)) + [0.0], desc="Saving results figures"
     ):
         threshold = round(threshold, 2)
         fig = pf.plot_results_from_threshold(
-            results_dict["true_targets"],
-            results_dict["predicted_probability"],
+            true_labels,
+            predicted_probabilities,
             correspondence,
             threshold,
             f"{' '.join(model_name.split('_')).title()} {plots_prefix}({features_name})",

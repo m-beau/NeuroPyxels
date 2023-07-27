@@ -10,14 +10,16 @@ import numpy as np
 import pandas as pd
 import requests
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.utils.data as data
 from tqdm.auto import tqdm
 
-import npyx
+import npyx.corr as corr
+import npyx.datasets as datasets
+from npyx.gl import get_units
+from npyx.spk_t import trn, trn_filtered
+from npyx.spk_wvf import wvf_dsmatch
 
-from . import dl_models
+from .plots_functions import C4_COLORS, plot_features_1cell_vertical
 from .run_deep_classifier import (
     CustomDataset,
     encode_layer_info,
@@ -65,20 +67,21 @@ def prepare_dataset(dp, units):
         position=0,
         leave=False,
     ):
-        t = npyx.spk_t.trn(dp, u)
+        t = trn(dp, u)
         if len(t) < 100:
             bad_units.append(u)
             continue
-        t, _ = npyx.spk_t.trn_filtered(dp, u)
+        # We set period_m to None to use the whole recording
+        t, _ = trn_filtered(dp, u, period_m=None)
         if len(t) < 10:
             bad_units.append(u)
             continue
 
-        wvf, _, _, _ = npyx.spk_wvf.wvf_dsmatch(dp, u, t_waveforms=120)
-        waveforms.append(npyx.datasets.preprocess_template(wvf))
+        wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
+        waveforms.append(datasets.preprocess_template(wvf))
 
-        _, acg = npyx.corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
-        acg, _ = npyx.corr.convert_acg_log(acg, 1, 2000)
+        _, acg = corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
+        acg, _ = corr.convert_acg_log(acg, 1, 2000)
         acgs_3d.append(acg.ravel() * 10)
 
     if len(bad_units) > 0:
@@ -179,6 +182,13 @@ def main():
     )
     parser.set_defaults(hard_layer=False)
 
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Threshold to keep model predictions.",
+    )
+
     args = parser.parse_args()
 
     # Perform some checks on the data folder
@@ -220,11 +230,11 @@ def main():
 
     # Set the labelling and correspondence based on whether we are using mli_clustering or not
     if args.mli_clustering:
-        labelling = npyx.datasets.LABELLING_MLI_CLUSTER_NO_GRC
-        correspondence = npyx.datasets.LABELLING_MLI_CLUSTER_NO_GRC
+        labelling = datasets.LABELLING_MLI_CLUSTER_NO_GRC
+        correspondence = datasets.LABELLING_MLI_CLUSTER_NO_GRC
     else:
-        labelling = npyx.datasets.LABELLING_NO_GRC
-        correspondence = npyx.datasets.CORRESPONDENCE_NO_GRC
+        labelling = datasets.LABELLING_NO_GRC
+        correspondence = datasets.CORRESPONDENCE_NO_GRC
 
     # Determine the URL from which we should download the models
     models_url = MODELS_URL_DICT[model_type]
@@ -250,7 +260,7 @@ def main():
     if args.units is not None:
         units = args.units
     else:
-        units = npyx.get_units(args.data_path, args.quality)
+        units = get_units(args.data_path, args.quality)
 
     prediction_dataset, bad_units = prepare_dataset(args.data_path, units)
 
@@ -298,9 +308,39 @@ def main():
         }
     )
 
+    confidence_mask = predictions_df["confidence"] >= args.threshold
+    predictions_df = predictions_df[confidence_mask]
+
     predictions_df.to_csv(
         os.path.join(args.data_path, "cluster_cell_types.tsv"), sep="\t", index=False
     )
+
+    # Finally make summary plots of the classifier output
+    plots_folder = os.path.join(args.data_path, "cell_type_classification")
+
+    if not os.path.exists(plots_folder):
+        os.makedirs(plots_folder)
+
+    confidence_passing = np.array(good_units)[confidence_mask]
+
+    for i, unit in enumerate(good_units):
+        if unit not in confidence_passing:
+            continue
+        plot_features_1cell_vertical(
+            i,
+            prediction_dataset[:, :2010].reshape(-1, 10, 201) * 100,
+            prediction_dataset[:, 2010:],
+            predictions=raw_probabilities,
+            saveDir=plots_folder,
+            fig_name=f"unit_{unit}_cell_type_predictions",
+            plot=False,
+            cbin=1,
+            cwin=2000,
+            figsize=(10, 4),
+            LABELMAP=datasets.CORRESPONDENCE_NO_GRC,
+            C4_COLORS=C4_COLORS,
+            fs=30000,
+        )
 
 
 if __name__ == "__main__":

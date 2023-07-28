@@ -5,9 +5,8 @@ import numpy as np
 try:
     import torch
 except ImportError:
-    print(("\nPyTorch could not be imported - "
-    "some functions from the submodule npyx.ml and npyx.c4 will not work.\n"
-    "To install PyTorch, follow the instructions at http://pytorch.org"))
+    pass
+
 from npyx.corr import acg as make_acg
 from npyx.datasets import resample_acg
 from scipy.signal import fftconvolve

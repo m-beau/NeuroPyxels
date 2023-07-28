@@ -5,14 +5,17 @@ try:
     import torch.distributions as dist
     import torch.nn as nn
     import torch.nn.functional as F
-    from torchvision import transforms
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 except ImportError:
-    print(("\nPyTorch could not be imported - "
-    "some functions from the submodule npyx.ml and npyx.c4 will not work.\n"
-    "To install PyTorch, follow the instructions at http://pytorch.org"))
+    pass
 
+try:
+    from torchvision import transforms
+except ImportError:
+    print(("\ntorchvision could not be imported - "
+    "some functions from the submodule npyx.c4 will not work.\n"
+    "To install torchvision, see https://pypi.org/project/torchvision/."))
 
 class ConvEncoderResize(nn.Module):
     def __init__(

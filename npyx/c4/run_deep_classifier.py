@@ -27,21 +27,24 @@ try:
     from torchvision import transforms
 
 except ImportError:
-    print(("\nPyTorch could not be imported - "
-    "some functions from the submodule npyx.ml and npyx.c4 will not work.\n"
-    "To install PyTorch, follow the instructions at http://pytorch.org"))
+    pass
 
 try:
-    from imblearn.over_sampling import RandomOverSampler
     from laplace import BaseLaplace, Laplace
     from laplace.utils import FeatureExtractor, KronDecomposed
 except ImportError:
     KronDecomposed = None
     BaseLaplace = None
-    print(("\nimblearn and/or laplace could not be imported - "
+    print(("\nlaplace could not be imported - "
     "some functions from the submodule npyx.c4 will not work.\n"
-    "To install imblearn, see https://pypi.org/project/imblearn/.\n"
     "To install laplace, see https://pypi.org/project/laplace-torch/."))
+
+try:
+    from imblearn.over_sampling import RandomOverSampler
+except ImportError:
+    print(("\nimblearn could not be imported - "
+    "some functions from the submodule npyx.c4 will not work.\n"
+    "To install imblearn, see https://pypi.org/project/imblearn/."))
 
 
 from sklearn.compose import ColumnTransformer

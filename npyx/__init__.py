@@ -23,6 +23,7 @@ from .metrics import *
 from .info import *
 from .model import *
 from .h5 import *
+from .ml import *
 from .testing import *
 
 __doc__ = """

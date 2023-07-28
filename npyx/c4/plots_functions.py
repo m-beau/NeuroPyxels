@@ -685,6 +685,7 @@ def plot_features_1cell_vertical(
     LABELMAP=CORRESPONDENCE_NO_GRC,
     C4_COLORS=C4_COLORS,
     fs=30000,
+    unit_id=None,
 ):
     # parameters
     ticklab_s = 20
@@ -704,13 +705,13 @@ def plot_features_1cell_vertical(
         ct = LABELMAP[pred]
         color = [c / 255 for c in C4_COLORS[ct]]
         ttl = (
-            f"Cell {i} | Prediction: {ct}\n"
+            f"Cell {i if unit_id is None else unit_id} | Prediction: {ct}\n"
             f"Confidence: \u03BC = {confidence:.2f}, \u0394\u03BC = {delta_conf:.2f}, votes = {n_votes}/{n_models}\n"
             f" {pred_str}"
         )
     else:
         color = "k"
-        ttl = f"Cell {i}"
+        ttl = f"Cell {i if unit_id is None else unit_id}"
         n_classes = 5
 
     fig = plt.figure()
@@ -824,3 +825,65 @@ def plot_features_1cell_vertical(
 
     if not plot:
         plt.close(fig)
+
+
+def plot_survival_confidence(confidence_matrix, label_correspondence, saveDir=None):
+    _, n_classes = confidence_matrix.shape
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    # Loop through each class
+    for class_idx in range(n_classes):
+        class_confidence = confidence_matrix[:, class_idx]
+
+        # Sort the confidence values in descending order
+        sorted_indices = np.argsort(class_confidence)[::-1]
+        sorted_confidence = class_confidence[sorted_indices]
+        sorted_confidence = np.concatenate(
+            ([max(sorted_confidence)], sorted_confidence, [0])
+        )
+        sorted_confidence = np.round(sorted_confidence, 2) // 0.01 * 0.01
+
+        # Calculate the cumulative number of cells classified for each class
+        # Add zero at the beginning and the max at the end to make the plot not 'float'
+        cumulative_cells = np.cumsum(confidence_matrix.argmax(1) == class_idx)
+        cumulative_cells = np.concatenate(
+            ([0], cumulative_cells, [max(cumulative_cells)])
+        )
+
+        # Plot the survival plot for the current class
+        ax.plot(
+            sorted_confidence,
+            cumulative_cells,
+            label=label_correspondence[class_idx],
+            color=tuple(np.array(C4_COLORS[label_correspondence[class_idx]]) / 255),
+            lw=2,
+        )
+
+    ax.legend(prop={"family": "Arial", "size": 13})
+
+    # Show the plot
+    mplp(
+        fig=fig,
+        ax=ax,
+        xlabel="Confidence",
+        ylabel="Number of Cells Classified",
+        title="Predictions survival plot",
+        xlim=[0, min(1, np.max(confidence_matrix) // 0.1 * 0.1 + 0.1)],
+        ylim=[
+            0,
+            np.max(
+                (confidence_matrix == confidence_matrix.max(axis=1, keepdims=True)).sum(
+                    0
+                )
+            )
+            // 5
+            * 5
+            + 5,
+        ],
+    )
+
+    if saveDir is not None:
+        npyx_plot.save_mpl_fig(fig, "survival_plot", saveDir, "pdf")
+
+    return fig

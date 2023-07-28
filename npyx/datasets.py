@@ -629,18 +629,13 @@ class NeuronsDataset:
         )
 
         # Compute conformed_waveforms
-        self.conformed_waveforms = np.stack(
-            [
-                preprocess_template(
-                    wf,
-                    self._sampling_rate,
-                )
-                for wf in self.wf.reshape(-1, self._n_channels, self._central_range)[
-                    :, self._n_channels // 2, :
-                ]
-            ],
-            axis=0,
-        )
+        self.conformed_waveforms = []
+        for wf in self.wf.reshape(-1, self._n_channels, self._central_range):
+            peak_chan = np.argmax(np.max(np.abs(wf), axis=1))
+            conformed_wave = preprocess_template(wf[peak_chan, :], self._sampling_rate)
+            self.conformed_waveforms.append(conformed_wave)
+        self.conformed_waveforms = np.stack(self.conformed_waveforms, axis=0)
+
         self.h5_ids = np.array(self.h5_ids)
 
     def make_labels_only(self):

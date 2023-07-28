@@ -19,7 +19,11 @@ from npyx.gl import get_units
 from npyx.spk_t import trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 
-from .plots_functions import C4_COLORS, plot_features_1cell_vertical
+from .plots_functions import (
+    C4_COLORS,
+    plot_features_1cell_vertical,
+    plot_survival_confidence,
+)
 from .run_deep_classifier import (
     CustomDataset,
     encode_layer_info,
@@ -340,7 +344,13 @@ def main():
             LABELMAP=datasets.CORRESPONDENCE_NO_GRC,
             C4_COLORS=C4_COLORS,
             fs=30000,
+            unit_id=unit,
         )
+    plot_survival_confidence(
+        raw_probabilities[confidence_mask, :].mean(2),
+        correspondence,
+        saveDir=plots_folder,
+    )
 
 
 if __name__ == "__main__":

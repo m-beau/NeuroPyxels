@@ -1,11 +1,17 @@
 import numpy as np
-import torch
-import torch.distributions as dist
-import torch.nn as nn
-import torch.nn.functional as F
-from torchvision import transforms
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+try:
+    import torch
+    import torch.distributions as dist
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from torchvision import transforms
+
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+except ImportError:
+    print(("\nPyTorch could not be imported - "
+    "some functions from the submodule npyx.ml and npyx.c4 will not work.\n"
+    "To install PyTorch, follow the instructions at http://pytorch.org"))
 
 
 class ConvEncoderResize(nn.Module):

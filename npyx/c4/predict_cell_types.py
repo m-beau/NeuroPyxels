@@ -9,8 +9,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import requests
-import torch
-import torch.utils.data as data
+
+try:
+    import torch
+    import torch.utils.data as data
+except ImportError:
+    print(("\nPyTorch could not be imported - "
+    "some functions from the submodule npyx.ml and npyx.c4 will not work.\n"
+    "To install PyTorch, follow the instructions at http://pytorch.org"))
+
 from tqdm.auto import tqdm
 
 import npyx.corr as corr

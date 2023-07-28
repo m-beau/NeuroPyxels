@@ -18,12 +18,19 @@ cache_memory = Memory(cachedir, verbose=0)
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from npyx.gl import check_periods, get_npyx_memory, get_units
-from npyx.inout import read_metadata
-from npyx.utils import (assert_float, assert_int, docstring_decorator, npa,
-                        smooth, thresh_consec)
 from scipy.optimize import curve_fit
 from scipy.stats import iqr, norm
+
+from npyx.gl import check_periods, get_npyx_memory, get_units
+from npyx.inout import read_metadata
+from npyx.utils import (
+    assert_float,
+    assert_int,
+    docstring_decorator,
+    npa,
+    smooth,
+    thresh_consec,
+)
 
 
 def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=-1):
@@ -877,6 +884,8 @@ def ampli_fit_gaussian_cut(x, n_bins):
     # if there is  more than one mode of the  distribution, mean them
     if len(mode_seed) > 1:
         mode_seed = np.mean(mode_seed)
+    if isinstance(mode_seed, np.ndarray):
+        mode_seed = mode_seed[0]
 
     # return: max, new mod, std for non nan values, and first percentile
     p0 = [np.max(num), mode_seed, np.nanstd(a), np.percentile(a, 1)]

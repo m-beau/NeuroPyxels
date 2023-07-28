@@ -1202,6 +1202,7 @@ def waveform_features(
     plot_debug: bool = False,
     waveform_type="relevant",
     _clip_size=(1e-3, 2e-3),
+    fs=30000,
 ) -> list:
     """
     > Given a 2D array of waveforms, the channel with the peak, and a boolean flag for whether to plot
@@ -1230,25 +1231,30 @@ def waveform_features(
     ) = detect_peaks_2d(waveform_2d, high_amp_channels)
 
     peak_waveform = waveform_2d[peak_channel, :]
-    # First find working waveform
-    relevant_waveform, somatic, relevant_channel = find_relevant_waveform(
-        waveform_2d,
-        candidate_channel_somatic,
-        candidate_channel_non_somatic,
-        somatic_mask,
-    )
     if waveform_type == "relevant":
+        # First find working waveform
         # If None is found features cannot be extracted
+        relevant_waveform, somatic, relevant_channel = find_relevant_waveform(
+            waveform_2d,
+            candidate_channel_somatic,
+            candidate_channel_non_somatic,
+            somatic_mask,
+        )
         if relevant_waveform is None:
             return [peak_channel, *[0] * 18]
     elif waveform_type == "flipped":
         relevant_waveform = preprocess_template(
-            peak_waveform, clip_size=_clip_size, normalize=False
+            peak_waveform,
+            clip_size=_clip_size,
+            normalize=False,
+            original_sampling_rate=fs,
         )
         relevant_channel = peak_channel
+        somatic = False
     elif waveform_type == "peak":
         relevant_waveform = peak_waveform
         relevant_channel = peak_channel
+        somatic = False
 
     peak_channel_features = extract_single_channel_features(
         relevant_waveform, plot_debug, interp_coeff
@@ -1304,100 +1310,112 @@ def plot_all_features(waveform, normalise=True, dp=None, unit=None, label=None):
 
     peak_t, peak_v = detect_peaks(wvf)
 
-    trough_time, peak_time = find_relevant_peaks(peak_t, peak_v, 0.8 * np.std(wvf))
-
-    onset = trough_onset_t(wvf, trough_time)
-    offset = peak_offset_t(wvf, peak_time)
-    zero_time = cross_zero_t(wvf, trough_time, peak_time)
-    pos_hw = pos_half_width(wvf, peak_time, trough_time)
-    neg_hw = neg_half_width(wvf, peak_time, trough_time)
-    end_slope, _, tau, _ = tau_end_slope(wvf, peak_time, trough_time)
-    rep_slope, rep_fit = repol_slope(wvf, peak_time, trough_time)
-    dep_slope, dep_fit = depol_slope(wvf, trough_time)
-    wvf_dur = wvf_width(wvf, peak_time, trough_time)
-    ptrat = pt_ratio(wvf, peak_time, trough_time)
-
-    # get the negative and positive peaks for the PtR
-    neg_t = trough_time
-    neg_v = wvf[trough_time]
-    pos_v = wvf[peak_time]
-    pos_t = peak_time
-
     plt.ion()
     fig, ax = plt.subplots(1, figsize=(10, 8))
     ax.plot(wvf, linewidth=2, alpha=0.8)
-    ax.plot(peak_t, peak_v, "*", color="red", markersize=10)
-    ax.plot(onset[0], onset[1], "rx")
-    ax.plot(offset[0], offset[1], "rx")
-
-    ax.plot(zero_time[0], 0, "rx")
-    ax.plot([neg_t, neg_t], [0, neg_v], linewidth=1, c="black", linestyle="dotted")
-    ax.plot([pos_t, pos_t], [0, pos_v], linewidth=1, c="black", linestyle="dotted")
-    ax.plot([neg_t, pos_t], [0, 0], linewidth=1, c="black", linestyle="dotted")
-
-    ax.plot(
-        np.arange(peak_time, peak_time + len(end_slope)),
-        end_slope,
-        linewidth=3,
-        linestyle="dotted",
-        color="red",
-    )
-    ax.plot(
-        neg_t + np.arange(0, rep_fit.shape[0]),
-        rep_fit,
-        linewidth=3,
-        linestyle="dotted",
-        color="red",
-    )
-    ax.plot(
-        (neg_t + np.arange(0, dep_fit.shape[0])) - dep_fit.shape[0],
-        dep_fit,
-        linewidth=3,
-        linestyle="dotted",
-        color="red",
-    )
 
     xlim = ax.get_xlim()
     ylim = ax.get_ylim()
 
-    ax.plot([pos_hw[0], pos_hw[1]], [pos_hw[2], pos_hw[2]], color="purple")
-    ax.plot([neg_hw[0], neg_hw[1]], [neg_hw[2], neg_hw[2]], color="purple")
+    try:
+        trough_time, peak_time = find_relevant_peaks(peak_t, peak_v, 0.8 * np.std(wvf))
 
-    # Plot and add label to the waveform duration
-    ax.plot(
-        np.linspace(neg_t, pos_t, wvf_dur + 1),
-        np.linspace(neg_v + 0.1 * ylim[0], neg_v + 0.1 * ylim[0], wvf_dur + 1),
-    )
-    ax.text(
-        pos_t + 0.01 * xlim[1],
-        neg_v + 0.1 * ylim[0],
-        f"wvf duration: {np.round(wvf_dur/3000, 2)}",
-    )
+        onset = trough_onset_t(wvf, trough_time)
+        offset = peak_offset_t(wvf, peak_time)
+        zero_time = cross_zero_t(wvf, trough_time, peak_time)
+        pos_hw = pos_half_width(wvf, peak_time, trough_time)
+        neg_hw = neg_half_width(wvf, peak_time, trough_time)
+        end_slope, _, tau, _ = tau_end_slope(wvf, peak_time, trough_time)
+        rep_slope, rep_fit = repol_slope(wvf, peak_time, trough_time)
+        dep_slope, dep_fit = depol_slope(wvf, trough_time)
+        wvf_dur = wvf_width(wvf, peak_time, trough_time)
+        ptrat = pt_ratio(wvf, peak_time, trough_time)
 
-    # NOTE: we are multiplying the slope values by 100 to undo the interpolation effect and obtain meaningful values!
-    # For the same reason we divide tau
+        # get the negative and positive peaks for the PtR
+        neg_t = trough_time
+        neg_v = wvf[trough_time]
+        pos_v = wvf[peak_time]
+        pos_t = peak_time
 
-    ax.text(
-        end_slope[-1] + 0.1 * xlim[1],
-        end_slope[-1],
-        f"tau recovery: {np.round(tau/100,2)}",
-    )
-    ax.text(
-        neg_t + 0.1 * xlim[1],
-        neg_v - 0.1 * ylim[0],
-        f"rep slope: {np.round(rep_slope[0]* 100,2)}",
-    )
-    ax.text(
-        neg_t - 0.2 * xlim[1],
-        neg_v - 0.1 * ylim[0],
-        f"dep slope: {np.round(dep_slope[0] * 100,2)}",
-    )
+        ax.plot(peak_t, peak_v, "*", color="red", markersize=10)
+        ax.plot(onset[0], onset[1], "rx")
+        ax.plot(offset[0], offset[1], "rx")
 
-    ax.text(
-        pos_t + 0.05 * xlim[1],
-        0.3 * ylim[0],
-        f"Peak/trough ratio: {np.abs(np.round(ptrat,2))}",
-    )
+        ax.plot(zero_time[0], 0, "rx")
+        ax.plot([neg_t, neg_t], [0, neg_v], linewidth=1, c="black", linestyle="dotted")
+        ax.plot([pos_t, pos_t], [0, pos_v], linewidth=1, c="black", linestyle="dotted")
+        ax.plot([neg_t, pos_t], [0, 0], linewidth=1, c="black", linestyle="dotted")
+
+        ax.plot(
+            np.arange(peak_time, peak_time + len(end_slope)),
+            end_slope,
+            linewidth=3,
+            linestyle="dotted",
+            color="red",
+        )
+        ax.plot(
+            neg_t + np.arange(0, rep_fit.shape[0]),
+            rep_fit,
+            linewidth=3,
+            linestyle="dotted",
+            color="red",
+        )
+        ax.plot(
+            (neg_t + np.arange(0, dep_fit.shape[0])) - dep_fit.shape[0],
+            dep_fit,
+            linewidth=3,
+            linestyle="dotted",
+            color="red",
+        )
+
+        ax.plot([pos_hw[0], pos_hw[1]], [pos_hw[2], pos_hw[2]], color="purple")
+        ax.plot([neg_hw[0], neg_hw[1]], [neg_hw[2], neg_hw[2]], color="purple")
+
+        # Plot and add label to the waveform duration
+        ax.plot(
+            np.linspace(neg_t, pos_t, wvf_dur + 1),
+            np.linspace(neg_v + 0.1 * ylim[0], neg_v + 0.1 * ylim[0], wvf_dur + 1),
+        )
+        ax.text(
+            pos_t + 0.01 * xlim[1],
+            neg_v + 0.1 * ylim[0],
+            f"wvf duration: {np.round(wvf_dur/3000, 2)}",
+        )
+
+        # NOTE: we are multiplying the slope values by 100 to undo the interpolation effect and obtain meaningful values!
+        # For the same reason we divide tau
+
+        ax.text(
+            end_slope[-1] + 0.1 * xlim[1],
+            end_slope[-1],
+            f"tau recovery: {np.round(tau/100,2)}",
+        )
+        ax.text(
+            neg_t + 0.1 * xlim[1],
+            neg_v - 0.1 * ylim[0],
+            f"rep slope: {np.round(rep_slope[0]* 100,2)}",
+        )
+        ax.text(
+            neg_t - 0.2 * xlim[1],
+            neg_v - 0.1 * ylim[0],
+            f"dep slope: {np.round(dep_slope[0] * 100,2)}",
+        )
+
+        ax.text(
+            pos_t + 0.05 * xlim[1],
+            0.3 * ylim[0],
+            f"Peak/trough ratio: {np.abs(np.round(ptrat,2))}",
+        )
+    except (AssertionError, UnboundLocalError, IndexError):
+        ax.text(
+            xlim[0] + (xlim[1] - xlim[0]) / 2,
+            ylim[0] + (ylim[1] - ylim[0]) / 2,
+            "Waveform features could not be computed for this unit.",
+            horizontalalignment="center",
+            verticalalignment="center",
+            style="italic",
+            bbox={"facecolor": "red", "alpha": 0.4, "pad": 10},
+        )
     ax.set_ylim(ylim[0] + 0.1 * ylim[0], ylim[1] + 0.1 * ylim[1])
 
     ax.set_xlabel("ms")
@@ -1685,6 +1703,7 @@ def h5_feature_extraction(
                 plot_debug=_debug,
                 waveform_type=_wvf_type,
                 _clip_size=_clip_size,
+                fs=_sampling_rate,
             )
             tmp_features = temporal_features(spike_train, _sampling_rate)
 

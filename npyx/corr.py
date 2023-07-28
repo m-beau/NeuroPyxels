@@ -32,7 +32,8 @@ from tqdm.auto import tqdm
 
 from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \
-                    assert_int, assert_float, assert_iterable, smooth
+                    assert_int, assert_float, assert_iterable, smooth,\
+                    docstring_decorator
 
 import matplotlib.pyplot as plt
 
@@ -81,6 +82,7 @@ def make_matrix_2xNevents(dic):
 
     return m
 
+@cache_memory.cache
 def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
                            periods='all', verbose=False, trains=None, enforced_rp=0, log_window_end=None, n_log_bins=10):
     '''Returns the crosscorrelation function of two spike trains.
@@ -1950,7 +1952,7 @@ def synchrony_regehr(CCG, cbin, sync_win=1, fract_baseline=2./5):
 
 def synchrony(CCG, cbin, sync_win=1, fract_baseline=4./5):
     '''
-    - CCG: crosscorrelogram array, units does not matter. Should be long enough.
+    - CCG: crosscorrelogram array, units does not matter. Should be longer than sync_win obviously.
     - cbin: correlogram binsize in millisecond
     - sync_win: synchrony full window in milliseconds
     - baseline_fract: CCG fraction to use to compute baseline
@@ -1965,6 +1967,34 @@ def synchrony(CCG, cbin, sync_win=1, fract_baseline=4./5):
     sync=np.mean(sync_CCG)
 
     return sync
+
+def synchrony_extra_spikes(CCG, CCG_predictor, cbin, sync_win=1):
+    '''
+    - CCG: crosscorrelogram array, units must be in sp/s. Should be longer than sync_win obviously.
+    - CCG_predictor: shuffle-derived CCG.
+                    For instance, setting spike(t) = spike(t-1) + (spike(t+1)-spike(t-1)/2
+    - cbin: correlogram binsize in millisecond
+    - sync_win: synchrony full window in milliseconds
+    '''
+    nbins=int(sync_win/cbin)+1
+    left = len(CCG)//2-nbins//2
+    right = len(CCG)//2+nbins//2+1
+
+    sync_CCG = CCG[left:right]
+    sync_GGC_pred = CCG_predictor[left:right]
+
+    extra_spikes = np.mean(sync_CCG-sync_GGC_pred) * (cbin / 1000)
+
+    return extra_spikes
+
+def Hertzfeld_ccg_predictor(t):
+
+    t_past = t[:-2]
+    t_future = t[2:]
+
+    t[1:-1] = t_past + (t_future-t_past)/2
+
+    return t
 
 def cofiring_tags(t1, t2, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u2=None):
     '''
@@ -1984,7 +2014,9 @@ def cofiring_tags(t1, t2, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None
 
     return tags
 
-def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, again=False, dp=None, U=None):
+def frac_pop_sync_old(t1, trains, fs, t_end,
+                  sync_win=2, b=1, sd=1000, th=0.02,
+                  again=False, dp=None, U=None):
     '''
     Returns an array of size len(t1),
     consisting of the fraction of timeseries in trains
@@ -2036,11 +2068,105 @@ def frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, agai
 
     return pop_sync/N_pop_firing
 
-@cache_memory.cache
-def fraction_pop_sync(dp, u1, U, sync_win=2, b=1, sd=1000, th=0.02, again=False,
+def frac_pop_sync(t1, trains, fs, t_end,
+                  sync_win=0.5,
+                  firing_b=2, firing_sd=1000, firing_th=0.02,
+                  n_pop_firing_fraction_threshold=0.5,
+                  cisi_upper_threshold = 0.1,
+                  again=False, dp=None, U=None, running_denominator=False):
+    '''
+    Returns an array of size len(t1),
+    consisting of the fraction of timeseries in trains
+    having a timestamp occurring within 'sync_win' ms of each t1 time stamp.
+        N of other cells firing withing the predefined synchrony window
+        (if running_denominator: Denominator - running total N of cells firing, handles drift)
+
+    Arguments:
+    - t1: np array, time series in SAMPLES - MUST BE INTEGERS
+    - trains: list of np arrays in, in SAMPLES - MUST BE INTEGERS
+    - fs: float in Hz, t1 and trains sampling frequency
+    - t_end: int in samples, end of recording of t1 and trains, in samples
+    - sync_win: float in ms, synchrony window to define synchrony
+    - b: int in ms, binsize defining the binning of timestamps to define 'broad firing periods' (see npyx.spk_t.firing_periods)
+    - sd: int in ms, gaussian window sd to convolve the binned timestamps defining 'broad firing periods' (see npyx.spk_t.firing_periods)
+    - th: float [0-1], threshold defining the fraction of mean firing rate reached in the 'broad firing periods' (see npyx.spk_t.firing_periods)
+    - n_pop_firing_fraction_threshold: float [0-1], fraction of population which must be firing at the time of a t1 spike
+                                       to consider it meaningful to estimate its population synchrony.
+    - cisi_upper_threshold: float, seconds, threshold beyond which cross ISIs aren't considered for synchrony (too far away)
+    - again: bool, whether to recompute the firing periods of units in U (trains)
+    - dp: string, datapath to dataset with units corresponding to trains - optional, to ensure fast loading of firing_periods
+    - U: list, units matching trains (NOT t1)!
+    - running_denominator: bool, whether to normalize the fraction by the running total of cells firing
+                           rather than the total number of other neurons
+
+    Returns:
+    - frac_pop_sync: np array of shape (len(t1),),
+      fraction of trains firing within sync_win ms of t1 time stamps [0-1].
+    - N_pop_synchronized: np array of shape (len(t1),),
+        number of neurons from 'trains' firing within sync_win ms of t1 time stamps
+    - N_pop_firing: np array of shape (len(t1),),
+        number of neurons from 'trains' firing in the periods englobing t1 time stamps.
+    - t1_cisi: np array of shape (len(t1),),
+        cross interspike interval between t1 and the closest spike in trains.
+    - enough_firing_m: np array of shape (len(t1),),
+        boolean array indicating whether enough neurons were firing at the time of t1
+        to consider it meaningful to estimate its population synchrony.
+    '''
+    if U is None:
+        U=[None]*len(trains)
+    else:
+        assert len(U)==len(trains), 'u1 should not be included in U!'
+        assert dp is not None, 'Need to provide datapath along with unit indices.'
+        t_end = np.load(Path(dp,'spike_times.npy')).ravel()[-1]
+    if t_end is None: t_end=np.max(np.concatenate(trains))
+
+    sync_win=sync_win*fs/1000 # conversion to samples
+    # Trick: simply threshold the crossinterspike interval!
+    # Each spike gets a 1 or 0 tag for whether the cell#2 fired within this window or not.
+    N_pop_firing       = np.zeros((len(trains), t1.shape[0]), dtype=bool)
+    t1_cisi            = np.zeros((len(trains), t1.shape[0]))
+    N_pop_synchronized = np.zeros((len(trains), t1.shape[0]))
+    for i, (u2, t2) in enumerate(zip(U, trains)):
+        periods_t2 = npyx.spk_t.firing_periods(t2, fs, t_end,
+                                            b=firing_b, sd=firing_sd, th=firing_th,
+                                            again=again, dp=dp, u=u2)
+        
+        N_pop_firing[i,       : ] = npyx.utils.get_timestamps_in_windows_mask(t1, periods_t2)
+        t1_cisi[i,            : ] = get_cisi(t1, t2, direction=0, verbose=False)
+        N_pop_synchronized[i, : ] = (t1_cisi[i, :]<=sync_win/2)
+
+        # ignore way too long cisi - clearly the other cell wasn't around
+        cisi_to_ignore                        = t1_cisi[i, :] > cisi_upper_threshold * fs
+        t1_cisi[i, cisi_to_ignore]            = np.nan
+        N_pop_synchronized[i, cisi_to_ignore] = np.nan
+
+        # ignore cisi values for cells which aren't firing
+        t1_cisi[i, ~N_pop_firing[i,            : ]] = np.nan
+        N_pop_synchronized[i, ~N_pop_firing[i, : ]] = np.nan
+    enough_firing_m = np.nansum(N_pop_firing, axis=0) >= n_pop_firing_fraction_threshold*len(trains)
+    print(f"{enough_firing_m.sum()}/{enough_firing_m.shape[0]} spikes during periods where enough neurons fire.")
+
+    # compute fraction of population synchrony
+    if running_denominator:
+        fracpop_sync = np.nansum(N_pop_synchronized, axis=0) / len(trains)
+    else:
+        fracpop_sync = np.nansum(N_pop_synchronized, axis=0) / np.nansum(N_pop_firing, axis=0)
+    fracpop_sync_enough_firing = fracpop_sync[enough_firing_m]
+
+    return (fracpop_sync_enough_firing,
+            N_pop_synchronized,
+            N_pop_firing,
+            t1_cisi,
+            enough_firing_m)
+
+@docstring_decorator(frac_pop_sync.__doc__)
+def fraction_pop_sync(dp, u1, U,
+                      sync_win=2, b=1, sd=1000, th=0.02, again=False,
                       t1=None, trains=None, fs=None, t_end=None):
-    f'''Wrapper for frac_pop_sync:
-        {frac_pop_sync.__doc__}'''
+    """
+    Wrapper for frac_pop_sync:
+        {0}
+    """
     if t1 is None:
         t1=trn(dp, u1, enforced_rp=0)
         trains=[trn(dp, u2, enforced_rp=0) for u2 in U]

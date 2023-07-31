@@ -1326,32 +1326,32 @@ def main():
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
 
-    # results_dict = cross_validate(
-    #     dataset,
-    #     targets,
-    #     spikes,
-    #     ACG_VAE_PATH,
-    #     args,
-    #     layer_info=one_hot_layer if args.use_layer else None,
-    #     epochs=20,
-    #     batch_size=64,
-    #     loo=args.loo,
-    #     n_runs=10,
-    #     random_init=args.random_init,
-    #     freeze_heads=args.freeze,
-    #     save_folder=save_folder,
-    #     save_models=True,
-    #     enforce_layer=False,
-    #     labelling=LABELLING,
-    # )
+    results_dict = cross_validate(
+        dataset,
+        targets,
+        spikes,
+        ACG_VAE_PATH,
+        args,
+        layer_info=one_hot_layer if args.use_layer else None,
+        epochs=20,
+        batch_size=64,
+        loo=args.loo,
+        n_runs=10,
+        random_init=args.random_init,
+        freeze_heads=args.freeze,
+        save_folder=save_folder,
+        save_models=True,
+        enforce_layer=False,
+        labelling=LABELLING,
+    )
 
-    # plot_confusion_matrices(
-    #     results_dict,
-    #     save_folder,
-    #     model_name,
-    #     labelling=LABELLING,
-    #     correspondence=CORRESPONDENCE,
-    # )
+    plot_confusion_matrices(
+        results_dict,
+        save_folder,
+        model_name,
+        labelling=LABELLING,
+        correspondence=CORRESPONDENCE,
+    )
 
     # Apply hard layer correction as well if user requested to use layer
     if args.use_layer:

@@ -230,8 +230,7 @@ def json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
 def make_connected_pairs_df(ds_master,
         ds_paths_master,
         ds_behav_master,
-        use_all_spikes_for_sync         = True,
-        subsample                       = False,
+        upsample_sync         = True, # sync spikes are the synchronous spikes + random fraction of the asynchronous spikes to match Ns
 
         pval_th                         = 0.05,
 
@@ -251,8 +250,8 @@ def make_connected_pairs_df(ds_master,
     df = json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master)
 
     connected_pairs_df_fn = (f"sync_df"
-                f"{pval_th}_{sync_win}_{cisi_upper_threshold}_{n_pcs_firing_fraction_threshold}"
-                f"_{cbin_inh}_{cwin_inh}_{min_win}_{min_win_nbins}_{enforced_rp}_{W_sd}_{use_all_spikes_for_sync}_{subsample}")
+             f"{pval_th}_{sync_win}_{cisi_upper_threshold}_{n_pcs_firing_fraction_threshold}"
+             f"_{cbin_inh}_{cwin_inh}_{min_win}_{min_win_nbins}_{enforced_rp}_{W_sd}_{upsample_sync}")
 
     DPs = np.unique(df['dp'])
     connected_pairs_df = None
@@ -312,7 +311,7 @@ def get_rec_len(dp, unit="seconds"):
         v = list(meta.values())[0]
         rec_length = v["recording_length_seconds"]
     if unit == "samples":
-        rec_length = int(rec_length * meta["sampling_rate"])
+        rec_length = int(rec_length * meta["highpass"]["sampling_rate"])
     return rec_length
 
 

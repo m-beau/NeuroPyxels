@@ -677,7 +677,7 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
 
 def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_with_opto = True, 
                           speed_th_steer = 0.1, speed_th_run = 0.5, light_buffer = 0.5,
-                          again = False, again_behav = False, verbose = True):
+                          again = False, again_behav = False, verbose = True, return_all=False):
     """
     Function to calculate periods of undisturbed neural activity
     (no (monitored) behaviour or optostims).
@@ -692,6 +692,7 @@ def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_wi
         - light_buffer: buffer to add before light onsets/after light offsets (s)
         - again: bool, whether to reload behaviour and recalculate periods
         - verbose: bool, whether to print details.
+        - return_all: bool, whether to return all two or three arrays - baselin_periods, nomove_periods, noopto_periods
     
     Returns:
         - baseline_periods: 2D array of shape (n_periods, 2), [[t1,t2], ...] in seconds.
@@ -789,14 +790,19 @@ def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_wi
     if dataset_with_opto:
         # get intersection of both
         fs = 30_000
-        no_light_periods = (no_light_periods*fs).astype(int)
-        nomove_periods = (nomove_periods*fs).astype(int)
-        no_light_nor_move_periods = get_common_good_sections([list(no_light_periods), list(nomove_periods)])
+        no_light_nor_move_periods = get_common_good_sections([list((no_light_periods*fs).astype(int)),
+                                                              list((nomove_periods*fs).astype(int))])
         no_light_nor_move_periods = np.array(no_light_nor_move_periods)/fs
         print(f'{np.sum(np.diff(no_light_nor_move_periods, axis=1))}s of periods with no light nor running in total (buffer before onset/after light offset: {light_buffer}s).')
         baseline_recording_periods = no_light_nor_move_periods
     else:
         baseline_recording_periods = nomove_periods
+
+    if return_all:
+        if dataset_with_opto:
+            return baseline_recording_periods, nomove_periods, no_light_periods
+        else:
+            return baseline_recording_periods, nomove_periods
 
     return baseline_recording_periods
 

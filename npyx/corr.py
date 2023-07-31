@@ -322,12 +322,12 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
         if normalize in ['Hertz', 'Pearson', 'zscore']:
             for i1,u1 in enumerate(sortedU):
                 if trains is None:
-                    Nspikes1=len(trn(dp, u1, verbose=False, periods=periods))
+                    Nspikes1=len(trn(dp, u1, verbose=False, periods=periods, enforced_rp=enforced_rp))
                 else:
                     Nspikes1=len(trains[i1]) # trains and sortedU are both sorted
                 for i2,u2 in enumerate(sortedU):
                     if trains is None:
-                        Nspikes2=len(trn(dp, u2, verbose=False, periods=periods))
+                        Nspikes2 = len(trn(dp, u2, verbose=False, periods=periods, enforced_rp=enforced_rp))
                     else:
                         Nspikes2=len(trains[i2]) # trains and sortedU are both sorted
                     arr=crosscorrelograms[i1,i2,:]
@@ -355,6 +355,74 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
         sortedC=crosscorrelograms
 
     return sortedC
+
+@cache_memory.cache
+def ccg_hz(dp, u1, u2, cbin, cwin,
+           fs=30000, again = False,
+           enforced_rp=0, periods='all', trains=None,
+           rate_corrected = False, ci = False, ci_alpha=0.05):
+    """
+    Shorthand to get the ccg in Hertz,
+    using u1 spikes actually overlapping with u2 spikes to normalize.
+    - dp: datapath
+    - u1: unit 1
+    - u2: unit 2
+    - cbin: ccg bin size, ms
+    - cwin: full ccg win size, ms
+    - fs: sampling rate, Hz
+    - again: bool, whether to recompute array rather than loading it from npyxMemory
+    - enforced_rp: float, enforced refractory period (in ms).
+    - periods: [[t1,t2], [t3,t4...]], windows of time (in seconds) to use to compute ccg
+    - trains: array (nspikes,), externally fed spike train (in SAMPLES, not seconds)
+    - rate_corrected: bool, whether to subtract off the expected CCG given u2 mean firing rate (Herzfeld 2023 eq 4)
+    - ci: bool, whether to return the CCG subtracted by the 95% confidence interval
+
+    Returns:
+        - c: ccg in Hertz or in change in probability is rate corrected is True (multiply by cbin/1000 to get Hz)
+            change in probability makes sense irrespectively of the bin size since this is a ratio
+        if ci is True:
+            - (low, high): (float, float), bimonial confidence interval of the expected CCG for alpha value of ci_alpha
+    """
+    if ci:
+        if not rate_corrected:
+            rate_corrected = True
+            print("set rate_corrected to True next time when using ci.")
+    if trains is not None:
+        assert len(trains) == 2, "This function only works for two units at a time."
+        t1 = trains[0]
+        t2 = trains[1]
+    else:
+        t1 = trn(dp, u1, enforced_rp=enforced_rp, periods=periods, again=again)
+        t2 = trn(dp, u2, enforced_rp=enforced_rp, periods=periods, again=again)
+
+    c = ccg(dp, [u1, u2], cbin, cwin, fs=fs, normalize="Counts",
+            enforced_rp=enforced_rp, periods=periods, again=again,
+            trains=trains)[0,1,:]
+    Nspikes1 = np.sum(get_cisi(t1, t2)/(fs/1000) <= cwin//2)
+    c = c/(Nspikes1*cbin/1000)
+
+    if rate_corrected:
+        isi1 = np.diff(t1)
+        local_shifts = (isi1[:-1] * -1) + (np.random.random(len(isi1[:-1])) * (isi1[:-1] + isi1[1:])).astype(np.int32)
+        t1[1:-1] = t1[1:-1] + local_shifts
+        c_expected =  ccg(dp, [u1, u2], cbin, cwin, normalize="Counts",
+                        trains=[t1, t2])[0,1,:]
+        c_expected = c_expected/Nspikes1
+
+        c = (c * (cbin/1000)) - c_expected
+
+        if ci:
+            from statsmodels.stats.proportion import proportion_confint
+            (low, high) = proportion_confint(count=(c_expected*Nspikes1).astype(int),
+                                             nobs=Nspikes1, alpha=ci_alpha)
+            low = (low*Nspikes1 - c_expected*Nspikes1)/Nspikes1
+            high = (high*Nspikes1 - c_expected*Nspikes1)/Nspikes1
+
+            return c, (low, high)
+            
+    return c
+
+
 
 def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz',
         ret=True, sav=True, verbose=False, periods='all', again=False,
@@ -1722,6 +1790,7 @@ def get_cisi1(spk1, spk2, direction=0, verbose=False):
 
     return cisi
 
+@cache_memory.cache
 def get_cisi(spk1, spk2, direction=0, verbose=False):
     '''
     Computes cross spike intervals i.e time differences between
@@ -1733,7 +1802,7 @@ def get_cisi(spk1, spk2, direction=0, verbose=False):
                     or for 0, the smallest interval of either
                     (in this case not only consecutive 1,2 or 2,1 ISIs are considered but all spikes of 1)
     Returns:
-        - isi_1to2: shortest interspike intervals of spk1 to spk2
+        - isi_1to2: shortest interspike intervals of spk1 to spk2 in same units as spk1 and spk2
     '''
     assert direction in [1, 0, -1]
     spk1=np.sort(spk1).astype(np.float64)
@@ -2068,7 +2137,7 @@ def frac_pop_sync_old(t1, trains, fs, t_end,
 
     return pop_sync/N_pop_firing
 
-def frac_pop_sync(t1, trains, fs, t_end,
+def frac_pop_sync(t1, trains, fs=30000, t_end=None,
                   sync_win=0.5,
                   firing_b=2, firing_sd=1000, firing_th=0.02,
                   n_pop_firing_fraction_threshold=0.5,
@@ -2147,7 +2216,7 @@ def frac_pop_sync(t1, trains, fs, t_end,
     print(f"{enough_firing_m.sum()}/{enough_firing_m.shape[0]} spikes during periods where enough neurons fire.")
 
     # compute fraction of population synchrony
-    if running_denominator:
+    if not running_denominator:
         fracpop_sync = np.nansum(N_pop_synchronized, axis=0) / len(trains)
     else:
         fracpop_sync = np.nansum(N_pop_synchronized, axis=0) / np.nansum(N_pop_firing, axis=0)

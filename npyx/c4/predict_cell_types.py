@@ -9,8 +9,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import requests
-import torch
-import torch.utils.data as data
+
+try:
+    import torch
+    import torch.utils.data as data
+except ImportError:
+    pass
+
 from tqdm.auto import tqdm
 
 import npyx.corr as corr

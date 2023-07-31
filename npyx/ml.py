@@ -7,7 +7,7 @@ import pandas as pd
 try:
     import torch
 except ImportError:
-    print(("PyTorch could not be imported - "
+    print(("\nPyTorch could not be imported - "
     "some functions from the submodule npyx.ml will not work.\n"
     "To install PyTorch, follow the instructions at http://pytorch.org"))
 

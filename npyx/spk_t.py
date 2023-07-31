@@ -182,6 +182,15 @@ def duplicates_mask(t, enforced_rp=0, fs=30000):
     duplicate_m = np.append([False], np.diff(t)<=enforced_rp*fs/1000)
     return duplicate_m
 
+def enforce_rp(t, enforced_rp=0, fs=30000):
+    '''
+    Enforce a refractory period of enforced_rp ms to a spike train.
+    Every spike FOLLOWING a spike by less than enforced_rp ms is dropped.
+    - t: np.array in samples, sampled at fs Hz
+    - enforced_rp: float, in ms'''
+    duplicate_m = duplicates_mask(t, enforced_rp, fs)
+    return t[~duplicate_m]
+
 def isi(dp, unit, enforced_rp=0, sav=True, verbose=False, periods='all', again=False):
     '''
     ********
@@ -217,10 +226,10 @@ def inst_cv2(t):
 def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
     isint = np.diff(t) if len(t)>1 else None
     if isint is None: return 0
-    # Remove outliers
+    # Remove large outliers
     quantile_high = np.quantile(isint, 1-exclusion_quantile)
-    quantil_low = np.quantile(isint, exclusion_quantile)
-    isint = isint[(isint >= quantil_low) & (isint <= quantile_high)]
+    #quantil_low = np.quantile(isint, exclusion_quantile)
+    isint = isint[(isint <= quantile_high)]
     isint = isint/fs
     return np.round(1./np.mean(isint),2)
 
@@ -361,7 +370,7 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
     if u is not None:
         sav=True
         assert dp is not None
-        assert len(trn(dp,u,0))==len(t), 'There seems to be a mismatch between the provided spike trains and the unit index.'
+        #assert len(trn(dp,u,0))==len(t), 'There seems to be a mismatch between the provided spike trains and the unit index.'
         fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
         dpnm = get_npyx_memory(dp)
         if op.exists(Path(dpnm,fn)) and not again:

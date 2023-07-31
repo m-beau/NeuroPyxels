@@ -23,6 +23,7 @@ from .metrics import *
 from .info import *
 from .model import *
 from .h5 import *
+from .ml import *
 from .testing import *
 
 __doc__ = """
@@ -43,6 +44,6 @@ npyx submodules:
  .h5
 """
 
-__version__ = "2.8.5"
+__version__ = "3.0.0"
 
-print(f"npyx version {__version__} imported.")
+print(f"\n\033[32;1mnpyx version {__version__} imported.\033[0m")

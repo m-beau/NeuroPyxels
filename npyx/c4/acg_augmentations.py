@@ -2,7 +2,11 @@ import random
 
 import npyx
 import numpy as np
-import torch
+try:
+    import torch
+except ImportError:
+    pass
+
 from npyx.corr import acg as make_acg
 from npyx.datasets import resample_acg
 from scipy.signal import fftconvolve

@@ -92,21 +92,23 @@ default_mplp_params = dict(
             # horizontal and vertical lines default parameters
             hlines = None, # provide any iterable of values to plot horizontal lines along the y axis
             vlines = None, # provide any iterable of values to plot vertical lines along the x axis
-            lines_kwargs = {'lw':1.5, 'ls':'--', 'color':'k'}, # add any other matplotlib.lines.Line2D arguments
+            lines_kwargs = {'lw':1.5, 'ls':'--', 'color':'k', 'zorder':-1000}, # add any other matplotlib.lines.Line2D arguments
 )
 
 @docstring_decorator(pprint_dic(default_mplp_params))
 def mplp(fig=None, ax=None, figsize=None, axsize=None,
          xlim=None, ylim=None, xlabel=None, ylabel=None,
-         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=None, reset_yticks=None,
-         xtickrot=None, ytickrot=None, xtickha=None, xtickva=None, ytickha=None, ytickva=None,
+         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None,
+         reset_xticks=None, reset_yticks=None,
+         xtickrot=None, ytickrot=None,
+         xtickha=None, xtickva=None, ytickha=None, ytickva=None,
          axlab_w=None, axlab_s=None,
          ticklab_w=None, ticklab_s=None, ticks_direction=None,
          title=None, title_w=None, title_s=None,
          lw=None, hide_top_right=None, hide_axis=None,
          tight_layout=None, hspace=None, wspace=None,
          show_legend=None, hide_legend=None, legend_loc=None,
-         saveFig=None, saveDir = None, figname=None, _format=None,
+         saveFig=None, saveDir = None, figname=None, _format="pdf",
          colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None,
          cbar_w=None, cbar_h=None, clabel=None, clabel_w=None, clabel_s=None, cticks_s=None,
          hlines = None, vlines = None, lines_kwargs = None,
@@ -420,7 +422,7 @@ def plot_scalebar(ax, xscalebar=None, yscalebar=None,
         offset_x = offset_x-0.1
     else:
         offset_x = offset_x+0.1
-    offset_y = 0.1
+    offset_y = offset_y + 0.1
 
     # x scalebar
     if xscalebar is not None:
@@ -441,7 +443,8 @@ def plot_scalebar(ax, xscalebar=None, yscalebar=None,
         xscale_y = [y+offset_y for y in xscale_y]
 
         # plot xscalebar
-        plt.plot(xscale_x, xscale_y, c='k', lw=lw)
+        ax.plot(xscale_x, xscale_y, c='k', lw=lw)
+
         # plot xscalebar text
         ax.text(xscale_x[0]+np.diff(xscale_x)/2,
                 xscale_y[0]+vpad*text_pos_sign,
@@ -475,13 +478,12 @@ def plot_scalebar(ax, xscalebar=None, yscalebar=None,
         yscale_y = [y+offset_y for y in yscale_y]
 
         # plot yscalebar
-        plt.plot(yscale_x, yscale_y, c='k', lw=lw)
+        ax.plot(yscale_x, yscale_y, c='k', lw=lw)
         # plot yscalebar text
         ax.text(yscale_x[0]+hpad*text_pos_sign, yscale_y[0]+np.diff(yscale_y)/2,
                 f"{yscalebar}{y_unit}",
                 ha=yscale_ha, va="center", fontsize=fontsize)
     
-        print(yscale_x, yscale_ha, hpad)
 
 def mplshow(fig):
 
@@ -2272,16 +2274,14 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
 
     # plot formatting
     ax.plot([0,0], ylim, c=[0.7, 0.7, 0.7], lw=1, zorder=-1)
-    if labels:
-        if normalize=='zscore':
-                ax.plot([x[0], x[-1]], [0,0], c=[0.7, 0.7, 0.7], lw=1, zorder=-1)
-        if not isinstance(title, str) and show_ttl:
-            if bChs is None:
-                title=f"{uls[0]}->{uls[1]}"
-            else:
-                title=f"{uls[0]}@{bChs[0]}->{uls[1]}@{bChs[1]}"
+    
+    if normalize=='zscore':
+            ax.plot([x[0], x[-1]], [0,0], c=[0.7, 0.7, 0.7], lw=1, zorder=-1)
+    if not isinstance(title, str) and show_ttl:
+        if bChs is None:
+            title=f"{uls[0]}->{uls[1]}"
         else:
-            title = None
+            title=f"{uls[0]}@{bChs[0]}->{uls[1]}@{bChs[1]}"
     
     ylabdic={'Counts':'Counts',
                 'Hertz':'spk/s',
@@ -2740,9 +2740,11 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
         ccg_means = np.mean(ccg_baseline, axis=2)
 
     if CCG.shape[0]==2 and not as_grid:
+        if ccg_means is not None: ccg_means = ccg_means[0,1]
+        if ccg_deviations is not None: ccg_deviations = ccg_deviations[0,1]
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format,
                       labels=labels, title=title, color=color, ylim=ylim_ccg,
-                      normalize=normalize, ccg_mn=ccg_means[0,1], ccg_std=ccg_deviations[0,1],
+                      normalize=normalize, ccg_mn=ccg_means, ccg_std=ccg_deviations,
                       figsize=figsize, style=style, hide_axis=hide_axis, show_hz=show_hz, show_ttl=show_ttl,
                       prettify=prettify, **mplp_kwargs)
     else:
@@ -2832,14 +2834,14 @@ def plt_3d_acg(acg3d, t, f, cbin, cwin,
         log_acg, t_log = convert_acg_log(acg3d, cbin, cwin,
                                      n_log_bins=n_log_bins, start_log_ms=start_log_ms,
                                      smooth_sd=smooth_sd_log, plot=plot_1D)
-        log_ticks_i = np.arange(10, t_log.shape[0]//2, 20)
-        log_ticks = t_log[t_log.shape[0]//2+1:][log_ticks_i]
+
+        log_ticks = [10,1000]
         log_ticks = np.concatenate((-log_ticks[::-1], [0], log_ticks))
-        log_ticks_i = np.concatenate((-log_ticks_i[::-1]-1, [0], log_ticks_i+1))
-        log_ticks_i = log_ticks_i + len(t_log)//2
+        plt.xscale('symlog')
         fig = imshow_cbar(log_acg,
-                        xticks = log_ticks_i,
-                        xvalues=np.arange(len(t_log)), xticklabels = np.round(log_ticks).astype(int),
+                        function = 'pcolor',
+                        xvalues = t_log, 
+                        xticks = log_ticks, xticklabels=log_ticks,
                         yticks=np.arange(len(f)), yvalues=np.arange(len(f)),
                         yticklabels=np.round(f).astype(int),
                         origin='bottom', cmapstr='viridis', vmin=0,

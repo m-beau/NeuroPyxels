@@ -15,19 +15,42 @@ import dill
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torch.utils.data as data
-from imblearn.over_sampling import RandomOverSampler
-from laplace import BaseLaplace, Laplace
-from laplace.utils import FeatureExtractor, KronDecomposed
+
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    import torch.optim as optim
+    import torch.utils.data as data
+    DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    from torchvision import transforms
+
+except ImportError:
+    pass
+
+try:
+    from laplace import BaseLaplace, Laplace
+    from laplace.utils import FeatureExtractor, KronDecomposed
+except ImportError:
+    KronDecomposed = None
+    BaseLaplace = None
+    print(("\nlaplace could not be imported - "
+    "some functions from the submodule npyx.c4 will not work.\n"
+    "To install laplace, see https://pypi.org/project/laplace-torch/."))
+
+try:
+    from imblearn.over_sampling import RandomOverSampler
+except ImportError:
+    print(("\nimblearn could not be imported - "
+    "some functions from the submodule npyx.c4 will not work.\n"
+    "To install imblearn, see https://pypi.org/project/imblearn/."))
+
+
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import f1_score
 from sklearn.model_selection import LeaveOneOut, StratifiedKFold
 from sklearn.preprocessing import OneHotEncoder
-from torchvision import transforms
 from tqdm.auto import tqdm
 
 import npyx.datasets as datasets
@@ -54,7 +77,6 @@ from .dl_models import (
     load_waveform_encoder,
 )
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 SEED = 42
 
 WVF_VAE_PATH_SINGLE = os.path.join(
@@ -336,17 +358,7 @@ def load_laplace(filepath):
     return la
 
 
-def get_kronecker_hessian_attributes(*kronecker_hessians: KronDecomposed):
-    hessians = []
-    for h in kronecker_hessians:
-        hess_dict = {
-            "eigenvalues": h.eigenvalues,
-            "eigenvectors": h.eigenvectors,
-            "deltas": h.deltas,
-            "damping": h.damping,
-        }
-        hessians.append(hess_dict)
-    return hessians
+
 
 
 def predict_unlabelled(

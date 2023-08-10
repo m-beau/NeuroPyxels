@@ -13,6 +13,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import requests
 import seaborn as sns
 from scipy.optimize import OptimizeWarning
 from tqdm.auto import tqdm
@@ -81,9 +82,27 @@ HULL_LINES_DICT = {
     "GrC": "unkonwn",
 }
 
+DATASETS_URL = {
+    "hausser": "https://figshare.com/ndownloader/files/41720781?private_link=9a9dfce1c64cb807fc96",
+    "lisberger": "https://figshare.com/ndownloader/files/41721090?private_link=9a9dfce1c64cb807fc96",
+    "medina": "https://figshare.com/ndownloader/files/41721195?private_link=9a9dfce1c64cb807fc96",
+    "hull_labelled": "https://figshare.com/ndownloader/files/41720784?private_link=9a9dfce1c64cb807fc96",
+    "hull_unlabelled": "https://figshare.com/ndownloader/files/41720901?private_link=9a9dfce1c64cb807fc96",
+}
 
-def assert_presence(datasets_list, name):
-    return any(name in dataset for dataset in datasets_list)
+
+def download_file(url, output_path, description=None):
+    response = requests.get(url, stream=True)
+    total_size = int(response.headers.get("content-length", 0))
+    block_size = 1024  # 1 KB
+    progress_bar = tqdm(total=total_size, unit="B", unit_scale=True, desc=description)
+
+    with open(output_path, "wb") as file:
+        for data in response.iter_content(block_size):
+            file.write(data)
+            progress_bar.update(len(data))
+
+    progress_bar.close()
 
 
 def save_results(results_dict, save_path):
@@ -92,64 +111,6 @@ def save_results(results_dict, save_path):
 
     with open(file_name, "wb") as fobj:
         pickle.dump(results_dict, fobj)
-
-
-def get_paths_from_dir(
-    path_to_dir,
-    include_lisberger=False,
-    include_medina=False,
-    _include_hull_unlab=False,
-):
-    # Check if the directory structure is correct
-    files = os.listdir(path_to_dir)
-
-    if include_lisberger:
-        datasets = [
-            dataset
-            for dataset in files
-            if dataset.endswith(".h5") and "medina" not in dataset
-        ]
-    elif include_medina:
-        datasets = [
-            dataset
-            for dataset in files
-            if dataset.endswith(".h5") and "lisberger" not in dataset
-        ]
-    elif include_lisberger and include_medina:
-        datasets = [dataset for dataset in files if dataset.endswith(".h5")]
-    else:
-        datasets = [
-            dataset
-            for dataset in files
-            if dataset.endswith(".h5")
-            and "lisberger" not in dataset
-            and "medina" not in dataset
-        ]
-    datasets_abs = [os.path.join(path_to_dir, dataset) for dataset in datasets]
-
-    if _include_hull_unlab:
-        path_hull_unlab = os.listdir(os.path.join(path_to_dir, "unlabelled"))[0]
-        datasets_abs.append(os.path.join(path_to_dir, "unlabelled", path_hull_unlab))
-
-    if include_lisberger:
-        assert len(datasets) < 4, "More than three unique datasets found"
-    elif include_medina:
-        assert len(datasets) < 4, "More than three unique datasets found"
-    elif include_lisberger and include_medina:
-        assert len(datasets) < 5, "More than four unique datasets found"
-    elif _include_hull_unlab:
-        assert len(datasets) < 6, "More than five unique datasets found"
-    else:
-        assert len(datasets) < 3, "More than two unique mouse datasets found"
-
-    assert assert_presence(datasets, "hull"), "No hull dataset found"
-    assert assert_presence(datasets, "hausser"), "No hausser dataset found"
-    if include_lisberger:
-        assert assert_presence(datasets, "lisberger"), "No lisberger dataset found"
-    if include_medina:
-        assert assert_presence(datasets, "medina"), "No medina dataset found"
-
-    return sorted(datasets_abs, key=os.path.getsize)
 
 
 def combine_features(df1, df2):
@@ -169,6 +130,71 @@ def combine_features(df1, df2):
     # Merge the dataframes on the common columns, using a left join
     combined_df = df1.merge(df2, on=common_columns, how="left")
     return combined_df
+
+
+def get_paths_from_dir(
+    path_to_dir, include_lisberger=False, include_medina=False, include_hull_unlab=False
+):
+    # List all files in the directory
+    files = os.listdir(path_to_dir)
+
+    # Filter datasets based on conditions
+    filtered_datasets = [dataset for dataset in files if dataset.endswith(".h5")]
+    if not include_lisberger:
+        filtered_datasets = [
+            dataset for dataset in filtered_datasets if "lisberger" not in dataset
+        ]
+    if not include_medina:
+        filtered_datasets = [
+            dataset
+            for dataset in filtered_datasets
+            if "medina_unlabelled" not in dataset
+        ]
+    if not include_hull_unlab:
+        filtered_datasets = [
+            dataset for dataset in filtered_datasets if "hull_unlabelled" not in dataset
+        ]
+
+    # Include 'hull_labelled' and 'hausser' datasets always
+    required_datasets = ["hull_labelled", "hausser"]
+    if include_lisberger:
+        required_datasets.append("lisberger")
+    if include_medina:
+        required_datasets.append("medina_unlabelled")
+    if include_hull_unlab:
+        required_datasets.append("hull_unlabelled")
+
+    # Get absolute paths to the datasets. Will only get it if the dataset is already in the folder.
+    datasets_abs = [
+        os.path.join(path_to_dir, dataset)
+        for dataset in filtered_datasets
+        if any(rd in dataset for rd in required_datasets)
+    ]
+
+    # Check the number of unique datasets
+    unique_datasets = set(filtered_datasets)
+    num_unique_datasets = len(unique_datasets)
+    assert num_unique_datasets <= 5, "More than five unique datasets found"
+
+    # Check dataset presence
+    for dataset_name in required_datasets:
+        # If the dataset is not in any of the absolute paths
+        if all(dataset_name not in dataset for dataset in datasets_abs):
+            download = input(f"Dataset {dataset_name} not found. Download? (y/n)")
+            if download == "y":
+                corresponding_path = os.path.join(
+                    path_to_dir,
+                    f"C4_database_{dataset_name}.h5",
+                )
+                download_file(
+                    DATASETS_URL[dataset_name],
+                    corresponding_path,
+                    f"Downloading {dataset_name} dataset",
+                )
+            else:
+                raise FileNotFoundError(f"Dataset {dataset_name} not found")
+
+    return sorted(datasets_abs, key=os.path.getsize)
 
 
 def extract_and_merge_datasets(

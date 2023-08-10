@@ -26,34 +26,14 @@ def get_lisberger_dataset(data_path):
 MONKEY_CENTRAL_RANGE = int(WAVEFORM_SAMPLES * 40_000 / 30_000)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Initialise a datasets folder with diagnostic plots for further modelling."
-    )
+class ArgsNamespace:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
 
-    parser.add_argument(
-        "-dp",
-        "--data-folder",
-        type=str,
-        default=".",
-        help="Path to the folder containing the dataset.",
-    )
-    parser.add_argument("--plot", action="store_true")
-    parser.add_argument("--no-plot", dest="plot", action="store_false")
-    parser.add_argument(
-        "-n",
-        "--name",
-        type=str,
-        default="dataset_1",
-        help="Name assigned to the dataset.",
-    )
 
-    parser.add_argument("--WM", action="store_true")
-    parser.set_defaults(WM=False)
-
-    parser.set_defaults(plot=True)
-
-    args = parser.parse_args()
+def main(dp=".", plot=True, name="dataset_1", WM=False):
+    # Parse the arguments into a class to preserve compatibility
+    args = ArgsNamespace(dp=dp, plot=plot, name=name, WM=WM)
 
     datasets_abs = get_lisberger_dataset(args.data_folder)
 
@@ -182,7 +162,7 @@ def main():
     for wf in resampled_dataset.wf:
         relevant_waveform = get_relevant_waveform(wf)
         if relevant_waveform is None:
-            relevant_waveform = wf.reshape(N_CHANNELS, CENTRAL_RANGE)[
+            relevant_waveform = wf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)[
                 N_CHANNELS // 2, :
             ]
 
@@ -346,4 +326,32 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Initialise a datasets folder with diagnostic plots for further modelling."
+    )
+
+    parser.add_argument(
+        "-dp",
+        "--data-folder",
+        type=str,
+        default=".",
+        help="Path to the folder containing the dataset.",
+    )
+    parser.add_argument("--plot", action="store_true")
+    parser.add_argument("--no-plot", dest="plot", action="store_false")
+    parser.add_argument(
+        "-n",
+        "--name",
+        type=str,
+        default="dataset_1",
+        help="Name assigned to the dataset.",
+    )
+
+    parser.add_argument("--WM", action="store_true")
+    parser.set_defaults(WM=False)
+
+    parser.set_defaults(plot=True)
+
+    args = parser.parse_args()
+
+    main(**vars(args))

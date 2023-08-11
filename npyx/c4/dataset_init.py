@@ -1137,6 +1137,23 @@ def main():
             drop_cols=["label"],
         )
 
+    #### After running the mouse init we also run the monkey
+    print("\n Finished mouse init, running monkey init. \n")
+    from .monkey_dataset_init import main as monkey_main
+
+    monkey_main(**vars(args))
+
+    #### After running the monkey init, prompt to compute 3D acgs.
+
+    compute_acgs = input("Compute 3D acgs? (y/n) \n")
+    if compute_acgs == "y":
+        from .acg_vs_firing_rate import main as acg_main
+
+        print("\n Computing 3D acgs for mouse. \n")
+        acg_main(data_folder=args.data_folder, dataset=args.name, monkey=False)
+        print("\n Computing 3D acgs for monkey. \n")
+        acg_main(data_folder=args.data_folder, dataset=args.name, monkey=True)
+
 
 if __name__ == "__main__":
     main()

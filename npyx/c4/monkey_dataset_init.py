@@ -31,9 +31,9 @@ class ArgsNamespace:
         self.__dict__.update(kwargs)
 
 
-def main(dp=".", plot=True, name="dataset_1", WM=False):
+def main(data_folder=".", plot=True, name="dataset_1", WM=False):
     # Parse the arguments into a class to preserve compatibility
-    args = ArgsNamespace(dp=dp, plot=plot, name=name, WM=WM)
+    args = ArgsNamespace(data_folder=data_folder, plot=plot, name=name, WM=WM)
 
     datasets_abs = get_lisberger_dataset(args.data_folder)
 

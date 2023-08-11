@@ -21,7 +21,7 @@ from tqdm.auto import tqdm
 import npyx.corr as corr
 import npyx.datasets as datasets
 import npyx.feat as feat
-import npyx.plot as plot
+import npyx.plot as npyx_plot
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 matplotlib.rcParams["pdf.fonttype"] = 42  # necessary to make the text editable
@@ -339,7 +339,7 @@ def plot_quality_checks(dataframe, lab, fig_title):
     )
     plot.legend(title="")
     result = int(plot.get_ylim()[1] * 1.2)
-    return plot.mplp(
+    return npyx_plot.mplp(
         figsize=(10, 5),
         title=fig_title,
         xlabel="Cell type",
@@ -423,7 +423,9 @@ def save_acg(spike_train, unit_n, save_name=None):
 
     if len(spike_train.ravel()) > 1:
         plt.figure()
-        plot.plot_acg(".npyx_placeholder", unit_n, train=spike_train, figsize=(5, 4.5))
+        npyx_plot.plot_acg(
+            ".npyx_placeholder", unit_n, train=spike_train, figsize=(5, 4.5)
+        )
 
         plt.savefig(f"{save_name}-acg.pdf", format="pdf", bbox_inches="tight")
     else:
@@ -452,7 +454,7 @@ def save_wvf(waveform, save_name=None):
         raise NotImplementedError("Please specify a save name")
 
     plt.figure()
-    plot.plt_wvf(waveform, figh_inch=8, figw_inch=5, title=str(save_name))
+    npyx_plot.plt_wvf(waveform, figh_inch=8, figw_inch=5, title=str(save_name))
 
     plt.savefig(f"{save_name}-wvf.pdf", format="pdf", bbox_inches="tight")
     plt.close()
@@ -465,7 +467,7 @@ def make_summary_plots_wvf(
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
         lab_wvf = dataset.wf[lab_mask]
-        col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+        col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
         for wf in lab_wvf:
             # Normalise before plotting
             peak_wf = wf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)[N_CHANNELS // 2]
@@ -475,7 +477,7 @@ def make_summary_plots_wvf(
                 color=col,
                 alpha=0.4,
             )
-        fig = plot.mplp(
+        fig = npyx_plot.mplp(
             title=f"{CORRESPONDENCE[lab]} (n = {len(lab_wvf)})",
             xlabel="Time (ms)",
             ylabel="Amplitude (a.u.)",
@@ -487,7 +489,7 @@ def make_summary_plots_wvf(
             ).round(1),
             xticks=np.arange(0, WAVEFORM_SAMPLES + 1, 10),
         )
-        plot.save_mpl_fig(
+        npyx_plot.save_mpl_fig(
             fig[0],
             f"{prefix}summary_peak_wvf_{CORRESPONDENCE[lab]}",
             save_folder,
@@ -525,7 +527,7 @@ def make_summary_plots_preprocessed_wvf(
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
         lab_wvf = dataset.wf[lab_mask]
-        col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+        col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
         for wf in lab_wvf:
             relevant_waveform = datasets.preprocess_template(
                 wf,
@@ -541,7 +543,7 @@ def make_summary_plots_preprocessed_wvf(
                 alpha=0.4,
             )
 
-        fig = plot.mplp(
+        fig = npyx_plot.mplp(
             title=f"{CORRESPONDENCE[lab]}",
             xlabel="Time (ms)",
             ylabel="Amplitude (a.u.)",
@@ -553,7 +555,7 @@ def make_summary_plots_preprocessed_wvf(
             ).round(1),
             xticks=np.arange(0, int(WAVEFORM_SAMPLES * 3 / 4 + 1), 10),
         )
-        plot.save_mpl_fig(
+        npyx_plot.save_mpl_fig(
             fig[0],
             f"{prefix}summary_preprocessed_wvf_{CORRESPONDENCE[lab]}",
             save_folder,
@@ -569,7 +571,7 @@ def make_summary_plots_relevant_wvf(
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
         lab_wvf = dataset.wf[lab_mask]
-        col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+        col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
         for wf in lab_wvf:
             if monkey:
                 relevant_waveform = wf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)[
@@ -591,7 +593,7 @@ def make_summary_plots_relevant_wvf(
                 alpha=0.4,
             )
 
-        fig = plot.mplp(
+        fig = npyx_plot.mplp(
             title=f"{CORRESPONDENCE[lab]}",
             xlabel="Time (ms)",
             ylabel="Amplitude (a.u.)",
@@ -603,7 +605,7 @@ def make_summary_plots_relevant_wvf(
             ).round(1),
             xticks=np.arange(0, WAVEFORM_SAMPLES + 1, 10),
         )
-        plot.save_mpl_fig(
+        npyx_plot.save_mpl_fig(
             fig[0],
             f"{prefix}summary_somatic_wvf_{CORRESPONDENCE[lab]}",
             save_folder,
@@ -623,7 +625,7 @@ def make_summary_plots_wvf_by_line(dataset: datasets.NeuronsDataset, save_folder
             wf_mask = lab_mask & line_mask
 
             lab_wvf = dataset.wf[wf_mask]
-            col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+            col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
 
             if len(lab_wvf) == 0:
                 continue
@@ -645,7 +647,7 @@ def make_summary_plots_wvf_by_line(dataset: datasets.NeuronsDataset, save_folder
                     color=col,
                     alpha=0.4,
                 )
-            fig = plot.mplp(
+            fig = npyx_plot.mplp(
                 title=f"{CORRESPONDENCE[lab]}, {line} line (n = {len(lab_wvf)})",
                 xlabel="Time (ms)",
                 ylabel="Amplitude (a.u.)",
@@ -657,7 +659,7 @@ def make_summary_plots_wvf_by_line(dataset: datasets.NeuronsDataset, save_folder
                 ).round(1),
                 xticks=np.arange(0, WAVEFORM_SAMPLES + 1, 10),
             )
-            plot.save_mpl_fig(
+            npyx_plot.save_mpl_fig(
                 fig[0],
                 f"summary_peak_wvf_{CORRESPONDENCE[lab]}_{line}",
                 save_folder,
@@ -679,14 +681,14 @@ def make_summary_plots_acg_by_line(dataset: datasets.NeuronsDataset, save_folder
             acg_mask = lab_mask & line_mask
 
             lab_acg = np.array(dataset.acg_list)[acg_mask]
-            col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+            col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
 
             if len(lab_acg) == 0:
                 continue
 
             for acg in lab_acg:
                 plt.plot(acg, color=col, alpha=0.4)
-            fig = plot.mplp(
+            fig = npyx_plot.mplp(
                 title=f"{CORRESPONDENCE[lab]}, {line} (n = {len(lab_acg)})",
                 xlabel="Time (ms)",
                 ylabel="Autocorrelation (Hz)",
@@ -698,7 +700,7 @@ def make_summary_plots_acg_by_line(dataset: datasets.NeuronsDataset, save_folder
                     0, int(WIN_SIZE / BIN_SIZE) + 1, int(WIN_SIZE / BIN_SIZE) // 8
                 ),
             )
-            plot.save_mpl_fig(
+            npyx_plot.save_mpl_fig(
                 fig[0], f"summary_acg_{CORRESPONDENCE[lab]}_{line}", save_folder, "pdf"
             )
             plt.close()
@@ -711,10 +713,10 @@ def make_summary_plots_acg(
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
         lab_acg = np.array(dataset.acg_list)[lab_mask]
-        col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+        col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
         for acg in lab_acg:
             plt.plot(acg, color=col, alpha=0.4)
-        fig = plot.mplp(
+        fig = npyx_plot.mplp(
             title=f"{CORRESPONDENCE[lab]} (n = {len(lab_acg)})",
             xlabel="Time (ms)",
             ylabel="Autocorrelation (Hz)",
@@ -726,7 +728,7 @@ def make_summary_plots_acg(
                 0, int(WIN_SIZE / BIN_SIZE) + 1, int(WIN_SIZE / BIN_SIZE) // 8
             ),
         )
-        plot.save_mpl_fig(
+        npyx_plot.save_mpl_fig(
             fig[0], f"{prefix}summary_acg_{CORRESPONDENCE[lab]}", save_folder, "pdf"
         )
         plt.close()

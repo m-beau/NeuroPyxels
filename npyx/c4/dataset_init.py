@@ -1152,9 +1152,9 @@ def main():
         from .acg_vs_firing_rate import main as acg_main
 
         print("\n Computing 3D acgs for mouse. \n")
-        acg_main(data_folder=args.data_folder, dataset=args.name, monkey=False)
+        acg_main(data_path=args.data_folder, dataset=args.name, monkey=False)
         print("\n Computing 3D acgs for monkey. \n")
-        acg_main(data_folder=args.data_folder, dataset=args.name, monkey=True)
+        acg_main(data_path=args.data_folder, dataset=args.name, monkey=True)
 
 
 if __name__ == "__main__":

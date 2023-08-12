@@ -173,7 +173,7 @@ def augment_spikes(spikes_list, *transforms):
 
 
 def main(
-    data_folder=".",
+    data_path=".",
     dataset="dataset_1",
     name="acgs_vs_firing_rate",
     labelled=True,
@@ -184,7 +184,7 @@ def main(
 ):
     # Parse arguments into class
     args = ArgsNamespace(
-        data_folder=data_folder,
+        data_path=data_path,
         dataset=dataset,
         name=name,
         labelled=labelled,
@@ -216,7 +216,7 @@ def main(
         datasets_abs = get_paths_from_dir(
             args.data_path,
             include_medina=False,
-            _include_hull_unlab=not args.labelled,
+            include_hull_unlab=not args.labelled,
         )
 
         dataset_class = extract_and_merge_datasets(

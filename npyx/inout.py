@@ -440,7 +440,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
     Returns:
         Dictionnaries of length n_channels = number of channels where threshold crossings were found, [0-16]
-        - onsets: dict, {channel_i:np.array(onset1, onset2, ...), ...} in 'unit'
+        - onsets: dict, {channel_i:np.arquitray(onset1, onset2, ...), ...} in 'unit'
         - offsets: dict, {channel_i:np.array(offset1, offset2, ...), ...} in 'unit'
 
     '''
@@ -476,9 +476,10 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
         events_dir = high_pass_dir if filt_key=='highpass' else low_pass_dir
         for i, ttl_dir in enumerate(events_dir.iterdir()):
             timestamps = np.load(ttl_dir / "timestamps.npy")
+            ttl_i = ttl_dir.name
 
-            onsets  = {**onsets, **{i:timestamps}}
-            offsets = {**offsets, **{i:"openephys dataset: only onsets available (see onsets dictionnary)"}}
+            onsets  = {**onsets, **{ttl_i:timestamps}}
+            offsets = {**offsets, **{ttl_i:"openephys dataset: only onsets available (see onsets dictionnary)"}}
 
         return onsets,offsets
 

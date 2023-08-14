@@ -467,13 +467,18 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
     # proceed
     if meta['acquisition_software'] == 'OpenEphys':
-        raise(('OpenEphys sync channel loading not implemented yet - '
-               'manually load ./Neuropix-PXI-100.0/TTL_1/timestamps.npy.'))
-        filt_id    = 0 if filt_key=='highpass' else 1
-        timestamps = np.load(dp/f'events/Neuropix-PXI-100.{filt_id}/TTL_1/timestamps.npy')
 
-        onsets  = {ok:ov/srate for ok, ov in onsets.items()}
-        offsets = {ok:ov/srate for ok, ov in offsets.items()}
+        events_dirs = [p for p in (dp/'events').iterdir() if 'PXI' in str(p)]
+        high_pass_dir = [p for p in events_dirs if ("AP" in str(p))|("100.0" in str(p))][0]
+        low_pass_dir = [p for p in events_dirs if ("LF" in str(p))|("100.1" in str(p))][0]
+
+
+        events_dir = high_pass_dir if filt_key=='highpass' else low_pass_dir
+        for i, ttl_dir in enumerate(events_dir.iterdir()):
+            timestamps = np.load(ttl_dir / "timestamps.npy")
+
+            onsets  = {**onsets, **{i:timestamps}}
+            offsets = {**offsets, **{i:"openephys dataset: only onsets available (see onsets dictionnary)"}}
 
         return onsets,offsets
 

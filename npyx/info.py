@@ -104,6 +104,102 @@ def sync_wr_chance_shadmehr(t1, t2, events, binsize=2, window=[-500, 500],
             ret = sync
 
     return ret
+
+def covariance(t1, t2, events, binsize=2, window=[-500, 500],
+                   remove_empty_trials=False, smooth_sd=4, pre_smooth=False, post_smooth=False,
+                   y1=None, y2=None, return_trials = False, continuous=True, return_terms=False):
+    """
+    y1 and y2 should be T trials x B bins 2D matrices
+    containing integer numbers of spikes (in theory only 0 and 1; any integer above 1 will be reduced to 1.)
+
+    Relates to correlation as follows:
+    Corr(X,Y) = Cov(X,Y)/std(X)std(Y)
+              = Cov(X,Y)/sqrt(Var(X)Var(Y))
+    Cov(X,Y) = E(XY) - E(X)E(Y)
+             = P(X int Y) - P(X)P(Y)
+    Var(X) = E(X**2) - E(X)**2
+           = P(X) - P(X)P(X) because X is binary
+           = P(X)(1-P(X))
+
+    So Corr(X,Y) = (P(X int Y) - P(X)P(Y)) / sqrt(P(X)(1-P(X))P(Y)(1-P(Y)))
+                 = (P(X int Y)/P(X)P(Y) - 1) / (sqrt(P(X)P(Y))*sqrt((1-P(X))(1-P(Y))) / P(X)P(Y))
+                 = (sync(X,Y) - 1) / sqrt( (1-P(X))(1-P(Y)) / P(X)P(Y) )
+                 = (sync(X,Y) - 1) / sqrt( 1/(1-P(X))(1-P(Y)) - 1 )
+    """
+    if y1 is None:
+        x, y1, y_p1, y_p_var1 = get_processed_ifr(t1, events, b=binsize, window=window, zscore=False, convolve=0)
+        y1 = (y1*binsize/1000).astype(np.int64)
+    if y2 is None:
+        x, y2, y_p2, y_p_var2 = get_processed_ifr(t2, events, b=binsize, window=window, zscore=False, convolve=0)
+        y2 = (y2*binsize/1000).astype(np.int64)
+
+    trial_ids = np.arange(y1.shape[0])
+    cell_1_active_m = (np.mean(y1, axis=1) > 0)
+    cell_2_active_m = (np.mean(y2, axis=1) > 0)
+    cells_active_m = cell_1_active_m & cell_2_active_m
+    if cells_active_m.sum()<20:
+        print("WARNING two neurons share less than 20 trials in common. Cannot estimate synchrony.")
+        if return_trials:
+            y1.mean(axis=0)*np.nan, y1*np.nan, trial_ids[cells_active_m]
+        return y1.mean(axis=0)*np.nan
+    if remove_empty_trials:
+        y1 = y1[cells_active_m, :]
+        y2 = y2[cells_active_m, :]
+        trial_ids = trial_ids[cells_active_m]
+
+    if pre_smooth:
+        if continuous:
+            y1 = smooth(y1, 'gaussian_causal', smooth_sd)
+            y2 = smooth(y2, 'gaussian_causal', smooth_sd)
+        else:
+            print('WARNING no pre-smoothing as arrays must be binary. Set continuous=True if you wish to pre smooth.')
+
+    if continuous:
+        # Max = 1
+        y1[y1>1]=1
+        y2[y2>1]=1
+
+        # P(A,B)
+        p_12_trials = y1*y2
+        p_12 = np.mean(p_12_trials, 0)
+
+        # P(A), P(B)
+        p1 = np.mean(y1, 0)
+        p2 = np.mean(y2, 0)
+
+    else:
+        # Binarize spike presence
+        y1 = y1.astype(bool)
+        y2 = y2.astype(bool)
+
+        # P(A,B)
+        p_12_trials = (y1 & y2).astype(int)
+        p_12 = np.mean(p_12_trials, 0)
+
+        # P(A), P(B)
+        p1 = np.mean(y1.astype(int), 0)
+        p2 = np.mean(y2.astype(int), 0)
+
+    # P(A,B) - (P(A) x P(B))
+    sync = p_12 - (p1*p2)
+
+    if post_smooth:
+        sync = smooth(sync, 'gaussian_causal', smooth_sd)
+
+    sync[np.isnan(sync)]=1
+
+    if return_trials:
+        if return_terms:
+            ret = (sync, p_12_trials/(p1*p2), p_12_trials, p1, p2, trial_ids)
+        else:
+            ret = (sync, p_12_trials/(p1*p2), trial_ids)
+    else:
+        if return_terms:
+            ret = (sync, p_12_trials, p1, p2)
+        else:
+            ret = sync
+
+    return ret
     
 
 def compute_sync_matrix(signal):

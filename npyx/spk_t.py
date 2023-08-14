@@ -224,6 +224,11 @@ def inst_cv2(t):
 
 @cache_memory.cache
 def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
+    """
+    - t: array of time stamps, in samples
+    - exclusion_quantile: float, quantiles beyond which we exclude too long interspike intervals
+    - fs: sampling frequency, in Hz
+    """
     isint = np.diff(t) if len(t)>1 else None
     if isint is None: return 0
     # Remove large outliers

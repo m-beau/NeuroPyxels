@@ -28,6 +28,12 @@ mpl.rcParams["svg.fonttype"] = 'none'
 mpl.rcParams['pdf.fonttype'] = 42 
 mpl.rcParams['ps.fonttype'] = 42
 
+# use Arial, damn it
+if 'Arial' in [f.name for f in matplotlib.font_manager.fontManager.ttflist]:
+    matplotlib.rcParams['font.family'] = 'Arial'
+else:
+    print("Oh no! Arial isn't on your system. We strongly recommend that you install Arial for your aesthetic sanity.")
+
 from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, save_np_array, pprint_dic, docstring_decorator
 from npyx.stats import fractile_normal, fractile_poisson
 
@@ -329,7 +335,7 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
     if legend_loc is not None:
         assert len(legend_loc)==2 or len(legend_loc)==4,\
             "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
-    if show_legend: plt.legend(bbox_to_anchor=legend_loc)
+    if show_legend: plt.legend(bbox_to_anchor=legend_loc, prop={'family':'Arial'})
     elif hide_legend: plt.legend([],[], frameon=False)
 
     if colorbar:
@@ -811,7 +817,8 @@ def set_ax_size(ax,w,h):
 def hist_MB(arr, a=None, b=None, s=None,
             title='', xlabel='', ylabel='', legend_label=None,
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
-            saveFig=False, saveDir='', _format='pdf', prettify=True, **mplp_kwargs):
+            saveFig=False, saveDir='', _format='pdf', prettify=True,
+            style='bar', **mplp_kwargs):
     """
     Plot histogram of array arr.
     Arguments:
@@ -833,6 +840,7 @@ def hist_MB(arr, a=None, b=None, s=None,
         - prettify: bool, whether to apply mplp() prettification or not
         - **mplp_kwargs: any additional formatting parameters, passed to mplp()
     """
+    assert style in ['bar', 'step'], 'style must be either bar or step!'
     if a is None: a=np.min(arr)
     if b is None: b=np.max(arr)
     if s is None: s=(b-a)/100
@@ -843,7 +851,14 @@ def hist_MB(arr, a=None, b=None, s=None,
         (fig, ax) = plt.subplots()
     else:
         fig, ax = ax.get_figure(), ax
-    ax.bar(x=x, height=y, width=s, color=color, edgecolor='k', alpha=alpha, label=legend_label)
+    if style == 'bar':
+        ax.bar(x=x, height=y, width=s, color=color, edgecolor='k', alpha=alpha, label=legend_label)
+    elif style == 'step':
+        x_step = np.concatenate((x[0:1]-s, x, [x[-1]+s]))
+        y_step = np.concatenate(([0], y, [0]))
+        ax.step(x_step, y_step, where='mid', color='k')
+        ax.fill_between(x_step, y_step*0, y_step, step='mid', color=color, alpha=alpha, label=legend_label)
+        ax.set_ylim(bottom=0)
     ax.set_title(title)
     ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Binsize:{}'.format(s))
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
@@ -851,7 +866,8 @@ def hist_MB(arr, a=None, b=None, s=None,
     if xlim is None: xlim = [a,b]
     show_legend = True if legend_label else None
     fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize,
-                  prettify=prettify, show_legend=show_legend, **mplp_kwargs)
+                  prettify=prettify, show_legend=show_legend,
+                  **mplp_kwargs)
 
     if saveFig: save_mpl_fig(fig, title, saveDir, _format)
       
@@ -2251,7 +2267,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         elif normalize=='Pearson':
             yl=max(CCG)
             ylim=[0, yl+0.01-(yl%0.01)]
-        elif normalize=='zscore':
+        else:
             yl=np.max(np.abs(CCG))
             ylim=[-yl, yl]
 
@@ -2269,13 +2285,13 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         ax.plot(x, y, color='black', alpha=1)
         if normalize in ['Hertz','Pearson','Counts']:
             ax.fill_between(x, x*0, y, color=color)
-        elif normalize=='zscore':
+        else:
             ax.fill_between(x, ylim[0]*np.ones(len(x)), y, color=color)
 
     # plot formatting
     ax.plot([0,0], ylim, c=[0.7, 0.7, 0.7], lw=1, zorder=-1)
     
-    if normalize=='zscore':
+    if normalize not in ['Hertz','Counts', 'Pearson']:
             ax.plot([x[0], x[-1]], [0,0], c=[0.7, 0.7, 0.7], lw=1, zorder=-1)
     if not isinstance(title, str) and show_ttl:
         if bChs is None:
@@ -2287,7 +2303,10 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
                 'Hertz':'spk/s',
                 'Pearson':'Pearson',
                 'zscore':'z-score'}
-    ylabel=f"Crosscorr. ({ylabdic[normalize]})" if labels else None
+    if labels:
+        ylabel=f"Crosscorr. ({ylabdic[normalize]})" if normalize in ylabdic else f"{normalize}"
+    else:
+        ylabel=None
 
     if figsize is None: figsize = (4.5, 4)
     mplp(fig, ax, figsize=figsize,
@@ -2484,6 +2503,8 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
             elif normalize1=='zscore':
                 ylmax=max(np.abs(ylim))
                 ylims.append([-ylmax, ylmax])
+            else:
+                ylims.append(ylim)
 
     ylims=npa(ylims)
     if share_y:
@@ -2542,8 +2563,9 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 ax.plot(x, y, color=color, alpha=0)
                 if normalize1 in ['Hertz','Pearson','Counts']:
                     ax.fill_between(x, x*0, y, color=color)
-                elif normalize1=='zscore':
+                else:
                     ax.fill_between(x, ylims[i][0]*np.ones(len(x)), y, color=color)
+
             elif style=='bar':
                 if row == col: ax.step(x, y, color='black', alpha=1, where='mid', lw=1)
                 ax.bar(x=x, height=y+abs(ylims[i][0]), width=cbin, color=color, bottom=ylims[i][0])
@@ -2553,7 +2575,10 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
             norm_str={'mixte':'', 'zscore':'(zscore)', 'Hertz':'(spk/s)',
                       'Pearson':'(Pearson)','Counts':'(Counts)'}
 
-            ylabel = f"Crosscorr. {norm_str[normalize]}" if row==col else None
+            if row==col:
+                ylabel = f"Crosscorr. {norm_str[normalize]}" if normalize in norm_str else f"{normalize}"
+            else:
+                ylabel = None
             xlabel = 'Time (ms)' if row==col else None
             if labels:
                 if bChs is not None:

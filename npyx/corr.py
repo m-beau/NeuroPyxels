@@ -2020,6 +2020,9 @@ def synchrony_regehr(CCG, cbin, sync_win=1, fract_baseline=2./5):
     return sync
 
 def synchrony(CCG, cbin, sync_win=1, fract_baseline=4./5):
+    return synchrony_zscore(CCG, cbin, sync_win, fract_baseline)
+
+def synchrony_zscore(CCG, cbin, sync_win=1, fract_baseline=4./5):
     '''
     - CCG: crosscorrelogram array, units does not matter. Should be longer than sync_win obviously.
     - cbin: correlogram binsize in millisecond
@@ -2037,33 +2040,51 @@ def synchrony(CCG, cbin, sync_win=1, fract_baseline=4./5):
 
     return sync
 
-def synchrony_extra_spikes(CCG, CCG_predictor, cbin, sync_win=1):
+def synchrony_deltaproba(CCG, cbin, sync_win=1):
     '''
-    - CCG: crosscorrelogram array, units must be in sp/s. Should be longer than sync_win obviously.
-    - CCG_predictor: shuffle-derived CCG.
-                    For instance, setting spike(t) = spike(t-1) + (spike(t+1)-spike(t-1)/2
+    - CCG: crosscorrelogram array, units in probability change. Should be longer than sync_win obviously.
     - cbin: correlogram binsize in millisecond
     - sync_win: synchrony full window in milliseconds
+    - baseline_fract: CCG fraction to use to compute baseline
     '''
+    assert CCG.ndim==1
     nbins=int(sync_win/cbin)+1
     left = len(CCG)//2-nbins//2
     right = len(CCG)//2+nbins//2+1
+    sync_CCG=CCG[left:right]
 
-    sync_CCG = CCG[left:right]
-    sync_GGC_pred = CCG_predictor[left:right]
+    sync=np.mean(sync_CCG)
 
-    extra_spikes = np.mean(sync_CCG-sync_GGC_pred) * (cbin / 1000)
+    return sync
 
-    return extra_spikes
+def covariance(p_x_inter_y, p_x, p_y):
+    """
+    Simply computes covariance according to the formula:
+    cov(X,Y) = E(XY) - E(X)E(Y)
+    """
+    return p_x_inter_y-p_x*p_y
 
-def Hertzfeld_ccg_predictor(t):
+def convert_ccg_to_covariance(ccg_2_given_1_corrected, mfr_1, cbin):
+    """
+    Converts a crosscorrelogram in probability to covariance values
+    according to the formula:
+    cov(X,Y) = E(1,2) - E(1)E(2)
+             = E(2|1)E(1) - E(1)E(2)
+             = (E(2|1) - E(2)) * E(1)
+             = (p_2_given_1 - p_2)/cbin * p_1/cbin
+             = (ccg_2_given_1 - ccg_2_given_1_shuffled)/cbin * (mfr_1/T_1)
+             = ccg_2_given_1_corrected/cbin * (mfr_1/T_1)
+    
+    Arguments:
+    - ccg_2_given_1_corrected: np array, crosscorrelogram in delta-probability units
+                (counts/N_trigger_spikes - shuffled CCG same units)
+    - mfr_1: float, mean firing rate of the trigger neuron in sp/s
+    - T_1: float, total recording time of the trigger neuron in seconds
+    - cbin: float, correlogram binsize in ms
+    """ 
 
-    t_past = t[:-2]
-    t_future = t[2:]
+    return ccg_2_given_1_corrected * mfr_1*(cbin/1000)
 
-    t[1:-1] = t_past + (t_future-t_past)/2
-
-    return t
 
 def cofiring_tags(t1, t2, fs, t_end, b=1, sd=1000, th=0.02, again=False, dp=None, u2=None):
     '''

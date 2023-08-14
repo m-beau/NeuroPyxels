@@ -481,7 +481,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
             onsets  = {**onsets, **{ttl_i:timestamps}}
             offsets = {**offsets, **{ttl_i:"openephys dataset: only onsets available (see onsets dictionnary)"}}
 
-        return onsets,offsets
+        return onsets, offsets
 
     elif meta['acquisition_software'] == 'SpikeGLX':
 

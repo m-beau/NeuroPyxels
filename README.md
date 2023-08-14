@@ -67,18 +67,21 @@ myrecording/
   spike_clusters.npy
   cluster_groups.tsv # if manually curated with phy
 
-  # other kilosort/spyking circus outputs here
+  # other spikesorter outputs here
 
   continuous/
-    Neuropix-PXI-100.0/
+    Neuropix-PXI-100.somethingsomething (1, AP...)/
       continuous.dat # optional, if wanna plot waveforms
-    Neuropix-PXI-100.1/
+    Neuropix-PXI-100.somethingsomething (2, LFP...)/
       continuous.dat # optional, if want to plot LFP with plot_raw
 
   events/
-    Neuropix-PXI-100.0/
-      TTL_1/
+    Neuropix-PXI-100.somethingsomething (1, AP...)/
+      TTL somethingelse/
         timestamps.npy # optional, if need to get synchronyzation channel to load with get_npix_sync e.g. to merge datasets
+    Neuropix-PXI-100.somethingsomething (2, LFP...)/
+      TTL somethingelse/
+        timestamps.npy # same timestamps for LFP channel
 ```
 
 
@@ -94,7 +97,7 @@ dp = 'datapath/to/myrecording'
 # load contents of .lf.meta and .ap.meta or .oebin files as python dictionnary.
 # The metadata of the high and lowpass filtered files are in meta['highpass'] and meta['lowpass']
 # Quite handy to get probe version, sampling frequency, recording length etc
-meta = read_metadata(dp)
+meta = read_metadata(dp) # works for spikeGLX (contents of .meta files) and open-ephys (contents of .oebin file)
 
 ```
 
@@ -103,9 +106,9 @@ meta = read_metadata(dp)
 from npyx.inout import get_npix_sync # star import is sufficient, but I like explicit imports!
 
 # If SpikeGLX: slow the first time, then super fast
-onsets, offsets = get_npix_sync(dp)
+onsets, offsets = get_npix_sync(dp, filt_key='highpass') # works for spikeGLX (extracted from .ap.bin file) and open-ephys (/events/..AP/TTL/timestamps.npy)
 # onsets/offsets are dictionnaries
-# keys: ids of sync channel where a TTL was detected,
+# keys: ids of sync channel where a TTL was detected (0,1,2... for spikeGLX, name of TTL folders in events/..AP for openephys),
 # values: times of up (onsets) or down (offsets) threshold crosses, in seconds.
 ```
 ### Preprocess binary data

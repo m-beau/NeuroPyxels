@@ -28,6 +28,12 @@ mpl.rcParams["svg.fonttype"] = 'none'
 mpl.rcParams['pdf.fonttype'] = 42 
 mpl.rcParams['ps.fonttype'] = 42
 
+# use Arial, damn it
+if 'Arial' in [f.name for f in matplotlib.font_manager.fontManager.ttflist]:
+    matplotlib.rcParams['font.family'] = 'Arial'
+else:
+    print("Oh no! Arial isn't on your system. We strongly recommend that you install Arial for your aesthetic sanity.")
+
 from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, save_np_array, pprint_dic, docstring_decorator
 from npyx.stats import fractile_normal, fractile_poisson
 
@@ -92,21 +98,23 @@ default_mplp_params = dict(
             # horizontal and vertical lines default parameters
             hlines = None, # provide any iterable of values to plot horizontal lines along the y axis
             vlines = None, # provide any iterable of values to plot vertical lines along the x axis
-            lines_kwargs = {'lw':1.5, 'ls':'--', 'color':'k'}, # add any other matplotlib.lines.Line2D arguments
+            lines_kwargs = {'lw':1.5, 'ls':'--', 'color':'k', 'zorder':-1000}, # add any other matplotlib.lines.Line2D arguments
 )
 
 @docstring_decorator(pprint_dic(default_mplp_params))
 def mplp(fig=None, ax=None, figsize=None, axsize=None,
          xlim=None, ylim=None, xlabel=None, ylabel=None,
-         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None, reset_xticks=None, reset_yticks=None,
-         xtickrot=None, ytickrot=None, xtickha=None, xtickva=None, ytickha=None, ytickva=None,
+         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None,
+         reset_xticks=None, reset_yticks=None,
+         xtickrot=None, ytickrot=None,
+         xtickha=None, xtickva=None, ytickha=None, ytickva=None,
          axlab_w=None, axlab_s=None,
          ticklab_w=None, ticklab_s=None, ticks_direction=None,
          title=None, title_w=None, title_s=None,
          lw=None, hide_top_right=None, hide_axis=None,
          tight_layout=None, hspace=None, wspace=None,
          show_legend=None, hide_legend=None, legend_loc=None,
-         saveFig=None, saveDir = None, figname=None, _format=None,
+         saveFig=None, saveDir = None, figname=None, _format="pdf",
          colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None,
          cbar_w=None, cbar_h=None, clabel=None, clabel_w=None, clabel_s=None, cticks_s=None,
          hlines = None, vlines = None, lines_kwargs = None,
@@ -327,7 +335,7 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
     if legend_loc is not None:
         assert len(legend_loc)==2 or len(legend_loc)==4,\
             "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
-    if show_legend: plt.legend(bbox_to_anchor=legend_loc)
+    if show_legend: plt.legend(bbox_to_anchor=legend_loc, prop={'family':'Arial'})
     elif hide_legend: plt.legend([],[], frameon=False)
 
     if colorbar:
@@ -420,7 +428,7 @@ def plot_scalebar(ax, xscalebar=None, yscalebar=None,
         offset_x = offset_x-0.1
     else:
         offset_x = offset_x+0.1
-    offset_y = 0.1
+    offset_y = offset_y + 0.1
 
     # x scalebar
     if xscalebar is not None:
@@ -441,7 +449,8 @@ def plot_scalebar(ax, xscalebar=None, yscalebar=None,
         xscale_y = [y+offset_y for y in xscale_y]
 
         # plot xscalebar
-        plt.plot(xscale_x, xscale_y, c='k', lw=lw)
+        ax.plot(xscale_x, xscale_y, c='k', lw=lw)
+
         # plot xscalebar text
         ax.text(xscale_x[0]+np.diff(xscale_x)/2,
                 xscale_y[0]+vpad*text_pos_sign,
@@ -475,13 +484,12 @@ def plot_scalebar(ax, xscalebar=None, yscalebar=None,
         yscale_y = [y+offset_y for y in yscale_y]
 
         # plot yscalebar
-        plt.plot(yscale_x, yscale_y, c='k', lw=lw)
+        ax.plot(yscale_x, yscale_y, c='k', lw=lw)
         # plot yscalebar text
         ax.text(yscale_x[0]+hpad*text_pos_sign, yscale_y[0]+np.diff(yscale_y)/2,
                 f"{yscalebar}{y_unit}",
                 ha=yscale_ha, va="center", fontsize=fontsize)
     
-        print(yscale_x, yscale_ha, hpad)
 
 def mplshow(fig):
 
@@ -809,7 +817,8 @@ def set_ax_size(ax,w,h):
 def hist_MB(arr, a=None, b=None, s=None,
             title='', xlabel='', ylabel='', legend_label=None,
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
-            saveFig=False, saveDir='', _format='pdf', prettify=True, **mplp_kwargs):
+            saveFig=False, saveDir='', _format='pdf', prettify=True,
+            style='bar', **mplp_kwargs):
     """
     Plot histogram of array arr.
     Arguments:
@@ -831,6 +840,7 @@ def hist_MB(arr, a=None, b=None, s=None,
         - prettify: bool, whether to apply mplp() prettification or not
         - **mplp_kwargs: any additional formatting parameters, passed to mplp()
     """
+    assert style in ['bar', 'step'], 'style must be either bar or step!'
     if a is None: a=np.min(arr)
     if b is None: b=np.max(arr)
     if s is None: s=(b-a)/100
@@ -841,7 +851,14 @@ def hist_MB(arr, a=None, b=None, s=None,
         (fig, ax) = plt.subplots()
     else:
         fig, ax = ax.get_figure(), ax
-    ax.bar(x=x, height=y, width=s, color=color, edgecolor='k', alpha=alpha, label=legend_label)
+    if style == 'bar':
+        ax.bar(x=x, height=y, width=s, color=color, edgecolor='k', alpha=alpha, label=legend_label)
+    elif style == 'step':
+        x_step = np.concatenate((x[0:1]-s, x, [x[-1]+s]))
+        y_step = np.concatenate(([0], y, [0]))
+        ax.step(x_step, y_step, where='mid', color='k')
+        ax.fill_between(x_step, y_step*0, y_step, step='mid', color=color, alpha=alpha, label=legend_label)
+        ax.set_ylim(bottom=0)
     ax.set_title(title)
     ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Binsize:{}'.format(s))
     ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
@@ -849,7 +866,8 @@ def hist_MB(arr, a=None, b=None, s=None,
     if xlim is None: xlim = [a,b]
     show_legend = True if legend_label else None
     fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize,
-                  prettify=prettify, show_legend=show_legend, **mplp_kwargs)
+                  prettify=prettify, show_legend=show_legend,
+                  **mplp_kwargs)
 
     if saveFig: save_mpl_fig(fig, title, saveDir, _format)
       
@@ -1310,8 +1328,8 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
             ax[i_bottomleft].text(0.5, ylim1-0.05*ylimdiff, '1 ms', weight='bold', size=18, va='top', ha='center')
             ax[i_bottomleft].plot([0,0],[ylim1,ylim1+y_scale], c='k', lw=scalebar_w)
             ax[i_bottomleft].text(-0.05*xlimdiff, ylim1+y_scale*0.5, f'{y_scale} \u03bcV', weight='bold', size=18, va='center', ha='right')
-
-        fig.suptitle(t=title, x=0.5, y=0.92+0.02*(len(title.split('\n'))-1), size=18, weight='bold', va='top')
+        if title is not None:
+            fig.suptitle(t=title, x=0.5, y=0.92+0.02*(len(title.split('\n'))-1), size=18, weight='bold', va='top')
 
     # Save figure
     if title is None: title="waveforms"
@@ -2249,7 +2267,7 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         elif normalize=='Pearson':
             yl=max(CCG)
             ylim=[0, yl+0.01-(yl%0.01)]
-        elif normalize=='zscore':
+        else:
             yl=np.max(np.abs(CCG))
             ylim=[-yl, yl]
 
@@ -2267,27 +2285,28 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         ax.plot(x, y, color='black', alpha=1)
         if normalize in ['Hertz','Pearson','Counts']:
             ax.fill_between(x, x*0, y, color=color)
-        elif normalize=='zscore':
+        else:
             ax.fill_between(x, ylim[0]*np.ones(len(x)), y, color=color)
 
     # plot formatting
     ax.plot([0,0], ylim, c=[0.7, 0.7, 0.7], lw=1, zorder=-1)
-    if labels:
-        if normalize=='zscore':
-                ax.plot([x[0], x[-1]], [0,0], c=[0.7, 0.7, 0.7], lw=1, zorder=-1)
-        if not isinstance(title, str) and show_ttl:
-            if bChs is None:
-                title=f"{uls[0]}->{uls[1]}"
-            else:
-                title=f"{uls[0]}@{bChs[0]}->{uls[1]}@{bChs[1]}"
+    
+    if normalize not in ['Hertz','Counts', 'Pearson']:
+            ax.plot([x[0], x[-1]], [0,0], c=[0.7, 0.7, 0.7], lw=1, zorder=-1)
+    if not isinstance(title, str) and show_ttl:
+        if bChs is None:
+            title=f"{uls[0]}->{uls[1]}"
         else:
-            title = None
+            title=f"{uls[0]}@{bChs[0]}->{uls[1]}@{bChs[1]}"
     
     ylabdic={'Counts':'Counts',
                 'Hertz':'spk/s',
                 'Pearson':'Pearson',
                 'zscore':'z-score'}
-    ylabel=f"Crosscorr. ({ylabdic[normalize]})" if labels else None
+    if labels:
+        ylabel=f"Crosscorr. ({ylabdic[normalize]})" if normalize in ylabdic else f"{normalize}"
+    else:
+        ylabel=None
 
     if figsize is None: figsize = (4.5, 4)
     mplp(fig, ax, figsize=figsize,
@@ -2484,6 +2503,8 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
             elif normalize1=='zscore':
                 ylmax=max(np.abs(ylim))
                 ylims.append([-ylmax, ylmax])
+            else:
+                ylims.append(ylim)
 
     ylims=npa(ylims)
     if share_y:
@@ -2542,8 +2563,9 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
                 ax.plot(x, y, color=color, alpha=0)
                 if normalize1 in ['Hertz','Pearson','Counts']:
                     ax.fill_between(x, x*0, y, color=color)
-                elif normalize1=='zscore':
+                else:
                     ax.fill_between(x, ylims[i][0]*np.ones(len(x)), y, color=color)
+
             elif style=='bar':
                 if row == col: ax.step(x, y, color='black', alpha=1, where='mid', lw=1)
                 ax.bar(x=x, height=y+abs(ylims[i][0]), width=cbin, color=color, bottom=ylims[i][0])
@@ -2553,7 +2575,10 @@ def plt_ccg_subplots(units, CCGs, cbin=0.2, cwin=80, bChs=None, saveDir='~/Downl
             norm_str={'mixte':'', 'zscore':'(zscore)', 'Hertz':'(spk/s)',
                       'Pearson':'(Pearson)','Counts':'(Counts)'}
 
-            ylabel = f"Crosscorr. {norm_str[normalize]}" if row==col else None
+            if row==col:
+                ylabel = f"Crosscorr. {norm_str[normalize]}" if normalize in norm_str else f"{normalize}"
+            else:
+                ylabel = None
             xlabel = 'Time (ms)' if row==col else None
             if labels:
                 if bChs is not None:
@@ -2740,9 +2765,11 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
         ccg_means = np.mean(ccg_baseline, axis=2)
 
     if CCG.shape[0]==2 and not as_grid:
+        if ccg_means is not None: ccg_means = ccg_means[0,1]
+        if ccg_deviations is not None: ccg_deviations = ccg_deviations[0,1]
         fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format,
                       labels=labels, title=title, color=color, ylim=ylim_ccg,
-                      normalize=normalize, ccg_mn=ccg_means[0,1], ccg_std=ccg_deviations[0,1],
+                      normalize=normalize, ccg_mn=ccg_means, ccg_std=ccg_deviations,
                       figsize=figsize, style=style, hide_axis=hide_axis, show_hz=show_hz, show_ttl=show_ttl,
                       prettify=prettify, **mplp_kwargs)
     else:
@@ -2832,14 +2859,14 @@ def plt_3d_acg(acg3d, t, f, cbin, cwin,
         log_acg, t_log = convert_acg_log(acg3d, cbin, cwin,
                                      n_log_bins=n_log_bins, start_log_ms=start_log_ms,
                                      smooth_sd=smooth_sd_log, plot=plot_1D)
-        log_ticks_i = np.arange(10, t_log.shape[0]//2, 20)
-        log_ticks = t_log[t_log.shape[0]//2+1:][log_ticks_i]
+
+        log_ticks = [10,1000]
         log_ticks = np.concatenate((-log_ticks[::-1], [0], log_ticks))
-        log_ticks_i = np.concatenate((-log_ticks_i[::-1]-1, [0], log_ticks_i+1))
-        log_ticks_i = log_ticks_i + len(t_log)//2
+        plt.xscale('symlog')
         fig = imshow_cbar(log_acg,
-                        xticks = log_ticks_i,
-                        xvalues=np.arange(len(t_log)), xticklabels = np.round(log_ticks).astype(int),
+                        function = 'pcolor',
+                        xvalues = t_log, 
+                        xticks = log_ticks, xticklabels=log_ticks,
                         yticks=np.arange(len(f)), yvalues=np.arange(len(f)),
                         yticklabels=np.round(f).astype(int),
                         origin='bottom', cmapstr='viridis', vmin=0,

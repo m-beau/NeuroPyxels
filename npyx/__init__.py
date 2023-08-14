@@ -4,6 +4,9 @@ from . import utils, inout, gl, spk_t, spk_wvf, corr, stats, plot,\
               behav, merger, circuitProphyler, feat, metrics,\
               info, model, h5, testing, ml, datasets
 
+from .c4 import acg_augmentations, dataset_init, dl_models,\
+                dataset_init, predict_cell_types, run_deep_classifier
+
 from .utils import *
 from .inout import *
 from .gl import *
@@ -20,6 +23,7 @@ from .metrics import *
 from .info import *
 from .model import *
 from .h5 import *
+from .ml import *
 from .testing import *
 
 __doc__ = """
@@ -40,6 +44,6 @@ npyx submodules:
  .h5
 """
 
-__version__ = "2.8.5"
+__version__ = "3.0.0"
 
-print(f"npyx version {__version__} imported.")
+print(f"\n\033[32;1mnpyx version {__version__} imported.\033[0m")

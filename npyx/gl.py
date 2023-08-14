@@ -168,7 +168,7 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None, warnings=True
     return DSs
 
 
-def make_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
+def json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
     DSs = get_datasets(ds_master, ds_paths_master, ds_behav_master, warnings=False)
     connected_pairs_df = pd.DataFrame(
         columns=["ds", "dp", "ss", "cs", "nc", "holds_no_behav", "holds_no_sync"]
@@ -227,6 +227,79 @@ def make_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
                             )
     return connected_pairs_df
 
+def make_connected_pairs_df(ds_master,
+        ds_paths_master,
+        ds_behav_master,
+        upsample_sync         = True, # sync spikes are the synchronous spikes + random fraction of the asynchronous spikes to match Ns
+
+        pval_th                         = 0.05,
+
+        sync_win                        = 0.5, # ms
+        cisi_upper_threshold            = 0.1, # s
+
+        n_pcs_firing_fraction_threshold = 0.5, # [0-1]
+
+        cbin_inh                        = 0.5,
+        cwin_inh                        = 100,
+        min_win                         = [0.5, 3],
+        min_win_nbins                   = 3,
+        enforced_rp                     = 0.3, # ms
+
+        W_sd                            = 10):
+    
+    df = json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master)
+
+    connected_pairs_df_fn = (f"sync_df"
+             f"{pval_th}_{sync_win}_{cisi_upper_threshold}_{n_pcs_firing_fraction_threshold}"
+             f"_{cbin_inh}_{cwin_inh}_{min_win}_{min_win_nbins}_{enforced_rp}_{W_sd}_{upsample_sync}")
+
+    DPs = np.unique(df['dp'])
+    connected_pairs_df = None
+    for dp in DPs:
+
+        saveDir = Path(dp).parent / 'popsync_analysis'
+        assert saveDir.exists(),\
+            f"WARNING : {saveDir} does not exist. Run monosynapticity_exploration notebook first."
+        df_ = pd.read_pickle(saveDir / f"{connected_pairs_df_fn}.pkl")
+
+        df_['pval_thresh'] = df_['pcnc_inh_pval']<pval_th
+        df_ = df_.pivot(index=['pc', 'nc'], columns='cisi_popsync')
+        df_.columns = ['_'.join(col).strip() for col in df_.columns.values]
+        df_.reset_index(inplace=True)
+        df_['connected'] = [{'TrueTrue':True,
+                            'TrueFalse':False,
+                            'FalseTrue':False,
+                            'FalseFalse':False}[f"{p1}{p2}"]
+                            for p1, p2 in zip(df_['pval_thresh_>0'], df_['pval_thresh_0'])]
+        df_['color'] = [{'TrueTrue':'red',
+                            'TrueFalse':'grey',
+                            'FalseTrue':'grey',
+                            'FalseFalse':'black'}[f"{p1}{p2}"]
+                            for p1, p2 in zip(df_['pval_thresh_>0'], df_['pval_thresh_0'])]
+
+        # add dp
+        df_.insert(0, 'dp', dp)
+
+        if connected_pairs_df is None:
+            connected_pairs_df = df_
+        else:
+            connected_pairs_df = connected_pairs_df.append(df_)
+    connected_pairs_df.reset_index(inplace=True, drop=True)
+    connected_pairs_df.insert(2, 'cs', np.nan)
+    connected_pairs_df.rename(columns={'pc':'ss'}, inplace=True)
+
+    for i in range(len(connected_pairs_df)):
+        dp, ss, nc = connected_pairs_df.loc[i, ['dp', 'ss', 'nc']]
+        m = (df['dp'] == dp)&(df['ss'] == ss)&(df['nc'] == nc)
+        if np.sum(m)!=1: continue
+        cs = df.loc[m, 'cs'].values[0]
+        connected_pairs_df.loc[i, 'cs'] = cs
+
+    connected_pairs_df.to_pickle(Path(ds_master).parent / "connected_pairs_df.pkl")
+
+    return connected_pairs_df
+
+
 
 def get_rec_len(dp, unit="seconds"):
     "returns recording length in seconds or samples"
@@ -238,7 +311,7 @@ def get_rec_len(dp, unit="seconds"):
         v = list(meta.values())[0]
         rec_length = v["recording_length_seconds"]
     if unit == "samples":
-        rec_length = int(rec_length * meta["sampling_rate"])
+        rec_length = int(rec_length * meta["highpass"]["sampling_rate"])
     return rec_length
 
 

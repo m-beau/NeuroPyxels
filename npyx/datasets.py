@@ -76,6 +76,16 @@ CORRESPONDENCE_MLI_CLUSTER_NO_GRC = {
 
 
 LAYERS = {0: "unknown", 1: "GCL", 2: "PCL", 3: "ML"}
+LAYERS_CORRESPONDENCE = {
+    "unknown": 0,
+    "GCL": 1,
+    "PCL": 2,
+    "": 0,
+    "ML": 3,
+    "GrC_layer": 1,
+    "PkC_layer": 2,
+    "ML_layer": 3,
+}
 # pylint: disable=no-member
 
 
@@ -223,12 +233,15 @@ def resample_acg(acg, window_size=20, keep_same_size=True):
 
 def get_h5_absolute_ids(h5_path):
     neuron_ids = []
+    lab = None
     with h5py.File(h5_path, "r") as hdf5_file:
         for name in hdf5_file:
             if "neuron" in name:
                 neuron_id = name.split("_")[-1]
                 neuron_ids.append(int(neuron_id))
-    return neuron_ids
+                if lab is None:
+                    lab = name.split("_")[0]
+    return neuron_ids, lab
 
 
 def decode_string(value):
@@ -298,6 +311,7 @@ class NeuronsDataset:
         self.info = []
         self.chanmap_list = []
         self.genetic_line_list = []
+        self.h5_ids = []
 
         if _use_amplitudes:
             self.amplitudes_list = []
@@ -308,7 +322,7 @@ class NeuronsDataset:
         if _extract_mli_clusters:
             _labelling = LABELLING_MLI_CLUSTER
 
-        neuron_ids = get_h5_absolute_ids(dataset)
+        neuron_ids, lab = get_h5_absolute_ids(dataset)
 
         if not quality_check:
             self.quality_checks_mask = []
@@ -540,6 +554,8 @@ class NeuronsDataset:
                 neuron_metadata = dataset_name + "/" + str(neuron_id)
                 self.info.append(str(neuron_metadata))
 
+                self.h5_ids.append(f"{lab}_neuron_{wf_n}")
+
                 chanmap = get_neuron_attr(dataset, wf_n, "channelmap")
                 chanmap = crop_chanmap(np.array(chanmap), peak_idx, n_channels)
                 self.chanmap_list.append(chanmap)
@@ -551,7 +567,10 @@ class NeuronsDataset:
                     self.genetic_line_list.append("unknown")
 
                 if _extract_layer:
-                    layer = get_neuron_attr(dataset, wf_n, "phyllum_layer")
+                    if _lisberger:
+                        layer = get_neuron_attr(dataset, wf_n, "human_layer")
+                    else:
+                        layer = get_neuron_attr(dataset, wf_n, "phyllum_layer")
                     layer = decode_string(layer)
                     self.layer_list.append(layer)
 
@@ -610,18 +629,14 @@ class NeuronsDataset:
         )
 
         # Compute conformed_waveforms
-        self.conformed_waveforms = np.stack(
-            [
-                preprocess_template(
-                    wf,
-                    self._sampling_rate,
-                )
-                for wf in self.wf.reshape(-1, self._n_channels, self._central_range)[
-                    :, self._n_channels // 2, :
-                ]
-            ],
-            axis=0,
-        )
+        self.conformed_waveforms = []
+        for wf in self.wf.reshape(-1, self._n_channels, self._central_range):
+            peak_chan = np.argmax(np.max(np.abs(wf), axis=1))
+            conformed_wave = preprocess_template(wf[peak_chan, :], self._sampling_rate)
+            self.conformed_waveforms.append(conformed_wave)
+        self.conformed_waveforms = np.stack(self.conformed_waveforms, axis=0)
+
+        self.h5_ids = np.array(self.h5_ids)
 
     def make_labels_only(self):
         """
@@ -646,6 +661,7 @@ class NeuronsDataset:
         self.spikes_list = np.array(self.spikes_list, dtype=object)[mask].tolist()
         self.labels_list = np.array(self.labels_list)[mask].tolist()
         self.acg_list = np.array(self.acg_list)[mask].tolist()
+        self.h5_ids = self.h5_ids[mask]
         try:
             self.chanmap_list = np.array(self.chanmap_list, dtype=object)[mask].tolist()
         # Numpy has still a bug in treating arrays as objects
@@ -843,6 +859,7 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         new_dataset.acg_list = np.vstack(
             (np.array(new_dataset.acg_list), np.array(dataset.acg_list))
         ).tolist()
+        new_dataset.h5_ids = np.hstack((new_dataset.h5_ids, dataset.h5_ids))
 
         merge_attributes("spikes_list", np.hstack, dtype=object)
         new_dataset.discarded_df = pd.concat(
@@ -892,7 +909,7 @@ def resample_waveforms(
     resampled_dataset = copy.deepcopy(dataset)
     resampled_dataset.wf = resized_wf
     resampled_dataset._central_range = new_range
-    resampled_dataset.wf_list = [wf for wf in resized_wf]
+    resampled_dataset.wf_list = list(resized_wf)
 
     return resampled_dataset
 

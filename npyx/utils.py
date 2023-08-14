@@ -404,6 +404,61 @@ def thresh_consec(arr, th, sgn=1, n_consec=0, exclude_edges=True, only_max=False
 
     return crosses
 
+#%% Extract timestamps from windows
+
+def get_timestamps_in_windows_sorted(T, P):
+    """
+    Returns timestamps in windows defined by P.
+    T and P MUST BE SORTED.
+    T and P must be in the same units of time, obviously.
+    Arguments:
+        - T: 1d np array of timestamps
+        - P: 2d np array of windows, each row is a window [start, end]
+    Returns:
+        - 1d np array of timestamps in windows
+    """
+
+    n_timestamps = T.shape[0]
+    n_periods = P.shape[0]
+
+    timestamps_in_windows = []
+    pi = 0
+
+    for ti in range(n_timestamps):
+        t = T[ti]
+
+        while pi < n_periods and P[pi, 1] < t:
+            pi += 1
+
+        if pi >= n_periods:
+            break
+
+        if t >= P[pi, 0] and t <= P[pi, 1]:
+            timestamps_in_windows.append(t)
+
+    return np.array(timestamps_in_windows)
+
+def get_timestamps_in_windows(T, P):
+    """
+    Returns timestamps in windows defined by P.
+    T and P must be in the same units of time, obviously.
+    Arguments:
+        - T: 1d np array of timestamps
+        - P: 2d np array of windows, each row is a window [start, end]
+    Returns:
+        - 1d np array of timestamps in windows
+    """
+    T = np.sort(T)
+    assert np.all(np.diff(T)>=0), "All windows w in P must meet the condition w[1] > w[0] !"
+    P = P[np.argsort(P[:,0])]
+    assert np.all(np.diff(P.ravel())>0),\
+        "All windows w in P must meet the condition w[1] > w[0] and w[0] od window n > w[1] of window n-1!"
+    return get_timestamps_in_windows_sorted(T, P)
+
+def get_timestamps_in_windows_mask(T, P):
+
+    T_in = get_timestamps_in_windows(T, P)
+    return np.isin(T, T_in)
 
 #%% Zscoring, smoothing
 

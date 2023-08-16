@@ -1,21 +1,25 @@
+import contextlib
+
 import numpy as np
 
-try:
+with contextlib.suppress(ImportError):
     import torch
     import torch.distributions as dist
     import torch.nn as nn
     import torch.nn.functional as F
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-except ImportError:
-    pass
-
 try:
     from torchvision import transforms
 except ImportError:
-    print(("\ntorchvision could not be imported - "
-    "some functions from the submodule npyx.c4 will not work.\n"
-    "To install torchvision, see https://pypi.org/project/torchvision/."))
+    print(
+        (
+            "\ntorchvision could not be imported - "
+            "some functions from the submodule npyx.c4 will not work.\n"
+            "To install torchvision, see https://pypi.org/project/torchvision/."
+        )
+    )
+
 
 class ConvEncoderResize(nn.Module):
     def __init__(
@@ -107,43 +111,6 @@ class ForwardDecoder(nn.Module):
         return X_reconstructed.reshape(-1, 1, self.n_channels, self.central_range)
 
 
-def ELBO_VAE(
-    enc, dec, X, dataset_len, beta=1, n_samples=10, device=torch.device("cuda:0")
-):
-    """
-
-    INPUT:
-    enc : Instance of `Encoder` class, which returns a distribution
-          over Z when called on a batch of inputs X
-    dec : Instance of `Decoder` class, which returns a distribution
-          over X when called on a batch of inputs Z
-    X   : A batch of datapoints, torch.FloatTensor of shape = (batch_size, 1, 10, 60).
-
-    """
-
-    batch_size = X.shape[0]
-    ELBO = torch.zeros(batch_size).to(device)
-    for _ in range(n_samples):
-        q_z = enc.forward(X)  # q(Z | X)
-        z = (
-            q_z.rsample()
-        )  # Samples from the encoder posterior q(Z | X) using the reparameterization trick
-
-        reconstruction = dec.forward(z)  # distribution p(x | z)
-
-        prior = dist.Normal(
-            torch.zeros_like(q_z.loc).to(device), torch.ones_like(q_z.scale).to(device)
-        )
-
-        MSE = F.mse_loss(reconstruction, X, reduction="none").sum(dim=(1, 2, 3))
-
-        KLD = dist.kl_divergence(q_z, prior).sum(dim=1)
-
-        ELBO += MSE + beta * (batch_size / dataset_len) * KLD
-
-    return (ELBO / n_samples).mean()
-
-
 class BaseVAE(nn.Module):
     def __init__(self, encoder=None, decoder=None, device=None):
         super().__init__()
@@ -157,10 +124,7 @@ class BaseVAE(nn.Module):
         return self.decoder(self.encoder(x).mean)
 
     def encode(self, x: torch.Tensor, augment=False) -> torch.Tensor:
-        if augment:
-            return self.encoder(x).sample()
-        else:
-            return self.encoder(x).mean
+        return self.encoder(x).sample() if augment else self.encoder(x).mean
 
     def load_weights(self, encoder_path, decoder_path):
         self.encoder.load_state_dict(torch.load(encoder_path, map_location=self.device))
@@ -481,3 +445,67 @@ class Encoder(nn.Module):
         if return_mu:
             return mu
         return dist.Normal(mu, torch.exp(log_var), validate_args=False)
+
+
+def ELBO_VAE(enc, dec, X, dataset_size, device, beta=1, n_samples=10):
+    """
+    Computes the Evidence Lower Bound (ELBO) for a Variational Autoencoder (VAE).
+
+    Args:
+        enc (nn.Module): The encoder neural network.
+        dec (nn.Module): The decoder neural network.
+        X (torch.Tensor): The input data tensor.
+        dataset_size (int): The size of the dataset.
+        device (str): The device to use for computations.
+        beta (float, optional): The weight of the KL divergence term in the ELBO. Defaults to 1.
+        n_samples (int, optional): The number of samples to use for Monte Carlo estimation. Defaults to 10.
+
+    Returns:
+        torch.Tensor: The ELBO value.
+    """
+    batch_size = X.shape[0]
+    ELBO = torch.zeros(batch_size).to(device)
+    for _ in range(n_samples):
+        q_z = enc.forward(X)  # q(Z | X)
+        z = (
+            q_z.rsample()
+        )  # Samples from the encoder posterior q(Z | X) using the reparameterization trick
+
+        reconstruction = dec.forward(z)  # distribution p(x | z)
+
+        prior = dist.Normal(
+            torch.zeros_like(q_z.loc).to(device), torch.ones_like(q_z.scale).to(device)
+        )
+
+        MSE = F.mse_loss(reconstruction, X, reduction="none").sum(dim=(1, 2, 3))
+
+        KLD = dist.kl_divergence(q_z, prior).sum(dim=1)
+
+        ELBO += MSE + beta * (batch_size / dataset_size) * KLD
+
+    return (ELBO / n_samples).mean()
+
+
+def generate_kl_weight(epochs, beta=1):
+    """
+    Generate an array of weights to be used for the KL divergence loss in a VAE model.
+    This function is used to anneal the KL divergence loss over the course of training,
+    a simple trick that helps with convergence of VAEs as shown in:
+    - Bowman et al., 2015 (https://arxiv.org/abs/1602.02282)
+    - Sonderby et al., 2016 (https://arxiv.org/abs/1511.06349)
+
+    Parameters:
+    epochs (int): The number of epochs to train the VAE model for.
+    beta (float): The scaling factor for the KL divergence loss.
+
+    Returns:
+    numpy.ndarray: An array of weights to be used for the KL divergence loss in a VAE model.
+    """
+
+    def sigmoid(x):
+        return 1 / (1 + np.exp(-x))
+
+    weight = np.logspace(5, -20, epochs)
+    weight = sigmoid(-np.log10(weight)) * beta
+
+    return weight

@@ -26,11 +26,6 @@ def get_lisberger_dataset(data_path):
 MONKEY_CENTRAL_RANGE = int(WAVEFORM_SAMPLES * 40_000 / 30_000)
 
 
-class ArgsNamespace:
-    def __init__(self, **kwargs):
-        self.__dict__.update(kwargs)
-
-
 def main(data_folder=".", plot=True, name="dataset_1", WM=False):
     # Parse the arguments into a class to preserve compatibility
     args = ArgsNamespace(data_folder=data_folder, plot=plot, name=name, WM=WM)

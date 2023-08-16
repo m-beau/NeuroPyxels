@@ -1,3 +1,4 @@
+import contextlib
 import os
 
 if __name__ == "__main__":
@@ -11,12 +12,11 @@ import tarfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 
-import dill
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-try:
+with contextlib.suppress(ImportError):
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
@@ -26,9 +26,6 @@ try:
     DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     from torchvision import transforms
-
-except ImportError:
-    pass
 
 try:
     from laplace import BaseLaplace, Laplace
@@ -74,17 +71,13 @@ from .dataset_init import (
     N_CHANNELS,
     WAVEFORM_SAMPLES,
     WIN_SIZE,
+    ArgsNamespace,
     extract_and_check,
     get_paths_from_dir,
     prepare_classification_dataset,
     save_results,
 )
-from .dl_models import (
-    ConvolutionalEncoder,
-    Encoder,
-    load_acg_vae,
-    load_waveform_encoder,
-)
+from .dl_utils import ConvolutionalEncoder, Encoder, load_acg_vae, load_waveform_encoder
 
 SEED = 42
 
@@ -1214,37 +1207,27 @@ def encode_layer_info(layer_information):
     return preprocessor.fit_transform(layer_info.to_frame()).toarray()
 
 
-def main():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-dp", "--data_folder", type=str)
-
-    parser.add_argument("--freeze", action="store_true")
-    parser.set_defaults(freeze=False)
-
-    parser.add_argument("--random_init", action="store_true")
-    parser.set_defaults(random_init=False)
-
-    parser.add_argument("--augment_acg", action="store_true")
-    parser.set_defaults(augment_acg=False)
-
-    parser.add_argument("--augment_wvf", action="store_true")
-    parser.set_defaults(augment_wvf=False)
-
-    parser.add_argument("--mli_clustering", action="store_true")
-    parser.set_defaults(mli_clustering=False)
-
-    parser.add_argument("--use_layer", action="store_true")
-    parser.set_defaults(use_layer=False)
-
-    parser.add_argument("--loo", action="store_true")
-    parser.set_defaults(loo=False)
-
-    # Parse arguments and set global variables
-
-    args = parser.parse_args()
-
-    args.pool_type = "avg"
+def main(
+    data_folder,
+    freeze=False,
+    random_init=False,
+    augment_acg=False,
+    augment_wvf=False,
+    mli_clustering=False,
+    use_layer=False,
+    loo=False,
+):
+    args = ArgsNamespace(
+        data_folder=data_folder,
+        freeze=freeze,
+        random_init=random_init,
+        augment_acg=augment_acg,
+        augment_wvf=augment_wvf,
+        mli_clustering=mli_clustering,
+        use_layer=use_layer,
+        loo=loo,
+        pool_type="avg",
+    )
 
     assert (
         np.array([args.freeze, args.random_init]).sum() <= 1
@@ -1389,7 +1372,7 @@ def main():
         _extract_layer=args.use_layer,
     )
 
-    #! Remove MLI_Bs from the dataset
+    # Remove MLI_Bs from the dataset
     mli_b = np.array(monkey_dataset_class.labels_list) == "MLI_B"
     monkey_dataset_class._apply_mask(~mli_b)
     monkey_dataset_class = datasets.resample_waveforms(monkey_dataset_class)
@@ -1489,4 +1472,32 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("-dp", "--data-folder", type=str)
+
+    parser.add_argument("--freeze", action="store_true")
+    parser.set_defaults(freeze=False)
+
+    parser.add_argument("--random_init", action="store_true")
+    parser.set_defaults(random_init=False)
+
+    parser.add_argument("--augment_acg", action="store_true")
+    parser.set_defaults(augment_acg=False)
+
+    parser.add_argument("--augment_wvf", action="store_true")
+    parser.set_defaults(augment_wvf=False)
+
+    parser.add_argument("--mli_clustering", action="store_true")
+    parser.set_defaults(mli_clustering=False)
+
+    parser.add_argument("--use_layer", action="store_true")
+    parser.set_defaults(use_layer=False)
+
+    parser.add_argument("--loo", action="store_true")
+    parser.set_defaults(loo=False)
+
+    # Parse arguments and set global variables
+
+    args = parser.parse_args()
+    main(**vars(args))

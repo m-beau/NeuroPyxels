@@ -91,6 +91,11 @@ DATASETS_URL = {
 }
 
 
+class ArgsNamespace:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
 def download_file(url, output_path, description=None):
     response = requests.get(url, stream=True)
     total_size = int(response.headers.get("content-length", 0))
@@ -127,9 +132,8 @@ def combine_features(df1, df2):
                 df1[col] = df1[col].astype(str)
                 df2[col] = df2[col].astype(str)
 
-    # Merge the dataframes on the common columns, using a left join
-    combined_df = df1.merge(df2, on=common_columns, how="left")
-    return combined_df
+    # Merge the dataframes on the common columns, using a left join, then return the result
+    return df1.merge(df2, on=common_columns, how="left")
 
 
 def get_paths_from_dir(
@@ -181,19 +185,18 @@ def get_paths_from_dir(
         # If the dataset is not in any of the absolute paths
         if all(dataset_name not in dataset for dataset in datasets_abs):
             download = input(f"Dataset {dataset_name} not found. Download? (y/n)")
-            if download == "y":
-                corresponding_path = os.path.join(
-                    path_to_dir,
-                    f"C4_database_{dataset_name}.h5",
-                )
-                download_file(
-                    DATASETS_URL[dataset_name],
-                    corresponding_path,
-                    f"Downloading {dataset_name} dataset",
-                )
-            else:
-                raise FileNotFoundError(f"Dataset {dataset_name} not found")
+            if download != "y":
+                raise FileNotFoundError(f"Dataset {dataset_name} not found. Exiting.")
 
+            corresponding_path = os.path.join(
+                path_to_dir,
+                f"C4_database_{dataset_name}.h5",
+            )
+            download_file(
+                DATASETS_URL[dataset_name],
+                corresponding_path,
+                f"Downloading {dataset_name} dataset",
+            )
     return sorted(datasets_abs, key=os.path.getsize)
 
 
@@ -881,35 +884,9 @@ def calc_snr(wvf, noise_samples=15, return_db=False):
     return 10 * np.log10(SNR_linear) if return_db else SNR_linear
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Initialise a datasets folder with diagnostic plots for further modelling."
-    )
-
-    parser.add_argument(
-        "-dp",
-        "--data-folder",
-        type=str,
-        default=".",
-        help="Path to the folder containing the dataset.",
-    )
-
-    parser.add_argument(
-        "-n",
-        "--name",
-        type=str,
-        default="dataset_1",
-        help="Name assigned to the dataset.",
-    )
-
-    parser.add_argument("--plot", action="store_true")
-    parser.add_argument("--no-plot", dest="plot", action="store_false")
-    parser.set_defaults(plot=True)
-
-    parser.add_argument("--WM", action="store_true")
-    parser.set_defaults(WM=False)
-
-    args = parser.parse_args()
+def main(data_folder=".", plot=True, name="dataset_1", WM=False):
+    # Parse the arguments into a class to preserve compatibility
+    args = ArgsNamespace(data_folder=data_folder, plot=plot, name=name, WM=WM)
 
     datasets_abs = get_paths_from_dir(args.data_folder)
 
@@ -1158,4 +1135,33 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Initialise a datasets folder with diagnostic plots for further modelling."
+    )
+
+    parser.add_argument(
+        "-dp",
+        "--data-folder",
+        type=str,
+        default=".",
+        help="Path to the folder containing the dataset.",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--name",
+        type=str,
+        default="dataset_1",
+        help="Name assigned to the dataset.",
+    )
+
+    parser.add_argument("--plot", action="store_true")
+    parser.add_argument("--no-plot", dest="plot", action="store_false")
+    parser.set_defaults(plot=True)
+
+    parser.add_argument("--WM", action="store_true")
+    parser.set_defaults(WM=False)
+
+    args = parser.parse_args()
+
+    main(**vars(args))

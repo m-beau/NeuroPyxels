@@ -4,8 +4,7 @@ from . import utils, inout, gl, spk_t, spk_wvf, corr, stats, plot,\
               behav, merger, circuitProphyler, feat, metrics,\
               info, model, h5, testing, ml, datasets
 
-from .c4 import acg_augmentations, dataset_init, dl_models,\
-                dataset_init, predict_cell_types, run_deep_classifier
+from .c4 import acg_augmentations, dataset_init, dataset_init, dl_utils, predict_cell_types, run_deep_classifier
 
 from .utils import *
 from .inout import *

@@ -24,6 +24,7 @@ from npyx.gl import get_units
 from npyx.spk_t import trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 
+from .dataset_init import download_file
 from .plots_functions import (
     C4_COLORS,
     plot_features_1cell_vertical,
@@ -42,20 +43,6 @@ MODELS_URL_DICT = {
 HESSIANS_URL_DICT = {
     "base": "https://figshare.com/ndownloader/files/41706540?private_link=2530fd0da03e18296d51",
 }
-
-
-def download_file(url, output_path, description=None):
-    response = requests.get(url, stream=True)
-    total_size = int(response.headers.get("content-length", 0))
-    block_size = 1024  # 1 KB
-    progress_bar = tqdm(total=total_size, unit="B", unit_scale=True, desc=description)
-
-    with open(output_path, "wb") as file:
-        for data in response.iter_content(block_size):
-            file.write(data)
-            progress_bar.update(len(data))
-
-    progress_bar.close()
 
 
 def directory_checks(data_path):

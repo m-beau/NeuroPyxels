@@ -1,3 +1,4 @@
+import contextlib
 import os
 
 if __name__ == "__main__":
@@ -11,23 +12,20 @@ import tarfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 
-import dill
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-try:
+with contextlib.suppress(ImportError):
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
     import torch.optim as optim
     import torch.utils.data as data
+
     DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     from torchvision import transforms
-
-except ImportError:
-    pass
 
 try:
     from laplace import BaseLaplace, Laplace
@@ -35,16 +33,24 @@ try:
 except ImportError:
     KronDecomposed = None
     BaseLaplace = None
-    print(("\nlaplace could not be imported - "
-    "some functions from the submodule npyx.c4 will not work.\n"
-    "To install laplace, see https://pypi.org/project/laplace-torch/."))
+    print(
+        (
+            "\nlaplace could not be imported - "
+            "some functions from the submodule npyx.c4 will not work.\n"
+            "To install laplace, see https://pypi.org/project/laplace-torch/."
+        )
+    )
 
 try:
     from imblearn.over_sampling import RandomOverSampler
 except ImportError:
-    print(("\nimblearn could not be imported - "
-    "some functions from the submodule npyx.c4 will not work.\n"
-    "To install imblearn, see https://pypi.org/project/imblearn/."))
+    print(
+        (
+            "\nimblearn could not be imported - "
+            "some functions from the submodule npyx.c4 will not work.\n"
+            "To install imblearn, see https://pypi.org/project/imblearn/."
+        )
+    )
 
 
 from sklearn.compose import ColumnTransformer
@@ -65,17 +71,13 @@ from .dataset_init import (
     N_CHANNELS,
     WAVEFORM_SAMPLES,
     WIN_SIZE,
+    ArgsNamespace,
     extract_and_check,
     get_paths_from_dir,
     prepare_classification_dataset,
     save_results,
 )
-from .dl_models import (
-    ConvolutionalEncoder,
-    Encoder,
-    load_acg_vae,
-    load_waveform_encoder,
-)
+from .dl_utils import ConvolutionalEncoder, Encoder, load_acg_vae, load_waveform_encoder
 
 SEED = 42
 
@@ -344,21 +346,17 @@ def layer_correction(
     return new_probs
 
 
-def save_laplace(la, filepath):
-    with open(filepath, "wb") as outpt:
-        dill.dump(la, outpt)
-
-
-def load_laplace(filepath):
-    with open(filepath, "rb") as inpt:
-        la = dill.load(inpt)
-    assert isinstance(
-        la, BaseLaplace
-    ), "Attempting to load a model that is not of class Laplace"
-    return la
-
-
-
+def get_kronecker_hessian_attributes(*kronecker_hessians: KronDecomposed):
+    hessians = []
+    for h in kronecker_hessians:
+        hess_dict = {
+            "eigenvalues": h.eigenvalues,
+            "eigenvectors": h.eigenvectors,
+            "deltas": h.deltas,
+            "damping": h.damping,
+        }
+        hessians.append(hess_dict)
+    return hessians
 
 
 def predict_unlabelled(
@@ -568,26 +566,6 @@ def save_ensemble(models_states, file_path):
     # Save each model in the temporary directory
     for i, state_dict in enumerate(models_states):
         torch.save(state_dict, os.path.join(temp_dir, f"model_{i}.pt"))
-
-    # Create a tar archive containing the models_states
-    with tarfile.open(file_path, "w:gz") as tar:
-        tar.add(temp_dir, arcname=os.path.basename(temp_dir))
-
-    # Remove the temporary directory
-    shutil.rmtree(temp_dir)
-
-
-def save_calibrated_ensemble(calibrated_models, file_path):
-    assert isinstance(
-        calibrated_models[0], BaseLaplace
-    ), "Calibrated models must be a Laplace object"
-    # Create a temporary directory to store the models_states
-    temp_dir = "calibrated_models"
-    os.makedirs(temp_dir, exist_ok=True)
-
-    # Save each model in the temporary directory
-    for i, cal_model in enumerate(calibrated_models):
-        save_laplace(cal_model, os.path.join(temp_dir, f"calibrated_model_{i}.pkl"))
 
     # Create a tar archive containing the models_states
     with tarfile.open(file_path, "w:gz") as tar:
@@ -1229,37 +1207,27 @@ def encode_layer_info(layer_information):
     return preprocessor.fit_transform(layer_info.to_frame()).toarray()
 
 
-def main():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-dp", "--data_folder", type=str)
-
-    parser.add_argument("--freeze", action="store_true")
-    parser.set_defaults(freeze=False)
-
-    parser.add_argument("--random_init", action="store_true")
-    parser.set_defaults(random_init=False)
-
-    parser.add_argument("--augment_acg", action="store_true")
-    parser.set_defaults(augment_acg=False)
-
-    parser.add_argument("--augment_wvf", action="store_true")
-    parser.set_defaults(augment_wvf=False)
-
-    parser.add_argument("--mli_clustering", action="store_true")
-    parser.set_defaults(mli_clustering=False)
-
-    parser.add_argument("--use_layer", action="store_true")
-    parser.set_defaults(use_layer=False)
-
-    parser.add_argument("--loo", action="store_true")
-    parser.set_defaults(loo=False)
-
-    # Parse arguments and set global variables
-
-    args = parser.parse_args()
-
-    args.pool_type = "avg"
+def main(
+    data_folder,
+    freeze=False,
+    random_init=False,
+    augment_acg=False,
+    augment_wvf=False,
+    mli_clustering=False,
+    use_layer=False,
+    loo=False,
+):
+    args = ArgsNamespace(
+        data_folder=data_folder,
+        freeze=freeze,
+        random_init=random_init,
+        augment_acg=augment_acg,
+        augment_wvf=augment_wvf,
+        mli_clustering=mli_clustering,
+        use_layer=use_layer,
+        loo=loo,
+        pool_type="avg",
+    )
 
     assert (
         np.array([args.freeze, args.random_init]).sum() <= 1
@@ -1358,7 +1326,7 @@ def main():
         new_save_folder = os.path.join(
             args.data_folder,
             "dataset_1",
-            f"encoded_acg_wvf{features_suffix.split('_soft_layer')[0]}",
+            f"encoded_acg_wvf{features_suffix.split('_soft_layer')[0]}_hard_layer",
             model_name,
             f"mouse_results{cv_string}",
         )
@@ -1404,7 +1372,7 @@ def main():
         _extract_layer=args.use_layer,
     )
 
-    #! Remove MLI_Bs from the dataset
+    # Remove MLI_Bs from the dataset
     mli_b = np.array(monkey_dataset_class.labels_list) == "MLI_B"
     monkey_dataset_class._apply_mask(~mli_b)
     monkey_dataset_class = datasets.resample_waveforms(monkey_dataset_class)
@@ -1484,7 +1452,7 @@ def main():
         new_save_folder_monkey = os.path.join(
             args.data_folder,
             "dataset_1",
-            f"encoded_acg_wvf{features_suffix.split('_soft_layer')[0]}",
+            f"encoded_acg_wvf{features_suffix.split('_soft_layer')[0]}_hard_layer",
             model_name,
             "monkey_results",
         )
@@ -1504,4 +1472,32 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("-dp", "--data-folder", type=str)
+
+    parser.add_argument("--freeze", action="store_true")
+    parser.set_defaults(freeze=False)
+
+    parser.add_argument("--random_init", action="store_true")
+    parser.set_defaults(random_init=False)
+
+    parser.add_argument("--augment_acg", action="store_true")
+    parser.set_defaults(augment_acg=False)
+
+    parser.add_argument("--augment_wvf", action="store_true")
+    parser.set_defaults(augment_wvf=False)
+
+    parser.add_argument("--mli_clustering", action="store_true")
+    parser.set_defaults(mli_clustering=False)
+
+    parser.add_argument("--use_layer", action="store_true")
+    parser.set_defaults(use_layer=False)
+
+    parser.add_argument("--loo", action="store_true")
+    parser.set_defaults(loo=False)
+
+    # Parse arguments and set global variables
+
+    args = parser.parse_args()
+    main(**vars(args))

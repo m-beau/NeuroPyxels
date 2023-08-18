@@ -1,17 +1,41 @@
 import random
 
 import numpy as np
-
 from npyx.corr import acg as make_acg
-from npyx.datasets import resample_acg
+from npyx.datasets import preprocess_template, resample_acg
 
 from .dataset_init import BIN_SIZE, WIN_SIZE
 
 ACG_LEN = int(WIN_SIZE / BIN_SIZE // 2)
 
 
-CENTRAL_RANGE = 60
+WAVEFORM_SAMPLES = 120
 N_CHANNELS = 10
+
+
+class ConformWaveform(object):
+    def __init__(self):
+        pass
+
+    def __call__(self, sample, spikes=None):
+        istuple = isinstance(sample, (tuple, list))
+        if istuple:
+            data_point, label = sample
+        else:
+            data_point = sample
+        data_point = np.squeeze(data_point)
+
+        wf = data_point.reshape(N_CHANNELS, WAVEFORM_SAMPLES)
+        wf = preprocess_template(wf)
+        new_data_point = wf.ravel().copy().reshape(1, -1).astype("float32")
+        if istuple:
+            transformed_sample = (new_data_point, label)
+            return (
+                (transformed_sample, spikes)
+                if spikes is not None
+                else transformed_sample
+            )
+        return (new_data_point, spikes) if spikes is not None else new_data_point
 
 
 class SwapChannels(object):
@@ -36,14 +60,14 @@ class SwapChannels(object):
         data_point = np.squeeze(data_point)
 
         # Handle the case when we only use a waveform dataset
-        if len(data_point.ravel()) == N_CHANNELS * CENTRAL_RANGE:
+        if len(data_point.ravel()) == N_CHANNELS * WAVEFORM_SAMPLES:
             wvf = data_point
             acg = np.array([])
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE]
-            acg = data_point[N_CHANNELS * CENTRAL_RANGE :]
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
+            acg = data_point[N_CHANNELS * WAVEFORM_SAMPLES :]
 
-        wvf = wvf.reshape(N_CHANNELS, CENTRAL_RANGE)
+        wvf = wvf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)
         channels = np.arange(N_CHANNELS)
         evens = channels[::2]
         odds = channels[1::2]
@@ -86,14 +110,14 @@ class VerticalReflection(object):
         data_point = np.squeeze(data_point)
 
         # Handle the case when we only use a waveform dataset
-        if len(data_point.ravel()) == N_CHANNELS * CENTRAL_RANGE:
+        if len(data_point.ravel()) == N_CHANNELS * WAVEFORM_SAMPLES:
             wvf = data_point
             acg = np.array([])
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE]
-            acg = data_point[N_CHANNELS * CENTRAL_RANGE :]
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
+            acg = data_point[N_CHANNELS * WAVEFORM_SAMPLES :]
 
-        new_wvf = wvf.reshape(N_CHANNELS, CENTRAL_RANGE)[::-1].ravel().copy()
+        new_wvf = wvf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)[::-1].ravel().copy()
         new_data_point = np.concatenate((new_wvf, acg)).reshape(1, -1).astype("float32")
 
         if istuple:
@@ -124,8 +148,8 @@ class GaussianNoise(object):
             wvf = np.array([])
             acg = data_point
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE]
-            acg = data_point[N_CHANNELS * CENTRAL_RANGE :]
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
+            acg = data_point[N_CHANNELS * WAVEFORM_SAMPLES :]
 
         wvf_std = np.std(wvf)
         acg_std = np.std(acg)
@@ -171,7 +195,7 @@ class DeleteSpikes(object):
         if len(data_point.ravel()) == ACG_LEN:
             wvf = np.array([])
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE]
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
 
         new_spikes = spikes[
             np.random.choice(
@@ -215,7 +239,7 @@ class MoveSpikes(object):
         if len(data_point.ravel()) == ACG_LEN:
             wvf = np.array([])
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE]
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
 
         random_moving = np.random.choice(
             np.arange(-self.max_shift, self.max_shift), size=spikes.shape[0]
@@ -256,7 +280,7 @@ class AddSpikes(object):
         if len(data_point.ravel()) == ACG_LEN:
             wvf = np.array([])
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE]
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
 
         random_addition = np.random.randint(
             low=spikes[0],
@@ -298,14 +322,14 @@ class HorizontalCompression(object):
         if len(data_point.ravel()) == ACG_LEN:
             wvf = np.array([])
             acg = data_point
-        elif len(data_point.ravel()) == N_CHANNELS * CENTRAL_RANGE:
-            wvf = data_point.reshape(N_CHANNELS, CENTRAL_RANGE)
+        elif len(data_point.ravel()) == N_CHANNELS * WAVEFORM_SAMPLES:
+            wvf = data_point.reshape(N_CHANNELS, WAVEFORM_SAMPLES)
             acg = np.array([])
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE].reshape(
-                N_CHANNELS, CENTRAL_RANGE
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES].reshape(
+                N_CHANNELS, WAVEFORM_SAMPLES
             )
-            acg = data_point[N_CHANNELS * CENTRAL_RANGE :]
+            acg = data_point[N_CHANNELS * WAVEFORM_SAMPLES :]
 
         used_factor = np.random.choice(
             np.linspace(0.1, self.max_compression_factor, 5), size=1
@@ -336,8 +360,8 @@ class HorizontalCompression(object):
                 new_wvf[i] = np.interp(
                     np.arange(0, wvf.shape[1], factor), np.arange(wvf.shape[1]), wvf[i]
                 )
-            if new_wvf.shape[1] != CENTRAL_RANGE:
-                diff = new_wvf.shape[1] - CENTRAL_RANGE
+            if new_wvf.shape[1] != WAVEFORM_SAMPLES:
+                diff = new_wvf.shape[1] - WAVEFORM_SAMPLES
                 if diff > 0:  # Crop
                     crop_left = diff // 2
                     crop_right = diff - crop_left
@@ -381,8 +405,8 @@ class ConstantShift(object):
             wvf = np.array([])
             acg = data_point
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE]
-            acg = data_point[N_CHANNELS * CENTRAL_RANGE :]
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
+            acg = data_point[N_CHANNELS * WAVEFORM_SAMPLES :]
 
         acg_amount = self.scalar * np.mean(acg)
         wvf_amount = self.scalar * np.mean(wvf)
@@ -425,14 +449,14 @@ class DeleteChannels(object):
         data_point = np.squeeze(data_point)
 
         # Handle the case when we only use a waveform dataset
-        if len(data_point.ravel()) == N_CHANNELS * CENTRAL_RANGE:
+        if len(data_point.ravel()) == N_CHANNELS * WAVEFORM_SAMPLES:
             wvf = data_point
             acg = np.array([])
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE]
-            acg = data_point[N_CHANNELS * CENTRAL_RANGE :]
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
+            acg = data_point[N_CHANNELS * WAVEFORM_SAMPLES :]
 
-        wvf = wvf.reshape(N_CHANNELS, CENTRAL_RANGE)
+        wvf = wvf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)
         deleted_channels = np.random.choice(
             np.arange(wvf.shape[0]),
             size=self.n_channels,
@@ -471,7 +495,7 @@ class NewWindowACG(object):
         if len(data_point.ravel()) == ACG_LEN:
             wvf = np.array([])
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE]
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
 
         new_acg = make_acg(
             "hello",
@@ -519,14 +543,14 @@ class PermuteChannels(object):
             data_point = sample
         data_point = np.squeeze(data_point)
         # Handle the case when we only use a waveform dataset
-        if len(data_point.ravel()) == N_CHANNELS * CENTRAL_RANGE:
+        if len(data_point.ravel()) == N_CHANNELS * WAVEFORM_SAMPLES:
             wvf = data_point
             acg = np.array([])
         else:
-            wvf = data_point[: N_CHANNELS * CENTRAL_RANGE]
-            acg = data_point[N_CHANNELS * CENTRAL_RANGE :]
+            wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
+            acg = data_point[N_CHANNELS * WAVEFORM_SAMPLES :]
 
-        wvf = wvf.reshape(N_CHANNELS, CENTRAL_RANGE)
+        wvf = wvf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)
         permuted_channels = np.random.choice(
             np.arange(wvf.shape[0]), size=self.n_channels * 2, replace=False
         )

@@ -827,63 +827,74 @@ def plot_features_1cell_vertical(
         plt.close(fig)
 
 
-def plot_survival_confidence(confidence_matrix, label_correspondence, saveDir=None):
-    _, n_classes = confidence_matrix.shape
+def plot_survival_confidence(
+    confidence_matrix,
+    correspondence,
+    ignore_below_confidence=None,
+    saveDir=None,
+    correspondence_colors=C4_COLORS
+):
+    assert np.all(
+        np.isin(np.arange(confidence_matrix.shape[1]), list(correspondence.keys()))
+    ), "Keys in correspondence must be in range of confidence_matrix.shape[1]"
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    # compute confidences and threshold them
+    mean_confidences = confidence_matrix.mean(2).max(1)
+    labels = [correspondence[i] for i in confidence_matrix.mean(2).argmax(1)]
+    unique_labels = np.unique(labels)
+    assert np.all(
+        np.isin(unique_labels, list(correspondence_colors.keys()))
+    ), "Cell types missing from correspondence_colors!"
 
-    # Loop through each class
-    for class_idx in range(n_classes):
-        class_confidence = confidence_matrix[:, class_idx]
+    if ignore_below_confidence is not None:
+        ignore_m = mean_confidences < ignore_below_confidence
+        mean_confidences = mean_confidences[~ignore_m]
+        labels = np.array(labels)[~ignore_m]
 
-        # Sort the confidence values in descending order
-        sorted_indices = np.argsort(class_confidence)[::-1]
-        sorted_confidence = class_confidence[sorted_indices]
-        sorted_confidence = np.concatenate(
-            ([max(sorted_confidence)], sorted_confidence, [0])
-        )
-        sorted_confidence = np.round(sorted_confidence, 2) // 0.01 * 0.01
+    conf_b = 0.01
+    conf_thresholds = np.arange(0, 1, conf_b)
 
-        # Calculate the cumulative number of cells classified for each class
-        # Add zero at the beginning and the max at the end to make the plot not 'float'
-        cumulative_cells = np.cumsum(confidence_matrix.argmax(1) == class_idx)
-        cumulative_cells = np.concatenate(
-            ([0], cumulative_cells, [max(cumulative_cells)])
-        )
+    plot_arr = np.zeros((len(unique_labels), 2, len(conf_thresholds)))
+    for thi, conf_threshold in enumerate(conf_thresholds):
+        for i, ct in enumerate(unique_labels):
+            n_classified = ((mean_confidences > conf_threshold) & (labels == ct)).sum()
+            perc_classified = n_classified / (labels == ct).sum()
 
-        # Plot the survival plot for the current class
-        ax.plot(
-            sorted_confidence,
-            cumulative_cells,
-            label=label_correspondence[class_idx],
-            color=tuple(np.array(C4_COLORS[label_correspondence[class_idx]]) / 255),
+            plot_arr[i, 0, thi] = n_classified
+            plot_arr[i, 1, thi] = perc_classified
+
+    # plot
+    plt.figure()
+    for i, ct in enumerate(unique_labels):
+        color = [c / 255 for c in correspondence_colors[ct]]
+        plt.plot(
+            conf_thresholds,
+            plot_arr[i, 0, :],
+            color=color,
             lw=2,
+            label=ct,
         )
+    fig1, ax = mplp(
+        xlabel="Confidence", ylabel="N classified", xlim=[0, 1], show_legend=True
+    )
 
-    ax.legend(prop={"family": "Arial", "size": 13})
-
-    # Show the plot
-    mplp(
-        fig=fig,
-        ax=ax,
-        xlabel="Confidence",
-        ylabel="Number of Cells Classified",
-        title="Predictions survival plot",
-        xlim=[0, min(1, np.max(confidence_matrix) // 0.1 * 0.1 + 0.1)],
-        ylim=[
-            0,
-            np.max(
-                (confidence_matrix == confidence_matrix.max(axis=1, keepdims=True)).sum(
-                    0
-                )
-            )
-            // 5
-            * 5
-            + 5,
-        ],
+    plt.figure()
+    for i, ct in enumerate(unique_labels):
+        color = [c / 255 for c in correspondence_colors[ct]]
+        cti = {v: k for k, v in correspondence.items()}[ct]
+        plt.plot(
+            conf_thresholds,
+            plot_arr[i, 1, :],
+            color=color,
+            lw=2,
+            label=ct,
+        )
+    fig2, ax = mplp(
+        xlabel="Confidence", ylabel="% classified", xlim=[0, 1], show_legend=True
     )
 
     if saveDir is not None:
-        npyx_plot.save_mpl_fig(fig, "survival_plot", saveDir, "pdf")
+        npyx_plot.save_mpl_fig(fig1, "survival_plot_Ncells", saveDir, "pdf")
+        npyx_plot.save_mpl_fig(fig2, "survival_plot_%cells", saveDir, "pdf")
 
-    return fig
+    return fig1, fig2

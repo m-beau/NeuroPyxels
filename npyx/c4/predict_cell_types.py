@@ -1,4 +1,5 @@
 import os
+import sys
 
 if __name__ == "__main__":
     __package__ = "npyx.c4"
@@ -50,7 +51,18 @@ def directory_checks(data_path):
     assert os.path.isdir(data_path), "Data folder is not a directory."
     assert os.path.exists(
         os.path.join(data_path, "params.py")
-    ), "Make sure that the data folder contains the params.py file used by phy."
+    ), "Make sure that the current working directory contains the output of a spike sorter compatible with phy (in particular the params.py file)."
+    if os.path.exists(os.path.join(data_path, "cluster_cell_types.tsv")):
+        while True:
+            prompt = input(
+                "\nA cluster_cell_types.tsv file already exists. Are you sure you want to overwrite previous results? If you wish to compare different classifier parameters move the previous results to a different folder before running. (y/n) : "
+            )
+            if prompt.lower() == "y":
+                break
+            elif prompt.lower() == "n":
+                sys.exit()
+            else:
+                print("\n  >> Please answer y or n!")
 
 
 def prepare_dataset(dp, units):
@@ -115,7 +127,6 @@ def format_predictions(predictions_matrix: np.ndarray):
             observation.
     """
 
-    predictions_matrix = predictions_matrix.round(2)
     mean_predictions = predictions_matrix.mean(axis=2)
 
     # compute predictions
@@ -338,10 +349,21 @@ def main():
             fs=30000,
             unit_id=unit,
         )
+    # m = raw_probabilities.mean(2).max(1) >= args.threshold
+    # masked_raw_probas = raw_probabilities[m,:,:].mean(2)
     plot_survival_confidence(
-        raw_probabilities[confidence_mask, :].mean(2),
+        raw_probabilities,
         correspondence,
+        ignore_below_confidence=args.threshold,
         saveDir=plots_folder,
+    )
+    # Save the raw probabilities and the label correspondence for power users
+    np.save(
+        os.path.join(plots_folder, "ensemble_predictions_ncells_nclasses_nmodels.npy"),
+        raw_probabilities,
+    )
+    pd.DataFrame(correspondence, index=[0]).to_csv(
+        os.path.join(plots_folder, "label_correspondence.tsv"), sep="\t", index=False
     )
 
 

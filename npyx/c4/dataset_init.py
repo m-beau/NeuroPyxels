@@ -13,6 +13,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import requests
 import seaborn as sns
 from scipy.optimize import OptimizeWarning
 from tqdm.auto import tqdm
@@ -20,7 +21,7 @@ from tqdm.auto import tqdm
 import npyx.corr as corr
 import npyx.datasets as datasets
 import npyx.feat as feat
-import npyx.plot as plot
+import npyx.plot as npyx_plot
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 matplotlib.rcParams["pdf.fonttype"] = 42  # necessary to make the text editable
@@ -81,9 +82,32 @@ HULL_LINES_DICT = {
     "GrC": "unkonwn",
 }
 
+DATASETS_URL = {
+    "hausser": "https://figshare.com/ndownloader/files/41720781?private_link=9a9dfce1c64cb807fc96",
+    "lisberger": "https://figshare.com/ndownloader/files/41721090?private_link=9a9dfce1c64cb807fc96",
+    "medina": "https://figshare.com/ndownloader/files/41721195?private_link=9a9dfce1c64cb807fc96",
+    "hull_labelled": "https://figshare.com/ndownloader/files/41720784?private_link=9a9dfce1c64cb807fc96",
+    "hull_unlabelled": "https://figshare.com/ndownloader/files/41720901?private_link=9a9dfce1c64cb807fc96",
+}
 
-def assert_presence(datasets_list, name):
-    return any(name in dataset for dataset in datasets_list)
+
+class ArgsNamespace:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+def download_file(url, output_path, description=None):
+    response = requests.get(url, stream=True)
+    total_size = int(response.headers.get("content-length", 0))
+    block_size = 1024  # 1 KB
+    progress_bar = tqdm(total=total_size, unit="B", unit_scale=True, desc=description)
+
+    with open(output_path, "wb") as file:
+        for data in response.iter_content(block_size):
+            file.write(data)
+            progress_bar.update(len(data))
+
+    progress_bar.close()
 
 
 def save_results(results_dict, save_path):
@@ -92,64 +116,6 @@ def save_results(results_dict, save_path):
 
     with open(file_name, "wb") as fobj:
         pickle.dump(results_dict, fobj)
-
-
-def get_paths_from_dir(
-    path_to_dir,
-    include_lisberger=False,
-    include_medina=False,
-    _include_hull_unlab=False,
-):
-    # Check if the directory structure is correct
-    files = os.listdir(path_to_dir)
-
-    if include_lisberger:
-        datasets = [
-            dataset
-            for dataset in files
-            if dataset.endswith(".h5") and "medina" not in dataset
-        ]
-    elif include_medina:
-        datasets = [
-            dataset
-            for dataset in files
-            if dataset.endswith(".h5") and "lisberger" not in dataset
-        ]
-    elif include_lisberger and include_medina:
-        datasets = [dataset for dataset in files if dataset.endswith(".h5")]
-    else:
-        datasets = [
-            dataset
-            for dataset in files
-            if dataset.endswith(".h5")
-            and "lisberger" not in dataset
-            and "medina" not in dataset
-        ]
-    datasets_abs = [os.path.join(path_to_dir, dataset) for dataset in datasets]
-
-    if _include_hull_unlab:
-        path_hull_unlab = os.listdir(os.path.join(path_to_dir, "unlabelled"))[0]
-        datasets_abs.append(os.path.join(path_to_dir, "unlabelled", path_hull_unlab))
-
-    if include_lisberger:
-        assert len(datasets) < 4, "More than three unique datasets found"
-    elif include_medina:
-        assert len(datasets) < 4, "More than three unique datasets found"
-    elif include_lisberger and include_medina:
-        assert len(datasets) < 5, "More than four unique datasets found"
-    elif _include_hull_unlab:
-        assert len(datasets) < 6, "More than five unique datasets found"
-    else:
-        assert len(datasets) < 3, "More than two unique mouse datasets found"
-
-    assert assert_presence(datasets, "hull"), "No hull dataset found"
-    assert assert_presence(datasets, "hausser"), "No hausser dataset found"
-    if include_lisberger:
-        assert assert_presence(datasets, "lisberger"), "No lisberger dataset found"
-    if include_medina:
-        assert assert_presence(datasets, "medina"), "No medina dataset found"
-
-    return sorted(datasets_abs, key=os.path.getsize)
 
 
 def combine_features(df1, df2):
@@ -166,9 +132,72 @@ def combine_features(df1, df2):
                 df1[col] = df1[col].astype(str)
                 df2[col] = df2[col].astype(str)
 
-    # Merge the dataframes on the common columns, using a left join
-    combined_df = df1.merge(df2, on=common_columns, how="left")
-    return combined_df
+    # Merge the dataframes on the common columns, using a left join, then return the result
+    return df1.merge(df2, on=common_columns, how="left")
+
+
+def get_paths_from_dir(
+    path_to_dir, include_lisberger=False, include_medina=False, include_hull_unlab=False
+):
+    # List all files in the directory
+    files = os.listdir(path_to_dir)
+
+    # Filter datasets based on conditions
+    filtered_datasets = [dataset for dataset in files if dataset.endswith(".h5")]
+    if not include_lisberger:
+        filtered_datasets = [
+            dataset for dataset in filtered_datasets if "lisberger" not in dataset
+        ]
+    if not include_medina:
+        filtered_datasets = [
+            dataset
+            for dataset in filtered_datasets
+            if "medina_unlabelled" not in dataset
+        ]
+    if not include_hull_unlab:
+        filtered_datasets = [
+            dataset for dataset in filtered_datasets if "hull_unlabelled" not in dataset
+        ]
+
+    # Include 'hull_labelled' and 'hausser' datasets always
+    required_datasets = ["hull_labelled", "hausser"]
+    if include_lisberger:
+        required_datasets.append("lisberger")
+    if include_medina:
+        required_datasets.append("medina_unlabelled")
+    if include_hull_unlab:
+        required_datasets.append("hull_unlabelled")
+
+    # Get absolute paths to the datasets. Will only get it if the dataset is already in the folder.
+    datasets_abs = [
+        os.path.join(path_to_dir, dataset)
+        for dataset in filtered_datasets
+        if any(rd in dataset for rd in required_datasets)
+    ]
+
+    # Check the number of unique datasets
+    unique_datasets = set(filtered_datasets)
+    num_unique_datasets = len(unique_datasets)
+    assert num_unique_datasets <= 5, "More than five unique datasets found"
+
+    # Check dataset presence
+    for dataset_name in required_datasets:
+        # If the dataset is not in any of the absolute paths
+        if all(dataset_name not in dataset for dataset in datasets_abs):
+            download = input(f"Dataset {dataset_name} not found. Download? (y/n)")
+            if download != "y":
+                raise FileNotFoundError(f"Dataset {dataset_name} not found. Exiting.")
+
+            corresponding_path = os.path.join(
+                path_to_dir,
+                f"C4_database_{dataset_name}.h5",
+            )
+            download_file(
+                DATASETS_URL[dataset_name],
+                corresponding_path,
+                f"Downloading {dataset_name} dataset",
+            )
+    return sorted(datasets_abs, key=os.path.getsize)
 
 
 def extract_and_merge_datasets(
@@ -313,7 +342,7 @@ def plot_quality_checks(dataframe, lab, fig_title):
     )
     plot.legend(title="")
     result = int(plot.get_ylim()[1] * 1.2)
-    return plot.mplp(
+    return npyx_plot.mplp(
         figsize=(10, 5),
         title=fig_title,
         xlabel="Cell type",
@@ -397,7 +426,9 @@ def save_acg(spike_train, unit_n, save_name=None):
 
     if len(spike_train.ravel()) > 1:
         plt.figure()
-        plot.plot_acg(".npyx_placeholder", unit_n, train=spike_train, figsize=(5, 4.5))
+        npyx_plot.plot_acg(
+            ".npyx_placeholder", unit_n, train=spike_train, figsize=(5, 4.5)
+        )
 
         plt.savefig(f"{save_name}-acg.pdf", format="pdf", bbox_inches="tight")
     else:
@@ -426,7 +457,7 @@ def save_wvf(waveform, save_name=None):
         raise NotImplementedError("Please specify a save name")
 
     plt.figure()
-    plot.plt_wvf(waveform, figh_inch=8, figw_inch=5, title=str(save_name))
+    npyx_plot.plt_wvf(waveform, figh_inch=8, figw_inch=5, title=str(save_name))
 
     plt.savefig(f"{save_name}-wvf.pdf", format="pdf", bbox_inches="tight")
     plt.close()
@@ -439,7 +470,7 @@ def make_summary_plots_wvf(
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
         lab_wvf = dataset.wf[lab_mask]
-        col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+        col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
         for wf in lab_wvf:
             # Normalise before plotting
             peak_wf = wf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)[N_CHANNELS // 2]
@@ -449,7 +480,7 @@ def make_summary_plots_wvf(
                 color=col,
                 alpha=0.4,
             )
-        fig = plot.mplp(
+        fig = npyx_plot.mplp(
             title=f"{CORRESPONDENCE[lab]} (n = {len(lab_wvf)})",
             xlabel="Time (ms)",
             ylabel="Amplitude (a.u.)",
@@ -461,7 +492,7 @@ def make_summary_plots_wvf(
             ).round(1),
             xticks=np.arange(0, WAVEFORM_SAMPLES + 1, 10),
         )
-        plot.save_mpl_fig(
+        npyx_plot.save_mpl_fig(
             fig[0],
             f"{prefix}summary_peak_wvf_{CORRESPONDENCE[lab]}",
             save_folder,
@@ -499,7 +530,7 @@ def make_summary_plots_preprocessed_wvf(
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
         lab_wvf = dataset.wf[lab_mask]
-        col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+        col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
         for wf in lab_wvf:
             relevant_waveform = datasets.preprocess_template(
                 wf,
@@ -515,7 +546,7 @@ def make_summary_plots_preprocessed_wvf(
                 alpha=0.4,
             )
 
-        fig = plot.mplp(
+        fig = npyx_plot.mplp(
             title=f"{CORRESPONDENCE[lab]}",
             xlabel="Time (ms)",
             ylabel="Amplitude (a.u.)",
@@ -527,7 +558,7 @@ def make_summary_plots_preprocessed_wvf(
             ).round(1),
             xticks=np.arange(0, int(WAVEFORM_SAMPLES * 3 / 4 + 1), 10),
         )
-        plot.save_mpl_fig(
+        npyx_plot.save_mpl_fig(
             fig[0],
             f"{prefix}summary_preprocessed_wvf_{CORRESPONDENCE[lab]}",
             save_folder,
@@ -543,7 +574,7 @@ def make_summary_plots_relevant_wvf(
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
         lab_wvf = dataset.wf[lab_mask]
-        col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+        col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
         for wf in lab_wvf:
             if monkey:
                 relevant_waveform = wf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)[
@@ -565,7 +596,7 @@ def make_summary_plots_relevant_wvf(
                 alpha=0.4,
             )
 
-        fig = plot.mplp(
+        fig = npyx_plot.mplp(
             title=f"{CORRESPONDENCE[lab]}",
             xlabel="Time (ms)",
             ylabel="Amplitude (a.u.)",
@@ -577,7 +608,7 @@ def make_summary_plots_relevant_wvf(
             ).round(1),
             xticks=np.arange(0, WAVEFORM_SAMPLES + 1, 10),
         )
-        plot.save_mpl_fig(
+        npyx_plot.save_mpl_fig(
             fig[0],
             f"{prefix}summary_somatic_wvf_{CORRESPONDENCE[lab]}",
             save_folder,
@@ -597,7 +628,7 @@ def make_summary_plots_wvf_by_line(dataset: datasets.NeuronsDataset, save_folder
             wf_mask = lab_mask & line_mask
 
             lab_wvf = dataset.wf[wf_mask]
-            col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+            col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
 
             if len(lab_wvf) == 0:
                 continue
@@ -619,7 +650,7 @@ def make_summary_plots_wvf_by_line(dataset: datasets.NeuronsDataset, save_folder
                     color=col,
                     alpha=0.4,
                 )
-            fig = plot.mplp(
+            fig = npyx_plot.mplp(
                 title=f"{CORRESPONDENCE[lab]}, {line} line (n = {len(lab_wvf)})",
                 xlabel="Time (ms)",
                 ylabel="Amplitude (a.u.)",
@@ -631,7 +662,7 @@ def make_summary_plots_wvf_by_line(dataset: datasets.NeuronsDataset, save_folder
                 ).round(1),
                 xticks=np.arange(0, WAVEFORM_SAMPLES + 1, 10),
             )
-            plot.save_mpl_fig(
+            npyx_plot.save_mpl_fig(
                 fig[0],
                 f"summary_peak_wvf_{CORRESPONDENCE[lab]}_{line}",
                 save_folder,
@@ -653,14 +684,14 @@ def make_summary_plots_acg_by_line(dataset: datasets.NeuronsDataset, save_folder
             acg_mask = lab_mask & line_mask
 
             lab_acg = np.array(dataset.acg_list)[acg_mask]
-            col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+            col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
 
             if len(lab_acg) == 0:
                 continue
 
             for acg in lab_acg:
                 plt.plot(acg, color=col, alpha=0.4)
-            fig = plot.mplp(
+            fig = npyx_plot.mplp(
                 title=f"{CORRESPONDENCE[lab]}, {line} (n = {len(lab_acg)})",
                 xlabel="Time (ms)",
                 ylabel="Autocorrelation (Hz)",
@@ -672,7 +703,7 @@ def make_summary_plots_acg_by_line(dataset: datasets.NeuronsDataset, save_folder
                     0, int(WIN_SIZE / BIN_SIZE) + 1, int(WIN_SIZE / BIN_SIZE) // 8
                 ),
             )
-            plot.save_mpl_fig(
+            npyx_plot.save_mpl_fig(
                 fig[0], f"summary_acg_{CORRESPONDENCE[lab]}_{line}", save_folder, "pdf"
             )
             plt.close()
@@ -685,10 +716,10 @@ def make_summary_plots_acg(
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
         lab_acg = np.array(dataset.acg_list)[lab_mask]
-        col = plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
+        col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
         for acg in lab_acg:
             plt.plot(acg, color=col, alpha=0.4)
-        fig = plot.mplp(
+        fig = npyx_plot.mplp(
             title=f"{CORRESPONDENCE[lab]} (n = {len(lab_acg)})",
             xlabel="Time (ms)",
             ylabel="Autocorrelation (Hz)",
@@ -700,7 +731,7 @@ def make_summary_plots_acg(
                 0, int(WIN_SIZE / BIN_SIZE) + 1, int(WIN_SIZE / BIN_SIZE) // 8
             ),
         )
-        plot.save_mpl_fig(
+        npyx_plot.save_mpl_fig(
             fig[0], f"{prefix}summary_acg_{CORRESPONDENCE[lab]}", save_folder, "pdf"
         )
         plt.close()
@@ -853,35 +884,9 @@ def calc_snr(wvf, noise_samples=15, return_db=False):
     return 10 * np.log10(SNR_linear) if return_db else SNR_linear
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Initialise a datasets folder with diagnostic plots for further modelling."
-    )
-
-    parser.add_argument(
-        "-dp",
-        "--data-folder",
-        type=str,
-        default=".",
-        help="Path to the folder containing the dataset.",
-    )
-
-    parser.add_argument(
-        "-n",
-        "--name",
-        type=str,
-        default="dataset_1",
-        help="Name assigned to the dataset.",
-    )
-
-    parser.add_argument("--plot", action="store_true")
-    parser.add_argument("--no-plot", dest="plot", action="store_false")
-    parser.set_defaults(plot=True)
-
-    parser.add_argument("--WM", action="store_true")
-    parser.set_defaults(WM=False)
-
-    args = parser.parse_args()
+def main(data_folder=".", plot=True, name="dataset_1", WM=False):
+    # Parse the arguments into a class to preserve compatibility
+    args = ArgsNamespace(data_folder=data_folder, plot=plot, name=name, WM=WM)
 
     datasets_abs = get_paths_from_dir(args.data_folder)
 
@@ -1111,6 +1116,52 @@ def main():
             drop_cols=["label"],
         )
 
+    #### After running the mouse init we also run the monkey
+    print("\n Finished mouse init, running monkey init. \n")
+    from .monkey_dataset_init import main as monkey_main
+
+    monkey_main(**vars(args))
+
+    #### After running the monkey init, prompt to compute 3D acgs.
+
+    compute_acgs = input("Compute 3D acgs? (y/n) \n")
+    if compute_acgs == "y":
+        from .acg_vs_firing_rate import main as acg_main
+
+        print("\n Computing 3D acgs for mouse. \n")
+        acg_main(data_path=args.data_folder, dataset=args.name, monkey=False)
+        print("\n Computing 3D acgs for monkey. \n")
+        acg_main(data_path=args.data_folder, dataset=args.name, monkey=True)
+
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Initialise a datasets folder with diagnostic plots for further modelling."
+    )
+
+    parser.add_argument(
+        "-dp",
+        "--data-folder",
+        type=str,
+        default=".",
+        help="Path to the folder containing the dataset.",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--name",
+        type=str,
+        default="dataset_1",
+        help="Name assigned to the dataset.",
+    )
+
+    parser.add_argument("--plot", action="store_true")
+    parser.add_argument("--no-plot", dest="plot", action="store_false")
+    parser.set_defaults(plot=True)
+
+    parser.add_argument("--WM", action="store_true")
+    parser.set_defaults(WM=False)
+
+    args = parser.parse_args()
+
+    main(**vars(args))

@@ -617,6 +617,10 @@ class NeuronsDataset:
         self.targets = np.array(
             (pd.Series(self.labels_list).replace(_labelling).values)
         )
+        if len(self.wf_list) == 0:
+            raise NotImplementedError(
+                "No neurons could be extracted from the dataset with the provided parameters."
+            )
         self.wf = np.stack(self.wf_list, axis=0)
         self.acg = np.stack(acg_list_resampled, axis=0)
 
@@ -624,7 +628,7 @@ class NeuronsDataset:
             self.quality_checks_mask = np.array(self.quality_checks_mask)
 
         print(
-            f"{len(self.wf_list)} neurons loaded, of which labelled: {sum(self.targets != -1)} \n"
+            f"{sum(self.targets == -1)} unlabelled and {sum(self.targets != -1)} labelled neurons loaded. \n"
             f"{len(discarded_df)} neurons discarded, of which labelled: {len(discarded_df[discarded_df.label != 0])}. More details at the 'discarded_df' attribute. \n"
         )
 

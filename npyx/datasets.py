@@ -159,12 +159,21 @@ def normalise_wf(wf):
 
 def crop_original_wave(waveform, central_range=60, n_channels=10):
     """
-    It takes a waveform of shape (n_channels, central_range), and returns a copy of the waveform with the central 60 samples in the horizontal
-    direction, and the central 10 channels in the vertical direction
+    It takes a waveform of shape (n_channels, central_range) and returns a copy of
+    the waveform with the central 60 samples in the horizontal direction and the central 10
+    channels in the vertical direction.
+
+    The function first finds the peak channels by sorting the channels by their maximum amplitude.
+    If the waveform has less than or equal to n_channels channels, the function returns the
+    waveform cropped to the central range and the middle channel. Otherwise, the function finds
+    the peak channel by iterating through the sorted channels by amplitude and selecting the
+    channel with the highest amplitude that is not too close to the edge. The function then
+    returns the waveform cropped to the central range and exactly n_channels channels around the
+    peak channel. If n_channels is odd, the peak channel will be at the center (unless it is too close to the edge).
 
     Args:
       waveform: the waveform to be preprocessed
-      central_range: the number of samples to take from the centre of the waveform. Defaults to 60
+      central_range: the number of samples to take from the center of the waveform. Defaults to 60
       n_channels: The number of channels to use around the peak. Defaults to 10
 
     Returns:
@@ -186,8 +195,13 @@ def crop_original_wave(waveform, central_range=60, n_channels=10):
     i = 1
     while cropped_wvf.shape[0] < n_channels and i < waveform.shape[0]:
         peak_channel = channels_by_amplitude[-i]
+        if n_channels % 2 == 0:
+            start_channel = max(0, peak_channel - n_channels // 2)
+        else:
+            start_channel = max(0, peak_channel - (n_channels - 1) // 2)
+        end_channel = min(waveform.shape[0], start_channel + n_channels)
         cropped_wvf = waveform[
-            (peak_channel - n_channels // 2) : (peak_channel + n_channels // 2),
+            start_channel:end_channel,
             (centre - central_range // 2) : (centre + central_range // 2),
         ].copy()
         i += 1
@@ -295,6 +309,7 @@ class NeuronsDataset:
         _id_type="neuron_relative_id",
         _extract_mli_clusters=False,
         _extract_layer=False,
+        _keep_singchan=True,
     ):
         # Store useful metadata about how the dataset was extracted
         self.dataset = dataset
@@ -351,9 +366,9 @@ class NeuronsDataset:
                         label = mli_cluster
                     self.labels_list.append(label)
 
-                elif label != 0:
-                    label = label.item()
-                    self.labels_list.append(label)
+                # elif label != 0:
+                #     label = label.item()
+                #     self.labels_list.append(label)
 
                 else:
                     if _labels_only:
@@ -441,6 +456,7 @@ class NeuronsDataset:
                             )
                             self.amplitudes_list.append(amplitudes[sane_spikes])
 
+                discard_wave = False
                 # Extract waveform using provided parameters
                 wf = get_neuron_attr(dataset, wf_n, "mean_waveform_preprocessed")
 
@@ -452,13 +468,17 @@ class NeuronsDataset:
                     wf = wf.T
 
                 # Also, if the waveform is 1D (i.e. only one channel), we need to tile it to make it 2D.
-                # Alternatively, if it is not spread on enough channels, we want to tile the remaining
                 if wf.squeeze().ndim == 1:
-                    wf = np.tile(wf, (n_channels, 1))
+                    if _keep_singchan:
+                        wf = np.tile(wf, (n_channels, 1))
+                    else:
+                        discard_wave = True
 
+                # Alternatively, if it is not spread on enough channels, we want to tile the remaining
                 if wf.shape[0] < n_channels:
-                    repeats = [wf[0][None, :]] * (n_channels - wf.shape[0])
-                    wf = np.concatenate((*repeats, wf), axis=0)
+                    wf = pad_matrix_with_decay(wf, n_channels)
+                    # repeats = [wf[0][None, :]] * (n_channels - wf.shape[0])
+                    # wf = np.concatenate((*repeats, wf), axis=0)
 
                 if normalise_wvf:
                     cropped_wave, peak_idx = crop_original_wave(
@@ -470,7 +490,10 @@ class NeuronsDataset:
                         wf, central_range, n_channels
                     )
                     self.wf_list.append(cropped_wave.ravel().astype(float))
-                if self.wf_list[-1].shape[0] != n_channels * central_range:
+                if (
+                    self.wf_list[-1].shape[0] != n_channels * central_range
+                    or discard_wave
+                ):
                     dataset_name = (
                         get_neuron_attr(dataset, wf_n, "dataset_id")
                         .ravel()[0]
@@ -490,7 +513,7 @@ class NeuronsDataset:
                                     ],
                                     "label": [label],
                                     "dataset": [dataset_name],
-                                    "reason": ["shape mismatch"],
+                                    "reason": ["waveform shape"],
                                 }
                             ),
                         ),
@@ -498,6 +521,13 @@ class NeuronsDataset:
                     )
                     del self.labels_list[-1]
                     del self.wf_list[-1]
+                    if quality_check:
+                        del self.spikes_list[-1]
+                    else:
+                        del self.spikes_list[-1]
+                        del self.fn_fp_list[-1]
+                        del self.sane_spikes_list[-1]
+                        del self.quality_checks_mask[-1]
                     if hasattr(self, "amplitudes_list"):
                         del self.amplitudes_list[-1]
                     continue
@@ -927,7 +957,7 @@ def force_amplitudes_length(amplitudes, times):
 
 
 def preprocess_template(
-    template: np.ndarray,
+    waveform: np.ndarray,
     original_sampling_rate: float = 30000,
     output_sampling_rate: float = 30000,
     clip_size: Tuple[float, float] = (1e-3, 2e-3),
@@ -962,8 +992,18 @@ def preprocess_template(
 
     Authors:
        Original Julia Implementation by David J. Herzfeld <herzfeldd@gmail.com>
+       Adapted to Python and multi-channel waveforms by @fededagos
     """
     assert original_sampling_rate >= output_sampling_rate
+
+    # Check if provided waveform is 2D
+    multi_chan = False
+    if len(waveform.shape) == 2:
+        peak_channel = np.argmax(np.max(np.abs(waveform), axis=1))
+        template = waveform[peak_channel, :]
+        multi_chan = True
+    else:
+        template = waveform
 
     if original_sampling_rate != output_sampling_rate:
         template = resample(
@@ -1012,29 +1052,50 @@ def preprocess_template(
         and template[reference_peak_idx] > 0
     ):
         template = template * -1
+        if multi_chan:
+            waveform = waveform * -1
     elif (
         peak_sign is not None
         and peak_sign == "positive"
         and template[reference_peak_idx] < 0
     ):
         template = template * -1
+        if multi_chan:
+            waveform = waveform * -1
 
     # Construct our output template based on our desired clip_size
     num_indices = int(
         round((abs(clip_size[0]) + abs(clip_size[1])) * output_sampling_rate)
     )
     if reference_peak_idx < alignment_idx:
-        template = np.concatenate(
-            (np.ones(alignment_idx - reference_peak_idx) * template[0], template)
-        )
+        if multi_chan:
+            padding = np.tile(waveform[:, 0], (alignment_idx - reference_peak_idx, 1)).T
+            waveform = np.concatenate((padding, waveform), axis=1)
+        else:
+            template = np.concatenate(
+                (np.ones(alignment_idx - reference_peak_idx) * template[0], template)
+            )
     elif reference_peak_idx > alignment_idx:
         shift = reference_peak_idx - alignment_idx
-        template = np.concatenate((template[shift:], np.full(shift, template[-1])))
+        if multi_chan:
+            padding = np.tile(
+                waveform[:, -1], (reference_peak_idx - alignment_idx, 1)
+            ).T
+            waveform = np.concatenate((waveform[:, shift:], padding), axis=1)
+        else:
+            template = np.concatenate((template[shift:], np.full(shift, template[-1])))
 
-    assert np.abs(template[alignment_idx]) == peak_val
+    if multi_chan:
+        assert np.abs(waveform[peak_channel, alignment_idx]) == peak_val
+    else:
+        assert (
+            np.abs(template[alignment_idx]) == peak_val
+        ), f"Peak value is {peak_val}, but template value there is {template[alignment_idx]}"
 
     if len(template) > num_indices:
         template = template[:num_indices]
+        if multi_chan:
+            waveform = waveform[:, :num_indices]
     elif len(template) < num_indices:
         template = np.pad(
             template,
@@ -1042,15 +1103,67 @@ def preprocess_template(
             mode="constant",
             constant_values=template[-1],
         )
+        if multi_chan:
+            padding = np.tile(waveform[:, -1], (num_indices - len(waveform), 1)).T
+            waveform = np.concatenate((waveform, padding), axis=1)
 
     assert len(template) == num_indices
+    if multi_chan:
+        assert (
+            waveform.shape[1] == num_indices
+        ), f"Expected waveform shape to be {num_indices} after processing but got {waveform.shape[1]}"
 
     # Remove any (noisy) offset
     num_indices = int(round(abs(clip_size[0]) * output_sampling_rate))
     template = template - np.median(template[:num_indices])
+    if multi_chan:
+        waveform = waveform - np.median(
+            waveform[:, :num_indices], axis=1, keepdims=True
+        )
 
     if normalize:
         # Normalize the result
         template = template / np.abs(template[alignment_idx])
+        if multi_chan:
+            waveform = waveform / np.abs(waveform[peak_channel, alignment_idx])
 
-    return template
+    return template if not multi_chan else waveform
+
+
+def pad_matrix_with_decay(matrix, target_x=10):
+    current_x, _ = matrix.shape
+    padding_needed = target_x - current_x
+
+    if padding_needed <= 0:
+        return matrix
+
+    # Calculate the maximum absolute amplitude as the reference amplitude
+    reference_amplitude = np.max(np.abs(matrix))
+
+    # Find the peak signal value and its position in the matrix
+    peak_row, peak_col = np.unravel_index(np.argmax(np.abs(matrix)), matrix.shape)
+
+    # Find the closest non-peak signal value to the peak position
+    distances_to_peak = np.abs(np.arange(current_x) - peak_row)
+    closest_non_peak_row = np.argmin(np.ma.masked_equal(distances_to_peak, 0))
+    closest_non_peak_value = np.max(np.abs(matrix[closest_non_peak_row, :]))
+
+    # Generate a decay pattern for padding based on the reference amplitude
+    decay_factor = closest_non_peak_value / reference_amplitude
+    decay_pattern = decay_factor ** np.arange(1, padding_needed + 1)
+
+    # Calculate the required padding for both top and bottom separately
+    top_padding = int(np.ceil(padding_needed / 2))
+    bottom_padding = padding_needed - top_padding
+
+    # Create separate top and bottom padding rows with the decay pattern
+    top_padding_rows = (matrix[0] - closest_non_peak_value) * decay_pattern[
+        :top_padding, np.newaxis
+    ][::-1]
+    bottom_padding_rows = (matrix[-1] - closest_non_peak_value) * decay_pattern[
+        :bottom_padding, np.newaxis
+    ]
+
+    # Stack the padding and the original matrix vertically
+    padded_matrix = np.vstack((top_padding_rows, matrix, bottom_padding_rows))
+    return padded_matrix

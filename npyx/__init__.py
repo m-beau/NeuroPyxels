@@ -43,6 +43,6 @@ npyx submodules:
  .h5
 """
 
-__version__ = "3.0.0"
+__version__ = "3.0.1"
 
 print(f"\n\033[32;1mnpyx version {__version__} imported.\033[0m")

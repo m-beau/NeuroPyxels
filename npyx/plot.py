@@ -818,7 +818,7 @@ def hist_MB(arr, a=None, b=None, s=None,
             title='', xlabel='', ylabel='', legend_label=None,
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
             saveFig=False, saveDir='', _format='pdf', prettify=True,
-            style='bar', **mplp_kwargs):
+            style='bar', density=False, **mplp_kwargs):
     """
     Plot histogram of array arr.
     Arguments:
@@ -844,7 +844,7 @@ def hist_MB(arr, a=None, b=None, s=None,
     if a is None: a=np.min(arr)
     if b is None: b=np.max(arr)
     if s is None: s=(b-a)/100
-    hist=np.histogram(arr, bins=np.arange(a,b+s,s))
+    hist=np.histogram(arr, bins=np.arange(a,b+s,s), density=density)
     y=hist[0]
     x=hist[1][:-1] + np.diff(hist[1][:2])/2
     if ax is None:
@@ -856,12 +856,12 @@ def hist_MB(arr, a=None, b=None, s=None,
     elif style == 'step':
         x_step = np.concatenate((x[0:1]-s, x, [x[-1]+s]))
         y_step = np.concatenate(([0], y, [0]))
-        ax.step(x_step, y_step, where='mid', color='k')
+        ax.step(x_step, y_step, where='mid', color=color)
         ax.fill_between(x_step, y_step*0, y_step, step='mid', color=color, alpha=alpha, label=legend_label)
         ax.set_ylim(bottom=0)
     ax.set_title(title)
-    ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel('Binsize:{}'.format(s))
-    ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel('Counts')
+    ax.set_xlabel(xlabel) if len(xlabel)>0 else ax.set_xlabel(f'Binsize:{s:.2f}')
+    ax.set_ylabel(ylabel) if len(ylabel)>0 else ax.set_ylabel({False:'Counts', True:'Density'}[density])
 
     if xlim is None: xlim = [a,b]
     show_legend = True if legend_label else None

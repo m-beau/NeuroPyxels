@@ -542,6 +542,33 @@ def smooth(arr, method='gaussian_causal', sd=5, axis=1, gamma_a=5):
 
     return sarr
 
+def rolling_average(x, w=5, fill_edges=False):
+    """
+    Performs rolling average on x i.e. convolves x with a uniform window of length w.
+    Arguments:
+    - x: np array
+    - w: int, span of rolling average
+    - fill_edges: bool, whether to fill the edges of the output array with the
+                  first and last values of the convolved array to match the size of x
+    Returns:
+    - ids: ids of rolling-averaged array (corresponding to x)
+    - x_conv: np array, rolling averaged array
+              (shape (len(x)-w+1,) if fill_edges is False, (len(x),) if True)
+    """
+    assert isinstance(w, int),  "convolution window length must be an integer!"
+    assert w%2 == 1, "convolution window length must be odd!"
+    ids = np.arange(len(x)-w+1) + w//2
+    x_conv = np.convolve(x, np.ones(w), 'valid')/(w)
+
+    if fill_edges:
+        start = x_conv[0]
+        end = x_conv[-1]
+        n_pad = (len(x)-len(x_conv))//2
+        x_conv = np.concatenate(([start]*n_pad, x_conv, [end]*n_pad))
+        assert len(x_conv) == len(x), f"convolved array has length {len(x_conv)} instead of {len(x)}!"
+        return np.arange(len(x)), x_conv
+
+    return ids, x_conv
 
 def slice_along_axis(a,b,s=1,axis=0):
     """

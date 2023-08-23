@@ -292,9 +292,11 @@ def prepare_classification_dataset(
     win_size=WIN_SIZE,
     bin_size=BIN_SIZE,
     multi_chan_wave=False,
+    process_multi_channel=False,
     _acgs_path=None,
     _acg_mask=None,
     _acg_multi_factor=1,
+    _n_channels=N_CHANNELS,
 ):
     acgs = [] if _acgs_path is None else np.load(_acgs_path)
     waveforms = []
@@ -312,7 +314,12 @@ def prepare_classification_dataset(
         if not multi_chan_wave:
             processed_wave = dataset.conformed_waveforms[i]
         else:
-            processed_wave = dataset.wf[i]
+            if process_multi_channel:
+                processed_wave = datasets.preprocess_template(
+                    dataset.wf[i].reshape(_n_channels, -1)
+                ).ravel()
+            else:
+                processed_wave = dataset.wf[i]
 
         waveforms.append(processed_wave)
     acgs = (
@@ -328,7 +335,7 @@ def prepare_classification_dataset(
         acgs = np.nan_to_num(acgs / acgs_max[:, None])
 
     classification_dataset = np.concatenate((acgs, waveforms), axis=1)
-
+    print(f"Dataset shape: {classification_dataset.shape}")
     return classification_dataset, acgs_max
 
 

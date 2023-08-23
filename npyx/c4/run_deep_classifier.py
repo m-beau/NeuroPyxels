@@ -64,6 +64,7 @@ import npyx.plot as npyx_plot
 from npyx.ml import set_seed
 
 from . import acg_augmentations
+from . import dl_transforms as custom_transforms
 from . import plots_functions as pf
 from . import waveform_augmentations
 from .dataset_init import (
@@ -77,7 +78,13 @@ from .dataset_init import (
     prepare_classification_dataset,
     save_results,
 )
-from .dl_utils import ConvolutionalEncoder, Encoder, load_acg_vae, load_waveform_encoder
+from .dl_utils import (
+    ConvolutionalEncoder,
+    Encoder,
+    load_acg_vae,
+    load_waveform_encoder,
+    load_waveform_vae,
+)
 
 SEED = 42
 
@@ -111,11 +118,17 @@ WVF_ENCODER_ARGS_SINGLE = {
 }
 
 WVF_ENCODER_ARGS_MULTI = {
-    "n_channels": 10,
-    "central_range": 60,
+    "n_channels": 4,
+    "central_range": 90,
     "d_latent": 10,
     "device": "cpu",
 }
+
+# WVF_VAE_PATH_MULTI = "/home/npyx/Dropbox/celltypes-classification/deep_models/Aug-19-2023-b5-multichan-encoder.pt"
+
+WVF_VAE_PATH_MULTI = "/home/npyx/Dropbox/celltypes-classification/deep_models/Aug-21-2023-b5-4chan-multichan-encoder.pt"
+
+N_CHANNELS = 10
 
 
 class CustomCompose:
@@ -152,6 +165,7 @@ class CustomDataset(data.Dataset):
         spikes_transform=None,
         wave_transform=None,
         layer=None,
+        multi_chan_wave=False,
     ):
         """
         Args:
@@ -172,6 +186,7 @@ class CustomDataset(data.Dataset):
             assert len(layer) == len(
                 data
             ), f"Layer and data must have same length, got {len(layer)} and {len(data)}"
+        self.multi_chan_wave = multi_chan_wave
 
     def __len__(self):
         return len(self.data)
@@ -195,7 +210,7 @@ class CustomDataset(data.Dataset):
         if self.wave_transform is not None:
             waveform = data_point[2010:]
             waveform = self.wave_transform(waveform).squeeze()
-        elif len(data_point[2010:]) == 90:
+        elif len(data_point[2010:]) == 90 or self.multi_chan_wave:
             # leave it as is
             waveform = data_point[2010:]
         else:
@@ -477,11 +492,13 @@ class CNNCerebellum(nn.Module):
         n_classes=5,
         freeze_heads=False,
         use_layer=False,
+        multi_chan_wave=False,
     ):
         super(CNNCerebellum, self).__init__()
         self.acg_head = acg_head
         self.wvf_head = waveform_head
         self.use_layer = use_layer
+        self.multi_chan_wave = multi_chan_wave
 
         if freeze_heads:
             for param in self.acg_head.parameters():
@@ -490,6 +507,10 @@ class CNNCerebellum(nn.Module):
                 param.requires_grad = False
         self.fc1 = nn.LazyLinear(100)
         self.fc2 = nn.LazyLinear(n_classes)
+        if self.use_layer:
+            self.batch_norm = nn.BatchNorm1d(24)
+        else:
+            self.batch_norm = nn.BatchNorm1d(20)
 
     def forward(self, x):
         acg = x[:, :1010]
@@ -499,6 +520,9 @@ class CNNCerebellum(nn.Module):
             layer = x[:, -4:]
         else:
             wvf = x[:, 1010:]
+
+        if self.multi_chan_wave:
+            wvf = wvf.reshape(-1, 1, 4, 90)
 
         acg = self.acg_head.forward(acg.reshape(-1, 1, 10, 101))
         wvf = self.wvf_head.forward(wvf)
@@ -510,6 +534,8 @@ class CNNCerebellum(nn.Module):
             x = torch.cat((acg_tensor, wvf_tensor, layer), dim=1)
         else:
             x = torch.cat((acg_tensor, wvf_tensor), dim=1)
+
+        x = self.batch_norm(x)
 
         x = F.relu(self.fc1(x))
 
@@ -523,6 +549,7 @@ def define_transformations(
     log_acg=True,
     transform_acg=True,
     transform_wave=True,
+    multi_chan=False,
 ):
     acg_transformations = (
         CustomCompose(
@@ -545,12 +572,20 @@ def define_transformations(
         if transform_acg
         else None
     )
-    if transform_wave:
+    if transform_wave and not multi_chan:
         wave_transformations = transforms.Compose(
             [
                 waveform_augmentations.SelectWave(),
                 waveform_augmentations.GaussianNoise(p=0.3, std=0.1),
             ]
+        )
+    elif transform_wave:
+        wave_transformations = transforms.Compose(
+            [
+                custom_transforms.SwapChannels(p=0.5),
+                custom_transforms.VerticalReflection(p=0.5),
+                custom_transforms.PermuteChannels(p=0.1, n_channels=2),
+            ],
         )
     else:
         wave_transformations = None
@@ -583,6 +618,7 @@ def load_ensemble(
     use_layer=False,
     fast=False,
     laplace=False,
+    multi_chan_wave=False,
     **model_kwargs,
 ):
     if device is None:
@@ -633,18 +669,27 @@ def load_ensemble(
                 )
                 acg_head = acg_vae.encoder.to(device)
 
-                wvf_vae = load_waveform_encoder(
-                    WVF_ENCODER_ARGS_SINGLE,
-                    None,
-                    in_features=90,
-                    initialise=False,
-                )
-                wvf_head = Encoder(wvf_vae.encoder, 10).to(device)
+                if multi_chan_wave:
+                    wvf_vae = load_waveform_vae(
+                        WVF_ENCODER_ARGS_MULTI,
+                        WVF_VAE_PATH_MULTI,
+                    )
+                    wvf_head = wvf_vae.encoder
+                else:
+                    wvf_vae = load_waveform_encoder(
+                        WVF_ENCODER_ARGS_SINGLE,
+                        None,
+                        in_features=90,
+                        initialise=False,
+                    )
+                    wvf_head = Encoder(wvf_vae.encoder, 10).to(device)
+
                 model = CNNCerebellum(
                     acg_head,
                     wvf_head,
                     n_classes,
                     use_layer=use_layer,
+                    multi_chan_wave=multi_chan_wave,
                     **model_kwargs,
                 ).to(device)
 
@@ -827,6 +872,7 @@ def cross_validate(
         norm_acg=False,
         transform_acg=args.augment_acg,
         transform_wave=args.augment_wvf,
+        multi_chan=args.multi_chan_wave,
     )
 
     train_losses = np.zeros((N_SPLITS * N_RUNS, EPOCHS))
@@ -904,6 +950,7 @@ def cross_validate(
                     spikes_transform=acg_transformations,
                     wave_transform=wave_transformations,
                     layer=layer_train,
+                    multi_chan_wave=args.multi_chan_wave,
                 ),
                 shuffle=True,
                 batch_size=BATCH_SIZE,
@@ -916,6 +963,7 @@ def cross_validate(
                     y_val,
                     spikes_val,
                     layer=layer_val,
+                    multi_chan_wave=args.multi_chan_wave,
                 ),
                 batch_size=len(dataset_val),
             )
@@ -930,13 +978,20 @@ def cross_validate(
             )
             acg_head = acg_vae.encoder
 
-            wvf_vae = load_waveform_encoder(
-                WVF_ENCODER_ARGS_SINGLE,
-                WVF_VAE_PATH_SINGLE,
-                in_features=90,
-                initialise=not RANDOM_INIT,
-            )
-            wvf_head = Encoder(wvf_vae.encoder, 10)
+            if args.multi_chan_wave:
+                wvf_vae = load_waveform_vae(
+                    WVF_ENCODER_ARGS_MULTI,
+                    WVF_VAE_PATH_MULTI,
+                )
+                wvf_head = wvf_vae.encoder
+            else:
+                wvf_vae = load_waveform_encoder(
+                    WVF_ENCODER_ARGS_SINGLE,
+                    WVF_VAE_PATH_SINGLE,
+                    in_features=90,
+                    initialise=not RANDOM_INIT,
+                )
+                wvf_head = Encoder(wvf_vae.encoder, 10)
 
             model = CNNCerebellum(
                 acg_head,
@@ -944,6 +999,7 @@ def cross_validate(
                 N_CLASSES,
                 freeze_heads=FREEZE_HEADS,
                 use_layer=args.use_layer,
+                multi_chan_wave=args.multi_chan_wave,
             ).to(DEVICE)
 
             optimizer = optim.AdamW(model.parameters(), lr=1e-3)
@@ -1036,7 +1092,13 @@ def cross_validate(
 
 
 def plot_confusion_matrices(
-    results_dict, save_folder, model_name, labelling, correspondence, plots_prefix=""
+    results_dict,
+    save_folder,
+    model_name,
+    labelling,
+    correspondence,
+    plots_prefix="",
+    loo=False,
 ):
     if -1 in correspondence.keys():
         del correspondence[-1]
@@ -1047,19 +1109,23 @@ def plot_confusion_matrices(
 
     save_results(results_dict, save_folder)
 
-    n_models = len(results_dict["f1_scores"])
-    n_classes = results_dict["predicted_probability"].shape[1]
-    n_observations = results_dict["predicted_probability"].shape[0] // n_models
-    predictions_matrix = results_dict["predicted_probability"].reshape(
-        (n_models, n_observations, n_classes)
-    )
+    if loo:
+        n_models = len(results_dict["f1_scores"])
+        n_classes = results_dict["predicted_probability"].shape[1]
+        n_observations = results_dict["predicted_probability"].shape[0] // n_models
+        predictions_matrix = results_dict["predicted_probability"].reshape(
+            (n_models, n_observations, n_classes)
+        )
 
-    predictions_matrix = predictions_matrix.transpose(1, 2, 0)
-    predicted_probabilities = predictions_matrix.mean(axis=2)
-    true_labels = results_dict["true_targets"][:n_observations]
+        predictions_matrix = predictions_matrix.transpose(1, 2, 0)
+        predicted_probabilities = predictions_matrix.mean(axis=2)
+        true_labels = results_dict["true_targets"][:n_observations]
+    else:
+        true_labels = results_dict["true_targets"]
+        predicted_probabilities = results_dict["predicted_probability"]
 
     for threshold in tqdm(
-        list(np.arange(0.5, 1, 0.1)) + [0.0], desc="Saving results figures"
+        list(np.arange(0.4, 1, 0.1)) + [0.0], desc="Saving results figures"
     ):
         threshold = round(threshold, 2)
         fig = pf.plot_results_from_threshold(
@@ -1125,6 +1191,7 @@ def ensemble_inference(
             targets_test,
             spikes_list=None,
             layer=layer_test,
+            multi_chan_wave=args.multi_chan_wave,
         ),
         batch_size=len(dataset_test),
     )
@@ -1137,6 +1204,7 @@ def ensemble_inference(
         use_layer=args.use_layer,
         laplace=laplace,
         fast=fast,
+        multi_chan_wave=args.multi_chan_wave,
     )
 
     # Calculate predictions and append results
@@ -1216,6 +1284,7 @@ def main(
     mli_clustering=False,
     use_layer=False,
     loo=False,
+    multi_chan_wave=False,
 ):
     args = ArgsNamespace(
         data_folder=data_folder,
@@ -1226,8 +1295,15 @@ def main(
         mli_clustering=mli_clustering,
         use_layer=use_layer,
         loo=loo,
+        multi_chan_wave=multi_chan_wave,
         pool_type="avg",
     )
+
+    global N_CHANNELS
+    if args.multi_chan_wave:
+        N_CHANNELS = 4
+    else:
+        N_CHANNELS = 10
 
     assert (
         np.array([args.freeze, args.random_init]).sum() <= 1
@@ -1240,7 +1316,8 @@ def main(
         *datasets_abs,
         save=False,
         _labels_only=True,
-        normalise_wvf=True,
+        normalise_wvf=not args.multi_chan_wave,
+        n_channels=N_CHANNELS,
         _extract_mli_clusters=args.mli_clustering,
         _extract_layer=args.use_layer,
     )
@@ -1255,11 +1332,13 @@ def main(
         checked_dataset,
         normalise_acgs=False,
         multi_chan_wave=True,
+        process_multi_channel=args.multi_chan_wave,
         _acgs_path=os.path.join(
             args.data_folder, "acgs_vs_firing_rate", "acgs_3d_logscale.npy"
         ),
         _acg_mask=(~granule_mask),
         _acg_multi_factor=10,
+        _n_channels=N_CHANNELS,
     )
 
     targets = checked_dataset.targets
@@ -1274,6 +1353,8 @@ def main(
     cv_string = "_loo_cv" if args.loo else "_5fold_cv"
     if args.freeze:
         suffix = "_frozen_heads"
+    if args.multi_chan_wave:
+        features_suffix += "_multi_channel"
     if args.random_init:
         suffix = "_random_init"
     if args.mli_clustering:
@@ -1342,6 +1423,7 @@ def main(
             model_name,
             labelling=LABELLING,
             correspondence=CORRESPONDENCE,
+            loo=args.loo,
         )
 
     #
@@ -1359,10 +1441,10 @@ def main(
         datasets_abs,
         save_folder="",
         save=False,
-        normalise_wvf=True,
+        normalise_wvf=not args.multi_chan_wave,
         lisberger=True,
         _label="expert_label",
-        n_channels=10,
+        n_channels=N_CHANNELS,
         central_range=MONKEY_WAVEFORM_SAMPLES,
         _use_amplitudes=False,
         _lisberger=True,
@@ -1380,12 +1462,14 @@ def main(
     monkey_dataset, _ = prepare_classification_dataset(
         monkey_dataset_class,
         normalise_acgs=False,
-        multi_chan_wave=False,
+        multi_chan_wave=args.multi_chan_wave,
+        process_multi_channel=args.multi_chan_wave,
         _acgs_path=os.path.join(
             args.data_folder, "acgs_vs_firing_rate", "monkey_acgs_3d_logscale.npy"
         ),
         _acg_mask=~mli_b,
         _acg_multi_factor=10,
+        _n_channels=N_CHANNELS,
     )
 
     if args.mli_clustering:
@@ -1468,34 +1552,70 @@ def main(
             model_name,
             labelling=LABELLING,
             correspondence=CORRESPONDENCE,
+            loo=args.loo,
         )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Run deep semi-superivsed classifier on neural data"
+    )
 
-    parser.add_argument("-dp", "--data-folder", type=str)
+    parser.add_argument(
+        "-dp", "--data-folder", type=str, help="Path to the folder containing the data"
+    )
 
-    parser.add_argument("--freeze", action="store_true")
+    parser.add_argument(
+        "--freeze",
+        action="store_true",
+        help="Freeze the weights of the model during training",
+    )
     parser.set_defaults(freeze=False)
 
-    parser.add_argument("--random_init", action="store_true")
+    parser.add_argument(
+        "--random_init",
+        action="store_true",
+        help="Randomly initialize the weights of the model",
+    )
     parser.set_defaults(random_init=False)
 
-    parser.add_argument("--augment_acg", action="store_true")
+    parser.add_argument(
+        "--augment_acg",
+        action="store_true",
+        help="Augment the ACG data during training",
+    )
     parser.set_defaults(augment_acg=False)
 
-    parser.add_argument("--augment_wvf", action="store_true")
+    parser.add_argument(
+        "--augment_wvf",
+        action="store_true",
+        help="Augment the waveform data during training",
+    )
     parser.set_defaults(augment_wvf=False)
 
-    parser.add_argument("--mli_clustering", action="store_true")
+    parser.add_argument(
+        "--mli_clustering",
+        action="store_true",
+        help="Use MLI clustering during training",
+    )
     parser.set_defaults(mli_clustering=False)
 
-    parser.add_argument("--use_layer", action="store_true")
+    parser.add_argument(
+        "--use_layer", action="store_true", help="Use layer information during training"
+    )
     parser.set_defaults(use_layer=False)
 
-    parser.add_argument("--loo", action="store_true")
+    parser.add_argument(
+        "--loo", action="store_true", help="Use leave-one-out cross-validation"
+    )
     parser.set_defaults(loo=False)
+
+    parser.add_argument(
+        "--multi-chan-wave",
+        action="store_true",
+        help="Use multi-channel waveform data during training",
+    )
+    parser.set_defaults(multi_chan_wave=False)
 
     # Parse arguments and set global variables
 

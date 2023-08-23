@@ -1,3 +1,4 @@
+import contextlib
 import os
 import sys
 
@@ -6,16 +7,14 @@ if __name__ == "__main__":
 
 import argparse
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
-import requests
 
-try:
+with contextlib.suppress(ImportError):
     import torch
     import torch.utils.data as data
-except ImportError:
-    pass
 
 from tqdm.auto import tqdm
 
@@ -25,7 +24,7 @@ from npyx.gl import get_units
 from npyx.spk_t import trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 
-from .dataset_init import download_file
+from .dataset_init import ArgsNamespace, download_file, extract_and_check
 from .plots_functions import (
     C4_COLORS,
     plot_features_1cell_vertical,
@@ -36,6 +35,7 @@ from .run_deep_classifier import (
     encode_layer_info,
     ensemble_predict,
     load_ensemble,
+    prepare_classification_dataset,
 )
 
 MODELS_URL_DICT = {
@@ -48,6 +48,12 @@ HESSIANS_URL_DICT = {
 
 def directory_checks(data_path):
     assert os.path.exists(data_path), "Data folder does not exist."
+
+    if os.path.isfile(args.data_path) and args.data_path.endswith(".h5"):
+        print(
+            "You are using an h5 file as input. Make sure it is formatted correctly accoring to the C4 collaboration pipeline."
+        )
+
     assert os.path.isdir(data_path), "Data folder is not a directory."
     assert os.path.exists(
         os.path.join(data_path, "params.py")
@@ -65,7 +71,7 @@ def directory_checks(data_path):
                 print("\n  >> Please answer y or n!")
 
 
-def prepare_dataset(dp, units):
+def prepare_dataset_from_binary(dp, units):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -92,7 +98,7 @@ def prepare_dataset(dp, units):
         acg, _ = corr.convert_acg_log(acg, 1, 2000)
         acgs_3d.append(acg.ravel() * 10)
 
-    if len(bad_units) > 0:
+    if bad_units:
         print(
             f"Units {str(bad_units)[1:-1]} were skipped because they had too few good spikes."
         )
@@ -105,6 +111,91 @@ def prepare_dataset(dp, units):
         )
 
     return np.concatenate((acgs_3d, waveforms), axis=1), bad_units
+
+
+def get_layer_information(args):
+    if os.path.isfile(args.data_path) and args.data_path.endswith(".h5"):
+        layer = []
+        neuron_ids, _ = datasets.get_h5_absolute_ids(args.data_path)
+        for neuron_n in np.sort(neuron_ids):
+            layer_neuron_n = datasets.get_neuron_attr(
+                args.data_path, neuron_n, "phyllum_layer"
+            )
+            layer_neuron_n = datasets.decode_string(layer_neuron_n)
+            layer.append(layer_neuron_n)
+        layer = np.array(layer)
+    else:
+        layer_path = os.path.join(args.data_path, "cluster_layer.tsv")
+        assert os.path.exists(
+            layer_path
+        ), "Layer information not found. Make sure to have a cluster_layer.tsv file in the data folder if you want to use it."
+        layer_df = pd.read_csv(
+            layer_path, sep="\t"
+        )  # layer will be in a cluster_layer.tsv file
+        layer = layer_df["layer"].values
+
+    if np.all(layer == 0):
+        print(
+            "Warning: all units are assigned to layer 0 (unknown). Make sure that the layer information is correct."
+        )
+        print("\nFalling back to no layer information.")
+        args.use_layer = False
+        one_hot_layer = None
+    else:
+        one_hot_layer = encode_layer_info(layer)
+
+    return one_hot_layer, args
+
+
+def prepare_dataset_from_h5(args):
+    _, dataset_class = extract_and_check(
+        args.data_path,
+        save=False,
+        _labels_only=False,
+        n_channels=4,
+        _extract_layer=args.use_layer,
+    )
+
+    dataset, _ = prepare_classification_dataset(
+        dataset_class,
+        normalise_acgs=False,
+        win_size=2000,
+        bin_size=1,
+        multi_chan_wave=False,
+        _acgs_path=None,
+        _acg_mask=None,
+        _acg_multi_factor=10,
+    )
+
+    return dataset, dataset_class.h5_ids.tolist()
+
+
+def prepare_dataset(args: ArgsNamespace) -> tuple:
+    """
+    Prepare the dataset for classification.
+
+    Args:
+        args (ArgsNamespace): The arguments namespace.
+
+    Returns:
+        tuple: A tuple containing two numpy arrays:
+            - dataset (numpy.ndarray): A 2D numpy array of shape (n_obs, n_features) containing the preprocessed ACGs
+            and waveforms for each observation.
+            - good_units (list): A list of unit ids that were included in the dataset.
+    """
+    if os.path.isfile(args.data_path) and args.data_path.endswith(".h5"):
+        prediction_dataset, good_units = prepare_dataset_from_h5(args.data_path)
+    else:
+        if args.units is not None:
+            units = args.units
+        else:
+            units = get_units(args.data_path, args.quality)
+        prediction_dataset, bad_units = prepare_dataset_from_binary(
+            args.data_path, units
+        )
+        good_units = [u for u in units if u not in bad_units]
+
+    return prediction_dataset, good_units
 
 
 def format_predictions(predictions_matrix: np.ndarray):
@@ -144,59 +235,44 @@ def format_predictions(predictions_matrix: np.ndarray):
     return predictions, mean_top_pred_confidence, delta_mean_confidences, n_votes
 
 
-def main():
-    parser = argparse.ArgumentParser()
+def main(
+    data_path: str = ".",
+    quality: str = "good",
+    units: Optional[list] = None,
+    mli_clustering: bool = False,
+    soft_layer: bool = False,
+    hard_layer: bool = False,
+    threshold: float = 0.5,
+) -> None:
+    """
+    Predicts the cell types of units in a given dataset using a pre-trained ensemble of classifiers.
 
-    parser.add_argument(
-        "-dp",
-        "--data-path",
-        type=str,
-        default=".",
-        help="Path to the folder containing the dataset.",
-    )
-    parser.add_argument(
-        "-q",
-        "--quality",
-        type=str,
-        choices=["all", "good"],
-        default="good",
-        help="Units of which quality we should classify.",
-    )
+    Args:
+        data_path (str, optional): Path to the ephys dataset folder. Defaults to ".".
+        quality (str, optional): Quality of the units to use. Must be either "all" or "good". Defaults to "good".
+        units (list, optional): List of unit IDs to use. If None, all units of "quality" will be used. Defaults to None.
+        mli_clustering (bool, optional): Whether to use MLI clustering. Defaults to False.
+        soft_layer (bool, optional): Whether to use soft layer information. Defaults to False.
+        hard_layer (bool, optional): Whether to use hard layer information. Defaults to False.
+        threshold (float, optional): Confidence threshold for cell type predictions. Defaults to 0.5.
 
-    parser.add_argument(
-        "--units",
-        nargs="+",
-        type=int,
-        default=None,
-        help="Which units to classify. If not specified, falls back to all units of 'quality' (all good units by default).",
-    )
-    parser.add_argument(
-        "--mli_clustering", action="store_true", help="Divide MLI into two clusters."
-    )
-    parser.set_defaults(mli_clustering=False)
-
-    parser.add_argument(
-        "--soft_layer",
-        action="store_true",
-        help="Use 'soft' layer information (if available).",
-    )
-    parser.set_defaults(soft_layer=False)
-
-    parser.add_argument(
-        "--hard_layer",
-        action="store_true",
-        help="Use 'hard' layer information (if available).",
-    )
-    parser.set_defaults(hard_layer=False)
-
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=0.5,
-        help="Threshold to keep model predictions.",
+    Returns:
+        None, but saves classifier results in files in the data folder.
+    """
+    args = ArgsNamespace(
+        data_path=data_path,
+        quality=quality,
+        units=units,
+        mli_clustering=mli_clustering,
+        soft_layer=soft_layer,
+        hard_layer=hard_layer,
+        threshold=threshold,
     )
 
-    args = parser.parse_args()
+    assert args.quality in [
+        "all",
+        "good",
+    ], "Invalid value for 'quality'. Must be either 'all' or 'good'."
 
     # Perform some checks on the data folder
     directory_checks(args.data_path)
@@ -204,24 +280,7 @@ def main():
     args.use_layer = args.soft_layer or args.hard_layer
 
     if args.use_layer:
-        layer_path = os.path.join(args.data_path, "cluster_layer.tsv")
-        assert os.path.exists(
-            layer_path
-        ), "Layer information not found. Make sure to have a cluster_layer.tsv file in the data folder if you want to use it."
-        layer_df = pd.read_csv(
-            layer_path, sep="\t"
-        )  # layer will be in a cluster_layer.tsv file
-        layer = layer_df["layer"].values
-
-        if np.all(layer == 0):
-            print(
-                "Warning: all units are assigned to layer 0 (unknown). Make sure that the layer information is correct."
-            )
-            print("Falling back to no layer information.")
-            args.use_layer = False
-            one_hot_layer = None
-        else:
-            one_hot_layer = encode_layer_info(layer)
+        one_hot_layer, args = get_layer_information(args)
     else:
         one_hot_layer = None
 
@@ -264,14 +323,7 @@ def main():
         )
 
     # Prepare the data for prediction
-    if args.units is not None:
-        units = args.units
-    else:
-        units = get_units(args.data_path, args.quality)
-
-    prediction_dataset, bad_units = prepare_dataset(args.data_path, units)
-
-    good_units = [u for u in units if u not in bad_units]
+    prediction_dataset, good_units = prepare_dataset(args)
 
     prediction_iterator = data.DataLoader(
         CustomDataset(
@@ -330,7 +382,9 @@ def main():
 
     confidence_passing = np.array(good_units)[confidence_mask]
 
-    for i, unit in enumerate(good_units):
+    for i, unit in tqdm(
+        enumerate(good_units), desc="Plotting predictions", total=len(good_units)
+    ):
         if unit not in confidence_passing:
             continue
         plot_features_1cell_vertical(
@@ -368,4 +422,56 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-dp",
+        "--data-path",
+        type=str,
+        default=".",
+        help="Path to the folder containing the dataset.",
+    )
+    parser.add_argument(
+        "-q",
+        "--quality",
+        type=str,
+        choices=["all", "good"],
+        default="good",
+        help="Units of which quality we should classify.",
+    )
+
+    parser.add_argument(
+        "--units",
+        nargs="+",
+        type=int,
+        default=None,
+        help="Which units to classify. If not specified, falls back to all units of 'quality' (all good units by default).",
+    )
+    parser.add_argument(
+        "--mli_clustering", action="store_true", help="Divide MLI into two clusters."
+    )
+    parser.set_defaults(mli_clustering=False)
+
+    parser.add_argument(
+        "--soft_layer",
+        action="store_true",
+        help="Use 'soft' layer information (if available).",
+    )
+    parser.set_defaults(soft_layer=False)
+
+    parser.add_argument(
+        "--hard_layer",
+        action="store_true",
+        help="Use 'hard' layer information (if available).",
+    )
+    parser.set_defaults(hard_layer=False)
+
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Threshold to keep model predictions.",
+    )
+
+    args = parser.parse_args()
+    main(**vars(args))

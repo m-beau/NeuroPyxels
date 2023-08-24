@@ -131,7 +131,11 @@ def metadata(dp):
             meta_oe = json.load(f)
 
         # find probe version
-        oe_probe_version = meta_oe["continuous"][0]["source_processor_name"]
+        for i,processor in enumerate(meta_oe['continuous']):
+            if 'Neuropix-PXI' in processor["source_processor_name"]:
+                probe_index = i
+                break
+        oe_probe_version = meta_oe["continuous"][probe_index]["source_processor_name"]
         assert oe_probe_version in probe_versions['oe'].keys(),\
             f'WARNING only probe version {oe_probe_version} not handled with openEphys - post an issue at www.github.com/m-beau/NeuroPyxels'
         meta['probe_version']=probe_versions['oe'][oe_probe_version]
@@ -139,12 +143,20 @@ def metadata(dp):
 
         # Find conversion factor
         # should be 0.19499999284744262695
-        meta['bit_uV_conv_factor']=meta_oe["continuous"][0]["channels"][0]["bit_volts"]
+        meta['bit_uV_conv_factor']=meta_oe["continuous"][probe_index]["channels"][0]["bit_volts"]
+
+        # index for highpass and lowpass
+        filt_index = {'highpass': [], 'lowpass': []}
+        for i,processor in enumerate(meta_oe['continuous']):
+            if 'AP' in processor['folder_name']:
+                filt_index['highpass'] = i
+            if 'LFP' in processor['folder_name']:
+                filt_index['lowpass'] = i
 
         # find everything else
         for filt_key in ['highpass','lowpass']:
             meta[filt_key]={}
-            filt_key_i={'highpass':0, 'lowpass':1}[filt_key]
+            filt_key_i=filt_index[filt_key]
             meta[filt_key]['sampling_rate']=int(meta_oe["continuous"][filt_key_i]['sample_rate'])
             meta[filt_key]['n_channels_binaryfile']=int(meta_oe["continuous"][filt_key_i]['num_channels'])
             if params_f.exists():
@@ -379,9 +391,13 @@ def get_binary_file_path(dp, filt_suffix='ap', absolute_path=True):
     Wrapper of get_glx_file_path:
     {get_glx_file_path.__doc__}
     '''
-    
-    return get_glx_file_path(dp, 'bin', filt_suffix, absolute_path)
 
+    if 'continuous' in os.listdir(dp):
+        meta = read_metadata(dp)
+        return f'{dp}/continuous/{meta["highpass"]["folder_name"][:-1]}/continuous.dat'
+    else:
+        return get_glx_file_path(dp, 'bin', filt_suffix, absolute_path)
+    
 def get_meta_file_path(dp, filt_suffix='ap', absolute_path=True):
     f'''Return the path of the meta file (.meta) from a directory.
 

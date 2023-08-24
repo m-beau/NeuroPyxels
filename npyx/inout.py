@@ -153,6 +153,7 @@ def metadata(dp):
             if 'LFP' in processor['folder_name']:
                 filt_index['lowpass'] = i
 
+
         # find everything else
         for filt_key in ['highpass','lowpass']:
             meta[filt_key]={}

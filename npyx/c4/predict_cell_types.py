@@ -39,10 +39,13 @@ from .run_deep_classifier import (
 )
 
 MODELS_URL_DICT = {
-    "base": "https://figshare.com/ndownloader/files/42117042?private_link=2530fd0da03e18296d51"
+    "base": "https://figshare.com/ndownloader/files/42117042?private_link=2530fd0da03e18296d51",
+    "mli_clustering": "https://figshare.com/ndownloader/files/42129447?private_link=d508ebc51d544ed8cd4c",
 }
+
 HESSIANS_URL_DICT = {
     "base": "https://figshare.com/ndownloader/files/42117033?private_link=2530fd0da03e18296d51",
+    "mli_clustering": "https://figshare.com/ndownloader/files/42129435?private_link=d508ebc51d544ed8cd4c",
 }
 
 

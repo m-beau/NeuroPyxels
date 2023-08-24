@@ -335,7 +335,6 @@ def prepare_classification_dataset(
         acgs = np.nan_to_num(acgs / acgs_max[:, None])
 
     classification_dataset = np.concatenate((acgs, waveforms), axis=1)
-    print(f"Dataset shape: {classification_dataset.shape}")
     return classification_dataset, acgs_max
 
 

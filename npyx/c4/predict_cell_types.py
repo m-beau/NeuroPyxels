@@ -39,20 +39,20 @@ from .run_deep_classifier import (
 )
 
 MODELS_URL_DICT = {
-    "base": "https://figshare.com/ndownloader/files/41706915?private_link=2530fd0da03e18296d51"
+    "base": "https://figshare.com/ndownloader/files/42117042?private_link=2530fd0da03e18296d51"
 }
 HESSIANS_URL_DICT = {
-    "base": "https://figshare.com/ndownloader/files/41706540?private_link=2530fd0da03e18296d51",
+    "base": "https://figshare.com/ndownloader/files/42117033?private_link=2530fd0da03e18296d51",
 }
 
 
 def directory_checks(data_path):
     assert os.path.exists(data_path), "Data folder does not exist."
-
-    if os.path.isfile(args.data_path) and args.data_path.endswith(".h5"):
+    if os.path.isfile(data_path) and data_path.endswith(".h5"):
         print(
             "You are using an h5 file as input. Make sure it is formatted correctly accoring to the C4 collaboration pipeline."
         )
+        return
 
     assert os.path.isdir(data_path), "Data folder is not a directory."
     assert os.path.exists(
@@ -147,13 +147,14 @@ def get_layer_information(args):
     return one_hot_layer, args
 
 
-def prepare_dataset_from_h5(args):
+def prepare_dataset_from_h5(data_path):
     _, dataset_class = extract_and_check(
-        args.data_path,
+        data_path,
         save=False,
+        labelled=False,
         _labels_only=False,
         n_channels=4,
-        _extract_layer=args.use_layer,
+        _extract_layer=False,
     )
 
     dataset, _ = prepare_classification_dataset(
@@ -370,12 +371,21 @@ def main(
     confidence_mask = predictions_df["confidence"] >= args.threshold
     predictions_df = predictions_df[confidence_mask]
 
+    # If running on an .h5 file we need to create a save directory
+    if os.path.isfile(args.data_path) and args.data_path.endswith(".h5"):
+        save_path = os.path.join(Path(args.data_path).parent, Path(args.data_path).stem)
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+    else:
+        save_path = args.data_path
+
+    # Save the predictions to a file that can be read by phy
     predictions_df.to_csv(
-        os.path.join(args.data_path, "cluster_cell_types.tsv"), sep="\t", index=False
+        os.path.join(save_path, "cluster_cell_types.tsv"), sep="\t", index=False
     )
 
     # Finally make summary plots of the classifier output
-    plots_folder = os.path.join(args.data_path, "cell_type_classification")
+    plots_folder = os.path.join(save_path, "cell_type_classification")
 
     if not os.path.exists(plots_folder):
         os.makedirs(plots_folder)
@@ -403,8 +413,7 @@ def main(
             fs=30000,
             unit_id=unit,
         )
-    # m = raw_probabilities.mean(2).max(1) >= args.threshold
-    # masked_raw_probas = raw_probabilities[m,:,:].mean(2)
+
     plot_survival_confidence(
         raw_probabilities,
         correspondence,

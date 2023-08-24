@@ -41,11 +41,15 @@ from .run_deep_classifier import (
 MODELS_URL_DICT = {
     "base": "https://figshare.com/ndownloader/files/42117042?private_link=2530fd0da03e18296d51",
     "mli_clustering": "https://figshare.com/ndownloader/files/42129447?private_link=d508ebc51d544ed8cd4c",
+    "layer_information": "https://figshare.com/ndownloader/files/42130083?private_link=6531855c261b7bad032d",
+    "layer_information_mli_clustering": "https://figshare.com/ndownloader/files/42130119?private_link=3a81e48aff77d844a402",
 }
 
 HESSIANS_URL_DICT = {
     "base": "https://figshare.com/ndownloader/files/42117033?private_link=2530fd0da03e18296d51",
     "mli_clustering": "https://figshare.com/ndownloader/files/42129435?private_link=d508ebc51d544ed8cd4c",
+    "layer_information": "https://figshare.com/ndownloader/files/42130065?private_link=6531855c261b7bad032d",
+    "layer_information_mli_clustering": "https://figshare.com/ndownloader/files/42130095?private_link=3a81e48aff77d844a402",
 }
 
 
@@ -301,7 +305,7 @@ def main(
     # Set the labelling and correspondence based on whether we are using mli_clustering or not
     if args.mli_clustering:
         labelling = datasets.LABELLING_MLI_CLUSTER_NO_GRC
-        correspondence = datasets.LABELLING_MLI_CLUSTER_NO_GRC
+        correspondence = datasets.CORRESPONDENCE_MLI_CLUSTER_NO_GRC
     else:
         labelling = datasets.LABELLING_NO_GRC
         correspondence = datasets.CORRESPONDENCE_NO_GRC

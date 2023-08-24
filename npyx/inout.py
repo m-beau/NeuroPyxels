@@ -395,7 +395,10 @@ def get_binary_file_path(dp, filt_suffix='ap', absolute_path=True):
 
     if 'continuous' in os.listdir(dp):
         meta = read_metadata(dp)
-        return f'{dp}/continuous/{meta["highpass"]["folder_name"][:-1]}/continuous.dat'
+        if 'ap' in filt_suffix:
+            return f'{dp}/continuous/{meta["highpass"]["folder_name"][:-1]}/continuous.dat'
+        if 'lf' in filt_suffix:
+            return f'{dp}/continuous/{meta["lowpass"]["folder_name"][:-1]}/continuous.dat'
     else:
         return get_glx_file_path(dp, 'bin', filt_suffix, absolute_path)
     

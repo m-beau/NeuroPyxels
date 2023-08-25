@@ -391,12 +391,20 @@ def main(
         os.path.join(save_path, "cluster_cell_types.tsv"), sep="\t", index=False
     )
 
-    # Finally make summary plots of the classifier output
+    # Save the raw probabilities and the label correspondence for power users
     plots_folder = os.path.join(save_path, "cell_type_classification")
-
     if not os.path.exists(plots_folder):
         os.makedirs(plots_folder)
 
+    np.save(
+        os.path.join(plots_folder, "ensemble_predictions_ncells_nclasses_nmodels.npy"),
+        raw_probabilities,
+    )
+    pd.DataFrame(correspondence, index=[0]).to_csv(
+        os.path.join(plots_folder, "label_correspondence.tsv"), sep="\t", index=False
+    )
+
+    # Finally make summary plots of the classifier output
     confidence_passing = np.array(good_units)[confidence_mask]
 
     for i, unit in tqdm(
@@ -415,7 +423,7 @@ def main(
             cbin=1,
             cwin=2000,
             figsize=(10, 4),
-            LABELMAP=datasets.CORRESPONDENCE_NO_GRC,
+            LABELMAP=correspondence,
             C4_COLORS=C4_COLORS,
             fs=30000,
             unit_id=unit,
@@ -426,14 +434,6 @@ def main(
         correspondence,
         ignore_below_confidence=args.threshold,
         saveDir=plots_folder,
-    )
-    # Save the raw probabilities and the label correspondence for power users
-    np.save(
-        os.path.join(plots_folder, "ensemble_predictions_ncells_nclasses_nmodels.npy"),
-        raw_probabilities,
-    )
-    pd.DataFrame(correspondence, index=[0]).to_csv(
-        os.path.join(plots_folder, "label_correspondence.tsv"), sep="\t", index=False
     )
 
 

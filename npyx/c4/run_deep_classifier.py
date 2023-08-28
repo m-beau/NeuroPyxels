@@ -73,6 +73,7 @@ from .dataset_init import (
     WAVEFORM_SAMPLES,
     WIN_SIZE,
     ArgsNamespace,
+    download_file,
     extract_and_check,
     get_paths_from_dir,
     prepare_classification_dataset,
@@ -88,20 +89,21 @@ from .dl_utils import (
 
 SEED = 42
 
+VAES_URL = (
+    "https://figshare.com/ndownloader/files/42144024?private_link=93152fd04f501c7760c5"
+)
+
 WVF_VAE_PATH_SINGLE = os.path.join(
     Path.home(),
-    "Dropbox",
-    "celltypes-classification",
-    "data_format",
-    "final_vaes",
-    "VAE_encoder_singchan_Jun-01-2023_b5_GELU.pt",
+    ".npyx_c4_resources",
+    "vaes",
+    "wvf_singlechannel_encoder.pt",
 )
 ACG_VAE_PATH = os.path.join(
     Path.home(),
-    "Dropbox",
-    "celltypes-classification",
-    "deep_models",
-    "Jun-09-2023-raw_3DACG_encoder_b5_avgpool_logscale.pt",
+    ".npyx_c4_resources",
+    "vaes",
+    "3DACG_logscale_encoder.pt",
 )
 
 WVF_ENCODER_ARGS_SINGLE = {
@@ -124,11 +126,31 @@ WVF_ENCODER_ARGS_MULTI = {
     "device": "cpu",
 }
 
-# WVF_VAE_PATH_MULTI = "/home/npyx/Dropbox/celltypes-classification/deep_models/Aug-19-2023-b5-multichan-encoder.pt"
-
-WVF_VAE_PATH_MULTI = "/home/npyx/Dropbox/celltypes-classification/deep_models/Aug-21-2023-b5-4chan-multichan-encoder.pt"
+WVF_VAE_PATH_MULTI = os.path.join(
+    Path.home(),
+    ".npyx_c4_resources",
+    "vaes",
+    "wvf_multichannel_encoder.pt",
+)
 
 N_CHANNELS = 10
+
+
+def download_vaes():
+    models_folder = os.path.join(Path.home(), ".npyx_c4_resources", "vaes")
+    if not os.path.exists(models_folder) or len(os.listdir(models_folder)) < 5:
+        os.makedirs(models_folder, exist_ok=True)
+        print("VAE checkpoints were not found, downloading...")
+
+        vaes_archive = os.path.join(models_folder, "vaes.tar")
+        download_file(
+            VAES_URL, vaes_archive, description="Downloading VAEs checkpoints"
+        )
+
+        with tarfile.open(vaes_archive, "r:") as tar:
+            for file in tar:
+                tar.extract(file, models_folder)
+        os.remove(vaes_archive)
 
 
 class CustomCompose:
@@ -1374,6 +1396,8 @@ def main(
     )
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
+
+    download_vaes()
 
     results_dict = cross_validate(
         dataset,

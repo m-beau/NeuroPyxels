@@ -1681,10 +1681,14 @@ def h5_feature_extraction(
                 if isinstance(dataset_path, NeuronsDataset):
                     chanmap = dataset.chanmap_list[i]
                     chanmap = np.array(chanmap)
-                    if waveform.shape[0] > chanmap.shape[0]:
+                    if chanmap.shape[0] == 0:
+                        # In this case the chanmap is invalid and we need to discard it
+                        chanmap = None
+                    elif waveform.shape[0] > chanmap.shape[0]:
                         # If this happened, the waveform was tiled and we need to recover
                         # the original one to match the chanmap
                         waveform = waveform[waveform.shape[0] - chanmap.shape[0] :, :]
+
                 else:
                     chanmap_path = f"datasets/{dataset.info[i]}/channelmap"
                     with h5py.File(dataset_path, "r") as hdf5_file:
@@ -1738,15 +1742,15 @@ def get_unusable_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Returns the index of unusable features
     """
-    df_copy = df.replace([np.inf, -np.inf], np.nan)
-    features_only = df_copy.iloc[:, 2:]
+    df = df.replace([np.inf, -np.inf], np.nan)
+    features_only = df.iloc[:, 2:]
     bad_idx = []
     for i, row in features_only.iterrows():
         value, count = np.unique(row.to_numpy(), return_counts=True)
         zeros = count[value == 0]
         if zeros.size > 0 and zeros > 5:
             bad_idx.append(i)
-    bad_idx += df_copy.index[df_copy.isna().any(axis=1)]
+    bad_idx += df.index[df.isna().any(axis=1)].tolist()
     return np.unique(bad_idx)
 
 

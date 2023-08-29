@@ -321,6 +321,7 @@ class NeuronsDataset:
 
         # Initialise empty lists to extract data
         self.wf_list = []
+        self.conformed_waveforms = []
         self.acg_list = []
         self.spikes_list = []
         self.labels_list = []
@@ -368,10 +369,6 @@ class NeuronsDataset:
                         mli_cluster = mli_cluster.replace("1", "A").replace("2", "B")
                         label = mli_cluster
                     self.labels_list.append(label)
-
-                # elif label != 0:
-                #     label = label.item()
-                #     self.labels_list.append(label)
 
                 else:
                     if _labels_only:
@@ -483,8 +480,13 @@ class NeuronsDataset:
                 # Alternatively, if it is not spread on enough channels, we want to tile the remaining
                 if wf.shape[0] < n_channels:
                     wf = pad_matrix_with_decay(wf, n_channels)
-                    # repeats = [wf[0][None, :]] * (n_channels - wf.shape[0])
-                    # wf = np.concatenate((*repeats, wf), axis=0)
+
+                # Extract the waveform conformed to the common preprocessing strategy in C4
+                peak_chan = np.argmax(np.ptp(wf, axis=1))
+                conformed_wave = preprocess_template(
+                    wf[peak_chan, :], self._sampling_rate
+                )
+                self.conformed_waveforms.append(conformed_wave)
 
                 if normalise_wvf:
                     cropped_wave, peak_idx = crop_original_wave(
@@ -529,6 +531,7 @@ class NeuronsDataset:
                     del self.labels_list[-1]
                     del self.wf_list[-1]
                     del self.spikes_list[-1]
+                    del self.conformed_waveforms[-1]
 
                     if not quality_check:
                         del self.fn_fp_list[-1]
@@ -669,11 +672,11 @@ class NeuronsDataset:
         )
 
         # Compute conformed_waveforms
-        self.conformed_waveforms = []
-        for wf in self.wf.reshape(-1, self._n_channels, self._central_range):
-            peak_chan = np.argmax(np.max(np.abs(wf), axis=1))
-            conformed_wave = preprocess_template(wf[peak_chan, :], self._sampling_rate)
-            self.conformed_waveforms.append(conformed_wave)
+        # self.conformed_waveforms = []
+        # for wf in self.wf.reshape(-1, self._n_channels, self._central_range):
+        #     peak_chan = np.argmax(np.max(np.abs(wf), axis=1))
+        #     conformed_wave = preprocess_template(wf[peak_chan, :], self._sampling_rate)
+        #     self.conformed_waveforms.append(conformed_wave)
         self.conformed_waveforms = np.stack(self.conformed_waveforms, axis=0)
 
         self.h5_ids = np.array(self.h5_ids)

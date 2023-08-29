@@ -228,19 +228,9 @@ class CustomDataset(data.Dataset):
         else:
             acg = data_point[:2010].reshape(10, 201)[:, 100:].ravel()
 
+        waveform = data_point[2010:]
         if self.wave_transform is not None:
-            waveform = data_point[2010:]
             waveform = self.wave_transform(waveform).squeeze()
-        elif len(data_point[2010:]) == 90 or self.multi_chan_wave:
-            # leave it as is
-            waveform = data_point[2010:]
-        else:
-            waveform = datasets.preprocess_template(
-                data_point[2010:].reshape(N_CHANNELS, WAVEFORM_SAMPLES)[
-                    N_CHANNELS // 2, :
-                ]
-            )
-
         if self.layer is not None:
             data_point = np.concatenate((acg.ravel(), waveform, layer)).astype(
                 "float32"
@@ -528,10 +518,7 @@ class CNNCerebellum(nn.Module):
                 param.requires_grad = False
         self.fc1 = nn.LazyLinear(100)
         self.fc2 = nn.LazyLinear(n_classes)
-        if self.use_layer:
-            self.batch_norm = nn.BatchNorm1d(24)
-        else:
-            self.batch_norm = nn.BatchNorm1d(20)
+        self.batch_norm = nn.BatchNorm1d(24) if self.use_layer else nn.BatchNorm1d(20)
 
     def forward(self, x):
         acg = x[:, :1010]
@@ -913,9 +900,7 @@ def cross_validate(
 
     set_seed(SEED, seed_torch=True)
 
-    for run_i in tqdm(
-        range(N_RUNS), desc="Cross-validation run", position=0, leave=True
-    ):
+    for _ in tqdm(range(N_RUNS), desc="Cross-validation run", position=0, leave=True):
         run_train_accuracies = []
         run_true_targets = []
         run_model_pred = []
@@ -1321,11 +1306,7 @@ def main(
     )
 
     global N_CHANNELS
-    if args.multi_chan_wave:
-        N_CHANNELS = 4
-    else:
-        N_CHANNELS = 10
-
+    N_CHANNELS = 4 if args.multi_chan_wave else 10
     assert (
         np.array([args.freeze, args.random_init]).sum() <= 1
     ), "Only one of the two can be True"
@@ -1337,7 +1318,7 @@ def main(
         *datasets_abs,
         save=False,
         _labels_only=True,
-        normalise_wvf=not args.multi_chan_wave,
+        normalise_wvf=False,
         n_channels=N_CHANNELS,
         _extract_mli_clusters=args.mli_clustering,
         _extract_layer=args.use_layer,
@@ -1352,7 +1333,7 @@ def main(
     dataset, _ = prepare_classification_dataset(
         checked_dataset,
         normalise_acgs=False,
-        multi_chan_wave=True,
+        multi_chan_wave=args.multi_chan_wave or args.augment_wvf,
         process_multi_channel=args.multi_chan_wave,
         _acgs_path=os.path.join(
             args.data_folder, "acgs_vs_firing_rate", "acgs_3d_logscale.npy"
@@ -1388,7 +1369,7 @@ def main(
 
     save_folder = os.path.join(
         args.data_folder,
-        "dataset_1",
+        "feature_spaces_1",
         f"encoded_acg_wvf{features_suffix}",
         model_name,
         f"mouse_results{cv_string}",
@@ -1429,7 +1410,7 @@ def main(
     if args.use_layer:
         new_save_folder = os.path.join(
             args.data_folder,
-            "dataset_1",
+            "feature_spaces_1",
             f"encoded_acg_wvf{features_suffix.split('_soft_layer')[0]}_hard_layer",
             model_name,
             f"mouse_results{cv_string}",
@@ -1464,7 +1445,7 @@ def main(
         datasets_abs,
         save_folder="",
         save=False,
-        normalise_wvf=not args.multi_chan_wave,
+        normalise_wvf=False,
         lisberger=True,
         _label="expert_label",
         n_channels=N_CHANNELS,
@@ -1523,7 +1504,7 @@ def main(
 
     save_folder_monkey = os.path.join(
         args.data_folder,
-        "dataset_1",
+        "feature_spaces_1",
         f"encoded_acg_wvf{features_suffix}",
         model_name,
         "monkey_results",
@@ -1558,7 +1539,7 @@ def main(
     if args.use_layer:
         new_save_folder_monkey = os.path.join(
             args.data_folder,
-            "dataset_1",
+            "feature_spaces_1",
             f"encoded_acg_wvf{features_suffix.split('_soft_layer')[0]}_hard_layer",
             model_name,
             "monkey_results",

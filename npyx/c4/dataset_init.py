@@ -313,13 +313,12 @@ def prepare_classification_dataset(
             acgs.append(acg_3d.ravel())
         if not multi_chan_wave:
             processed_wave = dataset.conformed_waveforms[i]
+        elif process_multi_channel:
+            processed_wave = datasets.preprocess_template(
+                dataset.wf[i].reshape(_n_channels, -1)
+            ).ravel()
         else:
-            if process_multi_channel:
-                processed_wave = datasets.preprocess_template(
-                    dataset.wf[i].reshape(_n_channels, -1)
-                ).ravel()
-            else:
-                processed_wave = dataset.wf[i]
+            processed_wave = dataset.wf[i]
 
         waveforms.append(processed_wave)
     acgs = (
@@ -463,7 +462,7 @@ def save_wvf(waveform, save_name=None):
         raise NotImplementedError("Please specify a save name")
 
     plt.figure()
-    npyx_plot.plt_wvf(waveform, figh_inch=8, figw_inch=5, title=str(save_name))
+    npyx_plot.plt_wvf(waveform, figh_inch=8, figw_inch=5, title=str(save_name).split("/")[-1])
 
     plt.savefig(f"{save_name}-wvf.pdf", format="pdf", bbox_inches="tight")
     plt.close()

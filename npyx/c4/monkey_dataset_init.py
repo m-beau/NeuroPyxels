@@ -26,7 +26,7 @@ def get_lisberger_dataset(data_path):
 MONKEY_CENTRAL_RANGE = int(WAVEFORM_SAMPLES * 40_000 / 30_000)
 
 
-def main(data_folder=".", plot=True, name="dataset_1", WM=False):
+def main(data_folder=".", plot=True, name="feature_spaces_1", WM=False):
     # Parse the arguments into a class to preserve compatibility
     args = ArgsNamespace(data_folder=data_folder, plot=plot, name=name, WM=WM)
 
@@ -338,7 +338,7 @@ if __name__ == "__main__":
         "-n",
         "--name",
         type=str,
-        default="dataset_1",
+        default="feature_spaces_1",
         help="Name assigned to the dataset.",
     )
 

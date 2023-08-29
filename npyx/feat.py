@@ -1738,16 +1738,15 @@ def get_unusable_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Returns the index of unusable features
     """
-    df = df.replace([np.inf, -np.inf], np.nan)
-    features_only = df.iloc[:, 2:]
+    df_copy = df.replace([np.inf, -np.inf], np.nan)
+    features_only = df_copy.iloc[:, 2:]
     bad_idx = []
     for i, row in features_only.iterrows():
         value, count = np.unique(row.to_numpy(), return_counts=True)
         zeros = count[value == 0]
         if zeros.size > 0 and zeros > 5:
             bad_idx.append(i)
-    bad_idx += df.index[df.isna().any(axis=1)].tolist()
-
+    bad_idx += df_copy.index[df_copy.isna().any(axis=1)]
     return np.unique(bad_idx)
 
 

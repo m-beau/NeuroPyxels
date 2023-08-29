@@ -1,15 +1,14 @@
 import argparse
 import os
-import sys
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from imblearn.over_sampling import SMOTE, RandomOverSampler
+from imblearn.over_sampling import RandomOverSampler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessClassifier
@@ -25,7 +24,7 @@ import npyx.plot as npyx_plot
 from npyx.ml import run_cross_validation
 
 from . import plots_functions as pf
-from .dataset_init import save_results
+from .dataset_init import ArgsNamespace, save_results
 
 matplotlib.rcParams["pdf.fonttype"] = 42  # necessary to make the text editable
 matplotlib.rcParams["ps.fonttype"] = 42
@@ -134,6 +133,7 @@ def plot_feature_importance(
 
 
 def filter_out_granule_cells(features, targets, return_dicts=False):
+    # sourcery skip: move-assign
     global LABELLING
     global CORRESPONDENCE
 
@@ -156,7 +156,6 @@ def filter_out_granule_cells(features, targets, return_dicts=False):
 
     # To do the inverse
     CORRESPONDENCE = {4: "PkC_cs", 3: "PkC_ss", 2: "MFB", 1: "MLI", 0: "GoC"}
-
     if return_dicts:
         return features, targets, LABELLING, CORRESPONDENCE
 
@@ -193,6 +192,7 @@ def save_predictions_df(
     ]
 
     engineered_features = "engineered" in args.features_folder
+
     if engineered_features:
         dataset_info["included"] = (
             dataset_info["features_ok"] * dataset_info["included"]
@@ -247,66 +247,24 @@ def get_model_class(args):
     return model_class, default_params
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Run a baseline model on the given features."
+def main(
+    features_folder: str = ".",
+    use_granule: bool = False,
+    importance: bool = False,
+    train_monkey: bool = False,
+    model: str = "logistic_regression",
+    kernel: str = "rbf",
+    loo: bool = False,
+):
+    args = ArgsNamespace(
+        features_folder=features_folder,
+        use_granule=use_granule,
+        importance=importance,
+        train_monkey=train_monkey,
+        model=model,
+        kernel=kernel,
+        loo=loo,
     )
-
-    parser.add_argument(
-        "-f",
-        "--features-folder",
-        type=str,
-        default=".",
-        help="Path to the folder containing the features dataframe.",
-    )
-
-    parser.add_argument(
-        "-g",
-        "--use-granule",
-        type=bool,
-        default=False,
-        help="Whether to use GrCs or not.",
-    )
-
-    parser.add_argument("--importance", action="store_true")
-    parser.set_defaults(importance=False)
-
-    parser.add_argument("--pred-monkey", action="store_true")
-    parser.set_defaults(pred_monkey=False)
-
-    parser.add_argument(
-        "--train-monkey",
-        action="store_true",
-        help="Trains the model on monkey data instead of mouse.",
-    )
-    parser.set_defaults(train_monkey=False)
-
-    parser.add_argument(
-        "--test-mouse",
-        action="store_true",
-        help="Tests the model on mouse data instead of monkey.",
-    )
-    parser.set_defaults(test_mouse=False)
-
-    parser.add_argument(
-        "--model",
-        choices=[
-            "random_forest",
-            "logistic_regression",
-            "gaussian_process",
-        ],
-        default="logistic_regression",
-        help="The sklearn model class that will be used to train.",
-    )
-
-    parser.add_argument(
-        "--kernel",
-        choices=["dot_product", "rbf", "matern"],
-        default="rbf",
-        help="The kernel to be used in GP classification",
-    )
-
-    args = parser.parse_args()
 
     features_name = str(Path(args.features_folder)).split("/")[-1]
     features_name = " ".join((features_name).split("_"))
@@ -348,7 +306,7 @@ def main():
         CROSS_VAL_REPEATS,
         default_params,
         oversampler=None,
-        kfold=StratifiedKFold(n_splits=5, shuffle=True),
+        kfold=LeaveOneOut() if args.loo else StratifiedKFold(n_splits=5, shuffle=True),
         model_class=model_class,
         get_importance=args.importance,
         scaler=StandardScaler(),
@@ -477,4 +435,61 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Run a baseline model on the given features."
+    )
+
+    parser.add_argument(
+        "-f",
+        "--features-folder",
+        type=str,
+        default=".",
+        help="Path to the folder containing the features dataframe.",
+    )
+
+    parser.add_argument(
+        "-g",
+        "--use-granule",
+        type=bool,
+        default=False,
+        help="Whether to use GrCs or not.",
+    )
+
+    parser.add_argument("--importance", action="store_true")
+    parser.set_defaults(importance=False)
+
+    parser.add_argument(
+        "--train-monkey",
+        action="store_true",
+        help="Trains the model on monkey data instead of mouse.",
+    )
+    parser.set_defaults(train_monkey=False)
+
+    parser.add_argument(
+        "--model",
+        choices=[
+            "random_forest",
+            "logistic_regression",
+            "gaussian_process",
+        ],
+        default="logistic_regression",
+        help="The sklearn model class that will be used to train.",
+    )
+
+    parser.add_argument(
+        "--kernel",
+        choices=["dot_product", "rbf", "matern"],
+        default="rbf",
+        help="The kernel to be used in GP classification",
+    )
+
+    parser.add_argument(
+        "--loo",
+        action="store_true",
+        help="Whether to use leave one out cross validation.",
+    )
+    parser.set_defaults(loo=False)
+
+    args = parser.parse_args()
+
+    main(**vars(args))

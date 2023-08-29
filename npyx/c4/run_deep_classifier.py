@@ -29,7 +29,7 @@ with contextlib.suppress(ImportError):
 
 try:
     from laplace import BaseLaplace, Laplace
-    from laplace.utils import FeatureExtractor, KronDecomposed
+    from laplace.utils import KronDecomposed
 except ImportError:
     KronDecomposed = None
     BaseLaplace = None
@@ -69,7 +69,6 @@ from . import plots_functions as pf
 from . import waveform_augmentations
 from .dataset_init import (
     BIN_SIZE,
-    N_CHANNELS,
     WAVEFORM_SAMPLES,
     WIN_SIZE,
     ArgsNamespace,

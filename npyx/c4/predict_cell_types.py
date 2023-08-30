@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 if __name__ == "__main__":
     __package__ = "npyx.c4"
@@ -18,6 +19,12 @@ except ImportError:
     pass
 
 from tqdm.auto import tqdm
+
+from joblib import Parallel, delayed
+import multiprocessing
+from multiprocessing import Pool, Lock
+
+
 
 import npyx.corr as corr
 import npyx.datasets as datasets
@@ -107,6 +114,66 @@ def prepare_dataset(dp, units):
     return np.concatenate((acgs_3d, waveforms), axis=1), bad_units
 
 
+def aux_prepare_dataset(dp, u):
+    t = trn(dp, u)
+    if len(t) < 100:
+        #Bad units
+        return [True, [], []]
+
+    # We set period_m to None to use the whole recording
+    t, _ = trn_filtered(dp, u, period_m=None)
+    if len(t) < 10:
+        #Bad units
+        return [True, [], []]
+
+
+    wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
+    waveforms = datasets.preprocess_template(wvf)
+
+    _, acg = corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
+    acg, _ = corr.convert_acg_log(acg, 1, 2000)
+    acgs_3d = acg.ravel() * 10
+
+    return [False, waveforms, acgs_3d]
+
+def prepare_dataset_parallel(dp, units):
+
+    waveforms = []
+    acgs_3d = []
+    bad_units = []
+
+    num_cores = len(units)
+    max_num_cores = multiprocessing.cpu_count() if multiprocessing.cpu_count() < 60 else 60
+    if num_cores > max_num_cores:
+        num_cores = max_num_cores
+
+    dataset_results = Parallel(n_jobs=num_cores, prefer="processes")(delayed(aux_prepare_dataset)(dp, u) for u in tqdm(units, desc="Preparing waveforms and ACGs for classification"))
+
+
+    for i in range(len(units)):
+        if dataset_results[i][0]==True:
+            bad_units.append(units[i])
+        else:
+            waveforms.append(dataset_results[i][1])
+            acgs_3d.append(dataset_results[i][2])
+
+    if len(bad_units) > 0:
+        print(
+            f"Units {str(bad_units)[1:-1]} were skipped because they had too few good spikes."
+        )
+    acgs_3d = np.array(acgs_3d)
+    waveforms = np.array(waveforms)
+
+    if len(acgs_3d) == 0:
+        raise ValueError(
+            "No units were found with the provided parameter choices after quality checks."
+        )
+
+    return np.concatenate((acgs_3d, waveforms), axis=1), bad_units
+
+
+
+
 def format_predictions(predictions_matrix: np.ndarray):
     """
     Formats the predictions matrix by computing the mean predictions, prediction confidences, delta mean confidences,
@@ -145,6 +212,9 @@ def format_predictions(predictions_matrix: np.ndarray):
 
 
 def main():
+    start_time = time.time()
+
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -269,7 +339,10 @@ def main():
     else:
         units = get_units(args.data_path, args.quality)
 
-    prediction_dataset, bad_units = prepare_dataset(args.data_path, units)
+    #prediction_dataset, bad_units = prepare_dataset(args.data_path, units)
+    prediction_dataset, bad_units = prepare_dataset_parallel(args.data_path, units)
+
+
 
     good_units = [u for u in units if u not in bad_units]
 
@@ -330,25 +403,33 @@ def main():
 
     confidence_passing = np.array(good_units)[confidence_mask]
 
-    for i, unit in enumerate(good_units):
-        if unit not in confidence_passing:
-            continue
-        plot_features_1cell_vertical(
-            i,
-            prediction_dataset[:, :2010].reshape(-1, 10, 201) * 100,
-            prediction_dataset[:, 2010:],
-            predictions=raw_probabilities,
-            saveDir=plots_folder,
-            fig_name=f"unit_{unit}_cell_type_predictions",
-            plot=False,
-            cbin=1,
-            cwin=2000,
-            figsize=(10, 4),
-            LABELMAP=datasets.CORRESPONDENCE_NO_GRC,
-            C4_COLORS=C4_COLORS,
-            fs=30000,
-            unit_id=unit,
-        )
+    def aux_plot_features_1cell_vertical(i, unit):
+        if unit in confidence_passing:
+            plot_features_1cell_vertical(
+                i,
+                prediction_dataset[:, :2010].reshape(-1, 10, 201) * 100,
+                prediction_dataset[:, 2010:],
+                predictions=raw_probabilities,
+                saveDir=plots_folder,
+                fig_name=f"unit_{unit}_cell_type_predictions",
+                plot=False,
+                cbin=1,
+                cwin=2000,
+                figsize=(10, 4),
+                LABELMAP=datasets.CORRESPONDENCE_NO_GRC,
+                C4_COLORS=C4_COLORS,
+                fs=30000,
+                unit_id=unit,
+            )
+
+    num_cores = len(units)
+    max_num_cores = multiprocessing.cpu_count() if multiprocessing.cpu_count() < 60 else 60
+    if num_cores > max_num_cores:
+        num_cores = max_num_cores
+    Parallel(n_jobs=num_cores, prefer="processes")(delayed(aux_plot_features_1cell_vertical)(i, unit) for i, unit in enumerate(good_units))
+
+
+
     # m = raw_probabilities.mean(2).max(1) >= args.threshold
     # masked_raw_probas = raw_probabilities[m,:,:].mean(2)
     plot_survival_confidence(
@@ -365,6 +446,10 @@ def main():
     pd.DataFrame(correspondence, index=[0]).to_csv(
         os.path.join(plots_folder, "label_correspondence.tsv"), sep="\t", index=False
     )
+
+
+    end_time = time.time()
+    print('Cell type classfication execution time: ', end_time-start_time)
 
 
 if __name__ == "__main__":

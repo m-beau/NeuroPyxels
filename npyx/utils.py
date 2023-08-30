@@ -547,7 +547,7 @@ def rolling_average(x, w=5, fill_edges=False):
     Performs rolling average on x i.e. convolves x with a uniform window of length w.
     Arguments:
     - x: np array
-    - w: int, span of rolling average
+    - w: int, span of rolling average (full window)
     - fill_edges: bool, whether to fill the edges of the output array with the
                   first and last values of the convolved array to match the size of x
     Returns:

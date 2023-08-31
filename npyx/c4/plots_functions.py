@@ -691,6 +691,9 @@ def plot_features_1cell_vertical(
     ticklab_s = 20
     log_ticks = [10, 1000]
 
+    if -1 in LABELMAP.keys():
+        del LABELMAP[-1]
+
     if predictions is not None:
         n_obs, n_classes, n_models = predictions.shape
         mean_predictions = predictions.mean(2)
@@ -715,7 +718,7 @@ def plot_features_1cell_vertical(
         n_classes = 5
 
     fig = plt.figure()
-    n_rows = 5  # math.lcm(5, n_classes)
+    n_rows = len(LABELMAP)
     grid = plt.GridSpec(n_rows, 6, wspace=0.1, hspace=0.8)
 
     # confidence
@@ -832,7 +835,7 @@ def plot_survival_confidence(
     correspondence,
     ignore_below_confidence=None,
     saveDir=None,
-    correspondence_colors=C4_COLORS
+    correspondence_colors=C4_COLORS,
 ):
     assert np.all(
         np.isin(np.arange(confidence_matrix.shape[1]), list(correspondence.keys()))

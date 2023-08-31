@@ -292,9 +292,11 @@ def prepare_classification_dataset(
     win_size=WIN_SIZE,
     bin_size=BIN_SIZE,
     multi_chan_wave=False,
+    process_multi_channel=False,
     _acgs_path=None,
     _acg_mask=None,
     _acg_multi_factor=1,
+    _n_channels=N_CHANNELS,
 ):
     acgs = [] if _acgs_path is None else np.load(_acgs_path)
     waveforms = []
@@ -311,6 +313,10 @@ def prepare_classification_dataset(
             acgs.append(acg_3d.ravel())
         if not multi_chan_wave:
             processed_wave = dataset.conformed_waveforms[i]
+        elif process_multi_channel:
+            processed_wave = datasets.preprocess_template(
+                dataset.wf[i].reshape(_n_channels, -1)
+            ).ravel()
         else:
             processed_wave = dataset.wf[i]
 
@@ -328,7 +334,6 @@ def prepare_classification_dataset(
         acgs = np.nan_to_num(acgs / acgs_max[:, None])
 
     classification_dataset = np.concatenate((acgs, waveforms), axis=1)
-
     return classification_dataset, acgs_max
 
 
@@ -457,7 +462,7 @@ def save_wvf(waveform, save_name=None):
         raise NotImplementedError("Please specify a save name")
 
     plt.figure()
-    npyx_plot.plt_wvf(waveform, figh_inch=8, figw_inch=5, title=str(save_name))
+    npyx_plot.plt_wvf(waveform, figh_inch=8, figw_inch=5, title=str(save_name).split("/")[-1])
 
     plt.savefig(f"{save_name}-wvf.pdf", format="pdf", bbox_inches="tight")
     plt.close()
@@ -884,7 +889,7 @@ def calc_snr(wvf, noise_samples=15, return_db=False):
     return 10 * np.log10(SNR_linear) if return_db else SNR_linear
 
 
-def main(data_folder=".", plot=True, name="dataset_1", WM=False):
+def main(data_folder=".", plot=True, name="feature_spaces_1", WM=False):
     # Parse the arguments into a class to preserve compatibility
     args = ArgsNamespace(data_folder=data_folder, plot=plot, name=name, WM=WM)
 
@@ -1151,7 +1156,7 @@ if __name__ == "__main__":
         "-n",
         "--name",
         type=str,
-        default="dataset_1",
+        default="feature_spaces_1",
         help="Name assigned to the dataset.",
     )
 

@@ -74,6 +74,57 @@ class ConvEncoderResize(nn.Module):
         return dist.Normal(mu, torch.clip(torch.exp(log_var), 1e-5, 1e5))
 
 
+class ConvEncoderWVF(nn.Module):
+    def __init__(
+        self,
+        d_latent,
+        channels=4,
+        pool_window=((1, 2), (1, 2)),
+        kernel_size_1=(1, 8),
+        kernel_size_2=(3, 1),
+        flattened_size=8 * 2 * 20,
+        initialise=True,
+    ):
+        super().__init__()
+        if type(pool_window) == int:
+            pool_window = (pool_window, pool_window)
+        self.conv1 = nn.Conv2d(1, channels, kernel_size_1)
+        self.maxpool1 = nn.AvgPool2d(pool_window[0])
+        self.batchnorm1 = nn.BatchNorm2d(channels)
+        self.conv2 = nn.Conv2d(channels, channels * 2, kernel_size_2)
+        self.maxpool2 = nn.AvgPool2d(pool_window[1])
+        self.batchnorm2 = nn.BatchNorm2d(channels * 2)
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(flattened_size, d_latent * 2)
+        self.d_latent = d_latent
+        self.dropout = nn.Dropout(0.2)
+
+        if initialise:
+            self.conv1.weight.data.normal_(0, 0.001)
+            self.conv1.bias.data.normal_(0, 0.001)
+
+            self.conv2.weight.data.normal_(0, 0.001)
+            self.conv2.bias.data.normal_(0, 0.001)
+
+            self.fc1.weight.data.normal_(0, 0.001)
+            self.fc1.bias.data.normal_(0, 0.001)
+
+    def forward(self, x) -> dist.Normal:
+        x = self.conv1(x)
+        x = F.gelu(self.maxpool1(x))
+        x = self.batchnorm1(x)
+        x = self.conv2(x)
+        x = F.gelu(self.maxpool2(x))
+        x = self.batchnorm2(x)
+        x = self.flatten(x)
+        h = self.dropout(self.fc1(x))
+        # split the output into mu and log_var
+        mu = h[:, : self.d_latent]
+        log_var = h[:, self.d_latent :]
+        # return mu and log_var
+        return dist.Normal(mu, torch.clip(torch.exp(log_var), 1e-5, 1e5))
+
+
 class ForwardDecoder(nn.Module):
     def __init__(
         self, d_latent, central_range, n_channels, hidden_units=None, initialise=True
@@ -227,13 +278,8 @@ class WFConvVAE(BaseVAE):
             self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.n_channels = n_channels
         self.central_range = central_range
-        self.encoder = ConvEncoderResize(
+        self.encoder = ConvEncoderWVF(
             d_latent,
-            central_range,
-            channels=8,
-            pool_window=[3, 3],
-            kernel_size=3,
-            flattened_size=16 * 5 * 5,
             initialise=initialise,
         ).to(self.device)
         self.decoder = ForwardDecoder(

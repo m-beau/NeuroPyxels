@@ -394,7 +394,10 @@ def load_units_qualities(dp, again=False):
             )
             qualities = generate_units_qualities(dp)
         else:
-            if "unsorted" not in qualities["group"].values:
+            if "unsorted" not in qualities["group"].values and not re_spikesorted:
+                # the file can only by 'not re_spikesorted' if it has been edited by npyx (or manually)
+                # so in the rare case where all neurons are called 'mua' or 'good' or 'noise' with none left unsorted,
+                # but npyx already regenerated the tsv file, we should NOT regenerate the file
                 regenerate = True
         if regenerate:
             qualities_new = generate_units_qualities(dp)

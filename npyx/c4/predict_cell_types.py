@@ -1,15 +1,14 @@
+import argparse
 import contextlib
+import multiprocessing
 import os
 import sys
 import time
+from pathlib import Path
+from typing import Optional
 
 if __name__ == "__main__":
     __package__ = "npyx.c4"
-
-import argparse
-import multiprocessing
-from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -56,10 +55,23 @@ HESSIANS_URL_DICT = {
 }
 
 
-def get_n_cores(num_cores, max_num_cores):
+def get_n_cores(num_cores, max_num_cores=60):
     max_num_cores = min(multiprocessing.cpu_count(), max_num_cores)
     num_cores = min(num_cores, max_num_cores)
     return num_cores
+
+
+@contextlib.contextmanager
+def redirect_stdout_fd(file):
+    stdout_fd = sys.stdout.fileno()
+    stdout_fd_dup = os.dup(stdout_fd)
+    os.dup2(file.fileno(), stdout_fd)
+    file.close()
+    try:
+        yield
+    finally:
+        os.dup2(stdout_fd_dup, stdout_fd)
+        os.close(stdout_fd_dup)
 
 
 def directory_checks(data_path):
@@ -187,6 +199,63 @@ def prepare_dataset_from_h5(data_path):
     return dataset, dataset_class.h5_ids.tolist()
 
 
+def aux_prepare_dataset(dp, u):
+    t = trn(dp, u)
+    if len(t) < 100:
+        # Bad units
+        return [True, [], []]
+
+    # We set period_m to None to use the whole recording
+    t, _ = trn_filtered(dp, u, period_m=None)
+    if len(t) < 10:
+        # Bad units
+        return [True, [], []]
+
+    wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
+    waveforms = datasets.preprocess_template(wvf)
+
+    _, acg = corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
+    acg, _ = corr.convert_acg_log(acg, 1, 2000)
+    acgs_3d = acg.ravel() * 10
+
+    return [False, waveforms, acgs_3d]
+
+
+def prepare_dataset_from_binary_parallel(dp, units):
+    waveforms = []
+    acgs_3d = []
+    bad_units = []
+
+    num_cores = get_n_cores(len(units))
+
+    with redirect_stdout_fd(open(os.devnull, "w")):
+        dataset_results = Parallel(n_jobs=num_cores, prefer="processes")(
+            delayed(aux_prepare_dataset)(dp, u)
+            for u in tqdm(units, desc="Preparing waveforms and ACGs for classification")
+        )
+
+    for i in range(len(units)):
+        if dataset_results[i][0] is True:
+            bad_units.append(units[i])
+        else:
+            waveforms.append(dataset_results[i][1])
+            acgs_3d.append(dataset_results[i][2])
+
+    if bad_units:
+        print(
+            f"Units {str(bad_units)[1:-1]} were skipped because they had too few good spikes."
+        )
+    acgs_3d = np.array(acgs_3d)
+    waveforms = np.array(waveforms)
+
+    if len(acgs_3d) == 0:
+        raise ValueError(
+            "No units were found with the provided parameter choices after quality checks."
+        )
+
+    return np.concatenate((acgs_3d, waveforms), axis=1), bad_units
+
+
 def prepare_dataset(args: ArgsNamespace) -> tuple:
     """
     Prepare the dataset for classification.
@@ -224,62 +293,6 @@ def prepare_dataset(args: ArgsNamespace) -> tuple:
         good_units = [u for u in units if u not in bad_units]
 
     return prediction_dataset, good_units
-
-
-def aux_prepare_dataset(dp, u):
-    t = trn(dp, u)
-    if len(t) < 100:
-        # Bad units
-        return [True, [], []]
-
-    # We set period_m to None to use the whole recording
-    t, _ = trn_filtered(dp, u, period_m=None)
-    if len(t) < 10:
-        # Bad units
-        return [True, [], []]
-
-    wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
-    waveforms = datasets.preprocess_template(wvf)
-
-    _, acg = corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
-    acg, _ = corr.convert_acg_log(acg, 1, 2000)
-    acgs_3d = acg.ravel() * 10
-
-    return [False, waveforms, acgs_3d]
-
-
-def prepare_dataset_from_binary_parallel(dp, units):
-    waveforms = []
-    acgs_3d = []
-    bad_units = []
-
-    num_cores = get_n_cores(len(units))
-
-    dataset_results = Parallel(n_jobs=num_cores, prefer="processes")(
-        delayed(aux_prepare_dataset)(dp, u)
-        for u in tqdm(units, desc="Preparing waveforms and ACGs for classification")
-    )
-
-    for i in range(len(units)):
-        if dataset_results[i][0] is True:
-            bad_units.append(units[i])
-        else:
-            waveforms.append(dataset_results[i][1])
-            acgs_3d.append(dataset_results[i][2])
-
-    if bad_units:
-        print(
-            f"Units {str(bad_units)[1:-1]} were skipped because they had too few good spikes."
-        )
-    acgs_3d = np.array(acgs_3d)
-    waveforms = np.array(waveforms)
-
-    if len(acgs_3d) == 0:
-        raise ValueError(
-            "No units were found with the provided parameter choices after quality checks."
-        )
-
-    return np.concatenate((acgs_3d, waveforms), axis=1), bad_units
 
 
 def format_predictions(predictions_matrix: np.ndarray):
@@ -507,7 +520,7 @@ def main(
                 unit_id=unit,
             )
 
-    num_cores = get_n_cores(len(units))
+    num_cores = get_n_cores(len(good_units), len(good_units))
     Parallel(n_jobs=num_cores, prefer="processes")(
         delayed(aux_plot_features)(i, unit, correspondence)
         for i, unit in enumerate(good_units)

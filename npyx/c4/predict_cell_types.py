@@ -7,20 +7,18 @@ if __name__ == "__main__":
     __package__ = "npyx.c4"
 
 import argparse
+import multiprocessing
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 
 with contextlib.suppress(ImportError):
     import torch
     import torch.utils.data as data
 
-import multiprocessing
-from multiprocessing import Lock, Pool
-
-from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 
 import npyx.corr as corr
@@ -56,6 +54,12 @@ HESSIANS_URL_DICT = {
     "layer_information": "https://figshare.com/ndownloader/files/42130065?private_link=6531855c261b7bad032d",
     "layer_information_mli_clustering": "https://figshare.com/ndownloader/files/42130095?private_link=3a81e48aff77d844a402",
 }
+
+
+def get_n_cores(num_cores, max_num_cores):
+    max_num_cores = min(multiprocessing.cpu_count(), max_num_cores)
+    num_cores = min(num_cores, max_num_cores)
+    return num_cores
 
 
 def directory_checks(data_path):
@@ -196,16 +200,27 @@ def prepare_dataset(args: ArgsNamespace) -> tuple:
             and waveforms for each observation.
             - good_units (list): A list of unit ids that were included in the dataset.
     """
+    # Check if we are dealing with an h5 file
     if os.path.isfile(args.data_path) and args.data_path.endswith(".h5"):
         prediction_dataset, good_units = prepare_dataset_from_h5(args.data_path)
+
+    # Otherwise we are dealing with a phy output folder
     else:
+        # First extract the units from the phy output folder
         if args.units is not None:
             units = args.units
         else:
             units = get_units(args.data_path, args.quality)
-        prediction_dataset, bad_units = prepare_dataset_from_binary(
-            args.data_path, units
-        )
+
+        if args.parallel:
+            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(
+                args.data_path, units
+            )
+        else:
+            prediction_dataset, bad_units = prepare_dataset_from_binary(
+                args.data_path, units
+            )
+
         good_units = [u for u in units if u not in bad_units]
 
     return prediction_dataset, good_units
@@ -233,17 +248,12 @@ def aux_prepare_dataset(dp, u):
     return [False, waveforms, acgs_3d]
 
 
-def prepare_dataset_parallel(dp, units):
+def prepare_dataset_from_binary_parallel(dp, units):
     waveforms = []
     acgs_3d = []
     bad_units = []
 
-    num_cores = len(units)
-    max_num_cores = (
-        multiprocessing.cpu_count() if multiprocessing.cpu_count() < 60 else 60
-    )
-    if num_cores > max_num_cores:
-        num_cores = max_num_cores
+    num_cores = get_n_cores(len(units))
 
     dataset_results = Parallel(n_jobs=num_cores, prefer="processes")(
         delayed(aux_prepare_dataset)(dp, u)
@@ -251,13 +261,13 @@ def prepare_dataset_parallel(dp, units):
     )
 
     for i in range(len(units)):
-        if dataset_results[i][0] == True:
+        if dataset_results[i][0] is True:
             bad_units.append(units[i])
         else:
             waveforms.append(dataset_results[i][1])
             acgs_3d.append(dataset_results[i][2])
 
-    if len(bad_units) > 0:
+    if bad_units:
         print(
             f"Units {str(bad_units)[1:-1]} were skipped because they had too few good spikes."
         )
@@ -317,6 +327,7 @@ def main(
     soft_layer: bool = False,
     hard_layer: bool = False,
     threshold: float = 0.5,
+    parallel: bool = True,
 ) -> None:
     """
     Predicts the cell types of units in a given dataset using a pre-trained ensemble of classifiers.
@@ -329,6 +340,7 @@ def main(
         soft_layer (bool, optional): Whether to use soft layer information. Defaults to False.
         hard_layer (bool, optional): Whether to use hard layer information. Defaults to False.
         threshold (float, optional): Confidence threshold for cell type predictions. Defaults to 0.5.
+        parallel (bool, optional): Whether to use parallel processing. Defaults to True.
 
     Returns:
         None, but saves classifier results in files in the data folder.
@@ -342,6 +354,7 @@ def main(
         soft_layer=soft_layer,
         hard_layer=hard_layer,
         threshold=threshold,
+        parallel=parallel,
     )
 
     assert args.quality in [
@@ -474,7 +487,8 @@ def main(
     # Finally make summary plots of the classifier output
     confidence_passing = np.array(good_units)[confidence_mask]
 
-    def aux_plot_features_1cell_vertical(i, unit):
+    # Define a function to plot the features of a single unit
+    def aux_plot_features(i, unit, labelmap):
         if unit in confidence_passing:
             plot_features_1cell_vertical(
                 i,
@@ -487,25 +501,18 @@ def main(
                 cbin=1,
                 cwin=2000,
                 figsize=(10, 4),
-                LABELMAP=datasets.CORRESPONDENCE_NO_GRC,
+                LABELMAP=labelmap,
                 C4_COLORS=C4_COLORS,
                 fs=30000,
                 unit_id=unit,
             )
 
-    num_cores = len(units)
-    max_num_cores = (
-        multiprocessing.cpu_count() if multiprocessing.cpu_count() < 60 else 60
-    )
-    if num_cores > max_num_cores:
-        num_cores = max_num_cores
+    num_cores = get_n_cores(len(units))
     Parallel(n_jobs=num_cores, prefer="processes")(
-        delayed(aux_plot_features_1cell_vertical)(i, unit)
+        delayed(aux_plot_features)(i, unit, correspondence)
         for i, unit in enumerate(good_units)
     )
 
-    # m = raw_probabilities.mean(2).max(1) >= args.threshold
-    # masked_raw_probas = raw_probabilities[m,:,:].mean(2)
     plot_survival_confidence(
         raw_probabilities,
         correspondence,
@@ -576,6 +583,14 @@ if __name__ == "__main__":
         default=0.5,
         help="Threshold to keep model predictions.",
     )
+
+    parser.add_argument(
+        "--parallel",
+        action="store_true",
+        help="Use parallel processing.",
+    )
+    parser.add_argument("--serial", dest="parallel", action="store_false")
+    parser.set_defaults(parallel=True)
 
     args = parser.parse_args()
     main(**vars(args))

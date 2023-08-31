@@ -2,6 +2,9 @@ import argparse
 import os
 from pathlib import Path
 
+if __name__ == "__main__":
+    __package__ = "npyx.c4"
+
 import matplotlib
 import numpy as np
 import pandas as pd

@@ -642,7 +642,9 @@ def load_ensemble(
     # Extract the tar archive containing the models
     with tarfile.open(file_path, "r:gz") as tar:
         file_count = len(tar.getmembers())
-        progress_bar = tqdm(total=file_count, desc="Extracting files", unit="file")
+        progress_bar = tqdm(
+            total=file_count, desc="Extracting models files", unit="file"
+        )
 
         for file in tar:
             tar.extract(file, temp_dir)
@@ -800,53 +802,6 @@ def ensemble_predict(
         raise ValueError(
             "Invalid method. Choose either 'average', 'majority_voting' or 'raw'."
         )
-
-
-def join_calibrated_models(path):
-    """
-    Unpacks the tar archives of calibrated models in `path` and joins all of the models inside each of the archives
-    into one archive only.
-    """
-    # Find all the calibrated models archives in the given path
-    archives = [
-        f
-        for f in os.listdir(path)
-        if f.startswith("calibrated_models_") and f.endswith(".tar.gz")
-    ]
-    archives.sort(key=lambda x: int(re.findall(r"\d+", x)[0]))
-
-    # Create a temporary directory to extract the models
-    tmp_dir = os.path.join(path, "tmp")
-    os.makedirs(tmp_dir, exist_ok=True)
-
-    # Extract the models from each archive and save them in the temporary directory
-    model_count = 0
-    for archive in tqdm(archives, desc="Extracting archives", position=0):
-        archive_path = os.path.join(path, archive)
-        with tarfile.open(archive_path, "r:gz") as tar:
-            for member in tqdm(tar.getmembers(), desc="Extracting models", position=1):
-                if member.isfile() and "calibrated_model_" in member.name:
-                    # Extract the model and rename it with an incremental index
-                    model_name = f"calibrated_model_{model_count}.pkl"
-                    member.name = model_name
-                    tar.extract(member, tmp_dir)
-                    model_count += 1
-
-    # Join all the models in the temporary directory into a single archive
-    joined_models_path = os.path.join(path, "calibrated_models.tar.gz")
-    with tarfile.open(joined_models_path, "w:gz") as tar:
-        for root, dirs, files in tqdm(
-            os.walk(tmp_dir), desc="Joining models", position=2
-        ):
-            for file in tqdm(files, desc="Adding files to archive", position=3):
-                file_path = os.path.join(root, file)
-                tar.add(file_path, arcname=file)
-
-    # Remove the temporary directory
-    for archive in archives:
-        archive_path = os.path.join(path, archive)
-        os.remove(archive_path)
-    shutil.rmtree(tmp_dir)
 
 
 def cross_validate(

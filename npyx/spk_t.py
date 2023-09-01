@@ -767,7 +767,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
     {0}
     """
     dp = Path(dp)
-    t = trn(dp,unit, enforced_rp=enforced_rp)
+    t = trn(dp,unit, enforced_rp=enforced_rp, again=again)
     t_s=t/30000
     good_spikes_m, good_fp_start_end, good_fn_start_end = train_quality(dp, unit, period_m,
                     fp_chunk_span, fp_chunk_size, fn_chunk_span, fn_chunk_size, use_or_operator,

@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import multiprocessing
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Optional
 if __name__ == "__main__":
     __package__ = "npyx.c4"
 
+import dill
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
@@ -74,6 +76,23 @@ def redirect_stdout_fd(file):
         os.close(stdout_fd_dup)
 
 
+@contextlib.contextmanager
+def check_models_outdated(exc_type, model_type):
+    try:
+        yield
+    except exc_type:
+        models_folder = os.path.join(
+            Path.home(), ".npyx_c4_resources", "models", model_type
+        )
+        if os.path.exists(models_folder):
+            print(
+                "An error occurred while loading the models, likely due to a change in version. Removing the models folder to force a re-download."
+            )
+            print("\nPlease restart the program.")
+            shutil.rmtree(models_folder)
+            sys.exit()
+
+
 def directory_checks(data_path):
     assert os.path.exists(data_path), "Data folder does not exist."
     if os.path.isfile(data_path) and data_path.endswith(".h5"):
@@ -114,12 +133,18 @@ def prepare_dataset_from_binary(dp, units):
             bad_units.append(u)
             continue
         # We set period_m to None to use the whole recording
-        t, _ = trn_filtered(dp, u, period_m=None)
+        try:
+            t, _ = trn_filtered(dp, u, period_m=None)
+        except IndexError:
+            t, _ = trn_filtered(dp, u, period_m=None, again=True, enforced_rp=-1)
         if len(t) < 10:
             bad_units.append(u)
             continue
 
-        wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
+        try:
+            wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
+        except IndexError:
+            wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
         waveforms.append(datasets.preprocess_template(wvf))
 
         _, acg = corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
@@ -206,12 +231,18 @@ def aux_prepare_dataset(dp, u):
         return [True, [], []]
 
     # We set period_m to None to use the whole recording
-    t, _ = trn_filtered(dp, u, period_m=None)
+    try:
+        t, _ = trn_filtered(dp, u, period_m=None)
+    except IndexError:
+        t, _ = trn_filtered(dp, u, period_m=None, again=True, enforced_rp=-1)
     if len(t) < 10:
         # Bad units
         return [True, [], []]
 
-    wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
+    try:
+        wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
+    except IndexError:
+        wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
     waveforms = datasets.preprocess_template(wvf)
 
     _, acg = corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
@@ -329,7 +360,60 @@ def format_predictions(predictions_matrix: np.ndarray):
         ]
     )
 
-    return predictions, mean_top_pred_confidence, delta_mean_confidences, n_votes
+    return predictions, mean_top_pred_confidence, delta_mean_confidences, n_votes  #
+
+
+def save_serialised(la, filepath):
+    with open(filepath, "wb") as outpt:
+        dill.dump(la, outpt, recurse=True)
+
+
+def load_serialised(filepath):
+    with open(filepath, "rb") as inpt:
+        la = dill.load(inpt)
+    return la
+
+
+def load_precalibrated_ensemble(
+    models_directory,
+    fast=False,
+):
+    ensemble_paths = sorted(
+        os.listdir(models_directory),
+        key=lambda x: int(x.split("calibrated_model_")[1].split(".")[0]),
+    )
+
+    if fast and len(ensemble_paths) > 100:
+        ensemble_paths = np.random.choice(ensemble_paths, 100, replace=False).tolist()
+
+    # Load each model from the nested folder
+    models = []
+    for model_file in tqdm(ensemble_paths, desc="Loading models"):
+        model_path = os.path.join(models_directory, model_file)
+        model = load_serialised(model_path)
+        models.append(model)
+
+    # Workaround to avoid unknown bug when loading the models
+    del models[0]
+    models.append(
+        load_serialised(os.path.join(models_directory, "calibrated_model_0.pkl"))
+    )
+
+    return models
+
+
+def save_calibrated_ensemble(calibrated_models, save_directory):
+    os.makedirs(save_directory, exist_ok=True)
+
+    # Save each model in the temporary directory
+    for i, cal_model in tqdm(
+        enumerate(calibrated_models),
+        desc="Saving calibration for later use",
+        total=len(calibrated_models),
+    ):
+        save_serialised(
+            cal_model, os.path.join(save_directory, f"calibrated_model_{i}.pkl")
+        )
 
 
 def main(
@@ -413,15 +497,17 @@ def main(
     )
     models_archive = os.path.join(models_folder, "trained_models.tar.gz")
     hessians_archive = os.path.join(models_folder, "hessians.pt")
+    serialised_ensemble = os.path.join(models_folder, "calibrated_models")
 
-    if not os.path.exists(models_archive):
-        os.makedirs(models_folder, exist_ok=True)
-        download_file(models_url, models_archive, description="Downloading models")
-    if not os.path.exists(hessians_archive):
-        os.makedirs(models_folder, exist_ok=True)
-        download_file(
-            hessians_url, hessians_archive, description="Downloading hessians"
-        )
+    if not os.path.exists(serialised_ensemble):
+        if not os.path.exists(models_archive):
+            os.makedirs(models_folder, exist_ok=True)
+            download_file(models_url, models_archive, description="Downloading models")
+        if not os.path.exists(hessians_archive):
+            os.makedirs(models_folder, exist_ok=True)
+            download_file(
+                hessians_url, hessians_archive, description="Downloading hessians"
+            )
 
     # Prepare the data for prediction
     prediction_dataset, good_units = prepare_dataset(args)
@@ -436,14 +522,28 @@ def main(
         batch_size=len(prediction_dataset),
     )
 
-    ensemble = load_ensemble(
-        models_archive,
-        device=torch.device("cpu"),
-        n_classes=6 if args.use_layer else 5,
-        use_layer=args.use_layer,
-        fast=False,
-        laplace=True,
-    )
+    # Check if this is the first time the ensemble is loaded on this machine
+    ensemble_present = os.path.exists(serialised_ensemble)
+
+    # with check_models_outdated(KeyError, model_type):
+    if not ensemble_present:
+        ensemble = load_ensemble(
+            models_archive,
+            device=torch.device("cpu"),
+            n_classes=6 if args.use_layer else 5,
+            use_layer=args.use_layer,
+            fast=False,
+            laplace=True,
+        )
+
+        # Serialize the ensemble for future use
+        save_calibrated_ensemble(ensemble, serialised_ensemble)
+
+        # Remove the models archive to save space
+        os.remove(models_archive)
+        os.remove(hessians_archive)
+    else:
+        ensemble = load_precalibrated_ensemble(serialised_ensemble, fast=False)
 
     raw_probabilities = ensemble_predict(
         ensemble,
@@ -521,10 +621,11 @@ def main(
             )
 
     num_cores = get_n_cores(len(good_units), len(good_units))
-    Parallel(n_jobs=num_cores, prefer="processes")(
-        delayed(aux_plot_features)(i, unit, correspondence)
-        for i, unit in enumerate(good_units)
-    )
+    with redirect_stdout_fd(open(os.devnull, "w")):
+        Parallel(n_jobs=num_cores, prefer="processes")(
+            delayed(aux_plot_features)(i, unit, correspondence)
+            for i, unit in enumerate(good_units)
+        )
 
     plot_survival_confidence(
         raw_probabilities,

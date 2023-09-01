@@ -312,7 +312,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         return np.load(Path(dpnm,fn)),drift_shift_matched_mean,np.load(Path(dpnm,fn_spike_id)), np.load(Path(dpnm,fn_peakchan))
 
     ## Extract spike ids so we can extract consecutive waveforms
-    spike_ids_all = ids(dp, u, periods=periods)
+    spike_ids_all = ids(dp, u, periods=periods, again=again)
     # make sure to only select waveforms from 1 cluster if there was a merge
     # (arbitrary decision: the cluster with the largest amount of spikes)
     if subselect_max_template:
@@ -364,7 +364,7 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     mean_waves = np.mean(raw_waves, axis = 1)
     ## Find peak channel (and store amplitude) of every batch
     # only consider amplitudes on channels around original peak channel
-    original_peak_chan = get_peak_chan(dp, u)
+    original_peak_chan = get_peak_chan(dp, u, again=again)
     c_left, c_right = max(0, original_peak_chan-peakchan_allowed_range), min(original_peak_chan+peakchan_allowed_range, mean_waves.shape[2])
     # calculate amplitudes ("peak-to-peak"), but ONLY using 2ms (-30,30) in the middle
     amp_t_span = 20 #samples
@@ -674,7 +674,7 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
 
     cm=chan_map(dp, probe_version='local')
     if use_template:
-        waveforms=templates(dp, unit)
+        waveforms=templates(dp, unit, again=again)
         ks_peak_chan = get_pc(waveforms)
         peak_chan = cm[:,0][ks_peak_chan]
     else:
@@ -773,7 +773,7 @@ def get_chDis(dp, ch1, ch2):
     chDis=np.sqrt((ch_pos1[0]-ch_pos2[0])**2+(ch_pos1[1]-ch_pos2[1])**2)
     return chDis
 
-def templates(dp, u, ignore_ks_chanfilt=False):
+def templates(dp, u, ignore_ks_chanfilt=False, again=False):
     '''
     ********
     Extracts the template used by kilosort to cluster this unit.
@@ -791,7 +791,7 @@ def templates(dp, u, ignore_ks_chanfilt=False):
     '''
     dp, u = get_source_dp_u(dp, u)
 
-    IDs=ids(dp,u)
+    IDs=ids(dp,u, again=again)
     #mean_amp=np.mean(np.load(Path(dp,'amplitudes.npy'))[IDs])
     template_ids=np.unique(np.load(Path(dp,'spike_templates.npy'))[IDs])
     templates = np.load(Path(dp, 'templates.npy'))[template_ids]#*mean_amp

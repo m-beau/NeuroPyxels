@@ -45,6 +45,7 @@ requirements = [
     "torchaudio==0.13.1",
     "laplace-torch",
     "requests",
+    "dill",
 ]
 dependency_links = ["https://download.pytorch.org/whl/cpu"]
 

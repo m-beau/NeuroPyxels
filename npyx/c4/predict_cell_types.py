@@ -77,7 +77,7 @@ def redirect_stdout_fd(file):
 
 
 @contextlib.contextmanager
-def check_models_outdated(exc_type, model_type):
+def handle_outdated_model(exc_type, model_type):
     try:
         yield
     except exc_type:
@@ -86,7 +86,7 @@ def check_models_outdated(exc_type, model_type):
         )
         if os.path.exists(models_folder):
             print(
-                "An error occurred while loading the models, likely due to a change in version. Removing the models folder to force a re-download."
+                "An error occurred while loading the models, likely due to a change in version. The models folder was removed to force a re-download."
             )
             print("\nPlease restart the program.")
             shutil.rmtree(models_folder)
@@ -105,10 +105,10 @@ def directory_checks(data_path):
     assert os.path.exists(
         os.path.join(data_path, "params.py")
     ), "Make sure that the current working directory contains the output of a spike sorter compatible with phy (in particular the params.py file)."
-    if os.path.exists(os.path.join(data_path, "cluster_cell_types.tsv")):
+    if os.path.exists(os.path.join(data_path, "cluster_predicted_cell_type.csv")):
         while True:
             prompt = input(
-                "\nA cluster_cell_types.tsv file already exists. Are you sure you want to overwrite previous results? If you wish to compare different classifier parameters move the previous results to a different folder before running. (y/n) : "
+                "\nA cluster_predicted_cell_type.tsv file already exists. Are you sure you want to overwrite previous results? If you wish to compare different classifier parameters move the previous results to a different folder before running. (y/n) : "
             )
             if prompt.lower() == "y":
                 break
@@ -116,6 +116,9 @@ def directory_checks(data_path):
                 sys.exit()
             else:
                 print("\n  >> Please answer y or n!")
+    # Remove potential conflicts with previous versions of the tool
+    if os.path.exists(os.path.join(data_path, "cluster_cell_types.tsv")):
+        os.remove(os.path.join(data_path, "cluster_cell_types.tsv"))
 
 
 def prepare_dataset_from_binary(dp, units):
@@ -135,7 +138,7 @@ def prepare_dataset_from_binary(dp, units):
         # We set period_m to None to use the whole recording
         try:
             t, _ = trn_filtered(dp, u, period_m=None)
-        except IndexError:
+        except (IndexError, pd.errors.EmptyDataError, ValueError):
             t, _ = trn_filtered(dp, u, period_m=None, again=True, enforced_rp=-1)
         if len(t) < 10:
             bad_units.append(u)
@@ -143,7 +146,7 @@ def prepare_dataset_from_binary(dp, units):
 
         try:
             wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
-        except IndexError:
+        except (IndexError, pd.errors.EmptyDataError, ValueError):
             wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
         waveforms.append(datasets.preprocess_template(wvf))
 
@@ -233,7 +236,7 @@ def aux_prepare_dataset(dp, u):
     # We set period_m to None to use the whole recording
     try:
         t, _ = trn_filtered(dp, u, period_m=None)
-    except IndexError:
+    except (IndexError, pd.errors.EmptyDataError, ValueError):
         t, _ = trn_filtered(dp, u, period_m=None, again=True, enforced_rp=-1)
     if len(t) < 10:
         # Bad units
@@ -241,7 +244,7 @@ def aux_prepare_dataset(dp, u):
 
     try:
         wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
-    except IndexError:
+    except (IndexError, pd.errors.EmptyDataError, ValueError):
         wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
     waveforms = datasets.preprocess_template(wvf)
 
@@ -421,8 +424,7 @@ def main(
     quality: str = "good",
     units: Optional[list] = None,
     mli_clustering: bool = False,
-    soft_layer: bool = False,
-    hard_layer: bool = False,
+    layer: bool = False,
     threshold: float = 0.5,
     parallel: bool = True,
 ) -> None:
@@ -434,8 +436,7 @@ def main(
         quality (str, optional): Quality of the units to use. Must be either "all" or "good". Defaults to "good".
         units (list, optional): List of unit IDs to use. If None, all units of "quality" will be used. Defaults to None.
         mli_clustering (bool, optional): Whether to use MLI clustering. Defaults to False.
-        soft_layer (bool, optional): Whether to use soft layer information. Defaults to False.
-        hard_layer (bool, optional): Whether to use hard layer information. Defaults to False.
+        layer (bool, optional): Whether to use layer information from phyllum (or other sources). Defaults to False.
         threshold (float, optional): Confidence threshold for cell type predictions. Defaults to 0.5.
         parallel (bool, optional): Whether to use parallel processing. Defaults to True.
 
@@ -448,8 +449,7 @@ def main(
         quality=quality,
         units=units,
         mli_clustering=mli_clustering,
-        soft_layer=soft_layer,
-        hard_layer=hard_layer,
+        use_layer=layer,
         threshold=threshold,
         parallel=parallel,
     )
@@ -461,8 +461,6 @@ def main(
 
     # Perform some checks on the data folder
     directory_checks(args.data_path)
-
-    args.use_layer = args.soft_layer or args.hard_layer
 
     if args.use_layer:
         one_hot_layer, args = get_layer_information(args)
@@ -523,18 +521,18 @@ def main(
     )
 
     # Check if this is the first time the ensemble is loaded on this machine
-    ensemble_present = os.path.exists(serialised_ensemble)
+    precalibrated_ensemble_present = os.path.exists(serialised_ensemble)
 
-    # with check_models_outdated(KeyError, model_type):
-    if not ensemble_present:
-        ensemble = load_ensemble(
-            models_archive,
-            device=torch.device("cpu"),
-            n_classes=6 if args.use_layer else 5,
-            use_layer=args.use_layer,
-            fast=False,
-            laplace=True,
-        )
+    if not precalibrated_ensemble_present:
+        with handle_outdated_model(RuntimeError, model_type):
+            ensemble = load_ensemble(
+                models_archive,
+                device=torch.device("cpu"),
+                n_classes=6 if args.use_layer else 5,
+                use_layer=args.use_layer,
+                fast=False,
+                laplace=True,
+            )
 
         # Serialize the ensemble for future use
         save_calibrated_ensemble(ensemble, serialised_ensemble)
@@ -550,7 +548,7 @@ def main(
         prediction_iterator,
         device=torch.device("cpu"),
         method="raw",
-        enforce_layer=args.hard_layer,
+        enforce_layer=False,
         labelling=labelling,
     )
 
@@ -580,8 +578,14 @@ def main(
         save_path = args.data_path
 
     # Save the predictions to a file that can be read by phy
-    predictions_df.to_csv(
-        os.path.join(save_path, "cluster_cell_types.tsv"), sep="\t", index=False
+    predictions_df[["cluster_id", "predicted_cell_type"]].to_csv(
+        os.path.join(save_path, "cluster_predicted_cell_type.csv"), index=False
+    )
+    predictions_df[["cluster_id", "confidence"]].to_csv(
+        os.path.join(save_path, "cluster_confidence.csv"), index=False
+    )
+    predictions_df[["cluster_id", "model_votes"]].to_csv(
+        os.path.join(save_path, "cluster_model_votes.csv"), index=False
     )
 
     # Save the raw probabilities and the label correspondence for power users
@@ -678,18 +682,11 @@ if __name__ == "__main__":
     parser.set_defaults(mli_clustering=False)
 
     parser.add_argument(
-        "--soft_layer",
+        "--layer",
         action="store_true",
-        help="Use 'soft' layer information (if available).",
+        help="Use layer information (if available).",
     )
-    parser.set_defaults(soft_layer=False)
-
-    parser.add_argument(
-        "--hard_layer",
-        action="store_true",
-        help="Use 'hard' layer information (if available).",
-    )
-    parser.set_defaults(hard_layer=False)
+    parser.set_defaults(layer=False)
 
     parser.add_argument(
         "--threshold",

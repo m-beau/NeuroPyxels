@@ -169,7 +169,7 @@ def prepare_dataset_from_binary(dp, units):
     return np.concatenate((acgs_3d, waveforms), axis=1), bad_units
 
 
-def get_layer_information(args):
+def get_layer_information(args, good_units):
     if os.path.isfile(args.data_path) and args.data_path.endswith(".h5"):
         layer = []
         neuron_ids, _ = datasets.get_h5_absolute_ids(args.data_path)
@@ -188,7 +188,13 @@ def get_layer_information(args):
         layer_df = pd.read_csv(
             layer_path, sep="\t"
         )  # layer will be in a cluster_layer.tsv file
-        layer = layer_df["layer"].values
+
+        layer_dict = {}
+        for index in layer_df.index:
+            cluster_id = layer_df["cluster_id"][index]
+            if cluster_id in good_units:
+                layer_dict[cluster_id] = layer_df["layer"][index]
+        layer = np.array([layer_dict[cluster_id] for cluster_id in good_units])
 
     if np.all(layer == 0):
         print(
@@ -462,11 +468,6 @@ def main(
     # Perform some checks on the data folder
     directory_checks(args.data_path)
 
-    if args.use_layer:
-        one_hot_layer, args = get_layer_information(args)
-    else:
-        one_hot_layer = None
-
     # Determine the model type that we should use
     if args.mli_clustering and not args.use_layer:
         model_type = "mli_clustering"
@@ -509,6 +510,11 @@ def main(
 
     # Prepare the data for prediction
     prediction_dataset, good_units = prepare_dataset(args)
+
+    if args.use_layer:
+        one_hot_layer, args = get_layer_information(args, good_units)
+    else:
+        one_hot_layer = None
 
     prediction_iterator = data.DataLoader(
         CustomDataset(

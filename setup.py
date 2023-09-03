@@ -36,7 +36,7 @@ requirements = [
     "imbalanced-learn",
     "networkx",
     "psutil",
-    "joblib",
+    "joblib>=1.3",
     "tqdm",
     "h5py",
     "seaborn",

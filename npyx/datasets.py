@@ -297,6 +297,7 @@ class NeuronsDataset:
         cut_acg=True,
         central_range=CENTRAL_RANGE,
         n_channels=N_CHANNELS,
+        flip_waveforms=True,
         reshape_fortran_to_c=False,
         _label="ground_truth_label",
         _labelling=LABELLING,
@@ -315,6 +316,7 @@ class NeuronsDataset:
         self.dataset = dataset
         self._n_channels = n_channels
         self._central_range = central_range
+        self.flip_waveforms = flip_waveforms
         self._sampling_rate = get_neuron_attr(dataset, 0, "sampling_rate").item()
         self.mli_clustering = _extract_mli_clusters
         self._keep_singchan = _keep_singchan
@@ -484,7 +486,8 @@ class NeuronsDataset:
                 # Extract the waveform conformed to the common preprocessing strategy in C4
                 peak_chan = np.argmax(np.ptp(wf, axis=1))
                 conformed_wave = preprocess_template(
-                    wf[peak_chan, :], self._sampling_rate
+                    wf[peak_chan, :], self._sampling_rate,
+                    peak_sign = "negative" if self.flip_waveforms else None,
                 )
                 self.conformed_waveforms.append(conformed_wave)
 

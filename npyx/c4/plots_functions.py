@@ -107,7 +107,7 @@ def save_acg(spike_train, unit_n, save_name=None):
 
     if len(spike_train.ravel()) > 1:
         plt.figure()
-        npyx_plot.plot_acg("hello", unit_n, train=spike_train, figsize=(5, 4.5))
+        npyx_plot.plot_acg(None, unit_n, train=spike_train, figsize=(5, 4.5))
 
         plt.savefig(f"{save_name}-acg.pdf", format="pdf", bbox_inches="tight")
     else:

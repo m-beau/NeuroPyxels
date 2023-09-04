@@ -146,7 +146,7 @@ def main(
         data_folder=data_folder,
         multi_channel=multi_channel,
         labelled=labelled,
-        name="feature_spaces_1",
+        name="feature_spaces",
     )
 
     datasets_abs = get_paths_from_dir(args.data_folder)

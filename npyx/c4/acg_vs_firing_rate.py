@@ -174,7 +174,7 @@ def augment_spikes(spikes_list, *transforms):
 
 def main(
     data_path=".",
-    dataset="feature_spaces_1",
+    dataset="feature_spaces",
     name="acgs_vs_firing_rate",
     labelled=True,
     augment=False,
@@ -340,7 +340,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset",
         type=str,
-        default="feature_spaces_1",
+        default="feature_spaces",
         help="Name of the dataset used to filter labelled units, in case we are using labels.",
     )
 

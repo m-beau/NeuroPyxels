@@ -508,44 +508,15 @@ def make_summary_plots_wvf(
         plt.close()
 
 
-def get_relevant_waveform(wf, n_channels=N_CHANNELS, central_range=WAVEFORM_SAMPLES):
-    if wf.ndim == 1:
-        wf = wf.reshape(n_channels, central_range)
-    high_amp_channels = feat.filter_out_waves(wf, n_channels // 2)
-    (
-        candidate_channel_somatic,
-        candidate_channel_non_somatic,
-        somatic_mask,
-        _,
-    ) = feat.detect_peaks_2d(wf, high_amp_channels)
-
-    # First find working waveform
-    relevant_waveform, _, _ = feat.find_relevant_waveform(
-        wf,
-        candidate_channel_somatic,
-        candidate_channel_non_somatic,
-        somatic_mask,
-    )
-
-    return relevant_waveform
-
-
 def make_summary_plots_preprocessed_wvf(
     dataset: datasets.NeuronsDataset, save_folder=".", monkey=False
 ):
     prefix = "monkey_" if monkey else ""
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
-        lab_wvf = dataset.wf[lab_mask]
+        lab_wvf = dataset.conformed_waveforms[lab_mask]
         col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
-        for wf in lab_wvf:
-            relevant_waveform = datasets.preprocess_template(
-                wf,
-                clip_size=[
-                    WAVEFORM_SAMPLES / (4 * 30_000),
-                    WAVEFORM_SAMPLES / (2 * 30_000),
-                ],
-            )
+        for relevant_waveform in lab_wvf:
 
             plt.plot(
                 relevant_waveform,
@@ -567,57 +538,7 @@ def make_summary_plots_preprocessed_wvf(
         )
         npyx_plot.save_mpl_fig(
             fig[0],
-            f"{prefix}summary_preprocessed_wvf_{CORRESPONDENCE[lab]}",
-            save_folder,
-            "pdf",
-        )
-        plt.close()
-
-
-def make_summary_plots_relevant_wvf(
-    dataset: datasets.NeuronsDataset, save_folder=".", monkey=False
-):
-    prefix = "monkey_" if monkey else ""
-    for lab in np.unique(dataset.targets):
-        lab_mask = dataset.targets == lab
-        lab_wvf = dataset.wf[lab_mask]
-        col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
-        for wf in lab_wvf:
-            if monkey:
-                relevant_waveform = wf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)[
-                    N_CHANNELS // 2, :
-                ]
-                if np.abs(np.min(relevant_waveform)) < np.max(relevant_waveform):
-                    relevant_waveform = -relevant_waveform
-
-            else:
-                relevant_waveform = get_relevant_waveform(wf)
-                if relevant_waveform is None:
-                    continue
-            # Normalise before plotting
-            relevant_waveform = relevant_waveform / np.max(np.abs(relevant_waveform))
-
-            plt.plot(
-                relevant_waveform,
-                color=col,
-                alpha=0.4,
-            )
-
-        fig = npyx_plot.mplp(
-            title=f"{CORRESPONDENCE[lab]}",
-            xlabel="Time (ms)",
-            ylabel="Amplitude (a.u.)",
-            figsize=(6, 5),
-            xtickslabels=np.arange(
-                -(WAVEFORM_SAMPLES // 2) / 30,
-                ((WAVEFORM_SAMPLES // 2) + 1) / 30,
-                10 / 30,
-            ).round(1),
-            xticks=np.arange(0, WAVEFORM_SAMPLES + 1, 10),
-        )
-        npyx_plot.save_mpl_fig(
-            fig[0],
-            f"{prefix}summary_somatic_wvf_{CORRESPONDENCE[lab]}",
+            f"{prefix}summary_peak_wvf_preprocessed_{CORRESPONDENCE[lab]}",
             save_folder,
             "pdf",
         )
@@ -634,22 +555,13 @@ def make_summary_plots_wvf_by_line(dataset: datasets.NeuronsDataset, save_folder
             line_mask = np.array(dataset.genetic_line_list) == line
             wf_mask = lab_mask & line_mask
 
-            lab_wvf = dataset.wf[wf_mask]
+            lab_wvf = dataset.conformed_waveforms[wf_mask]
             col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
 
             if len(lab_wvf) == 0:
                 continue
 
-            for wf in lab_wvf:
-                relevant_waveform = get_relevant_waveform(wf)
-                # Normalise before plotting
-
-                relevant_waveform = relevant_waveform / np.max(
-                    np.abs(relevant_waveform)
-                )
-
-                if relevant_waveform is None:
-                    continue
+            for relevant_waveform in lab_wvf:
 
                 # Normalise before plotting
                 plt.plot(
@@ -745,7 +657,7 @@ def make_summary_plots_acg(
 
 
 def make_raw_plots(
-    dataset: datasets.NeuronsDataset, path_to_dir=".", folder="raw_plots"
+    dataset: datasets.NeuronsDataset, path_to_dir=".", folder="single_unit_plots"
 ):
     save_folder = os.path.join(path_to_dir, folder)
 
@@ -841,7 +753,7 @@ def save_features(
 
 
 def make_plots_folder(args):
-    plots_folder = os.path.join(args.data_folder, "plots")
+    plots_folder = os.path.join(args.data_folder, "ground_truth_summary_plots")
     if not os.path.exists(plots_folder):
         os.mkdir(plots_folder)
     return plots_folder
@@ -852,15 +764,12 @@ def summary_plots(args, dataset_class, by_line=True, raw=True, monkey=False):
     # Make summary plots
     make_summary_plots_acg(dataset_class, save_folder=plots_folder, monkey=monkey)
     make_summary_plots_wvf(dataset_class, save_folder=plots_folder, monkey=monkey)
-    make_summary_plots_relevant_wvf(
-        dataset_class, save_folder=plots_folder, monkey=monkey
-    )
     make_summary_plots_preprocessed_wvf(
         dataset_class, save_folder=plots_folder, monkey=monkey
     )
 
     if by_line:
-        by_line_folder = os.path.join(plots_folder, "by_line")
+        by_line_folder = os.path.join(plots_folder, "overlaid_by_mouse_line")
         if not os.path.exists(by_line_folder):
             os.mkdir(by_line_folder)
         make_summary_plots_wvf_by_line(dataset_class, save_folder=by_line_folder)
@@ -870,6 +779,7 @@ def summary_plots(args, dataset_class, by_line=True, raw=True, monkey=False):
     if raw:
         make_raw_plots(dataset_class, path_to_dir=plots_folder)
 
+    plt.close("all")
     return plots_folder
 
 
@@ -891,10 +801,10 @@ def calc_snr(wvf, noise_samples=15, return_db=False):
     return 10 * np.log10(SNR_linear) if return_db else SNR_linear
 
 
-def main(data_folder=".", plot=True, name="feature_spaces", save_raw=False):
+def main(data_folder=".", plot=True, name="feature_spaces"):
     # Parse the arguments into a class to preserve compatibility
     args = ArgsNamespace(
-        data_folder=data_folder, plot=plot, name=name, save_raw=save_raw
+        data_folder=data_folder, plot=plot, name=name
     )
 
     # get datasets directories and eventually download them
@@ -966,31 +876,32 @@ def main(data_folder=".", plot=True, name="feature_spaces", save_raw=False):
     )
 
     ### Generating raw features dataframes
-    if args.save_raw:
-        common_preprocessing = quality_checked_dataset.conformed_waveforms
-        labels = quality_checked_dataset.labels_list
+    
+    # 2d acgs and peak waveform feature spaces
+    common_preprocessing = quality_checked_dataset.conformed_waveforms
+    labels = quality_checked_dataset.labels_list
 
-        lab_df = pd.DataFrame({"label": labels})
-        raw_wvf_single_common_preprocessing_df = pd.DataFrame(
-            common_preprocessing,
-            columns=[f"raw_wvf_{i}" for i in range(common_preprocessing.shape[1])],
-        )
-        raw_acgs_df = pd.DataFrame(
-            quality_checked_dataset.acg,
-            columns=[
-                f"raw_acg_{i}" for i in range(quality_checked_dataset.acg.shape[1])
-            ],
-        )
+    lab_df = pd.DataFrame({"label": labels})
+    raw_wvf_single_common_preprocessing_df = pd.DataFrame(
+        common_preprocessing,
+        columns=[f"raw_wvf_{i}" for i in range(common_preprocessing.shape[1])],
+    )
+    raw_acgs_df = pd.DataFrame(
+        quality_checked_dataset.acg,
+        columns=[
+            f"raw_acg_{i}" for i in range(quality_checked_dataset.acg.shape[1])
+        ],
+    )
 
-        save_features(
-            pd.concat(
-                [lab_df, raw_acgs_df, raw_wvf_single_common_preprocessing_df], axis=1
-            ),
-            "raw_2d_acg_peak_wvf",
-            args,
-            bad_idx=None,
-            drop_cols=["label"],
-        )
+    save_features(
+        pd.concat(
+            [lab_df, raw_acgs_df, raw_wvf_single_common_preprocessing_df], axis=1
+        ),
+        "raw_2d_acg_peak_wvf",
+        args,
+        bad_idx=None,
+        drop_cols=["label"],
+    )
 
     #### After running the mouse init we also run the monkey
     print("\n Finished mouse init, running monkey init. \n")
@@ -1014,56 +925,56 @@ def main(data_folder=".", plot=True, name="feature_spaces", save_raw=False):
         print("\n Computing log 3D acgs for monkey. \n")
         acg_main(data_path=args.data_folder, dataset=args.name, monkey=True)
 
-    if args.save_raw:
-        mouse_3d_acgs = np.load(mouse_3d_acgs_path)
-        monkey_3d_acgs = np.load(monkey_3d_acgs_path)
+    # 3d acgs and peak waveform feature spaces
+    mouse_3d_acgs = np.load(mouse_3d_acgs_path)
+    monkey_3d_acgs = np.load(monkey_3d_acgs_path)
 
-        mouse_3d_acgs_df = pd.DataFrame(
-            mouse_3d_acgs,
-            columns=[f"acg_3d_logscale_{i}" for i in range(mouse_3d_acgs.shape[1])],
-        )
-        monkey_3d_acgs_df = pd.DataFrame(
-            monkey_3d_acgs,
-            columns=[f"acg_3d_logscale_{i}" for i in range(monkey_3d_acgs.shape[1])],
-        )
+    mouse_3d_acgs_df = pd.DataFrame(
+        mouse_3d_acgs,
+        columns=[f"acg_3d_logscale_{i}" for i in range(mouse_3d_acgs.shape[1])],
+    )
+    monkey_3d_acgs_df = pd.DataFrame(
+        monkey_3d_acgs,
+        columns=[f"acg_3d_logscale_{i}" for i in range(monkey_3d_acgs.shape[1])],
+    )
 
-        save_features(
-            pd.concat(
-                [lab_df, mouse_3d_acgs_df, raw_wvf_single_common_preprocessing_df],
-                axis=1,
-            ),
-            "raw_log_3d_acg_peak_wvf",
-            args,
-            bad_idx=None,
-            drop_cols=["label"],
-        )
+    save_features(
+        pd.concat(
+            [lab_df, mouse_3d_acgs_df, raw_wvf_single_common_preprocessing_df],
+            axis=1,
+        ),
+        "raw_log_3d_acg_peak_wvf",
+        args,
+        bad_idx=None,
+        drop_cols=["label"],
+    )
 
-        monkey_raw_df = pd.read_csv(
-            os.path.join(
-                args.data_folder,
-                "feature_spaces",
-                "raw_2d_acg_peak_wvf",
-                "features.csv",
-            )
+    monkey_raw_df = pd.read_csv(
+        os.path.join(
+            args.data_folder,
+            "feature_spaces",
+            "raw_2d_acg_peak_wvf",
+            "features.csv",
         )
-        monkey_lab_df = pd.read_csv(
-            os.path.join(
-                args.data_folder, "feature_spaces", "raw_2d_acg_peak_wvf", "labels.csv"
-            )
+    )
+    monkey_lab_df = pd.read_csv(
+        os.path.join(
+            args.data_folder, "feature_spaces", "raw_2d_acg_peak_wvf", "labels.csv"
         )
-        monkey_raw_wvf_df = monkey_raw_df.filter(regex="raw_wvf")
+    )
+    monkey_raw_wvf_df = monkey_raw_df.filter(regex="raw_wvf")
 
-        save_features(
-            pd.concat(
-                [monkey_lab_df, monkey_3d_acgs_df, monkey_raw_wvf_df],
-                axis=1,
-            ),
-            "raw_log_3d_acg_peak_wvf",
-            args,
-            bad_idx=None,
-            drop_cols=["label"],
-            monkey=True,
-        )
+    save_features(
+        pd.concat(
+            [monkey_lab_df, monkey_3d_acgs_df, monkey_raw_wvf_df],
+            axis=1,
+        ),
+        "raw_log_3d_acg_peak_wvf",
+        args,
+        bad_idx=None,
+        drop_cols=["label"],
+        monkey=True,
+    )
 
 
 if __name__ == "__main__":
@@ -1092,7 +1003,6 @@ if __name__ == "__main__":
         default="store_true",
         help="Save a dataframe with the raw peak waveform and autocorrelogram in a dataframe to train and use custom scikit-learn style models.",
     )
-    parser.set_defaults(save_raw=False)
 
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("--no-plot", dest="plot", action="store_false")

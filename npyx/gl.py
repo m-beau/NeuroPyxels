@@ -17,6 +17,8 @@ from npyx.utils import npa
 
 
 def get_npyx_memory(dp):
+    if dp is None:
+        return ""
     dpnm = Path(dp) / "npyxMemory"
     old_dpnm = Path(dp) / "routinesMemory"
     if old_dpnm.exists() and not dpnm.exists():

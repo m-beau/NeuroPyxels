@@ -26,7 +26,7 @@ requirements = [
     "ipython",
     "numpy",
     "scipy",
-    "pandas",
+    "pandas<=1.5.3",
     "numba",
     "statsmodels",
     "matplotlib",
@@ -46,6 +46,7 @@ requirements = [
     "laplace-torch",
     "requests",
     "dill",
+    "tabulate",
 ]
 dependency_links = ["https://download.pytorch.org/whl/cpu"]
 

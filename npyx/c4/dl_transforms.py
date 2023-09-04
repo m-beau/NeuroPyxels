@@ -498,7 +498,7 @@ class NewWindowACG(object):
             wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
 
         new_acg = make_acg(
-            "hello",
+            None,
             4,
             (0.5 * self.magnitude_change),
             (100 * self.magnitude_change),

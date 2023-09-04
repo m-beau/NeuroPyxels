@@ -501,7 +501,7 @@ class CNNCerebellum(nn.Module):
         acg_head: ConvolutionalEncoder,
         waveform_head: Encoder,
         n_classes=5,
-        freeze_heads=False,
+        freeze_vae_weights=False,
         use_layer=False,
         multi_chan_wave=False,
     ):
@@ -511,7 +511,7 @@ class CNNCerebellum(nn.Module):
         self.use_layer = use_layer
         self.multi_chan_wave = multi_chan_wave
 
-        if freeze_heads:
+        if freeze_vae_weights:
             for param in self.acg_head.parameters():
                 param.requires_grad = False
             for param in self.wvf_head.parameters():
@@ -815,8 +815,8 @@ def cross_validate(
     batch_size=64,
     loo=False,
     n_runs=10,
-    random_init=False,
-    freeze_heads=False,
+    VAE_random_init=False,
+    freeze_vae_weights=False,
     save_folder=None,
     save_models=False,
     enforce_layer=False,
@@ -827,8 +827,8 @@ def cross_validate(
     N_RUNS = n_runs
     EPOCHS = epochs
     BATCH_SIZE = batch_size
-    RANDOM_INIT = random_init
-    FREEZE_HEADS = freeze_heads
+    VAE_RANDOM_INIT = VAE_random_init
+    FREEZE_VAE_WEIGHTS = freeze_vae_weights
     N_CLASSES = len(np.unique(targets))
 
     acg_transformations, wave_transformations = define_transformations(
@@ -934,7 +934,7 @@ def cross_validate(
                 acg_vae_path,
                 WIN_SIZE // 2,
                 BIN_SIZE,
-                initialise=not RANDOM_INIT,
+                initialise=not VAE_RANDOM_INIT,
                 pool=args.pool_type,
             )
             acg_head = acg_vae.encoder
@@ -950,7 +950,7 @@ def cross_validate(
                     WVF_ENCODER_ARGS_SINGLE,
                     WVF_VAE_PATH_SINGLE,
                     in_features=90,
-                    initialise=not RANDOM_INIT,
+                    initialise=not VAE_RANDOM_INIT,
                 )
                 wvf_head = Encoder(wvf_vae.encoder, 10)
 
@@ -958,7 +958,7 @@ def cross_validate(
                 acg_head,
                 wvf_head,
                 N_CLASSES,
-                freeze_heads=FREEZE_HEADS,
+                freeze_vae_weights=FREEZE_VAE_WEIGHTS,
                 use_layer=args.use_layer,
                 multi_chan_wave=args.multi_chan_wave,
             ).to(DEVICE)
@@ -1189,7 +1189,7 @@ def ensemble_inference(
 
     if save_folder is not None:
         np.save(
-            os.path.join(save_folder, "all_runs_raw_prob_calibrated.npy"),
+            os.path.join(save_folder, "ensemble_predictions_ncells_nclasses_nmodels.npy"),
             raw_probabilities,
         )
 
@@ -1238,8 +1238,8 @@ def encode_layer_info(layer_information):
 
 def main(
     data_folder,
-    freeze=False,
-    random_init=False,
+    freeze_vae_weights=False,
+    VAE_random_init=False,
     augment_acg=False,
     augment_wvf=False,
     mli_clustering=False,
@@ -1249,8 +1249,8 @@ def main(
 ):
     args = ArgsNamespace(
         data_folder=data_folder,
-        freeze=freeze,
-        random_init=random_init,
+        freeze_vae_weights=freeze_vae_weights,
+        VAE_random_init=VAE_random_init,
         augment_acg=augment_acg,
         augment_wvf=augment_wvf,
         mli_clustering=mli_clustering,
@@ -1263,7 +1263,7 @@ def main(
     global N_CHANNELS
     N_CHANNELS = 4 if args.multi_chan_wave else 10
     assert (
-        np.array([args.freeze, args.random_init]).sum() <= 1
+        np.array([args.freeze_vae_weights, args.VAE_random_init]).sum() <= 1
     ), "Only one of the two can be True"
 
     datasets_abs = get_paths_from_dir(args.data_folder)
@@ -1308,12 +1308,12 @@ def main(
     suffix = ""
     features_suffix = ""
     cv_string = "_loo_cv" if args.loo else "_5fold_cv"
-    if args.freeze:
+    if args.freeze_vae_weights:
         suffix = "_frozen_heads"
     if args.multi_chan_wave:
         features_suffix += "_multi_channel"
-    if args.random_init:
-        suffix = "_random_init"
+    if args.VAE_random_init:
+        suffix = "_VAE_random_init"
     if args.mli_clustering:
         features_suffix += "_mli_clustering"
     features_suffix += "_layer" if args.use_layer else ""
@@ -1345,8 +1345,8 @@ def main(
         batch_size=64,
         loo=args.loo,
         n_runs=10,
-        random_init=args.random_init,
-        freeze_heads=args.freeze,
+        VAE_random_init=args.VAE_random_init,
+        freeze_vae_weights=args.freeze_vae_weights,
         save_folder=save_folder,
         save_models=True,
         enforce_layer=False,
@@ -1477,18 +1477,18 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--freeze",
+        "--freeze_vae_weights",
         action="store_true",
-        help="Freeze the weights of the model during training",
+        help="Freeze the weights of the VAE half of the model (the pretrained encoder) during training",
     )
-    parser.set_defaults(freeze=False)
+    parser.set_defaults(freeze_vae_weights=False)
 
     parser.add_argument(
-        "--random_init",
+        "--VAE_random_init",
         action="store_true",
-        help="Randomly initialize the weights of the model",
+        help="Randomly initialize the weights of the VAE half of the model (overwrites the pretrained encoder)",
     )
-    parser.set_defaults(random_init=False)
+    parser.set_defaults(VAE_random_init=False)
 
     parser.add_argument(
         "--augment_acg",

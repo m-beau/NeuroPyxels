@@ -1316,7 +1316,7 @@ def main(
         suffix = "_random_init"
     if args.mli_clustering:
         features_suffix += "_mli_clustering"
-    features_suffix += "_soft_layer" if args.use_layer else ""
+    features_suffix += "_layer" if args.use_layer else ""
     augmented = ("_augmented_acgs" if args.augment_acg else "") + (
         "_augmented_waveforms" if args.augment_wvf else ""
     )
@@ -1324,8 +1324,8 @@ def main(
 
     save_folder = os.path.join(
         args.data_folder,
-        "feature_spaces_1",
-        f"encoded_acg_wvf{features_suffix}",
+        "feature_spaces",
+        f"raw_log_3d_acg_peak_wvf{features_suffix}",
         model_name,
         f"mouse_results{cv_string}",
     )
@@ -1360,30 +1360,6 @@ def main(
         labelling=LABELLING,
         correspondence=CORRESPONDENCE,
     )
-
-    # Apply hard layer correction as well if user requested to use layer
-    if args.use_layer:
-        new_save_folder = os.path.join(
-            args.data_folder,
-            "feature_spaces_1",
-            f"encoded_acg_wvf{features_suffix.split('_soft_layer')[0]}_hard_layer",
-            model_name,
-            f"mouse_results{cv_string}",
-        )
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
-
-        corrected_results_dict = post_hoc_layer_correction(
-            results_dict, one_hot_layer, LABELLING, repeats=10
-        )
-        plot_confusion_matrices(
-            corrected_results_dict,
-            new_save_folder,
-            model_name,
-            labelling=LABELLING,
-            correspondence=CORRESPONDENCE,
-            loo=args.loo,
-        )
 
     #
     # Predict monkey data
@@ -1459,8 +1435,8 @@ def main(
 
     save_folder_monkey = os.path.join(
         args.data_folder,
-        "feature_spaces_1",
-        f"encoded_acg_wvf{features_suffix}",
+        "feature_spaces",
+        f"raw_log_3d_acg_peak_wvf{features_suffix}",
         model_name,
         "monkey_results",
     )
@@ -1489,30 +1465,6 @@ def main(
         correspondence=CORRESPONDENCE,
         plots_prefix="predicting monkey data",
     )
-
-    # Apply hard layer correction as well if user requested to use layer
-    if args.use_layer:
-        new_save_folder_monkey = os.path.join(
-            args.data_folder,
-            "feature_spaces_1",
-            f"encoded_acg_wvf{features_suffix.split('_soft_layer')[0]}_hard_layer",
-            model_name,
-            "monkey_results",
-        )
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
-
-        corrected_results_dict_monkey = post_hoc_layer_correction(
-            results_dict_monkey, monkey_one_hot_layer, LABELLING
-        )
-        plot_confusion_matrices(
-            corrected_results_dict_monkey,
-            new_save_folder_monkey,
-            model_name,
-            labelling=LABELLING,
-            correspondence=CORRESPONDENCE,
-            loo=args.loo,
-        )
 
 
 if __name__ == "__main__":

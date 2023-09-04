@@ -462,7 +462,9 @@ def save_wvf(waveform, save_name=None):
         raise NotImplementedError("Please specify a save name")
 
     plt.figure()
-    npyx_plot.plt_wvf(waveform, figh_inch=8, figw_inch=5, title=str(save_name).split("/")[-1])
+    npyx_plot.plt_wvf(
+        waveform, figh_inch=8, figw_inch=5, title=str(save_name).split("/")[-1]
+    )
 
     plt.savefig(f"{save_name}-wvf.pdf", format="pdf", bbox_inches="tight")
     plt.close()
@@ -889,12 +891,11 @@ def calc_snr(wvf, noise_samples=15, return_db=False):
     return 10 * np.log10(SNR_linear) if return_db else SNR_linear
 
 
-def main(data_folder=".", plot=True, name="feature_spaces_1", WM=False):
-
-    assert not WM, "WM is not supported anymore."
-
+def main(data_folder=".", plot=True, name="feature_spaces", save_raw=False):
     # Parse the arguments into a class to preserve compatibility
-    args = ArgsNamespace(data_folder=data_folder, plot=plot, name=name, WM=WM)
+    args = ArgsNamespace(
+        data_folder=data_folder, plot=plot, name=name, save_raw=save_raw
+    )
 
     # get datasets directories and eventually download them
     datasets_abs = get_paths_from_dir(args.data_folder)
@@ -965,165 +966,31 @@ def main(data_folder=".", plot=True, name="feature_spaces_1", WM=False):
     )
 
     ### Generating raw features dataframes
-    ## TODO make it dependent on parsed argument
-    # raw_waveforms_multi_channel = quality_checked_dataset.wf
+    if args.save_raw:
+        common_preprocessing = quality_checked_dataset.conformed_waveforms
+        labels = quality_checked_dataset.labels_list
 
-    relevant_waveforms = []
-    common_preprocessing = []
-    common_preprocessing_unnormalised = []
-
-    for wf in quality_checked_dataset.wf:
-        relevant_waveform = get_relevant_waveform(wf)
-        if relevant_waveform is None:
-            relevant_waveform = wf.reshape(N_CHANNELS, WAVEFORM_SAMPLES)[
-                N_CHANNELS // 2, :
-            ]
-
-        relevant_waveforms.append(relevant_waveform)
-        common_preprocessing.append(
-            datasets.preprocess_template(wf, clip_size=[1e-3, 2e-3])
+        lab_df = pd.DataFrame({"label": labels})
+        raw_wvf_single_common_preprocessing_df = pd.DataFrame(
+            common_preprocessing,
+            columns=[f"raw_wvf_{i}" for i in range(common_preprocessing.shape[1])],
         )
-        common_preprocessing_unnormalised.append(
-            datasets.preprocess_template(wf, clip_size=[1e-3, 2e-3], normalize=False)
+        raw_acgs_df = pd.DataFrame(
+            quality_checked_dataset.acg,
+            columns=[
+                f"raw_acg_{i}" for i in range(quality_checked_dataset.acg.shape[1])
+            ],
         )
 
-    relevant_waveforms = np.array(relevant_waveforms)
-    common_preprocessing = np.array(common_preprocessing)
-    common_preprocessing_unnormalised = np.array(common_preprocessing_unnormalised)
-
-    labels = quality_checked_dataset.labels_list
-
-    # raw_wvf_multi_df = pd.DataFrame(raw_waveforms_multi_channel)
-    lab_df = pd.DataFrame({"label": labels})
-    # raw_wvf_single_df = pd.DataFrame(relevant_waveforms)
-    # raw_wvf_single_norm_df = pd.DataFrame(
-    #     relevant_waveforms / np.max(np.abs(relevant_waveforms), axis=1)[:, None]
-    # )
-    raw_wvf_single_common_preprocessing_df = pd.DataFrame(common_preprocessing)
-    # raw_wvf_single_common_preprocessing_unnormalised_df = pd.DataFrame(
-    #     common_preprocessing_unnormalised
-    # )
-    raw_acgs_df = pd.DataFrame(quality_checked_dataset.acg)
-
-    # save_features(
-    #     pd.concat([lab_df, raw_wvf_multi_df], axis=1),
-    #     "raw_waveforms_multi_channel",
-    #     args,
-    #     bad_idx=None,
-    #     drop_cols=["label"],
-    # )
-
-    # save_features(
-    #     pd.concat([lab_df, raw_wvf_single_df], axis=1),
-    #     "raw_waveforms_single_channel",
-    #     args,
-    #     bad_idx=None,
-    #     drop_cols=["label"],
-    # )
-
-    # save_features(
-    #     pd.concat([lab_df, raw_wvf_single_norm_df], axis=1),
-    #     "raw_waveforms_single_channel_normalised",
-    #     args,
-    #     bad_idx=None,
-    #     drop_cols=["label"],
-    # )
-
-    # save_features(
-    #     pd.concat([lab_df, raw_wvf_single_common_preprocessing_df], axis=1),
-    #     "raw_waveforms_single_channel_common_preprocessing_normalised",
-    #     args,
-    #     bad_idx=None,
-    #     drop_cols=["label"],
-    # )
-
-    # save_features(
-    #     pd.concat(
-    #         [lab_df, raw_wvf_single_common_preprocessing_unnormalised_df], axis=1
-    #     ),
-    #     "raw_waveforms_single_channel_common_preprocessing_unnormalised",
-    #     args,
-    #     bad_idx=None,
-    #     drop_cols=["label"],
-    # )
-
-    # save_features(
-    #     pd.concat([lab_df, raw_acgs_df], axis=1),
-    #     "raw_acgs",
-    #     args,
-    #     bad_idx=None,
-    #     drop_cols=["label"],
-    # )
-
-    # save_features(
-    #     pd.concat([lab_df, raw_wvf_multi_df, raw_acgs_df], axis=1),
-    #     "raw_combined_features_multi_channel",
-    #     args,
-    #     bad_idx=None,
-    #     drop_cols=["label"],
-    # )
-
-    # save_features(
-    #     pd.concat([lab_df, raw_wvf_single_df, raw_acgs_df], axis=1),
-    #     "raw_combined_features_single_channel",
-    #     args,
-    #     bad_idx=None,
-    #     drop_cols=["label"],
-    # )
-
-    save_features(
-        pd.concat(
-            [lab_df, raw_wvf_single_common_preprocessing_df, raw_acgs_df], axis=1
-        ),
-        "raw_peak_wvf_2d_acg",
-        args,
-        bad_idx=None,
-        drop_cols=["label"],
-    )
-
-    ############################
-    # if args.WM:
-    #     single_channel_preprocessed = []
-    #     paths = []
-    #     units = []
-    #     labels = []
-    #     snrs = []
-
-    #     for i, wave in tqdm(
-    #         enumerate(quality_checked_dataset.wf),
-    #         total=len(quality_checked_dataset.wf),
-    #         desc="Preparing WM...",
-    #     ):
-    #         dp = quality_checked_dataset.info[i].split("/")[0]
-    #         unit = quality_checked_dataset.info[i].split("/")[1]
-    #         waveform_2d = wave.reshape(N_CHANNELS, -1)
-    #         for chan, wf in enumerate(waveform_2d):
-    #             snr = calc_snr(wf, return_db=True)
-
-    #             # Skip waveforms with SNR < 20, but keep them if they are on the peak channel.
-    #             if snr <= 20 and chan != N_CHANNELS // 2:
-    #                 continue
-    #             single_channel_preprocessed.append(
-    #                 datasets.preprocess_template(wf, clip_size=[1e-3, 2e-3])
-    #             )
-    #             paths.append(dp)
-    #             units.append(unit)
-    #             labels.append(quality_checked_dataset.labels_list[i])
-    #             snrs.append(snr)
-    #     metadata_df = pd.DataFrame(
-    #         {"label": labels, "dataset": paths, "unit": units, "snr": snrs}
-    #     )
-    #     preprocessed_df = pd.DataFrame(single_channel_preprocessed)
-
-    #     singchan_preprocessed_df = pd.concat([metadata_df, preprocessed_df], axis=1)
-
-    #     save_features(
-    #         singchan_preprocessed_df,
-    #         "raw_waveforms_single_channel_common_preprocessing_normalised_for_WM",
-    #         args,
-    #         bad_idx=None,
-    #         drop_cols=["label"],
-    #     )
+        save_features(
+            pd.concat(
+                [lab_df, raw_acgs_df, raw_wvf_single_common_preprocessing_df], axis=1
+            ),
+            "raw_2d_acg_peak_wvf",
+            args,
+            bad_idx=None,
+            drop_cols=["label"],
+        )
 
     #### After running the mouse init we also run the monkey
     print("\n Finished mouse init, running monkey init. \n")
@@ -1132,16 +999,71 @@ def main(data_folder=".", plot=True, name="feature_spaces_1", WM=False):
     monkey_main(**vars(args))
 
     #### After running the monkey init, prompt to compute 3D acgs.
-    ## TODO do NOT regenerate the 3D ACGs if they are found
     from .acg_vs_firing_rate import main as acg_main
 
-    print("\n Computing 3D acgs for mouse. \n")
-    acg_main(data_path=args.data_folder, dataset=args.name, monkey=False)
-    print("\n Computing 3D acgs for monkey. \n")
-    acg_main(data_path=args.data_folder, dataset=args.name, monkey=True)
+    mouse_3d_acgs_path = os.path.join(
+        args.data_folder, "acgs_vs_firing_rate", "acgs_3d_logscale.npy"
+    )
+    monkey_3d_acgs_path = os.path.join(
+        args.data_folder, "acgs_vs_firing_rate", "monkey_acgs_3d_logscale.npy"
+    )
+    if not os.path.exists(mouse_3d_acgs_path):
+        print("\n Computing log 3D acgs for mouse. \n")
+        acg_main(data_path=args.data_folder, dataset=args.name, monkey=False)
+    if not os.path.exists(monkey_3d_acgs_path):
+        print("\n Computing log 3D acgs for monkey. \n")
+        acg_main(data_path=args.data_folder, dataset=args.name, monkey=True)
 
-    ## TODO save dataframe with peak waveform preprocessed + ravelled 3d_ACGs
-    # call it raw_peak_wvf_log_3d_acg
+    if args.save_raw:
+        mouse_3d_acgs = np.load(mouse_3d_acgs_path)
+        monkey_3d_acgs = np.load(monkey_3d_acgs_path)
+
+        mouse_3d_acgs_df = pd.DataFrame(
+            mouse_3d_acgs,
+            columns=[f"acg_3d_logscale_{i}" for i in range(mouse_3d_acgs.shape[1])],
+        )
+        monkey_3d_acgs_df = pd.DataFrame(
+            monkey_3d_acgs,
+            columns=[f"acg_3d_logscale_{i}" for i in range(monkey_3d_acgs.shape[1])],
+        )
+
+        save_features(
+            pd.concat(
+                [lab_df, mouse_3d_acgs_df, raw_wvf_single_common_preprocessing_df],
+                axis=1,
+            ),
+            "raw_log_3d_acg_peak_wvf",
+            args,
+            bad_idx=None,
+            drop_cols=["label"],
+        )
+
+        monkey_raw_df = pd.read_csv(
+            os.path.join(
+                args.data_folder,
+                "feature_spaces",
+                "raw_2d_acg_peak_wvf",
+                "features.csv",
+            )
+        )
+        monkey_lab_df = pd.read_csv(
+            os.path.join(
+                args.data_folder, "feature_spaces", "raw_2d_acg_peak_wvf", "labels.csv"
+            )
+        )
+        monkey_raw_wvf_df = monkey_raw_df.filter(regex="raw_wvf")
+
+        save_features(
+            pd.concat(
+                [monkey_lab_df, monkey_3d_acgs_df, monkey_raw_wvf_df],
+                axis=1,
+            ),
+            "raw_log_3d_acg_peak_wvf",
+            args,
+            bad_idx=None,
+            drop_cols=["label"],
+            monkey=True,
+        )
 
 
 if __name__ == "__main__":
@@ -1161,25 +1083,20 @@ if __name__ == "__main__":
         "-n",
         "--name",
         type=str,
-        default="feature_spaces_1",
-        help="Name assigned to the dataset.",
+        default="feature_spaces",
+        help="Name assigned to the feature spaces.",
     )
 
-    ## TODO
     parser.add_argument(
-        "-wvf_acg",
-        "--save_raw_wvf_acg_df",
-        type=str,
-        default="False",
+        "--save-raw",
+        default="store_true",
         help="Save a dataframe with the raw peak waveform and autocorrelogram in a dataframe to train and use custom scikit-learn style models.",
     )
+    parser.set_defaults(save_raw=False)
 
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("--no-plot", dest="plot", action="store_false")
     parser.set_defaults(plot=True)
-
-    parser.add_argument("--WM", action="store_true")
-    parser.set_defaults(WM=False)
 
     args = parser.parse_args()
 

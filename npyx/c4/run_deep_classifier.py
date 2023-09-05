@@ -12,6 +12,12 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
+import matplotlib
+try:
+    matplotlib.use('TkAgg')
+except:
+    pass
+
 import numpy as np
 import pandas as pd
 
@@ -265,8 +271,8 @@ def plot_training_curves(train_losses, f1_train, epochs, save_folder=None):
     axes[1].set_ylabel("F1 score")
     axes[1].legend(loc="upper left")
 
-    plt.savefig(os.path.join(save_folder, "training_curves.png"))
-    plt.close()
+    fig.savefig(os.path.join(save_folder, "training_curves.png"))
+    plt.close('all')
 
 
 def calculate_accuracy(y_pred, y):
@@ -295,8 +301,16 @@ def train(
         optimizer.zero_grad()
         y_pred = model(x)
 
+        # measure the loss
         loss = criterion(y_pred, y)
 
+        # calculate the backward pass
+        loss.backward()
+
+        # updates the weights based on the backward pass
+        optimizer.step()
+
+        # compute performance
         with torch.no_grad():
             f1 = f1_score(
                 y.cpu(),
@@ -306,12 +320,9 @@ def train(
                 zero_division=1,
             )
 
-        acc = calculate_accuracy(y_pred, y)
+            acc = calculate_accuracy(y_pred, y)
 
-        loss.backward()
-
-        optimizer.step()
-
+        # store performance for this minibatch
         epoch_loss += loss.item()
         epoch_f1 += f1.item()
         epoch_acc += acc.item()

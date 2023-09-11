@@ -24,7 +24,7 @@ from tqdm.auto import tqdm
 
 import npyx.corr as corr
 import npyx.datasets as datasets
-from npyx.gl import get_units
+from npyx.gl import get_units, load_units_qualities
 from npyx.spk_t import trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 
@@ -57,7 +57,8 @@ HESSIANS_URL_DICT = {
 }
 
 
-def get_n_cores(num_cores, max_num_cores=60):
+def get_n_cores(num_cores):
+    max_num_cores=60
     max_num_cores = min(multiprocessing.cpu_count(), max_num_cores)
     num_cores = min(num_cores, max_num_cores)
     return num_cores
@@ -105,7 +106,7 @@ def directory_checks(data_path):
     assert os.path.exists(
         os.path.join(data_path, "params.py")
     ), "Make sure that the current working directory contains the output of a spike sorter compatible with phy (in particular the params.py file)."
-    if os.path.exists(os.path.join(data_path, "cluster_predicted_cell_type.csv")):
+    if os.path.exists(os.path.join(data_path, "cluster_predicted_cell_type.tsv")):
         while True:
             prompt = input(
                 "\nA cluster_predicted_cell_type.tsv file already exists. Are you sure you want to overwrite previous results? If you wish to compare different classifier parameters move the previous results to a different folder before running. (y/n) : "
@@ -468,6 +469,9 @@ def main(
     # Perform some checks on the data folder
     directory_checks(args.data_path)
 
+	#This function checks the content of cluster_group.tsv file and regenerate this one if it is required.
+    load_units_qualities(args.data_path, again=True)
+
     # Determine the model type that we should use
     if args.mli_clustering and not args.use_layer:
         model_type = "mli_clustering"
@@ -585,13 +589,13 @@ def main(
 
     # Save the predictions to a file that can be read by phy
     predictions_df[["cluster_id", "predicted_cell_type"]].to_csv(
-        os.path.join(save_path, "cluster_predicted_cell_type.csv"), index=False
+        os.path.join(save_path, "cluster_predicted_cell_type.tsv"), index=False
     )
     predictions_df[["cluster_id", "confidence"]].to_csv(
-        os.path.join(save_path, "cluster_confidence.csv"), index=False
+        os.path.join(save_path, "cluster_confidence.tsv"), index=False
     )
     predictions_df[["cluster_id", "model_votes"]].to_csv(
-        os.path.join(save_path, "cluster_model_votes.csv"), index=False
+        os.path.join(save_path, "cluster_model_votes.tsv"), index=False
     )
 
     # Save the raw probabilities and the label correspondence for power users
@@ -630,7 +634,7 @@ def main(
                 unit_id=unit,
             )
 
-    num_cores = get_n_cores(len(good_units), len(good_units))
+    num_cores = get_n_cores(len(good_units))
     with redirect_stdout_fd(open(os.devnull, "w")):
         Parallel(n_jobs=num_cores, prefer="processes")(
             delayed(aux_plot_features)(i, unit, correspondence)

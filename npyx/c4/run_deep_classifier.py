@@ -1274,14 +1274,33 @@ def post_hoc_layer_correction(
     return new_results_dict
 
 
-def encode_layer_info(layer_information):
+def encode_layer_info_original(layer_information):
     layer_info = pd.Series(layer_information).replace(
         to_replace=datasets.LAYERS_CORRESPONDENCE
     )
+
     preprocessor = ColumnTransformer(
         transformers=[("encoder", OneHotEncoder(handle_unknown="ignore"), [-1])]
     )
+
     return preprocessor.fit_transform(layer_info.to_frame()).toarray()
+
+
+def encode_layer_info(layer_information):
+    N_values = len(datasets.LAYERS_CORRESPONDENCE.keys())
+    for value in datasets.LAYERS_CORRESPONDENCE.keys():
+        layer_information = np.append(layer_information, value)
+
+    layer_info = pd.Series(layer_information).replace(
+        to_replace=datasets.LAYERS_CORRESPONDENCE
+    )
+
+    preprocessor = ColumnTransformer(
+        transformers=[("encoder", OneHotEncoder(handle_unknown="ignore"), [-1])]
+    )
+
+    result = preprocessor.fit_transform(layer_info.to_frame()).toarray()
+    return result[0:-N_values]
 
 
 def main(

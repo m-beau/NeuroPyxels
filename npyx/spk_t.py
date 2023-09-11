@@ -32,6 +32,10 @@ from npyx.utils import (
     thresh_consec,
 )
 
+def cache_validation_again(metadata):
+    # Only retrieve cached results for calls that are not flagged with again
+    return metadata["input_args"]["again"] == False
+
 
 def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=-1):
     '''
@@ -114,7 +118,7 @@ def load_amplitudes(dp, unit, verbose=False, periods='all', again=False, enforce
     
     return amps
 
-@cache_memory.cache
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
 def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=0):
     '''
     ********
@@ -568,7 +572,7 @@ def train_quality(dp, unit, period_m=[0,20],
     unit_train = trn(dp, unit, enforced_rp=enforced_rp, again=again, verbose=verbose)/fs
 
     if period_m is None:
-        period_m = [0, unit_train[-1]/60]
+        period_m = [0, unit_train[-1]//60]
     period_s=[period_m[0]*60, period_m[1]*60]
 
     # Attempt to reload if precomputed
@@ -767,7 +771,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
     {0}
     """
     dp = Path(dp)
-    t = trn(dp,unit, enforced_rp=enforced_rp)
+    t = trn(dp,unit, enforced_rp=enforced_rp, again=again)
     t_s=t/30000
     good_spikes_m, good_fp_start_end, good_fn_start_end = train_quality(dp, unit, period_m,
                     fp_chunk_span, fp_chunk_size, fn_chunk_span, fn_chunk_size, use_or_operator,

@@ -26,7 +26,7 @@ requirements = [
     "ipython",
     "numpy",
     "scipy",
-    "pandas",
+    "pandas<=1.5.3",
     "numba",
     "statsmodels",
     "matplotlib",
@@ -36,7 +36,7 @@ requirements = [
     "imbalanced-learn",
     "networkx",
     "psutil",
-    "joblib",
+    "joblib>=1.3",
     "tqdm",
     "h5py",
     "seaborn",
@@ -44,8 +44,9 @@ requirements = [
     "torchvision==0.14.1",
     "torchaudio==0.13.1",
     "laplace-torch",
-    "dill",
     "requests",
+    "dill",
+    "tabulate",
 ]
 dependency_links = ["https://download.pytorch.org/whl/cpu"]
 

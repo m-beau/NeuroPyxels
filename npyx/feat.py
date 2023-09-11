@@ -128,7 +128,7 @@ def acg_burst_vs_mfr(train, mfr, sampling_rate=30_000):
       computed outside the bursting period.
     """
     # Compute the ACG and take only half to cut some processing
-    autocorr = acg("hello", 0, 0.2, 80, fs=sampling_rate, train=train)
+    autocorr = acg(None, 0, 0.2, 80, fs=sampling_rate, train=train)
     autocorr = autocorr[len(autocorr) // 2 :]
 
     # Smoothen the acg to avoid too crazy values for the feature even for bursty neurons
@@ -1681,10 +1681,14 @@ def h5_feature_extraction(
                 if isinstance(dataset_path, NeuronsDataset):
                     chanmap = dataset.chanmap_list[i]
                     chanmap = np.array(chanmap)
-                    if waveform.shape[0] > chanmap.shape[0]:
+                    if chanmap.shape[0] == 0:
+                        # In this case the chanmap is invalid and we need to discard it
+                        chanmap = None
+                    elif waveform.shape[0] > chanmap.shape[0]:
                         # If this happened, the waveform was tiled and we need to recover
                         # the original one to match the chanmap
                         waveform = waveform[waveform.shape[0] - chanmap.shape[0] :, :]
+
                 else:
                     chanmap_path = f"datasets/{dataset.info[i]}/channelmap"
                     with h5py.File(dataset_path, "r") as hdf5_file:
@@ -1747,7 +1751,6 @@ def get_unusable_features(df: pd.DataFrame) -> pd.DataFrame:
         if zeros.size > 0 and zeros > 5:
             bad_idx.append(i)
     bad_idx += df.index[df.isna().any(axis=1)].tolist()
-
     return np.unique(bad_idx)
 
 

@@ -9,8 +9,8 @@ from .dataset_init import BIN_SIZE, WIN_SIZE
 ACG_LEN = int(WIN_SIZE / BIN_SIZE // 2)
 
 
-WAVEFORM_SAMPLES = 120
-N_CHANNELS = 10
+WAVEFORM_SAMPLES = 90
+N_CHANNELS = 4
 
 
 class ConformWaveform(object):
@@ -498,7 +498,7 @@ class NewWindowACG(object):
             wvf = data_point[: N_CHANNELS * WAVEFORM_SAMPLES]
 
         new_acg = make_acg(
-            "hello",
+            None,
             4,
             (0.5 * self.magnitude_change),
             (100 * self.magnitude_change),

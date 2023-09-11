@@ -189,7 +189,7 @@ def crop_original_wave(waveform, central_range=60, n_channels=10):
             waveform.shape[0] // 2,
         )
 
-    channels_by_amplitude = np.argsort(np.max(np.abs(waveform), axis=1))
+    channels_by_amplitude = np.argsort(np.ptp(waveform, axis=1))
 
     cropped_wvf = np.array([0])
     i = 1
@@ -297,6 +297,7 @@ class NeuronsDataset:
         cut_acg=True,
         central_range=CENTRAL_RANGE,
         n_channels=N_CHANNELS,
+        flip_waveforms=True,
         reshape_fortran_to_c=False,
         _label="ground_truth_label",
         _labelling=LABELLING,
@@ -315,11 +316,14 @@ class NeuronsDataset:
         self.dataset = dataset
         self._n_channels = n_channels
         self._central_range = central_range
+        self.flip_waveforms = flip_waveforms
         self._sampling_rate = get_neuron_attr(dataset, 0, "sampling_rate").item()
         self.mli_clustering = _extract_mli_clusters
+        self._keep_singchan = _keep_singchan
 
         # Initialise empty lists to extract data
         self.wf_list = []
+        self.conformed_waveforms = []
         self.acg_list = []
         self.spikes_list = []
         self.labels_list = []
@@ -328,6 +332,8 @@ class NeuronsDataset:
         self.genetic_line_list = []
         self.h5_ids = []
 
+        if not self._keep_singchan:
+            self.singchan_mask = []
         if _use_amplitudes:
             self.amplitudes_list = []
 
@@ -365,10 +371,6 @@ class NeuronsDataset:
                         mli_cluster = mli_cluster.replace("1", "A").replace("2", "B")
                         label = mli_cluster
                     self.labels_list.append(label)
-
-                # elif label != 0:
-                #     label = label.item()
-                #     self.labels_list.append(label)
 
                 else:
                     if _labels_only:
@@ -474,11 +476,20 @@ class NeuronsDataset:
                     else:
                         discard_wave = True
 
+                if not self._keep_singchan:
+                    self.singchan_mask.append(discard_wave)
+
                 # Alternatively, if it is not spread on enough channels, we want to tile the remaining
                 if wf.shape[0] < n_channels:
                     wf = pad_matrix_with_decay(wf, n_channels)
-                    # repeats = [wf[0][None, :]] * (n_channels - wf.shape[0])
-                    # wf = np.concatenate((*repeats, wf), axis=0)
+
+                # Extract the waveform conformed to the common preprocessing strategy in C4
+                peak_chan = np.argmax(np.ptp(wf, axis=1))
+                conformed_wave = preprocess_template(
+                    wf[peak_chan, :], self._sampling_rate,
+                    peak_sign = "negative" if self.flip_waveforms else None,
+                )
+                self.conformed_waveforms.append(conformed_wave)
 
                 if normalise_wvf:
                     cropped_wave, peak_idx = crop_original_wave(
@@ -491,8 +502,9 @@ class NeuronsDataset:
                     )
                     self.wf_list.append(cropped_wave.ravel().astype(float))
                 if (
-                    self.wf_list[-1].shape[0] != n_channels * central_range
-                    or discard_wave
+                    self.wf_list[-1].shape[0]
+                    != n_channels * central_range
+                    # or discard_wave
                 ):
                     dataset_name = (
                         get_neuron_attr(dataset, wf_n, "dataset_id")
@@ -521,10 +533,10 @@ class NeuronsDataset:
                     )
                     del self.labels_list[-1]
                     del self.wf_list[-1]
-                    if quality_check:
-                        del self.spikes_list[-1]
-                    else:
-                        del self.spikes_list[-1]
+                    del self.spikes_list[-1]
+                    del self.conformed_waveforms[-1]
+
+                    if not quality_check:
                         del self.fn_fp_list[-1]
                         del self.sane_spikes_list[-1]
                         del self.quality_checks_mask[-1]
@@ -663,11 +675,11 @@ class NeuronsDataset:
         )
 
         # Compute conformed_waveforms
-        self.conformed_waveforms = []
-        for wf in self.wf.reshape(-1, self._n_channels, self._central_range):
-            peak_chan = np.argmax(np.max(np.abs(wf), axis=1))
-            conformed_wave = preprocess_template(wf[peak_chan, :], self._sampling_rate)
-            self.conformed_waveforms.append(conformed_wave)
+        # self.conformed_waveforms = []
+        # for wf in self.wf.reshape(-1, self._n_channels, self._central_range):
+        #     peak_chan = np.argmax(np.max(np.abs(wf), axis=1))
+        #     conformed_wave = preprocess_template(wf[peak_chan, :], self._sampling_rate)
+        #     self.conformed_waveforms.append(conformed_wave)
         self.conformed_waveforms = np.stack(self.conformed_waveforms, axis=0)
 
         self.h5_ids = np.array(self.h5_ids)
@@ -720,6 +732,8 @@ class NeuronsDataset:
             self.full_dataset = self.full_dataset[mask]
         if hasattr(self, "layer_list"):
             self.layer_list = np.array(self.layer_list, dtype=object)[mask].tolist()
+        if hasattr(self, "singchan_mask"):
+            self.singchan_mask = np.array(self.singchan_mask)[mask].tolist()
 
     def make_full_dataset(self, wf_only=False, acg_only=False):
         """
@@ -1130,9 +1144,9 @@ def preprocess_template(
     return template if not multi_chan else waveform
 
 
-def pad_matrix_with_decay(matrix, target_x=10):
-    current_x, _ = matrix.shape
-    padding_needed = target_x - current_x
+def pad_matrix_with_decay(matrix, target_channels=10):
+    n_channels, _ = matrix.shape
+    padding_needed = target_channels - n_channels
 
     if padding_needed <= 0:
         return matrix
@@ -1141,10 +1155,10 @@ def pad_matrix_with_decay(matrix, target_x=10):
     reference_amplitude = np.max(np.abs(matrix))
 
     # Find the peak signal value and its position in the matrix
-    peak_row, peak_col = np.unravel_index(np.argmax(np.abs(matrix)), matrix.shape)
+    peak_row = np.argmax(np.ptp(matrix, axis=1))
 
     # Find the closest non-peak signal value to the peak position
-    distances_to_peak = np.abs(np.arange(current_x) - peak_row)
+    distances_to_peak = np.abs(np.arange(n_channels) - peak_row)
     closest_non_peak_row = np.argmin(np.ma.masked_equal(distances_to_peak, 0))
     closest_non_peak_value = np.max(np.abs(matrix[closest_non_peak_row, :]))
 

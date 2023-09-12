@@ -1,4 +1,5 @@
 import argparse
+import multiprocessing
 import os
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from joblib import Parallel, delayed
 from scipy.optimize import OptimizeWarning
 from scipy.signal import fftconvolve
 from tqdm.auto import tqdm
@@ -19,6 +21,7 @@ from .dataset_init import (
     get_paths_from_dir,
 )
 from .monkey_dataset_init import MONKEY_CENTRAL_RANGE, get_lisberger_dataset
+from .predict_cell_types import get_n_cores, redirect_stdout_fd
 
 BIN_SIZE = 1
 WIN_SIZE = 200
@@ -172,6 +175,28 @@ def augment_spikes(spikes_list, *transforms):
     return new_spikes_list
 
 
+def aux_compute_acgs(spikes, win_size, bin_size, sampling_rate, fast, i):
+    try:
+        if fast:
+            (_, acg_3d) = fast_acg3d(spikes, win_size, bin_size, fs=sampling_rate)
+        else:
+            (_, acg_3d) = corr.crosscorr_vs_firing_rate(
+                spikes, spikes, win_size, bin_size, fs=sampling_rate
+            )
+    except IndexError:
+        # Handles the occasional error of the fast function.
+        try:
+            (_, acg_3d) = corr.crosscorr_vs_firing_rate(
+                spikes, spikes, win_size, bin_size, fs=sampling_rate
+            )
+        except IndexError:
+            print(
+                f"Error with neuron {i}. Both fast and slow functions failed. Skipping."
+            )
+            return None
+    return acg_3d.ravel()
+
+
 def main(
     data_path=".",
     dataset="feature_spaces",
@@ -261,46 +286,65 @@ def main(
     if args.log:
         suffix += "_logscale"
         WIN_SIZE = 2000
+    else:
+        WIN_SIZE = 200
 
-    for i, spikes in tqdm(
-        enumerate(spikes_list),
-        total=len(spikes_list),
-        desc="Computing 3D ACGs",
-        position=0,
-        leave=False,
-    ):
-        try:
-            if args.fast:
-                (
-                    _,
-                    acg_3d,
-                ) = fast_acg3d(
-                    spikes, WIN_SIZE, BIN_SIZE, fs=dataset_class._sampling_rate
-                )
-            else:
-                (
-                    _,
-                    acg_3d,
-                ) = corr.crosscorr_vs_firing_rate(
-                    spikes, spikes, WIN_SIZE, BIN_SIZE, fs=dataset_class._sampling_rate
-                )
-        except IndexError:
-            # Handles the occasional error of the fast function.
-            try:
-                (
-                    _,
-                    acg_3d,
-                ) = corr.crosscorr_vs_firing_rate(
-                    spikes, spikes, WIN_SIZE, BIN_SIZE, fs=dataset_class._sampling_rate
-                )
-            except IndexError:
-                print(
-                    f"Error with neuron {i}. Both fast and slow functions failed. Skipping."
-                )
-                continue
-        acgs_3d.append(acg_3d.ravel())
+    # for i, spikes in tqdm(
+    #     enumerate(spikes_list),
+    #     total=len(spikes_list),
+    #     desc="Computing 3D ACGs",
+    #     position=0,
+    #     leave=False,
+    # ):
+    #     try:
+    #         if args.fast:
+    #             (
+    #                 _,
+    #                 acg_3d,
+    #             ) = fast_acg3d(
+    #                 spikes, WIN_SIZE, BIN_SIZE, fs=dataset_class._sampling_rate
+    #             )
+    #         else:
+    #             (
+    #                 _,
+    #                 acg_3d,
+    #             ) = corr.crosscorr_vs_firing_rate(
+    #                 spikes, spikes, WIN_SIZE, BIN_SIZE, fs=dataset_class._sampling_rate
+    #             )
+    #     except IndexError:
+    #         # Handles the occasional error of the fast function.
+    #         try:
+    #             (
+    #                 _,
+    #                 acg_3d,
+    #             ) = corr.crosscorr_vs_firing_rate(
+    #                 spikes, spikes, WIN_SIZE, BIN_SIZE, fs=dataset_class._sampling_rate
+    #             )
+    #         except IndexError:
+    #             print(
+    #                 f"Error with neuron {i}. Both fast and slow functions failed. Skipping."
+    #             )
+    #             continue
+    #     acgs_3d.append(acg_3d.ravel())
 
-    acgs_3d = np.stack(acgs_3d, axis=0)
+    # acgs_3d = np.stack(acgs_3d, axis=0)
+
+    num_cores = get_n_cores(len(spikes_list))
+    with redirect_stdout_fd(open(os.devnull, "w")):
+        acgs_3d = Parallel(n_jobs=num_cores)(
+            delayed(aux_compute_acgs)(
+                spikes, WIN_SIZE, BIN_SIZE, dataset_class._sampling_rate, args.fast, i
+            )
+            for i, spikes in tqdm(
+                enumerate(spikes_list),
+                total=len(spikes_list),
+                desc="Computing 3D ACGs",
+                position=0,
+                leave=False,
+            )
+        )
+
+    acgs_3d = np.stack([acg for acg in acgs_3d if acg is not None], axis=0)
 
     if not os.path.exists(os.path.join(args.data_path, args.name)):
         os.mkdir(os.path.join(args.data_path, args.name))

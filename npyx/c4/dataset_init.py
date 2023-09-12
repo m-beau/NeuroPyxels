@@ -812,7 +812,7 @@ def main(data_folder=".", plot=True, name="feature_spaces"):
 
     # Extract and check the datasets, saving a dataframe with the results
     dataset_df, dataset_class = extract_and_check(
-        *datasets_abs, save_folder=args.data_folder
+        *datasets_abs, save_folder=args.data_folder, _labels_only=True
     )
 
     if args.plot:

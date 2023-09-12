@@ -17,6 +17,8 @@ from npyx.utils import npa
 
 
 def get_npyx_memory(dp):
+    if dp is None:
+        return ""
     dpnm = Path(dp) / "npyxMemory"
     old_dpnm = Path(dp) / "routinesMemory"
     if old_dpnm.exists() and not dpnm.exists():
@@ -339,7 +341,8 @@ def detect_new_spikesorting(dp, print_message=True, qualities=None):
         ), "this function should be ran on an original sorted dataset, not on a merged dataset."
         last_spikesort = os.path.getmtime(dp / "spike_clusters.npy")
         last_tsv_update = os.path.getmtime(dp / "cluster_group.tsv")
-        spikesorted = last_tsv_update == last_spikesort
+        #spikesorted = last_tsv_update == last_spikesort
+        spikesorted = abs(last_tsv_update-last_spikesort) < 1.0
 
     else:
         qualities_old = pd.read_csv(dp / "cluster_group.tsv", delim_whitespace=True)

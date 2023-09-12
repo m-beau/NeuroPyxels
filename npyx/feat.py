@@ -128,7 +128,7 @@ def acg_burst_vs_mfr(train, mfr, sampling_rate=30_000):
       computed outside the bursting period.
     """
     # Compute the ACG and take only half to cut some processing
-    autocorr = acg("hello", 0, 0.2, 80, fs=sampling_rate, train=train)
+    autocorr = acg(None, 0, 0.2, 80, fs=sampling_rate, train=train)
     autocorr = autocorr[len(autocorr) // 2 :]
 
     # Smoothen the acg to avoid too crazy values for the feature even for bursty neurons

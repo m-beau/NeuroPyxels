@@ -342,8 +342,8 @@ def main(
             f1_scores=results_dict["f1_scores"]
             if "f1_scores" in results_dict
             else None,
-            _folds_variance=results_dict["folds_variance"]
-            if "folds_variance" in results_dict
+            _folds_stddev=results_dict["folds_stddev"]
+            if "folds_stddev" in results_dict
             else None,
         )
         npyx_plot.save_mpl_fig(
@@ -424,8 +424,8 @@ def main(
             f1_scores=results_dict["f1_scores"]
             if "f1_scores" in results_dict
             else None,
-            _folds_variance=results_dict["folds_variance"]
-            if "folds_variance" in results_dict
+            _folds_stddev=results_dict["folds_stddev"]
+            if "folds_stddev" in results_dict
             else None,
         )
         npyx_plot.save_mpl_fig(

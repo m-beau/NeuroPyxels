@@ -7,9 +7,13 @@ import pandas as pd
 try:
     import torch
 except ImportError:
-    print(("\nPyTorch could not be imported - "
-    "some functions from the submodule npyx.ml will not work.\n"
-    "To install PyTorch, follow the instructions at http://pytorch.org"))
+    print(
+        (
+            "\nPyTorch could not be imported - "
+            "some functions from the submodule npyx.ml will not work.\n"
+            "To install PyTorch, follow the instructions at http://pytorch.org"
+        )
+    )
 
 from imblearn.over_sampling import RandomOverSampler
 from sklearn.base import TransformerMixin
@@ -83,7 +87,7 @@ def run_cross_validation(
     all_runs_targets = []
     all_runs_predictions = []
     all_runs_probabilities = []
-    folds_variance = []
+    folds_stddev = []
 
     if get_importance:
         importances_list = []
@@ -150,7 +154,7 @@ def run_cross_validation(
         all_runs_targets.append(np.array(run_true_targets))
         all_runs_predictions.append(np.array(run_model_pred))
         all_runs_probabilities.append(np.concatenate(run_probabilites, axis=0))
-        folds_variance.append(np.array(folds_f1).std())
+        folds_stddev.append(np.array(folds_f1).std())
 
     mean_train = np.array(run_train_accuracies).mean()
     mean_validation = (np.array(run_true_targets) == np.array(run_model_pred)).mean()
@@ -161,7 +165,7 @@ def run_cross_validation(
         f"Mean cross-validation F1 score across {n_runs} runs is {np.array(all_runs_f1_scores).mean():.3f}, with std {np.array(all_runs_f1_scores).std():.3f}"
     )
     print(
-        f"Average variance in F1 score across folds is {np.array(folds_variance).mean():.3f}"
+        f"Average standard deviation in F1 score across folds is {np.array(folds_stddev).mean():.3f}"
     )
 
     all_targets = np.concatenate(all_runs_targets).squeeze()
@@ -172,7 +176,7 @@ def run_cross_validation(
         "train_accuracies": run_train_accuracies,
         "true_targets": all_targets,
         "predicted_probability": all_probabilities,
-        "folds_variance": np.array(folds_variance),
+        "folds_stddev": np.array(folds_stddev),
     }
 
     if get_importance:

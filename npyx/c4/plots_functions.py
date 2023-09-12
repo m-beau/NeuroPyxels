@@ -1,6 +1,12 @@
 from datetime import date
 
 import matplotlib.pyplot as plt
+import matplotlib
+try:
+    matplotlib.use('TkAgg')
+except:
+    pass
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -107,7 +113,7 @@ def save_acg(spike_train, unit_n, save_name=None):
 
     if len(spike_train.ravel()) > 1:
         plt.figure()
-        npyx_plot.plot_acg("hello", unit_n, train=spike_train, figsize=(5, 4.5))
+        npyx_plot.plot_acg(None, unit_n, train=spike_train, figsize=(5, 4.5))
 
         plt.savefig(f"{save_name}-acg.pdf", format="pdf", bbox_inches="tight")
     else:
@@ -326,7 +332,7 @@ def plot_results_from_threshold(
     save: bool = False,
     savename: str = None,
     _shuffle_matrix: list = None,
-    _folds_variance: np.ndarray = None,
+    _folds_stddev: np.ndarray = None,
 ):
     fig, ax = plt.subplots(
         1, 2, figsize=(20, 8), gridspec_kw={"width_ratios": [1.5, 1]}
@@ -435,8 +441,8 @@ def plot_results_from_threshold(
             f1_string = f"F1 score: {f1_scores:.3f}"
         else:
             f1_string = f"Mean F1 score across {len(f1_scores)} runs: {np.mean(f1_scores):.3f}, std: {np.std(f1_scores):.3f}"
-        if _folds_variance is not None:
-            f1_string += f"\n Stdev across folds: {_folds_variance.mean():.3f}"
+        if _folds_stddev is not None:
+            f1_string += f"\n Stdev across folds: {_folds_stddev.mean():.3f}"
     else:
         f1_string = ""
 

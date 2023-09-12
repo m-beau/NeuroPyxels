@@ -6,13 +6,18 @@ if __name__ == "__main__":
 
 import argparse
 import gc
-import re
 import shutil
 import tarfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
+import matplotlib
+try:
+    matplotlib.use('TkAgg')
+except:
+    pass
+
 import numpy as np
 import pandas as pd
 
@@ -192,7 +197,7 @@ class CustomDataset(data.Dataset):
         Args:
             data (ndarray): Array of data points, with wvf and acg concatenated
             targets (string): Array of labels for the provided data
-            raw_spikes (ndarray): Array of raw spikes for the provided data
+            raw_spikes (ndarray): Array of raw spikes for the provided data, used in acg augmentations.
         """
         self.data = data
         self.targets = targets
@@ -266,8 +271,8 @@ def plot_training_curves(train_losses, f1_train, epochs, save_folder=None):
     axes[1].set_ylabel("F1 score")
     axes[1].legend(loc="upper left")
 
-    plt.savefig(os.path.join(save_folder, "training_curves.png"))
-    plt.close()
+    fig.savefig(os.path.join(save_folder, "training_curves.png"))
+    plt.close('all')
 
 
 def calculate_accuracy(y_pred, y):
@@ -296,8 +301,16 @@ def train(
         optimizer.zero_grad()
         y_pred = model(x)
 
+        # measure the loss
         loss = criterion(y_pred, y)
 
+        # calculate the backward pass
+        loss.backward()
+
+        # updates the weights based on the backward pass
+        optimizer.step()
+
+        # compute performance
         with torch.no_grad():
             f1 = f1_score(
                 y.cpu(),
@@ -307,12 +320,9 @@ def train(
                 zero_division=1,
             )
 
-        acc = calculate_accuracy(y_pred, y)
+            acc = calculate_accuracy(y_pred, y)
 
-        loss.backward()
-
-        optimizer.step()
-
+        # store performance for this minibatch
         epoch_loss += loss.item()
         epoch_f1 += f1.item()
         epoch_acc += acc.item()
@@ -496,22 +506,48 @@ def get_model_probabilities(
 
 
 class CNNCerebellum(nn.Module):
+    """
+    A convolutional neural network for classifying cerebellar data.
+
+    Args:
+        acg_head (ConvolutionalEncoder): The encoder for the ACG data.
+        waveform_head (Encoder): The encoder for the waveform data.
+        n_classes (int): The number of classes to classify.
+        freeze_vae_weights (bool): Whether to freeze the weights of the VAE.
+        use_layer (bool): Whether to use the layer data.
+        multi_chan_wave (bool): Whether to use multiple channels for the waveform data.
+
+    Attributes:
+        acg_head (ConvolutionalEncoder): The encoder for the ACG data.
+        wvf_head (Encoder): The encoder for the waveform data.
+        use_layer (bool): Whether to use the layer data.
+        multi_chan_wave (bool): Whether to use multiple channels for the waveform data.
+        fc1 (nn.LazyLinear): The first fully connected layer.
+        fc2 (nn.LazyLinear): The second fully connected layer.
+        batch_norm (nn.BatchNorm1d): The batch normalization layer.
+
+    Methods:
+        forward(x: torch.Tensor, layer: Optional[torch.Tensor] = None) -> torch.Tensor:
+            Performs a forward pass through the network.
+
+    """
+
     def __init__(
         self,
         acg_head: ConvolutionalEncoder,
         waveform_head: Encoder,
-        n_classes=5,
-        freeze_heads=False,
-        use_layer=False,
-        multi_chan_wave=False,
-    ):
+        n_classes: int = 5,
+        freeze_vae_weights: bool = False,
+        use_layer: bool = False,
+        multi_chan_wave: bool = False,
+    ) -> None:
         super(CNNCerebellum, self).__init__()
         self.acg_head = acg_head
         self.wvf_head = waveform_head
         self.use_layer = use_layer
         self.multi_chan_wave = multi_chan_wave
 
-        if freeze_heads:
+        if freeze_vae_weights:
             for param in self.acg_head.parameters():
                 param.requires_grad = False
             for param in self.wvf_head.parameters():
@@ -520,7 +556,7 @@ class CNNCerebellum(nn.Module):
         self.fc2 = nn.LazyLinear(n_classes)
         self.batch_norm = nn.BatchNorm1d(24) if self.use_layer else nn.BatchNorm1d(20)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         acg = x[:, :1010]
 
         if self.use_layer:
@@ -634,10 +670,6 @@ def load_ensemble(
     # Create a temporary directory to extract the models
     temp_dir = "models"
     os.makedirs(temp_dir, exist_ok=True)
-
-    # # Extract the tar archive containing the models
-    # with tarfile.open(file_path, "r:gz") as tar:
-    #     tar.extractall(temp_dir)
 
     # Extract the tar archive containing the models
     with tarfile.open(file_path, "r:gz") as tar:
@@ -815,21 +847,15 @@ def cross_validate(
     batch_size=64,
     loo=False,
     n_runs=10,
-    random_init=False,
-    freeze_heads=False,
+    VAE_random_init=False,
+    freeze_vae_weights=False,
     save_folder=None,
     save_models=False,
     enforce_layer=False,
     labelling=None,
 ):
-    LOO = loo
-    N_SPLITS = len(dataset) if loo else 5
-    N_RUNS = n_runs
-    EPOCHS = epochs
-    BATCH_SIZE = batch_size
-    RANDOM_INIT = random_init
-    FREEZE_HEADS = freeze_heads
-    N_CLASSES = len(np.unique(targets))
+    n_splits = len(dataset) if loo else 5
+    n_classes = len(np.unique(targets))
 
     acg_transformations, wave_transformations = define_transformations(
         norm_acg=False,
@@ -838,15 +864,15 @@ def cross_validate(
         multi_chan=args.multi_chan_wave,
     )
 
-    train_losses = np.zeros((N_SPLITS * N_RUNS, EPOCHS))
-    f1_train = np.zeros((N_SPLITS * N_RUNS, EPOCHS))
-    acc_train = np.zeros((N_SPLITS * N_RUNS, EPOCHS))
+    train_losses = np.zeros((n_splits * n_runs, epochs))
+    f1_train = np.zeros((n_splits * n_runs, epochs))
+    acc_train = np.zeros((n_splits * n_runs, epochs))
 
     all_runs_f1_scores = []
     all_runs_targets = []
     all_runs_predictions = []
     all_runs_probabilities = []
-    folds_variance = []
+    folds_stddev = []
     unit_idxes = []
     if save_models:
         models_states = []
@@ -855,19 +881,20 @@ def cross_validate(
 
     set_seed(SEED, seed_torch=True)
 
-    for _ in tqdm(range(N_RUNS), desc="Cross-validation run", position=0, leave=True):
+    for _ in tqdm(range(n_runs), desc="Cross-validation run", position=0, leave=True):
         run_train_accuracies = []
         run_true_targets = []
         run_model_pred = []
-        run_probabilites = []
+        run_probabilities = []
+        run_unit_idxes = []
         folds_f1 = []
 
         cross_seed = SEED + np.random.randint(0, 100)
         kfold = (
             LeaveOneOut()
-            if LOO
+            if loo
             else StratifiedKFold(
-                n_splits=N_SPLITS, shuffle=True, random_state=cross_seed
+                n_splits=n_splits, shuffle=True, random_state=cross_seed
             )
         )
 
@@ -914,7 +941,7 @@ def cross_validate(
                     multi_chan_wave=args.multi_chan_wave,
                 ),
                 shuffle=True,
-                batch_size=BATCH_SIZE,
+                batch_size=batch_size,
                 num_workers=4,
             )
 
@@ -934,7 +961,7 @@ def cross_validate(
                 acg_vae_path,
                 WIN_SIZE // 2,
                 BIN_SIZE,
-                initialise=not RANDOM_INIT,
+                initialise=not VAE_random_init,
                 pool=args.pool_type,
             )
             acg_head = acg_vae.encoder
@@ -950,15 +977,15 @@ def cross_validate(
                     WVF_ENCODER_ARGS_SINGLE,
                     WVF_VAE_PATH_SINGLE,
                     in_features=90,
-                    initialise=not RANDOM_INIT,
+                    initialise=not VAE_random_init,
                 )
                 wvf_head = Encoder(wvf_vae.encoder, 10)
 
             model = CNNCerebellum(
                 acg_head,
                 wvf_head,
-                N_CLASSES,
-                freeze_heads=FREEZE_HEADS,
+                n_classes,
+                freeze_vae_weights=freeze_vae_weights,
                 use_layer=args.use_layer,
                 multi_chan_wave=args.multi_chan_wave,
             ).to(DEVICE)
@@ -966,7 +993,7 @@ def cross_validate(
             optimizer = optim.AdamW(model.parameters(), lr=1e-3)
 
             scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                optimizer, EPOCHS, 1, last_epoch=-1
+                optimizer, epochs, 1, last_epoch=-1
             )
 
             criterion = nn.CrossEntropyLoss()
@@ -975,7 +1002,7 @@ def cross_validate(
             model = model.to(device)
             criterion = criterion.to(device)
 
-            for epoch in tqdm(range(EPOCHS), position=2, leave=False, desc="Epochs"):
+            for epoch in tqdm(range(epochs), position=2, leave=False, desc="Epochs"):
                 train_loss, train_f1, train_acc = train(
                     model,
                     train_iterator,
@@ -1003,11 +1030,12 @@ def cross_validate(
             )
             run_true_targets.append(y_val)
             run_model_pred.append(prob_calibrated.argmax(1))
-            run_probabilites.append(prob_calibrated)
+            run_probabilities.append(prob_calibrated)
 
             fold_f1 = f1_score(y_val, prob_calibrated.argmax(1), average="macro")
             folds_f1.append(fold_f1)
             unit_idxes.append(val_idx)
+            run_unit_idxes.append(val_idx)
 
             if save_models:
                 models_states.append(model.cpu().eval().state_dict())
@@ -1020,17 +1048,24 @@ def cross_validate(
             torch.cuda.empty_cache()
             gc.collect()
 
-        run_model_pred = np.concatenate(run_model_pred).squeeze()
-        run_true_targets = np.concatenate(run_true_targets).squeeze()
+        run_unit_idxes = np.concatenate(run_unit_idxes).squeeze()
+
+        # sort arrays using run_unit_idxes to restore original order
+        sort_idx = np.argsort(run_unit_idxes)
+
+        run_model_pred = np.concatenate(run_model_pred).squeeze()[sort_idx]
+        run_true_targets = np.concatenate(run_true_targets).squeeze()[sort_idx]
 
         run_f1 = f1_score(run_true_targets, run_model_pred, average="macro")
         all_runs_f1_scores.append(run_f1)
         all_runs_targets.append(np.array(run_true_targets))
         all_runs_predictions.append(np.array(run_model_pred))
-        all_runs_probabilities.append(np.concatenate(run_probabilites, axis=0))
-        folds_variance.append(np.array(folds_f1).std())
+        all_runs_probabilities.append(
+            np.concatenate(run_probabilities, axis=0)[sort_idx]
+        )
+        folds_stddev.append(np.array(folds_f1).std())
 
-    plot_training_curves(train_losses, f1_train, EPOCHS, save_folder=save_folder)
+    plot_training_curves(train_losses, f1_train, epochs, save_folder=save_folder)
 
     if save_models:
         save_ensemble(models_states, os.path.join(save_folder, "trained_models.tar.gz"))
@@ -1041,13 +1076,24 @@ def cross_validate(
         torch.save(hessians, os.path.join(save_folder, "hessians.pt"))
 
     all_targets = np.concatenate(all_runs_targets).squeeze()
+    raw_probabilities = np.stack(all_runs_probabilities, axis=2)
+
+    if save_folder is not None:
+        np.save(
+            os.path.join(
+                save_folder, "ensemble_predictions_ncells_nclasses_nmodels.npy"
+            ),
+            raw_probabilities,
+        )
+
     all_probabilities = np.concatenate(all_runs_probabilities).squeeze()
+
     return {
         "f1_scores": all_runs_f1_scores,
         "train_accuracies": run_train_accuracies,
         "true_targets": all_targets,
         "predicted_probability": all_probabilities,
-        "folds_variance": np.array(folds_variance),
+        "folds_stddev": np.array(folds_stddev),
         "indexes": np.concatenate(unit_idxes).squeeze(),
     }
 
@@ -1070,20 +1116,20 @@ def plot_confusion_matrices(
 
     save_results(results_dict, save_folder)
 
-    if loo:
-        n_models = len(results_dict["f1_scores"])
-        n_classes = results_dict["predicted_probability"].shape[1]
-        n_observations = results_dict["predicted_probability"].shape[0] // n_models
-        predictions_matrix = results_dict["predicted_probability"].reshape(
-            (n_models, n_observations, n_classes)
-        )
+    # if loo:
+    n_models = len(results_dict["f1_scores"])
+    n_classes = results_dict["predicted_probability"].shape[1]
+    n_observations = results_dict["predicted_probability"].shape[0] // n_models
+    predictions_matrix = results_dict["predicted_probability"].reshape(
+        (n_models, n_observations, n_classes)
+    )
 
-        predictions_matrix = predictions_matrix.transpose(1, 2, 0)
-        predicted_probabilities = predictions_matrix.mean(axis=2)
-        true_labels = results_dict["true_targets"][:n_observations]
-    else:
-        true_labels = results_dict["true_targets"]
-        predicted_probabilities = results_dict["predicted_probability"]
+    predictions_matrix = predictions_matrix.transpose(1, 2, 0)
+    predicted_probabilities = predictions_matrix.mean(axis=2)
+    true_labels = results_dict["true_targets"][:n_observations]
+    # else:
+    #     true_labels = results_dict["true_targets"]
+    #     predicted_probabilities = results_dict["predicted_probability"]
 
     for threshold in tqdm(
         list(np.arange(0.4, 1, 0.1)) + [0.0], desc="Saving results figures"
@@ -1102,8 +1148,8 @@ def plot_confusion_matrices(
             f1_scores=results_dict["f1_scores"]
             if "f1_scores" in results_dict
             else None,
-            _folds_variance=results_dict["folds_variance"]
-            if "folds_variance" in results_dict
+            _folds_stddev=results_dict["folds_stddev"]
+            if "folds_stddev" in results_dict
             else None,
         )
         npyx_plot.save_mpl_fig(
@@ -1189,7 +1235,9 @@ def ensemble_inference(
 
     if save_folder is not None:
         np.save(
-            os.path.join(save_folder, "all_runs_raw_prob_calibrated.npy"),
+            os.path.join(
+                save_folder, "ensemble_predictions_ncells_nclasses_nmodels.npy"
+            ),
             raw_probabilities,
         )
 
@@ -1198,7 +1246,7 @@ def ensemble_inference(
         "train_accuracies": np.array([]),
         "true_targets": targets_test,
         "predicted_probability": mean_probabilities,
-        "folds_variance": None,
+        "folds_stddev": None,
     }
 
 
@@ -1226,31 +1274,68 @@ def post_hoc_layer_correction(
     return new_results_dict
 
 
-def encode_layer_info(layer_information):
+def encode_layer_info_original(layer_information):
     layer_info = pd.Series(layer_information).replace(
         to_replace=datasets.LAYERS_CORRESPONDENCE
     )
+
     preprocessor = ColumnTransformer(
         transformers=[("encoder", OneHotEncoder(handle_unknown="ignore"), [-1])]
     )
+
     return preprocessor.fit_transform(layer_info.to_frame()).toarray()
 
 
+def encode_layer_info(layer_information):
+    N_values = len(datasets.LAYERS_CORRESPONDENCE.keys())
+    for value in datasets.LAYERS_CORRESPONDENCE.keys():
+        layer_information = np.append(layer_information, value)
+
+    layer_info = pd.Series(layer_information).replace(
+        to_replace=datasets.LAYERS_CORRESPONDENCE
+    )
+
+    preprocessor = ColumnTransformer(
+        transformers=[("encoder", OneHotEncoder(handle_unknown="ignore"), [-1])]
+    )
+
+    result = preprocessor.fit_transform(layer_info.to_frame()).toarray()
+    return result[0:-N_values]
+
+
 def main(
-    data_folder,
-    freeze=False,
-    random_init=False,
-    augment_acg=False,
-    augment_wvf=False,
-    mli_clustering=False,
-    use_layer=False,
-    loo=False,
-    multi_chan_wave=False,
-):
+    data_folder: str,
+    freeze_vae_weights: bool = False,
+    VAE_random_init: bool = False,
+    augment_acg: bool = False,
+    augment_wvf: bool = False,
+    mli_clustering: bool = False,
+    use_layer: bool = False,
+    loo: bool = False,
+    multi_chan_wave: bool = False,
+) -> None:
+    """
+    Runs a deep semi-supervised classifier on the C4 ground-truth datasets,
+    training it on mouse opto-tagged data and testing it on expert-labelled monkey neurons.
+
+    Args:
+        data_folder: The path to the folder containing the datasets.
+        freeze_vae_weights: Whether to freeze the pretrained weights of the VAE.
+        VAE_random_init: Whether to randomly initialize the VAE weights that were pretrained.
+        augment_acg: Whether to augment the ACGs.
+        augment_wvf: Whether to augment the waveforms.
+        mli_clustering: Whether to cluster the MLI cells.
+        use_layer: Whether to use layer information.
+        loo: Whether to use leave-one-out cross-validation.
+        multi_chan_wave: Whether to use multi-channel waveforms.
+
+    Returns:
+        None
+    """
     args = ArgsNamespace(
         data_folder=data_folder,
-        freeze=freeze,
-        random_init=random_init,
+        freeze_vae_weights=freeze_vae_weights,
+        VAE_random_init=VAE_random_init,
         augment_acg=augment_acg,
         augment_wvf=augment_wvf,
         mli_clustering=mli_clustering,
@@ -1263,7 +1348,7 @@ def main(
     global N_CHANNELS
     N_CHANNELS = 4 if args.multi_chan_wave else 10
     assert (
-        np.array([args.freeze, args.random_init]).sum() <= 1
+        np.array([args.freeze_vae_weights, args.VAE_random_init]).sum() <= 1
     ), "Only one of the two can be True"
 
     datasets_abs = get_paths_from_dir(args.data_folder)
@@ -1308,15 +1393,15 @@ def main(
     suffix = ""
     features_suffix = ""
     cv_string = "_loo_cv" if args.loo else "_5fold_cv"
-    if args.freeze:
+    if args.freeze_vae_weights:
         suffix = "_frozen_heads"
     if args.multi_chan_wave:
         features_suffix += "_multi_channel"
-    if args.random_init:
-        suffix = "_random_init"
+    if args.VAE_random_init:
+        suffix = "_VAE_random_init"
     if args.mli_clustering:
         features_suffix += "_mli_clustering"
-    features_suffix += "_soft_layer" if args.use_layer else ""
+    features_suffix += "_layer" if args.use_layer else ""
     augmented = ("_augmented_acgs" if args.augment_acg else "") + (
         "_augmented_waveforms" if args.augment_wvf else ""
     )
@@ -1324,8 +1409,8 @@ def main(
 
     save_folder = os.path.join(
         args.data_folder,
-        "feature_spaces_1",
-        f"encoded_acg_wvf{features_suffix}",
+        "feature_spaces",
+        f"raw_log_3d_acg_peak_wvf{features_suffix}",
         model_name,
         f"mouse_results{cv_string}",
     )
@@ -1345,8 +1430,8 @@ def main(
         batch_size=64,
         loo=args.loo,
         n_runs=10,
-        random_init=args.random_init,
-        freeze_heads=args.freeze,
+        VAE_random_init=args.VAE_random_init,
+        freeze_vae_weights=args.freeze_vae_weights,
         save_folder=save_folder,
         save_models=True,
         enforce_layer=False,
@@ -1360,30 +1445,6 @@ def main(
         labelling=LABELLING,
         correspondence=CORRESPONDENCE,
     )
-
-    # Apply hard layer correction as well if user requested to use layer
-    if args.use_layer:
-        new_save_folder = os.path.join(
-            args.data_folder,
-            "feature_spaces_1",
-            f"encoded_acg_wvf{features_suffix.split('_soft_layer')[0]}_hard_layer",
-            model_name,
-            f"mouse_results{cv_string}",
-        )
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
-
-        corrected_results_dict = post_hoc_layer_correction(
-            results_dict, one_hot_layer, LABELLING, repeats=10
-        )
-        plot_confusion_matrices(
-            corrected_results_dict,
-            new_save_folder,
-            model_name,
-            labelling=LABELLING,
-            correspondence=CORRESPONDENCE,
-            loo=args.loo,
-        )
 
     #
     # Predict monkey data
@@ -1459,8 +1520,8 @@ def main(
 
     save_folder_monkey = os.path.join(
         args.data_folder,
-        "feature_spaces_1",
-        f"encoded_acg_wvf{features_suffix}",
+        "feature_spaces",
+        f"raw_log_3d_acg_peak_wvf{features_suffix}",
         model_name,
         "monkey_results",
     )
@@ -1490,30 +1551,6 @@ def main(
         plots_prefix="predicting monkey data",
     )
 
-    # Apply hard layer correction as well if user requested to use layer
-    if args.use_layer:
-        new_save_folder_monkey = os.path.join(
-            args.data_folder,
-            "feature_spaces_1",
-            f"encoded_acg_wvf{features_suffix.split('_soft_layer')[0]}_hard_layer",
-            model_name,
-            "monkey_results",
-        )
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
-
-        corrected_results_dict_monkey = post_hoc_layer_correction(
-            results_dict_monkey, monkey_one_hot_layer, LABELLING
-        )
-        plot_confusion_matrices(
-            corrected_results_dict_monkey,
-            new_save_folder_monkey,
-            model_name,
-            labelling=LABELLING,
-            correspondence=CORRESPONDENCE,
-            loo=args.loo,
-        )
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -1525,18 +1562,18 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--freeze",
+        "--freeze_vae_weights",
         action="store_true",
-        help="Freeze the weights of the model during training",
+        help="Freeze the weights of the VAE half of the model (the pretrained encoder) during training",
     )
-    parser.set_defaults(freeze=False)
+    parser.set_defaults(freeze_vae_weights=False)
 
     parser.add_argument(
-        "--random_init",
+        "--VAE_random_init",
         action="store_true",
-        help="Randomly initialize the weights of the model",
+        help="Randomly initialize the weights of the VAE half of the model (overwrites the pretrained encoder)",
     )
-    parser.set_defaults(random_init=False)
+    parser.set_defaults(VAE_random_init=False)
 
     parser.add_argument(
         "--augment_acg",

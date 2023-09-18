@@ -115,7 +115,7 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
          tight_layout=None, hspace=None, wspace=None,
          show_legend=None, hide_legend=None, legend_loc=None,
          saveFig=None, saveDir = None, figname=None, _format="pdf",
-         colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None,
+         colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None, ctickslabels=None, clim=None,
          cbar_w=None, cbar_h=None, clabel=None, clabel_w=None, clabel_s=None, cticks_s=None,
          hlines = None, vlines = None, lines_kwargs = None,
          prettify=True):
@@ -342,7 +342,8 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         assert vmin is not None and vmax is not None and cmap is not None,\
             "You must provide vmin, vmax and cmap to show a colorbar."
         fig = add_colorbar(fig, ax, None, vmin, vmax,
-                 cbar_w, cbar_h, cticks, clabel, clabel_w, clabel_s, cticks_s, cmap) 
+                 cbar_w, cbar_h, cticks, clabel, clabel_w, clabel_s, cticks_s, ctickslabels, cmap,
+                 clim=clim) 
 
     if prettify:
         fig.patch.set_facecolor('white')
@@ -3028,8 +3029,8 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
 
 def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
                  width=0.01, height=0.5, cticks=None,
-                 clabel=None, clabel_w='regular', clabel_s=20, cticks_s=16,
-                 cmap=None, pad = 0.01):
+                 clabel=None, clabel_w='regular', clabel_s=20, cticks_s=16, ctickslabels=None,
+                 cmap=None, pad = 0.01, clim=None):
     """
     Add colorbar to figure with a predefined axis.
     
@@ -3061,18 +3062,25 @@ def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
 
     # add colorbar
     fig.colorbar(mappable, cax=cbar_ax, ax=ax,
-             orientation='vertical', label=clabel,
-             ticks=cticks, use_gridspec=True)
+             orientation='vertical', label=clabel, use_gridspec=True)
+
 
     # format colorbar ticks, labels etc
+    if ctickslabels is None:
+        ctickslabels = cticks
+    else:
+        assert len(ctickslabels)==len(cticks),\
+            f"ctickslabels should have the same length as cticks ({len(cticks)})!" 
     if clabel is not None:
         cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family='arial', weight=clabel_w, size=clabel_s))
         cbar_ax.yaxis.label.set_rotation(-90)
         cbar_ax.yaxis.label.set_va('bottom')
         cbar_ax.yaxis.label.set_ha('center')
         cbar_ax.yaxis.labelpad = 5
-    cbar_ax.yaxis.set_ticklabels(cticks, ha='left')
+    cbar_ax.yaxis.set_ticks(cticks)
+    cbar_ax.yaxis.set_ticklabels(ctickslabels, ha='left')
     cbar_ax.yaxis.set_tick_params(pad=5, labelsize=cticks_s)
+    cbar_ax.set_ylim(clim)
 
     fig.canvas.draw()
     set_ax_size(ax,*fig.get_size_inches())

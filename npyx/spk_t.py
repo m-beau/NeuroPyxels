@@ -27,15 +27,11 @@ from npyx.utils import (
     assert_float,
     assert_int,
     docstring_decorator,
+    cache_validation_again,
     npa,
     smooth,
     thresh_consec,
 )
-
-def cache_validation_again(metadata):
-    # Only retrieve cached results for calls that are not flagged with again
-    return metadata["input_args"]["again"] == False
-
 
 def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=-1):
     '''

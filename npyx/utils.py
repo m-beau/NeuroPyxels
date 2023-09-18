@@ -29,52 +29,38 @@ from scipy.optimize import curve_fit
 from scipy.signal import cspline1d_eval, cspline1d
 
 
-#%% Plotting utilities
+#%% function decoration utilities
 
-phyColorsDic = {
-    0:(53./255, 127./255, 255./255),
-    1:(255./255, 0./255, 0./255),
-    2:(255./255,215./255,0./255),
-    3:(238./255, 53./255, 255./255),
-    4:(84./255, 255./255, 28./255),
-    5:(255./255,165./255,0./255),
-    -1:(0., 0., 0.),
-    }
+def cache_validation_again(metadata):
+    """
+    Argument to pass to a joblib caching decorator
+    to recompute the results rather than retrieve them from cache when 'again' is set to True.
 
-mpl_colors=plt.rcParams['axes.prop_cycle'].by_key()['color']
+    To be used as follow:
+    ```
+    from joblib import Memory
+    import os.path as op
+    cachedir = Path(op.expanduser("~")) / ".my_caching_folder"
+    cache_memory = Memory(cachedir, verbose=0)
 
-DistinctColors20 = [[127,127,127],[0,0,143],[182,0,0],[0,140,0],[195,79,255],[1,165,202],[236,157,0],[118,255,0],[255,127,0],
-    [255,117,152],[148,0,115],[0,243,204],[72,83,255],[0,127,255],[0,67,1],[237,183,255],[138,104,0],[97,0,163],[92,0,17],[255,245,133]]
-DistinctColors20 = [[c[0]/255, c[1]/255, c[2]/255] for c in DistinctColors20]
-DistinctColors15 = [[127,127,127],[255,255,0],[0,0,143],[255,0,0],[50,255,255],[255,0,255],[94,0,33],[0,67,0],
-    [255,218,248],[0,178,0],[124,72,255],[211,145,0],[5,171,253],[126,73,0],[147,0,153]]
-DistinctColors15 = [[c[0]/255, c[1]/255, c[2]/255] for c in DistinctColors15]
+    @cache_memory.cache(cache_validation_callback=cache_validation_again)
+    def my_cached_function(argument1, ..., again=False):
+        ...
+    ```
+    WARNING the cached function MUST have an argument named 'again' for this to work.
+    """
+    # Only retrieve cached results for calls that are not flagged with again
+    return metadata["input_args"]["again"] == False
 
-mark_dict = {
-".":"point",
-",":"pixel",
-"o":"circle",
-"v":"triangle_down",
-"^":"triangle_up",
-"<":"triangle_left",
-">":"triangle_right",
-"1":"tri_down",
-"2":"tri_up",
-"3":"tri_left",
-"4":"tri_right",
-"8":"octagon",
-"s":"square",
-"p":"pentagon",
-"*":"star",
-"h":"hexagon1",
-"H":"hexagon2",
-"+":"plus",
-"D":"diamond",
-"d":"thin_diamond",
-"|":"vline",
-"_":"hline"
-}
-
+def docstring_decorator(*args):
+    """
+    Feed as many arguments as wished to incorporate into the function f's docstring.
+    Edit f' docstring with {0}, {1}... acordingly.
+    """
+    def decorate(f):
+        f.__doc__ = f.__doc__.format(*args)
+        return f
+    return decorate
 
 #%% Numpy and numerical computing utilities
 
@@ -205,16 +191,6 @@ def list_files(directory, extension, full_path=False):
 def pprint_dic(dic):
     kv = "".join([f"{k}: {v},\n" for k,v in dic.items()])
     return "{\n"+kv+"}"
-
-def docstring_decorator(*args):
-    """
-    Feed as many arguments as wished to incorporate into the function f's docstring.
-    Edit f' docstring with {0}, {1}... acordingly.
-    """
-    def decorate(f):
-        f.__doc__ = f.__doc__.format(*args)
-        return f
-    return decorate
 
 def repr_string(self):
     r_string = str(["."+k for k in dir(self) if "__" not in k])

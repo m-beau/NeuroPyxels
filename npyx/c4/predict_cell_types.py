@@ -469,8 +469,10 @@ def main(
     # Perform some checks on the data folder
     directory_checks(args.data_path)
 
-	#This function checks the content of cluster_group.tsv file and regenerate this one if it is required.
-    load_units_qualities(args.data_path, again=True)
+    
+    if args.data_path.endswith(".h5")==False:
+        #This function checks the content of cluster_group.tsv file and regenerate this one if it is required.
+        load_units_qualities(args.data_path, again=True)
 
     # Determine the model type that we should use
     if args.mli_clustering and not args.use_layer:

@@ -614,7 +614,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
             expert_labels  = ds["expert_labels"]
             expert_labels  = {int(k):v for k,v in expert_labels.items()}
             assert np.all(np.isin(list(expert_labels.values()), allowed_expert_labels)),\
-                f"expert_labels is {expert_labels} but layers must be in {allowed_expert_labels}!"
+                f"expert_labels is {expert_labels} but expert label must be in {allowed_expert_labels}!"
             assert np.all(np.isin(list(expert_labels.keys()), units_for_h5)),\
                 f"expert_labels is {expert_labels} but units must be in {units_for_h5}!"
 

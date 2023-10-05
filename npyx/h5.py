@@ -76,31 +76,31 @@ def add_unit_h5(
     dp,
     unit_id,
     lab_id,
-    
+
     genetic_line             = "",
     dataset                  = None,
     sane_periods             = None,
     sane_spikes              = None,
     sane_before_opto         = False,
-    
+
     again_npyx               = False,
     again_npyx_wvf           = False,
-    
+
     overwrite_h5             = False,
     selective_overwrite      = None,
-    
+
     include_fp_fn_mask       = True,
     include_raw_snippets     = True,
-    
+
     raw_window               = None,
     raw_snippet_halfrange    = 3,
     mean_wvf_half_range      = 11,
-    
+
     opto_sync_chan_id        = None,
     optostims                = None,
     optostims_from_sync      = False,
     optostims_threshold      = None,
-    
+
     n_waveforms_for_matching = 5000,
     n_raw_waveforms          = 1000,
     plot_debug               = False,
@@ -207,7 +207,7 @@ def add_unit_h5(
     h5_path = Path(h5_path)
     assert_h5_file(h5_path)
     with h5py.File(h5_path, "a") as h5_file:
-        
+
         # --------------- h5 preformatting ---------------#
 
         # format dataset name
@@ -333,7 +333,7 @@ def add_unit_h5(
             # because trn_filtered can only work on a contiguous chunk
             periods_m_range = [0, meta["recording_length_seconds"] / 60]
             fp_fn_good_spikes = trn_filtered(dp, unit_id,
-                                             plot_debug=plot_debug, again=again_npyx, 
+                                             plot_debug=plot_debug, again=again_npyx,
                                              period_m=periods_m_range)[1]
             write_to_group(neuron_group, key, fp_fn_good_spikes)
 
@@ -401,7 +401,7 @@ def add_unit_h5(
                     sd            = 10000,
                     minimum_fr    = 0.4)
                 raw_window = np.array(raw_window) / samp_rate  # converge to seconds
-                
+
             chunk = extract_rawChunk(dp, raw_window,
                 channels          = np.arange(chan_bottom, chan_top),
                 scale             = False,
@@ -433,7 +433,7 @@ def add_unit_h5(
             if len(spike_ids) > n_raw_waveforms:
                 random_ids = np.random.randint(0, spike_ids.shape[0]-1, n_raw_waveforms)
                 spike_ids  = spike_ids[random_ids]
-                
+
             # load waveforms
             raw_waveforms = get_waveforms(dp, unit_id, t_waveforms=180,
                                             spike_ids=spike_ids, med_sub_in_time=False,  ignore_ks_chanfilt=True)
@@ -486,7 +486,7 @@ def add_unit_h5(
 
         pbar.set_description(f"Adding labels for unit '{relative_unit_path}'...")
         pbar.update(1)
-        
+
         # layer and ground truth labels
         for key in ["phyllum_layer", "human_layer",
                     "expert_label", "ground_truth_label", "ground_truth_source", "mli_cluster"]:
@@ -513,7 +513,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
                             include_all_good              = True,
                             selective_overwrite           = None,
                             overwrite_h5                  = False,
-                            **kwargs): 
+                            **kwargs):
     """
     Wrapper function to loop over all datasets in a json file
     and add them to an HDF5 file according to the C4 data format specification.
@@ -534,6 +534,7 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
                                 u4:[], u5:[], u6:[], u7:[], u8:[]} # windows of time to use to compute features etc for any particular neuron, in seconds.
                 "global_sane_periods": [[t1,t2], [t3,t4]], # windows of time to use to compute features etc for all neurons, in seconds
                 "phyllum_layers": "layer", # can be ["ML", "PCL", "GCL", "unknown", "not_cortex", ""]
+                "expert_labels": "expert_cell_type_label", # can be ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC", "unlabelled", ""]
                 }
         - h5_path: path/to/database_file.h5
         - lab_id: str, lab id. see format at www.tinyurl.com/c4database
@@ -607,6 +608,16 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
             assert np.all(np.isin(list(phyllum_layers.keys()), units_for_h5)),\
                 f"phyllum_layers is {phyllum_layers} but units must be in {units_for_h5}!"
 
+        # extract expert labels
+        allowed_expert_labels = ["PkC_ss", "PkC_cs", "MLI", "MFB", "GoC", "GrC", "unlabelled", ""]
+        if "expert_labels" in ds:
+            expert_labels  = ds["expert_labels"]
+            expert_labels  = {int(k):v for k,v in expert_labels.items()}
+            assert np.all(np.isin(list(expert_labels.values()), allowed_expert_labels)),\
+                f"expert_labels is {expert_labels} but expert label must be in {allowed_expert_labels}!"
+            assert np.all(np.isin(list(expert_labels.keys()), units_for_h5)),\
+                f"expert_labels is {expert_labels} but units must be in {units_for_h5}!"
+
         for u in units_for_h5:
             sane_periods = sane_periods_dic[u] if u in sane_periods_dic else None
             if sane_periods is None and np.any(global_sane_periods):
@@ -615,6 +626,10 @@ def add_json_datasets_to_h5(json_path, h5_path, lab_id,
             if "phyllum_layers" in ds:
                 phyllum_layer = phyllum_layers[u] if u in phyllum_layers else ""
                 kwargs["phyllum_layer"] = phyllum_layer
+
+            if "expert_labels" in ds:
+                expert_label = expert_labels[u] if u in expert_labels else ""
+                kwargs["expert_label"] = expert_label
 
             add_unit_h5(
                 h5_path,
@@ -793,7 +808,7 @@ def get_absolute_neuron_ids(h5_path, again=False):
     return [p.split('/')[0] for p in h5_contents if ('_neuron_' in p.split('/')[0] and len(p.split('/'))==1)]
 
 def get_neuron_id_dict(h5_path):
-    
+
     absolute_neuron_ids = get_absolute_neuron_ids(h5_path)
 
     neuron_id_dict = {}
@@ -829,7 +844,7 @@ def print_h5_contents(h5_path, display = False, txt_output=False, again=False):
     if txt_output_path.exists() and not again:
         with open(txt_output_path, "r") as f:
             print_string = f.read()
-    
+
     else:
         with h5py.File(h5_path, "a") as hdf:
             # save to variable
@@ -850,7 +865,7 @@ def print_h5_contents(h5_path, display = False, txt_output=False, again=False):
         print(print_string)
 
     return print_string.split('\n')
-            
+
 
 
 def visititems(group, func):

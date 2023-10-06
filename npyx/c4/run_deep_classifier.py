@@ -11,11 +11,12 @@ import tarfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 
-import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.pyplot as plt
+
 try:
-    matplotlib.use('TkAgg')
-except:
+    matplotlib.use("TkAgg")
+except Exception:
     pass
 
 import numpy as np
@@ -272,7 +273,7 @@ def plot_training_curves(train_losses, f1_train, epochs, save_folder=None):
     axes[1].legend(loc="upper left")
 
     fig.savefig(os.path.join(save_folder, "training_curves.png"))
-    plt.close('all')
+    plt.close("all")
 
 
 def calculate_accuracy(y_pred, y):
@@ -1287,9 +1288,11 @@ def encode_layer_info_original(layer_information):
 
 
 def encode_layer_info(layer_information):
+    # Deal with some layers potentially missing from the data provided
     N_values = len(datasets.LAYERS_CORRESPONDENCE.keys())
-    for value in datasets.LAYERS_CORRESPONDENCE.keys():
-        layer_information = np.append(layer_information, value)
+    layer_information = np.append(
+        layer_information, list(datasets.LAYERS_CORRESPONDENCE.keys())
+    )
 
     layer_info = pd.Series(layer_information).replace(
         to_replace=datasets.LAYERS_CORRESPONDENCE
@@ -1300,7 +1303,7 @@ def encode_layer_info(layer_information):
     )
 
     result = preprocessor.fit_transform(layer_info.to_frame()).toarray()
-    return result[0:-N_values]
+    return result[:-N_values]
 
 
 def main(

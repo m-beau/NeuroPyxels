@@ -58,7 +58,7 @@ HESSIANS_URL_DICT = {
 
 
 def get_n_cores(num_cores):
-    max_num_cores=60
+    max_num_cores = 60
     max_num_cores = min(multiprocessing.cpu_count(), max_num_cores)
     num_cores = min(num_cores, max_num_cores)
     return num_cores
@@ -469,9 +469,8 @@ def main(
     # Perform some checks on the data folder
     directory_checks(args.data_path)
 
-    
-    if args.data_path.endswith(".h5")==False:
-        #This function checks the content of cluster_group.tsv file and regenerate this one if it is required.
+    if args.data_path.endswith(".h5") == False:
+        # This function checks the content of cluster_group.tsv file and regenerate this one if it is required.
         load_units_qualities(args.data_path, again=True)
 
     # Determine the model type that we should use
@@ -591,7 +590,9 @@ def main(
 
     # Save the predictions to a file that can be read by phy
     predictions_df[["cluster_id", "predicted_cell_type"]].to_csv(
-        os.path.join(save_path, "cluster_predicted_cell_type.tsv"), sep="\t", index=False
+        os.path.join(save_path, "cluster_predicted_cell_type.tsv"),
+        sep="\t",
+        index=False,
     )
     predictions_df[["cluster_id", "confidence"]].to_csv(
         os.path.join(save_path, "cluster_confidence.tsv"), sep="\t", index=False
@@ -640,7 +641,11 @@ def main(
     with redirect_stdout_fd(open(os.devnull, "w")):
         Parallel(n_jobs=num_cores, prefer="processes")(
             delayed(aux_plot_features)(i, unit, correspondence)
-            for i, unit in enumerate(good_units)
+            for i, unit in tqdm(
+                enumerate(good_units),
+                desc="Plotting classification results",
+                total=len(good_units),
+            )
         )
 
     plot_survival_confidence(

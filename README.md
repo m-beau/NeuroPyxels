@@ -27,24 +27,14 @@
 
 ## Installation:
 
-Using a conda/virtualenv environment is very much advised, as pre-existing packages on a python installation might be incompatible with npyx and break your installation (typically leading to `python -c 'import npyx'` failing). Instructions here: [manage conda environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
+We recommend using a conda or other virtual environment. Pre-existing packages on a python installation might be incompatible with npyx and break your installation (this typically leads to `python -c 'import npyx'` failing). You can find instructions on setting up a conda environment here: [manage conda environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
 
 Npyx supports Python >=3.7 <=3.10.
 
+You can install Neuropyxels:
+
 - as a user
-  - from pip (normally up to date)
-  ```bash
-  conda create -n my_env python=3.10
-  conda activate my_env
-  pip install npyx
-  # either 11.0 or either cuda toolkit version you have already installed
-  # find out with nvcc --version
-  conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
-  python -c 'import npyx' # should not return any error
-  # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
-  # and make sure that you are installing in a fresh environment.
-  ```
-  - from the remote repository (always up to date)
+  - from the remote repository (recommended - always up to date)
   ```bash
   conda create -n my_env python=3.10
   conda activate my_env
@@ -56,7 +46,19 @@ Npyx supports Python >=3.7 <=3.10.
   # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
   # and make sure that you are installing in a fresh environment.
   ```
-- as a superuser (recommended if plans to work on it/regularly pull upgrades)
+  - from pip (usually but not always up to date)
+  ```bash
+  conda create -n my_env python=3.10
+  conda activate my_env
+  pip install npyx
+  # either 11.0 or either cuda toolkit version you have already installed
+  # find out with nvcc --version
+  conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
+  python -c 'import npyx' # should not return any error
+  # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
+  # and make sure that you are installing in a fresh environment.
+  ```
+- as a superuser (recommended if you have plans to work on it or to regularly pull the latest code)
   > Tip: in an ipython/jupyter session, use `%load_ext autoreload` then `%autoreload` to make your local edits active in your session without having to restart your kernel. Amazing for development.
     ```bash
     conda create -n my_env python=3.10
@@ -147,7 +149,7 @@ test_npyx(dp, raise_error=True)
 ### Known installation issues
 
 - **cannot import numba.core hence cannot import npyx** <br/>
-Older versions of numba did not feature the .core submodule. You probably run a too old version of numba, vestigial from an old installation - make sure that you install npyx in a fresh conda environment si that happens to you, and eventually that numba is not installed in your root:
+Older versions of numba did not feature the .core submodule. If you get this error, you are probably running a too old version of numba. Make sure that you have installed npyx in a fresh conda environment if that happens to you. If you still get an error, check that numba is not installed in your root directory.
 
   ```# open new terminal
   pip uninstall numba
@@ -189,7 +191,7 @@ Traceback (most recent call last):
 ModuleNotFoundError: No module named 'npyx'
 ```
 Make sure that the python installation that you are using is indeed the version of your new environment. <br/>
-To do so, run "which python" on linux/mac or "where python" on windows: the output should be the path to the right environment e.g. "/home/.../anaconda/envs/npyx/bin/python". If it isn't, try to deactivate/reactivate your conda environment, or make sure you do not have conflicting python installations on your machine.
+To do so, in your terminal, run "which python" on linux/mac or "where python" on windows: the output should be the path to the right environment e.g. "/home/.../anaconda/envs/npyx/bin/python". If it isn't, try to deactivate/reactivate your conda environment, or make sure you do not have conflicting python installations on your machine.
 
 ## Support and citing 
 
@@ -202,7 +204,10 @@ You can additionally star this repo using the top-right star button to help it g
 Cheers!
 
 ## Documentation:
+
 Npyx works with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) and [OpenEphys](https://open-ephys.org/neuropixels) (binary data and meta data) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) or [SpyKING CIRCUS](https://spyking-circus.readthedocs.io/en/latest/) and [Phy](https://phy.readthedocs.io/en/latest/) ([after conversion for the phy gui](https://spyking-circus.readthedocs.io/en/latest/GUI/launching.html), results stored in `path/mydata/mydata.GUI`). **Any dataset compatible with phy can also be analyzed with npyx, in essence.**
+
+### Organization
 
 <ins>Npyx is fast because it never computes the same thing twice</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at **npix_dataset/npyxMemory**, from where they are simply reloaded if called again. An important parameter controlling this behaviour is **`again`** (boolean), by default set to False: if True, the function will recompute the output rather than loading it from npyxMemory. This is important to be aware of this behaviour, as it can lead to mind boggling bugs. For instance, if you load the train of unit then re-spikesort your dataset, e.g. you split unit 56 in 504 and 505, the train of the old unit 56 will still exist at kilosort_dataset/npyxMemory and you will be able to load it even though the unit is gone!
 
@@ -518,7 +523,7 @@ PS - The spike times are aligned across datasets by modelling the drift between 
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/error_dist.png" width="600"/>
 <br/>
 
-### Bonus: cool matplotlib plotting utilities which could turn out useful
+### Bonus: cool matplotlib plotting utilities which might be useful
 ```python
 from npyx.plot import get_ncolors_cmap
 

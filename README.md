@@ -1,15 +1,16 @@
-<h1><img src = "https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/NeuroPyxels_logo_final.png" width="150"></a> NeuroPyxels: loading, processing and plotting Neuropixels data in Python</h1>
+NeuroPyxels: loading, processing and plotting Neuropixels data in Python</h1> <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/NeuroPyxels_logo_final.png" width="150" title="Neuropyxels" alt="Neuropixels" align="right" vspace = "50">
 
 [![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5509776.svg)](https://doi.org/10.5281/zenodo.5509776)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5509733.svg)](https://doi.org/10.5281/zenodo.5509733)
 [![License](https://img.shields.io/pypi/l/npyx.svg)](https://github.com/m-beau/NeuroPyxels/blob/master/LICENSE)
 [![Downloads](https://static.pepy.tech/badge/npyx/month)](https://pepy.tech/project/npyx)
 
-[NeuroPyxels](https://github.com/m-beau/NeuroPyxels) (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels: it features a suite of core utility functions for loading, processing and plotting Neuropixels data.
+[NeuroPyxels](https://github.com/m-beau/NeuroPyxels) (npyx) is a Python library specifically designed for electrophysiologists working with Neuropixels electrodes. The creation of this package was motivated by a Pythonist's desire to avoid switching to MATLAB for Neuropixels data analysis. To that end, npyx offers a comprehensive set of essential utility functions that facilitate the loading, processing, and visualization of Neuropixels data.
 
-**Questions**: There isn't any better doc atm, but feel free to post an issue here (preferred option, so that everyone can benefit from it 🙂) or drop me an email at [Maxime Beau](maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com).
+**Any questions or issues?**: [Create a github issue](https://github.com/Maxime-Beau/Neuropyxels/issues) to get support, or create a [pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request). Alternatively, you can email [us: maximebeaujeanroch047[at]gmail[dot]com](mailto:maximebeaujeanroch047@gmail.com). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com).
 
-
+- **[Installation](https://github.com/m-beau/NeuroPyxels#installation)**
+- **[Support and citing ](https://github.com/m-beau/NeuroPyxels#support_and_citing)**
 - **[Documentation](https://github.com/m-beau/NeuroPyxels#documentation)**
   - [Load synchronization channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
   - [Get good units from dataset](https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset)
@@ -22,10 +23,183 @@
   - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
   - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
   - [Bonus: cool npyx plotting utilities which could turn out useful](https://github.com/m-beau/NeuroPyxels#bonus-cool-matplotlib-plotting-utilities-which-could-turn-out-useful)
-- **[Installation](https://github.com/m-beau/NeuroPyxels#installation)**
-- **[Acknowledgement](https://github.com/m-beau/NeuroPyxels#acknowledgement)**
 - **[Developer cheatsheet](https://github.com/m-beau/NeuroPyxels#developer-cheatsheet)**
 
+## Installation:
+
+Using a conda/virtualenv environment is very much advised, as pre-existing packages on a python installation might be incompatible with npyx and break your installation (typically leading to `python -c 'import npyx'` failing). Instructions here: [manage conda environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
+
+Npyx supports Python >=3.7 <=3.10.
+
+- as a user
+  - from pip (normally up to date)
+  ```bash
+  conda create -n my_env python=3.10
+  conda activate my_env
+  pip install npyx
+  # either 11.0 or either cuda toolkit version you have already installed
+  # find out with nvcc --version
+  conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
+  python -c 'import npyx' # should not return any error
+  # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
+  # and make sure that you are installing in a fresh environment.
+  ```
+  - from the remote repository (always up to date)
+  ```bash
+  conda create -n my_env python=3.10
+  conda activate my_env
+  pip install git+https://github.com/m-beau/NeuroPyxels@master
+  # either 11.0 or either cuda toolkit version you have already installed
+  # find out with nvcc --version
+  conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
+  python -c 'import npyx' # should not return any error
+  # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
+  # and make sure that you are installing in a fresh environment.
+  ```
+- as a superuser (recommended if plans to work on it/regularly pull upgrades)
+  > Tip: in an ipython/jupyter session, use `%load_ext autoreload` then `%autoreload` to make your local edits active in your session without having to restart your kernel. Amazing for development.
+    ```bash
+    conda create -n my_env python=3.10
+    conda activate my_env
+    cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
+    git clone https://github.com/m-beau/NeuroPyxels
+    cd NeuroPyxels
+    pip install -e . # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
+    # python setup.py develop deprecated (doesn't handle dependencies, unlike pip)
+    # either 11.0 or either cuda toolkit version you have already installed
+    # find out with nvcc --version
+    conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
+    python -c 'import npyx' # should not return any error
+    # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
+    # and make sure that you are installing in a fresh environment.
+    ```
+    and pull every now and then:
+    ```bash
+    cd path/to/save_dir/NeuroPyxels
+    git pull
+    # And that's it, thanks to the egg link no need to reinstall the package!
+    # be careful though: this will break if you edited the package. If you wish to contribute, I advise you
+    # to either post issues and wait for me to fix your problem, or to get in touch with me and potentially
+    # create your own branch from where you will be able to gracefully merge your edits with the master branch
+    # after revision.
+    ```
+
+### Dealing with cupy (GPU shenanigans)
+To run the preprocessing functions (borrowed from pykilosort), you will need NVIDIA drivers and cuda-toolkit installed on your computer. This can be the hardest part of the installation. To test if your is working OK you should be able to run the following:
+```
+nvidia-smi # Should show how much your GPU is being used right now
+nvcc # This is the CUDA compiler
+```
+Errors with the CUDA installation can sometimes be fixed by downgrading the version of cudatoolkit installed.
+To check the current version run the following:
+```
+conda activate my_env
+conda list cudatoolkit
+```
+To install version 10.0 for example run the following
+```
+conda activate my_env
+conda remove cupy, cudatoolkit
+conda install -c conda-forge cupy cudatoolkit=10.0
+```
+
+
+### Test installation
+You can use the built-in unit testing function 'test_npyx' to make sure that npyx core functions run smoothly, all at once.
+
+```python
+from npyx.testing import test_npyx
+
+# any spike sorted recording compatible with phy
+# (e.g. kilosort output)
+dp = 'datapath/to/myrecording'
+test_npyx(dp)
+
+# if any test fails, enter interactive mode debug mode as follow:
+%pdb ON # must be in a notebook or regular ipython session
+test_npyx(dp, raise_error=True)
+```
+<span style="color:#1F45FC">
+
+--- npyx version 2.3.4 unit testing initiated, on directory /media/maxime/AnalysisSSD/test_dataset_artefact... <br>
+
+--- Successfully ran 'read_metadata' from npyx.inout. <br>
+--- Successfully ran 'get_npix_sync' from npyx.inout. <br>
+--- Successfully ran 'get_units' from npyx.gl. <br>
+--- Successfully ran 'ids' from npyx.spk_t. <br>
+--- Successfully ran 'trn' from npyx.spk_t. <br>
+--- Successfully ran 'trn_filtered' from npyx.spk_t. <br>
+--- Successfully ran 'wvf' from npyx.spk_wvf. <br>
+--- Successfully ran 'wvf_dsmatch' from npyx.spk_wvf. <br>
+--- Successfully ran 'get_peak_chan' from npyx.spk_wvf. <br>
+--- Successfully ran 'templates' from npyx.spk_wvf. <br>
+--- Successfully ran 'ccg' from npyx.corr. <br>
+--- Successfully ran 'plot_wvf' from npyx.plot. <br>
+--- Successfully ran 'plot_ccg' from npyx.plot. <br>
+--- Successfully ran 'plot_raw' from npyx.plot. <br>
+
+</span>
+
+```
+(bunch of plots...)
+```
+
+### Known installation issues
+
+- **cannot import numba.core hence cannot import npyx** <br/>
+Older versions of numba did not feature the .core submodule. You probably run a too old version of numba, vestigial from an old installation - make sure that you install npyx in a fresh conda environment si that happens to you, and eventually that numba is not installed in your root:
+
+  ```# open new terminal
+  pip uninstall numba
+  conda activate my_env
+  pip uninstall numba
+  pip install numba
+  ```
+<br/>
+
+- **core dumped when importing** <br/>
+This seems to be an issue related to PyQt5 required by opencv (opencv-python).
+Solution:
+```
+# activate npyx environment first
+pip uninstall opencv-python
+pip install opencv-python
+# pip install other missing dependencies
+```
+Full log:
+```
+In [1]: from npyx import *
+In [2]: QObject::moveToThread: Current thread (0x5622e1ea6800) is not the object's thread (0x5622e30e86f0).
+Cannot move to target thread (0x5622e1ea6800)
+
+qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "/home/maxime/miniconda3/envs/npyx/lib/python3.7/site-packages/cv2/qt/plugins" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: xcb, eglfs, linuxfb, minimal, minimalegl, offscreen, vnc, wayland-egl, wayland, wayland-xcomposite-egl, wayland-xcomposite-glx, webgl.
+
+Aborted (core dumped)
+```
+<br/>
+
+- **I think I installed everything properly, but npyx is not found if I run 'python -c "import npyx" '!** <br/>
+Typically:
+```bash
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'npyx'
+```
+Make sure that the python installation that you are using is indeed the version of your new environment. <br/>
+To do so, run "which python" on linux/mac or "where python" on windows: the output should be the path to the right environment e.g. "/home/.../anaconda/envs/npyx/bin/python". If it isn't, try to deactivate/reactivate your conda environment, or make sure you do not have conflicting python installations on your machine.
+
+## Support and citing 
+
+If you find Neuropyxels useful in your work, we kindly request that you cite:
+
+> Maxime Beau, Federico D'Agostino, Ago Lajko, Gabriela Martínez, & Dimitar Kostadinov. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. Zenodo. https://doi.org/10.5281/zenodo.5509733
+
+You can additionally star this repo using the top-right star button to help it gain more visibility.
+
+Cheers!
 
 ## Documentation:
 Npyx works with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) and [OpenEphys](https://open-ephys.org/neuropixels) (binary data and meta data) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) or [SpyKING CIRCUS](https://spyking-circus.readthedocs.io/en/latest/) and [Phy](https://phy.readthedocs.io/en/latest/) ([after conversion for the phy gui](https://spyking-circus.readthedocs.io/en/latest/GUI/launching.html), results stored in `path/mydata/mydata.GUI`). **Any dataset compatible with phy can also be analyzed with npyx, in essence.**
@@ -392,181 +566,6 @@ mplp(figsize=(3,3), title="My title", ylim=[-10,-2], xlim=[-40,60],
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/mplp.png" width="600"/>
 
 <br/>
-
-## Installation:
-
-Using a conda/virtualenv environment is very much advised, as pre-existing packages on a python installation might be incompatible with npyx and break your installation (typically leading to `python -c 'import npyx'` failing). Instructions here: [manage conda environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
-
-Npyx supports Python >=3.7 <=3.10.
-
-- as a user
-  - from pip (normally up to date)
-  ```bash
-  conda create -n my_env python=3.10
-  conda activate my_env
-  pip install npyx
-  # either 11.0 or either cuda toolkit version you have already installed
-  # find out with nvcc --version
-  conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
-  python -c 'import npyx' # should not return any error
-  # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
-  # and make sure that you are installing in a fresh environment.
-  ```
-  - from the remote repository (always up to date)
-  ```bash
-  conda create -n my_env python=3.10
-  conda activate my_env
-  pip install git+https://github.com/m-beau/NeuroPyxels@master
-  # either 11.0 or either cuda toolkit version you have already installed
-  # find out with nvcc --version
-  conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
-  python -c 'import npyx' # should not return any error
-  # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
-  # and make sure that you are installing in a fresh environment.
-  ```
-- as a superuser (recommended if plans to work on it/regularly pull upgrades)
-  > Tip: in an ipython/jupyter session, use `%load_ext autoreload` then `%autoreload` to make your local edits active in your session without having to restart your kernel. Amazing for development.
-    ```bash
-    conda create -n my_env python=3.10
-    conda activate my_env
-    cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
-    git clone https://github.com/m-beau/NeuroPyxels
-    cd NeuroPyxels
-    pip install -e . # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
-    # python setup.py develop deprecated (doesn't handle dependencies, unlike pip)
-    # either 11.0 or either cuda toolkit version you have already installed
-    # find out with nvcc --version
-    conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
-    python -c 'import npyx' # should not return any error
-    # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
-    # and make sure that you are installing in a fresh environment.
-    ```
-    and pull every now and then:
-    ```bash
-    cd path/to/save_dir/NeuroPyxels
-    git pull
-    # And that's it, thanks to the egg link no need to reinstall the package!
-    # be careful though: this will break if you edited the package. If you wish to contribute, I advise you
-    # to either post issues and wait for me to fix your problem, or to get in touch with me and potentially
-    # create your own branch from where you will be able to gracefully merge your edits with the master branch
-    # after revision.
-    ```
-
-### Dealing with cupy (GPU shenanigans)
-To run the preprocessing functions (borrowed from pykilosort), you will need NVIDIA drivers and cuda-toolkit installed on your computer. This can be the hardest part of the installation. To test if your is working OK you should be able to run the following:
-```
-nvidia-smi # Should show how much your GPU is being used right now
-nvcc # This is the CUDA compiler
-```
-Errors with the CUDA installation can sometimes be fixed by downgrading the version of cudatoolkit installed.
-To check the current version run the following:
-```
-conda activate my_env
-conda list cudatoolkit
-```
-To install version 10.0 for example run the following
-```
-conda activate my_env
-conda remove cupy, cudatoolkit
-conda install -c conda-forge cupy cudatoolkit=10.0
-```
-
-
-### Test installation
-You can use the built-in unit testing function 'test_npyx' to make sure that npyx core functions run smoothly, all at once.
-
-```python
-from npyx.testing import test_npyx
-
-# any spike sorted recording compatible with phy
-# (e.g. kilosort output)
-dp = 'datapath/to/myrecording'
-test_npyx(dp)
-
-# if any test fails, enter interactive mode debug mode as follow:
-%pdb ON # must be in a notebook or regular ipython session
-test_npyx(dp, raise_error=True)
-```
-<span style="color:#1F45FC">
-
---- npyx version 2.3.4 unit testing initiated, on directory /media/maxime/AnalysisSSD/test_dataset_artefact... <br>
-
---- Successfully ran 'read_metadata' from npyx.inout. <br>
---- Successfully ran 'get_npix_sync' from npyx.inout. <br>
---- Successfully ran 'get_units' from npyx.gl. <br>
---- Successfully ran 'ids' from npyx.spk_t. <br>
---- Successfully ran 'trn' from npyx.spk_t. <br>
---- Successfully ran 'trn_filtered' from npyx.spk_t. <br>
---- Successfully ran 'wvf' from npyx.spk_wvf. <br>
---- Successfully ran 'wvf_dsmatch' from npyx.spk_wvf. <br>
---- Successfully ran 'get_peak_chan' from npyx.spk_wvf. <br>
---- Successfully ran 'templates' from npyx.spk_wvf. <br>
---- Successfully ran 'ccg' from npyx.corr. <br>
---- Successfully ran 'plot_wvf' from npyx.plot. <br>
---- Successfully ran 'plot_ccg' from npyx.plot. <br>
---- Successfully ran 'plot_raw' from npyx.plot. <br>
-
-</span>
-
-```
-(bunch of plots...)
-```
-
-### Known installation issues
-
-- **cannot import numba.core hence cannot import npyx** <br/>
-Older versions of numba did not feature the .core submodule. You probably run a too old version of numba, vestigial from an old installation - make sure that you install npyx in a fresh conda environment si that happens to you, and eventually that numba is not installed in your root:
-
-  ```# open new terminal
-  pip uninstall numba
-  conda activate my_env
-  pip uninstall numba
-  pip install numba
-  ```
-<br/>
-
-- **core dumped when importing** <br/>
-This seems to be an issue related to PyQt5 required by opencv (opencv-python).
-Solution:
-```
-# activate npyx environment first
-pip uninstall opencv-python
-pip install opencv-python
-# pip install other missing dependencies
-```
-Full log:
-```
-In [1]: from npyx import *
-In [2]: QObject::moveToThread: Current thread (0x5622e1ea6800) is not the object's thread (0x5622e30e86f0).
-Cannot move to target thread (0x5622e1ea6800)
-
-qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "/home/maxime/miniconda3/envs/npyx/lib/python3.7/site-packages/cv2/qt/plugins" even though it was found.
-This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
-
-Available platform plugins are: xcb, eglfs, linuxfb, minimal, minimalegl, offscreen, vnc, wayland-egl, wayland, wayland-xcomposite-egl, wayland-xcomposite-glx, webgl.
-
-Aborted (core dumped)
-```
-<br/>
-
-- **I think I installed everything properly, but npyx is not found if I run 'python -c "import npyx" '!** <br/>
-Typically:
-```bash
-Traceback (most recent call last):
-  File "<stdin>", line 1, in <module>
-ModuleNotFoundError: No module named 'npyx'
-```
-Make sure that the python installation that you are using is indeed the version of your new environment. <br/>
-To do so, run "which python" on linux/mac or "where python" on windows: the output should be the path to the right environment e.g. "/home/.../anaconda/envs/npyx/bin/python". If it isn't, try to deactivate/reactivate your conda environment, or make sure you do not have conflicting python installations on your machine.
-
-## Acknowledgement
-
-If you enjoy this package and use it for your research, you can:
--  cite [this github repo](https://github.com/m-beau/NeuroPyxels) using its [DOI](https://doi.org/10.5281/zenodo.5509776): Beau, M., Lajko, A., Martínez, G., Häusser, M., & Kostadinov, D. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. *Github*, https://doi.org/10.5281/zenodo.5509776
-- star this repo using the top-right star button.
-
-Cheers!
-
 
 ## Developer cheatsheet
 

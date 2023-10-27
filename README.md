@@ -1,4 +1,4 @@
-NeuroPyxels: loading, processing and plotting Neuropixels data in Python</h1> <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/NeuroPyxels_logo_final.png" width="150" title="Neuropyxels" alt="Neuropixels" align="right" vspace = "50">
+# NeuroPyxels: loading, processing and plotting Neuropixels data in Python</h1> <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/NeuroPyxels_logo_final.png" width="150" title="Neuropyxels" alt="Neuropixels" align="right" vspace = "50">
 
 [![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5509733.svg)](https://doi.org/10.5281/zenodo.5509733)

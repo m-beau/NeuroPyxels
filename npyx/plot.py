@@ -111,7 +111,7 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
          axlab_w=None, axlab_s=None,
          ticklab_w=None, ticklab_s=None, ticks_direction=None,
          title=None, title_w=None, title_s=None,
-         lw=None, hide_top_right=None, hide_axis=None,
+         lw=None, hide_top_right=None, hide_axis=None, transparent_background=None,
          tight_layout=None, hspace=None, wspace=None,
          show_legend=None, hide_legend=None, legend_loc=None,
          saveFig=None, saveDir = None, figname=None, _format="pdf",
@@ -307,6 +307,13 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         for sp in lw_spine_keys:
             ax.spines[sp].set_lw(lw)
 
+    # remove background
+    if transparent_background is not None:
+        if transparent_background:
+            ax.patch.set_alpha(0)
+        else:
+            ax.patch.set_alpha(1)
+
     # Optionally plot horizontal and vertical dashed lines
     if lines_kwargs is None: lines_kwargs = {}
     l_kwargs = default_mplp_params['lines_kwargs']
@@ -335,8 +342,9 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
     if legend_loc is not None:
         assert len(legend_loc)==2 or len(legend_loc)==4,\
             "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
-    if show_legend: plt.legend(bbox_to_anchor=legend_loc, prop={'family':'Arial'})
-    elif hide_legend: plt.legend([],[], frameon=False)
+    if show_legend: ax.legend(bbox_to_anchor=legend_loc, loc='lower left',
+                               prop={'family':'Arial'})
+    elif hide_legend: ax.legend([],[], frameon=False)
 
     if colorbar:
         assert vmin is not None and vmax is not None and cmap is not None,\
@@ -2791,6 +2799,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
     saveDir=op.expanduser(saveDir)
 
     if trains is None:
+        # order of channels is swapped - fix it
         bChs = get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
     else:
         bChs = None

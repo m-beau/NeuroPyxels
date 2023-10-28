@@ -11,17 +11,20 @@
 - **[⬇️ Installation](https://github.com/m-beau/NeuroPyxels#installation)**
 - **[🤗 Support and citing ](https://github.com/m-beau/NeuroPyxels#support_and_citing)**
 - **[🔍️ Documentation](https://github.com/m-beau/NeuroPyxels#documentation)**
-  - [Load synchronization channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
-  - [Get good units from dataset](https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset)
-  - [Load spike times from unit u](https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u)
-  - [Load waveforms from unit u](https://github.com/m-beau/NeuroPyxels#load-waveforms-from-unit-u)
-  - [Compute auto/crosscorrelogram between 2 units](https://github.com/m-beau/NeuroPyxels#compute-autocrosscorrelogram-between-2-units)
-  - [Plot waveform and crosscorrelograms of unit u](https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u)
-  - [Preprocess your waveforms and spike trains](https://github.com/m-beau/NeuroPyxels#preprocess-your-waveforms-drift-shift-matching-and-spike-trains-detect-periods-with-few-false-positivenegative)
-  - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
-  - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
-  - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
-  - [Bonus: cool npyx plotting utilities which could turn out useful](https://github.com/m-beau/NeuroPyxels#bonus-cool-matplotlib-plotting-utilities-which-could-turn-out-useful)
+  - [Design philosophy](https://github.com/m-beau/NeuroPyxels#design-philosophy)
+  - [Directory structure](https://github.com/m-beau/NeuroPyxels#directory-structure)
+  - [Common use cases](https://github.com/m-beau/NeuroPyxels#common-use-cases)
+    - [Load synchronization channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
+    - [Get good units from dataset](https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset)
+    - [Load spike times from unit u](https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u)
+    - [Load waveforms from unit u](https://github.com/m-beau/NeuroPyxels#load-waveforms-from-unit-u)
+    - [Compute auto/crosscorrelogram between 2 units](https://github.com/m-beau/NeuroPyxels#compute-autocrosscorrelogram-between-2-units)
+    - [Plot waveform and crosscorrelograms of unit u](https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u)
+    - [Preprocess your waveforms and spike trains](https://github.com/m-beau/NeuroPyxels#preprocess-your-waveforms-drift-shift-matching-and-spike-trains-detect-periods-with-few-false-positivenegative)
+    - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
+    - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
+    - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
+  - [Bonus: matplotlib plot prettifier (mplp)](https://github.com/m-beau/NeuroPyxels#bonus-matplotlib-plot-prettifier)
 
 ## ⬇️ Installation:
 
@@ -276,7 +279,9 @@ meta = read_metadata(dp) # works for spikeGLX (contents of .meta files) and open
 
 ```
 
-### Load synchronization channel
+### Common use cases
+
+#### Load synchronization channel
 ```python
 from npyx.inout import get_npix_sync # star import is sufficient, but I like explicit imports!
 
@@ -286,7 +291,7 @@ onsets, offsets = get_npix_sync(dp, filt_key='highpass') # works for spikeGLX (e
 # keys: ids of sync channel where a TTL was detected (0,1,2... for spikeGLX, name of TTL folders in events/..AP for openephys),
 # values: times of up (onsets) or down (offsets) threshold crosses, in seconds.
 ```
-### Preprocess binary data
+#### Preprocess binary data
 Makes a preprocessed copy of the binary file in dp, moves original binary file at dp/original_data
 This will be as fast as literally copying your file, with a decent GPU!
 ```python
@@ -297,7 +302,7 @@ from npyx.inout import preprocess_binary_file # star import is sufficient, but I
 filtered_fname = preprocess_binary_file(dp, filt_key='ap', median_subtract=True, f_low=None, f_high=300, order=3, verbose=True)
 ```
 
-### Get good units from dataset
+#### Get good units from dataset
 ```python
 from npyx.gl import get_units
 units = get_units(dp, quality='good')
@@ -309,7 +314,7 @@ u=234
 t = trn(dp, u) # gets all spikes from unit 234, in samples
 ```
 
-### Load waveforms from unit u
+#### Load waveforms from unit u
 ```python
 from npyx.inout import read_spikeglx_meta
 from npyx.spk_t import ids, trn
@@ -343,7 +348,7 @@ waves = wvf(dp, u, spike_ids=u_ids[mask])
 temp = templates(dp,u) # return array of shape (n_templates, 82, n_channels)
 ```
 
-### Compute auto/crosscorrelogram between 2 units
+#### Compute auto/crosscorrelogram between 2 units
 ```python
 from npyx.corr import ccg, ccg_stack
 
@@ -362,7 +367,7 @@ c_stack = ccg_stack(dp, source_units, target_units, 0.2, 80, name='my_relevant_c
 c_stack = ccg_stack(dp, name='my_relevant_ccg_stack') # will work to reaload in the future
 ```
 
-### Plot waveform and crosscorrelogram of unit u
+#### Plot waveform and crosscorrelogram of unit u
 ```python
 # all plotting functions return matplotlib figures
 from npyx.plot import plot_wvf, get_peak_chan
@@ -384,7 +389,7 @@ fig = plot_ccg(dp, [u,92], cbin=0.2, cwin=80, as_grid=True)
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ccg.png" width="400"/>
 
-### Preprocess your waveforms (drift-shift-matching) and spike trains (detect periods with few false positive/negative)
+#### Preprocess your waveforms (drift-shift-matching) and spike trains (detect periods with few false positive/negative)
 ```python
 # all plotting functions return matplotlib figures
 from npyx.spk_wvf import wvf_dsmatch
@@ -410,7 +415,7 @@ t_preprocessed = trn_filtered(dp, u, plot_debug=True)
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/trnfiltered_example1.png" width="600"/>
 
 
-### Plot chunk of raw data with overlaid units
+#### Plot chunk of raw data with overlaid units
 ```python
 units = [1,2,3,4,5,6]
 channels = np.arange(70,250)
@@ -422,7 +427,7 @@ plot_raw_units(dp, times=[0,0.130], units = units, channels = channels,
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/raw.png" width="400"/>
 
-### Plot peri-stimulus time histograms across neurons and conditions
+#### Plot peri-stimulus time histograms across neurons and conditions
 
 ```python
 # Explore responses of 3 neurons to 4 categories of events:
@@ -442,7 +447,7 @@ fig=summary_psth(trains, trains_str, events, events_str, psthb=10, psthw=[-750,7
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/psth.png" width="600"/>
 
-### Merge datasets acquired on two probes simultaneously
+#### Merge datasets acquired on two probes simultaneously
 ```python
 # The three recordings need to include the same sync channel.
 from npyx.merger import merge_datasets
@@ -519,7 +524,7 @@ PS - The spike times are aligned across datasets by modelling the drift between 
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/error_dist.png" width="600"/>
 <br/>
 
-### Bonus: cool matplotlib plotting utilities which might be useful
+### Bonus: matplotlib plot prettifier
 ```python
 from npyx.plot import get_ncolors_cmap
 

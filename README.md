@@ -25,7 +25,7 @@
     - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
     - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
     - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
-  - [Bonus: matplotlib plot prettifier (mplp)](https://github.com/m-beau/NeuroPyxels#bonus-matplotlib-plot-prettifier)
+  - [⭐ Bonus: matplotlib plot prettifier (mplp)](https://github.com/m-beau/NeuroPyxels#-bonus-matplotlib-plot-prettifier)
 
 ## ⬇️ Installation:
 
@@ -524,7 +524,7 @@ PS - The spike times are aligned across datasets by modelling the drift between 
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/error_dist.png" width="600"/>
 <br/>
 
-### ⭐📊 Bonus: matplotlib plot prettifier
+### ⭐ Bonus: matplotlib plot prettifier
 ```python
 from npyx.plot import get_ncolors_cmap
 

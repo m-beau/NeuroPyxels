@@ -8,12 +8,13 @@
 
 ❓**Any questions or issues?**: [Create a github issue](https://github.com/Maxime-Beau/Neuropyxels/issues) to get support, or create a [pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request). Alternatively, you can email [us: maximebeaujeanroch047[at]gmail[dot]com](mailto:maximebeaujeanroch047@gmail.com). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com).
 
-- **[⬇️ Installation](https://github.com/m-beau/NeuroPyxels#installation)**
-- **[🤗 Support and citing ](https://github.com/m-beau/NeuroPyxels#support_and_citing)**
-- **[🔍️ Documentation](https://github.com/m-beau/NeuroPyxels#documentation)**
-  - [💡 Design philosophy](https://github.com/m-beau/NeuroPyxels#design-philosophy)
-  - [📁 Directory structure](https://github.com/m-beau/NeuroPyxels#directory-structure)
-  - [👉 Common use cases](https://github.com/m-beau/NeuroPyxels#common-use-cases)
+- **[⬇️ Installation](https://github.com/m-beau/NeuroPyxels#%EF%B8%8F-installation)**
+- **[🤗 Support and citing ](https://github.com/m-beau/NeuroPyxels#-support-and-citing)**
+- **[🔍️ Documentation](https://github.com/m-beau/NeuroPyxels#%EF%B8%8F-documentation)**
+  - [💡 Design philosophy](https://github.com/m-beau/NeuroPyxels#-design-philosophy)
+  - [📁 Directory structure](https://github.com/m-beau/NeuroPyxels#-directory-structure)
+  - [👉 Common use cases](https://github.com/m-beau/NeuroPyxels#-common-use-cases)
+    - [Load recording metadata](https://github.com/m-beau/NeuroPyxels#load-recording-metadata)
     - [Load synchronization channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
     - [Get good units from dataset](https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset)
     - [Load spike times from unit u](https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u)
@@ -523,7 +524,7 @@ PS - The spike times are aligned across datasets by modelling the drift between 
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/error_dist.png" width="600"/>
 <br/>
 
-### Bonus: matplotlib plot prettifier
+### ⭐📊 Bonus: matplotlib plot prettifier
 ```python
 from npyx.plot import get_ncolors_cmap
 

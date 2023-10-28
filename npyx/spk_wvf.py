@@ -14,6 +14,9 @@ from tqdm.notebook import tqdm
 
 import os.path as op; opj=op.join
 
+from joblib import Memory
+cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
+cache_memory = Memory(cachedir, verbose=0)
 
 num_cores = multiprocessing.cpu_count()
 
@@ -25,9 +28,10 @@ import numpy as np
 from npyx.gl import get_npyx_memory, get_units
 from npyx.inout import chan_map, get_binary_file_path, read_metadata
 from npyx.preprocess import apply_filter, bandpass_filter, med_substract, whitening
-from npyx.utils import npa, split, xcorr_1d_loop
+from npyx.utils import npa, split, xcorr_1d_loop, cache_validation_again
 
 
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', periods='all',
         spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
         save=True, verbose=False, again=False,
@@ -637,6 +641,7 @@ def get_pc(waveforms):
     peak_chan = np.argmax(max_min_wvf)
     return peak_chan
 
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
 def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=True, periods='all', save=True):
     '''
     Returns index of peak channel, either according to the full probe channel map (0 through 383)
@@ -691,6 +696,7 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
     return int(peak_chan)
 
 
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
 def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, again=False, verbose = False):
     '''
     Usage:

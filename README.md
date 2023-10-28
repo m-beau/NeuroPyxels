@@ -11,9 +11,9 @@
 - **[⬇️ Installation](https://github.com/m-beau/NeuroPyxels#installation)**
 - **[🤗 Support and citing ](https://github.com/m-beau/NeuroPyxels#support_and_citing)**
 - **[🔍️ Documentation](https://github.com/m-beau/NeuroPyxels#documentation)**
-  - [Design philosophy](https://github.com/m-beau/NeuroPyxels#design-philosophy)
-  - [Directory structure](https://github.com/m-beau/NeuroPyxels#directory-structure)
-  - [Common use cases](https://github.com/m-beau/NeuroPyxels#common-use-cases)
+  - [💡 Design philosophy](https://github.com/m-beau/NeuroPyxels#design-philosophy)
+  - [📁 Directory structure](https://github.com/m-beau/NeuroPyxels#directory-structure)
+  - [👉 Common use cases](https://github.com/m-beau/NeuroPyxels#common-use-cases)
     - [Load synchronization channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
     - [Get good units from dataset](https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset)
     - [Load spike times from unit u](https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u)
@@ -198,7 +198,7 @@ Cheers!
 
 Npyx works with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) and [OpenEphys](https://open-ephys.org/neuropixels) (binary data and meta data) used in combination with [Phy](https://phy.readthedocs.io/en/latest/)-compatible spike-sorters ([Kilosort](https://github.com/MouseLand/Kilosort), [SpyKING CIRCUS](https://spyking-circus.readthedocs.io/en/latest/)...). <span style="color:pink">**Any dataset compatible with phy can also be analyzed with npyx, in essence.**</span>
 
-### Design philosophy
+### 💡 Design philosophy
 
 - Memoization
 
@@ -222,7 +222,7 @@ Npyx works with the data formatting employed by [SpikeGLX](https://billkarsh.git
   
   Then, specific functions will require specific files: loading waveforms with `npyx.spk_wvf.wvf` or extracting your sync channel with `npyx.io.get_npix_sync` require the raw data `myrecording.ap.bin`, `npyx.spk_wvf.templates` the files `templates.npy` and `spike_templates.npy`, and so on. This allows you to only transfer the strictly necassary files for your use case from a machine to the next: for instance, if you only want to make behavioural analysis of spike trains but do not care about the waveforms, you can run `get_npix_sync` on a first machine (which will generate a `sync_chan` folder containing extracted onsets/offsets from the sync channel(s)), then exclusively transfer the `dataset/sync_chan/` folder along with `spike_times.npy` and `spike_clusters.npy` (all very light files) on another computer and analyze your data there seemlessly.
 
-### Directory structure
+### 📁 Directory structure
 
 The **`dp`** parameter of all npyx functions must be the **absolute path to `myrecording`** below.
 
@@ -264,8 +264,9 @@ myrecording/
         timestamps.npy # same timestamps for LFP channel
 ```
 
+### 👉 Common use cases
 
-### Load recording metadata
+#### Load recording metadata
 
 ```python
 from npyx import *
@@ -278,8 +279,6 @@ dp = 'datapath/to/myrecording'
 meta = read_metadata(dp) # works for spikeGLX (contents of .meta files) and open-ephys (contents of .oebin file)
 
 ```
-
-### Common use cases
 
 #### Load synchronization channel
 ```python
@@ -307,7 +306,7 @@ filtered_fname = preprocess_binary_file(dp, filt_key='ap', median_subtract=True,
 from npyx.gl import get_units
 units = get_units(dp, quality='good')
 ```
-### Load spike times from unit u
+#### Load spike times from unit u
 ```python
 from npyx.spk_t import trn
 u=234

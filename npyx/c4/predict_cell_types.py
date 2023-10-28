@@ -589,13 +589,13 @@ def main(
 
     # Save the predictions to a file that can be read by phy
     predictions_df[["cluster_id", "predicted_cell_type"]].to_csv(
-        os.path.join(save_path, "cluster_predicted_cell_type.tsv"), index=False
+        os.path.join(save_path, "cluster_predicted_cell_type.tsv"), sep="\t", index=False
     )
     predictions_df[["cluster_id", "confidence"]].to_csv(
-        os.path.join(save_path, "cluster_confidence.tsv"), index=False
+        os.path.join(save_path, "cluster_confidence.tsv"), sep="\t", index=False
     )
     predictions_df[["cluster_id", "model_votes"]].to_csv(
-        os.path.join(save_path, "cluster_model_votes.tsv"), index=False
+        os.path.join(save_path, "cluster_model_votes.tsv"), sep="\t", index=False
     )
 
     # Save the raw probabilities and the label correspondence for power users

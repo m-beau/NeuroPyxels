@@ -1,48 +1,229 @@
-<h1><img src = "https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/NeuroPyxels_logo_final.png" width="150"></a> NeuroPyxels: loading, processing and plotting Neuropixels data in Python</h1>
-
 [![PyPI Version](https://img.shields.io/pypi/v/npyx.svg)](https://pypi.org/project/npyx/)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5509776.svg)](https://doi.org/10.5281/zenodo.5509776)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5509733.svg)](https://doi.org/10.5281/zenodo.5509733)
 [![License](https://img.shields.io/pypi/l/npyx.svg)](https://github.com/m-beau/NeuroPyxels/blob/master/LICENSE)
-[![Downloads](https://static.pepy.tech/badge/npyx/month)](https://pepy.tech/project/npyx)
+[![Downloads](https://static.pepy.tech/badge/npyx)](https://pepy.tech/project/npyx)
+# NeuroPyxels: loading, processing and plotting Neuropixels data in Python</h1> <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/NeuroPyxels_logo_final.png" width="150" title="Neuropyxels" alt="Neuropixels" align="right" vspace = "50">
 
-[NeuroPyxels](https://github.com/m-beau/NeuroPyxels) (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. This package stems from the need of a pythonist who really did not want to transition to MATLAB to work with Neuropixels: it features a suite of core utility functions for loading, processing and plotting Neuropixels data.
+[NeuroPyxels](https://github.com/m-beau/NeuroPyxels) (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. This package results from the needs of a pythonist who really did not want to transition to MATLAB to work with Neuropixels: it features a suite of core utility functions for loading, processing and plotting Neuropixels data.
 
-**Questions**: There isn't any better doc atm, but feel free to post an issue here (preferred option, so that everyone can benefit from it 🙂) or drop me an email at [Maxime Beau](maximebeaujeanroch047@gmail.com) (PhD Hausser lab, UCL). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com).
+❓**Any questions or issues?**: [Create a github issue](https://github.com/Maxime-Beau/Neuropyxels/issues) to get support, or create a [pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request). Alternatively, you can email [us: maximebeaujeanroch047[at]gmail[dot]com](mailto:maximebeaujeanroch047@gmail.com). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com).
+
+- **[⬇️ Installation](https://github.com/m-beau/NeuroPyxels#%EF%B8%8F-installation)**
+- **[🤗 Support and citing ](https://github.com/m-beau/NeuroPyxels#-support-and-citing)**
+- **[🔍️ Documentation](https://github.com/m-beau/NeuroPyxels#%EF%B8%8F-documentation)**
+  - [💡 Design philosophy](https://github.com/m-beau/NeuroPyxels#-design-philosophy)
+  - [📁 Directory structure](https://github.com/m-beau/NeuroPyxels#-directory-structure)
+  - [👉 Common use cases](https://github.com/m-beau/NeuroPyxels#-common-use-cases)
+    - [Load recording metadata](https://github.com/m-beau/NeuroPyxels#load-recording-metadata)
+    - [Load synchronization channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
+    - [Get good units from dataset](https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset)
+    - [Load spike times from unit u](https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u)
+    - [Load waveforms from unit u](https://github.com/m-beau/NeuroPyxels#load-waveforms-from-unit-u)
+    - [Compute auto/crosscorrelogram between 2 units](https://github.com/m-beau/NeuroPyxels#compute-autocrosscorrelogram-between-2-units)
+    - [Plot waveform and crosscorrelograms of unit u](https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u)
+    - [Preprocess your waveforms and spike trains](https://github.com/m-beau/NeuroPyxels#preprocess-your-waveforms-drift-shift-matching-and-spike-trains-detect-periods-with-few-false-positivenegative)
+    - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
+    - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
+    - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
+  - [⭐ Bonus: matplotlib plot prettifier (mplp)](https://github.com/m-beau/NeuroPyxels#-bonus-matplotlib-plot-prettifier)
+
+## ⬇️ Installation:
+
+We recommend using a conda environment. Pre-existing packages on a python installation might be incompatible with npyx and break your installation. You can find instructions on setting up a conda environment [here](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html).
+
+```bash
+  conda create -n my_env python=3.10
+  conda activate my_env
+  pip install npyx
+  # optionally (see 'Dealing with cupy' section below):
+  conda install -c conda-forge cupy cudatoolkit=11.0
+  # test installation:
+  python -c 'import npyx' # should not return any error
+  ```
+
+<details>
+  <summary>Advanced installation</summary>
+
+- if you want the very latest version:
+  ```bash
+  conda create -n my_env python=3.10
+  conda activate my_env
+  pip install git+https://github.com/m-beau/NeuroPyxels@master
+  # optionally (see 'Dealing with cupy' section below):
+  conda install -c conda-forge cupy cudatoolkit=11.0
+  # test installation:
+  python -c 'import npyx' # should not return any error
+  ```
+
+- If you want to edit npyx locally and eventually contribute:
+  > 💡 Tip: in an ipython/jupyter session, use `%load_ext autoreload` then `%autoreload 2` to make your local edits active in your session without having to restart your kernel. Amazing for development.
+  ```bash
+  conda create -n my_env python=3.10
+  conda activate my_env
+  cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
+  git clone https://github.com/m-beau/NeuroPyxels
+  cd NeuroPyxels
+  pip install -e . # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
+  # optionally (see 'Dealing with cupy' section below):
+  conda install -c conda-forge cupy cudatoolkit=11.0
+  # test installation:
+  python -c 'import npyx' # should not return any error
+  ```
+  and pull every now and then:
+  ```bash
+  cd path/to/save_dir/NeuroPyxels
+  git pull
+  # And that's it, thanks to the egg link no need to reinstall the package!
+  ```
+</details>
+</br>
+Npyx supports Python >=3.7.
+
+### Dealing with cupy (GPU shenanigans)
+To run some preprocessing functions, you will need NVIDIA drivers and cuda-toolkit installed on your computer. It is a notorious source of bugs. To test your CUDA installation do the following:
+```bash
+nvidia-smi # Should show how much your GPU is being used right now
+nvcc # This is the CUDA compiler
+```
+If it doesn't work, try up/downgrading the version of cudatoolkit installed:
+```bash
+# check the current version
+conda activate my_env
+conda list cudatoolkit
+# E.g. install version 10.0
+conda activate my_env
+conda remove cupy, cudatoolkit
+conda install -c conda-forge cupy cudatoolkit=10.0
+```
 
 
-- **[Documentation](https://github.com/m-beau/NeuroPyxels#documentation)**
-  - [Load synchronization channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
-  - [Get good units from dataset](https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset)
-  - [Load spike times from unit u](https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u)
-  - [Load waveforms from unit u](https://github.com/m-beau/NeuroPyxels#load-waveforms-from-unit-u)
-  - [Compute auto/crosscorrelogram between 2 units](https://github.com/m-beau/NeuroPyxels#compute-autocrosscorrelogram-between-2-units)
-  - [Plot waveform and crosscorrelograms of unit u](https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u)
-  - [Preprocess your waveforms and spike trains](https://github.com/m-beau/NeuroPyxels#preprocess-your-waveforms-drift-shift-matching-and-spike-trains-detect-periods-with-few-false-positivenegative)
-  - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
-  - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
-  - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
-  - [Bonus: cool npyx plotting utilities which could turn out useful](https://github.com/m-beau/NeuroPyxels#bonus-cool-matplotlib-plotting-utilities-which-could-turn-out-useful)
-- **[Installation](https://github.com/m-beau/NeuroPyxels#installation)**
-- **[Acknowledgement](https://github.com/m-beau/NeuroPyxels#acknowledgement)**
-- **[Developer cheatsheet](https://github.com/m-beau/NeuroPyxels#developer-cheatsheet)**
+### Test installation
+You can use the built-in unit testing function 'test_npyx' to make sure that npyx core functions run smoothly, all at once.
 
+```python
+from npyx.testing import test_npyx
 
-## Documentation:
-Npyx works with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) and [OpenEphys](https://open-ephys.org/neuropixels) (binary data and meta data) used in combination with [Kilosort](https://github.com/MouseLand/Kilosort) or [SpyKING CIRCUS](https://spyking-circus.readthedocs.io/en/latest/) and [Phy](https://phy.readthedocs.io/en/latest/) ([after conversion for the phy gui](https://spyking-circus.readthedocs.io/en/latest/GUI/launching.html), results stored in `path/mydata/mydata.GUI`). **Any dataset compatible with phy can also be analyzed with npyx, in essence.**
+# any spike sorted recording compatible with phy
+# (e.g. kilosort output)
+dp = 'datapath/to/myrecording'
+test_npyx(dp)
 
-<ins>Npyx is fast because it never computes the same thing twice</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at **npix_dataset/npyxMemory**, from where they are simply reloaded if called again. An important parameter controlling this behaviour is **`again`** (boolean), by default set to False: if True, the function will recompute the output rather than loading it from npyxMemory. This is important to be aware of this behaviour, as it can lead to mind boggling bugs. For instance, if you load the train of unit then re-spikesort your dataset, e.g. you split unit 56 in 504 and 505, the train of the old unit 56 will still exist at kilosort_dataset/npyxMemory and you will be able to load it even though the unit is gone!
+# if any test fails, re-run them with the following to print the error log, and try to fix it or post an issue on github:
+test_npyx(dp, raise_error=True)
+```
+<span style="color:#1F45FC">
 
-Most npyx functions take at least one input: **`dp`**, which is the path to your Neuropixels-phy dataset. You can find a [full description of the structure of such datasets](https://phy.readthedocs.io/en/latest/sorting_user_guide/#installation) on the phy documentation.
+--- npyx version 2.3.4 unit testing initiated, on directory /media/maxime/AnalysisSSD/test_dataset_artefact... <br>
 
-Other typical parameters are: **`verbose`** (whether to print a bunch of informative messages, useful when debugging), **`saveFig`** (boolean) and **`saveDir`** (whether to save the figure in saveDir for plotting functions).
+--- Successfully ran 'read_metadata' from npyx.inout. <br>
+--- Successfully ran 'get_npix_sync' from npyx.inout. <br>
+--- Successfully ran 'get_units' from npyx.gl. <br>
+--- Successfully ran 'ids' from npyx.spk_t. <br>
+--- Successfully ran 'trn' from npyx.spk_t. <br>
+--- Successfully ran 'trn_filtered' from npyx.spk_t. <br>
+--- Successfully ran 'wvf' from npyx.spk_wvf. <br>
+--- Successfully ran 'wvf_dsmatch' from npyx.spk_wvf. <br>
+--- Successfully ran 'get_peak_chan' from npyx.spk_wvf. <br>
+--- Successfully ran 'templates' from npyx.spk_wvf. <br>
+--- Successfully ran 'ccg' from npyx.corr. <br>
+--- Successfully ran 'plot_wvf' from npyx.plot. <br>
+--- Successfully ran 'plot_ccg' from npyx.plot. <br>
+--- Successfully ran 'plot_raw' from npyx.plot. <br>
 
-Importantly, **`dp`** can also be the path to a **merged dataset**, generated with `npyx.merge_datasets()` - <ins>every function will run as smoothly on merged datasets as on any regular dataset</ins>. See below for more details.
+</span>
 
-More precisely, every function requires the files `myrecording.ap.meta`/`myrecording.oebin` (metadata from SpikeGLX/OpenEphys), `params.py`, `spike_times.npy` and `spike_clusters.npy`. If you have started spike sorting, `cluster_groups.tsv` will also be required obviously (will be created filled with 'unsorted' groups if none is found). Then particular functions will require particular files: loading waveforms with `npyx.spk_wvf.wvf` or extracting your sync channel with `npyx.io.get_npix_sync` require the raw data `myrecording.ap.bin`, `npyx.spk_wvf.templates` the files `templates.npy` and `spike_templates.npy`, and so on. This allows you to only transfer the strictly necassary files for your use case from a machine to the next: for instance, if you only want to make behavioural analysis of spike trains but do not care about the waveforms, you can run `get_npix_sync` on a first machine (which will generate a `sync_chan` folder containing extracted onsets/offsets from the sync channel(s)), then exclusively transfer the `dataset/sync_chan/` folder along with `spike_times.npy` and `spike_clusters.npy` (all very light files) on another computer and analyze your data there seemlessly.
+```
+(bunch of plots...)
+```
+<details>
+  <summary>:warning: Known installation issues</summary>
 
-DISCLAIMER: some parts of the code are experimental - use at your own risk!
+- **cannot import numba.core hence cannot import npyx** <br/>
+Older versions of numba did not feature the .core submodule. If you get this error, you are probably running a too old version of numba. Make sure that you have installed npyx in a fresh conda environment if that happens to you. If you still get an error, check that numba is not installed in your root directory.
 
-### Directory structure
+  ```# open new terminal
+  pip uninstall numba
+  conda activate my_env
+  pip uninstall numba
+  pip install numba
+  ```
+<br/>
+
+- **core dumped when importing** <br/>
+This seems to be an issue related to PyQt5 required by opencv (opencv-python).
+Solution:
+```
+# activate npyx environment first
+pip uninstall opencv-python
+pip install opencv-python
+# pip install other missing dependencies
+```
+Full log:
+```
+In [1]: from npyx import *
+In [2]: QObject::moveToThread: Current thread (0x5622e1ea6800) is not the object's thread (0x5622e30e86f0).
+Cannot move to target thread (0x5622e1ea6800)
+
+qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "/home/maxime/miniconda3/envs/npyx/lib/python3.7/site-packages/cv2/qt/plugins" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: xcb, eglfs, linuxfb, minimal, minimalegl, offscreen, vnc, wayland-egl, wayland, wayland-xcomposite-egl, wayland-xcomposite-glx, webgl.
+
+Aborted (core dumped)
+```
+<br/>
+
+- **I think I installed everything properly, but npyx is not found if I run 'python -c "import npyx" '!** <br/>
+Typically:
+```bash
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'npyx'
+```
+Make sure that the python installation that you are using is indeed the version of your new environment. <br/>
+To do so, in your terminal, run "which python" on linux/mac or "where python" on windows: the output should be the path to the right environment e.g. "/home/.../anaconda/envs/npyx/bin/python". If it isn't, try to deactivate/reactivate your conda environment, or make sure you do not have conflicting python installations on your machine.
+
+</details>
+
+## 🤗 Support and citing 
+
+If you find Neuropyxels useful in your work, we kindly request that you cite:
+
+> Maxime Beau, Federico D'Agostino, Ago Lajko, Gabriela Martínez, & Dimitar Kostadinov. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. Zenodo. https://doi.org/10.5281/zenodo.5509733
+
+You can additionally star this repo using the top-right star button to help it gain more visibility.
+
+Cheers!
+
+## 🔍️ Documentation:
+
+Npyx works with the data formatting employed by [SpikeGLX](https://billkarsh.github.io/SpikeGLX/) and [OpenEphys](https://open-ephys.org/neuropixels) (binary data and meta data) used in combination with [Phy](https://phy.readthedocs.io/en/latest/)-compatible spike-sorters ([Kilosort](https://github.com/MouseLand/Kilosort), [SpyKING CIRCUS](https://spyking-circus.readthedocs.io/en/latest/)...). <span style="color:pink">**Any dataset compatible with phy can also be analyzed with npyx, in essence.**</span>
+
+### 💡 Design philosophy
+
+- Memoization
+
+  <ins>Npyx is fast because it rarely computes the same thing twice by relying heavily on caching</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at **npix_dataset/npyxMemory**, from where they are simply reloaded if called again.
+
+  An important argument controlling this behaviour is **`again`** (boolean), by default set to False: if True, most npyx functions will recompute their output rather than loading it from npyxMemory. This is important to be aware of this behaviour, as it can lead to mind boggling bugs. For instance, if you load a spike train then re-curate your dataset, e.g. by splitting unit 56 into 504 and 505, the train of the old 'unit 56' will still exist at kilosort_dataset/npyxMemory and you will remain able to load it even though the unit is gone!
+
+- Ubiquitous arguments
+
+  Most npyx functions take at least one input: **`dp`**, which is the path to your Neuropixels-phy dataset. You can find a [full description of the structure of such datasets](https://phy.readthedocs.io/en/latest/sorting_user_guide/#installation) on the phy documentation.
+
+  Other typical parameters are: **`verbose`** (whether to print a bunch of informative messages, useful when debugging), **`saveFig`** (boolean) and **`saveDir`** (whether to save the figure in saveDir for plotting functions).
+
+  Importantly, **`dp`** can also be the path to a **merged dataset**, generated with `npyx.merge_datasets()` - <ins>every function will run as smoothly on merged datasets as on any regular dataset</ins>. See below for more details.
+
+- Minimal and modular reliance of spike-sorter output
+
+  Every function requires the files `myrecording.ap.meta`/`myrecording.oebin` (metadata from SpikeGLX/OpenEphys), `params.py`, `spike_times.npy` and `spike_clusters.npy`.
+  
+  If you have started spike sorting, `cluster_groups.tsv` will also be required obviously (will be created filled with 'unsorted' groups if none is found).
+  
+  Then, specific functions will require specific files: loading waveforms with `npyx.spk_wvf.wvf` or extracting your sync channel with `npyx.io.get_npix_sync` require the raw data `myrecording.ap.bin`, `npyx.spk_wvf.templates` the files `templates.npy` and `spike_templates.npy`, and so on. This allows you to only transfer the strictly necassary files for your use case from a machine to the next: for instance, if you only want to make behavioural analysis of spike trains but do not care about the waveforms, you can run `get_npix_sync` on a first machine (which will generate a `sync_chan` folder containing extracted onsets/offsets from the sync channel(s)), then exclusively transfer the `dataset/sync_chan/` folder along with `spike_times.npy` and `spike_clusters.npy` (all very light files) on another computer and analyze your data there seemlessly.
+
+### 📁 Directory structure
 
 The **`dp`** parameter of all npyx functions must be the **absolute path to `myrecording`** below.
 
@@ -84,10 +265,9 @@ myrecording/
         timestamps.npy # same timestamps for LFP channel
 ```
 
+### 👉 Common use cases
 
-Example use cases are:
-
-### Load recording metadata
+#### Load recording metadata
 
 ```python
 from npyx import *
@@ -101,7 +281,7 @@ meta = read_metadata(dp) # works for spikeGLX (contents of .meta files) and open
 
 ```
 
-### Load synchronization channel
+#### Load synchronization channel
 ```python
 from npyx.inout import get_npix_sync # star import is sufficient, but I like explicit imports!
 
@@ -111,7 +291,7 @@ onsets, offsets = get_npix_sync(dp, filt_key='highpass') # works for spikeGLX (e
 # keys: ids of sync channel where a TTL was detected (0,1,2... for spikeGLX, name of TTL folders in events/..AP for openephys),
 # values: times of up (onsets) or down (offsets) threshold crosses, in seconds.
 ```
-### Preprocess binary data
+#### Preprocess binary data
 Makes a preprocessed copy of the binary file in dp, moves original binary file at dp/original_data
 This will be as fast as literally copying your file, with a decent GPU!
 ```python
@@ -122,19 +302,19 @@ from npyx.inout import preprocess_binary_file # star import is sufficient, but I
 filtered_fname = preprocess_binary_file(dp, filt_key='ap', median_subtract=True, f_low=None, f_high=300, order=3, verbose=True)
 ```
 
-### Get good units from dataset
+#### Get good units from dataset
 ```python
 from npyx.gl import get_units
 units = get_units(dp, quality='good')
 ```
-### Load spike times from unit u
+#### Load spike times from unit u
 ```python
 from npyx.spk_t import trn
 u=234
 t = trn(dp, u) # gets all spikes from unit 234, in samples
 ```
 
-### Load waveforms from unit u
+#### Load waveforms from unit u
 ```python
 from npyx.inout import read_spikeglx_meta
 from npyx.spk_t import ids, trn
@@ -168,7 +348,7 @@ waves = wvf(dp, u, spike_ids=u_ids[mask])
 temp = templates(dp,u) # return array of shape (n_templates, 82, n_channels)
 ```
 
-### Compute auto/crosscorrelogram between 2 units
+#### Compute auto/crosscorrelogram between 2 units
 ```python
 from npyx.corr import ccg, ccg_stack
 
@@ -187,7 +367,7 @@ c_stack = ccg_stack(dp, source_units, target_units, 0.2, 80, name='my_relevant_c
 c_stack = ccg_stack(dp, name='my_relevant_ccg_stack') # will work to reaload in the future
 ```
 
-### Plot waveform and crosscorrelogram of unit u
+#### Plot waveform and crosscorrelogram of unit u
 ```python
 # all plotting functions return matplotlib figures
 from npyx.plot import plot_wvf, get_peak_chan
@@ -209,7 +389,7 @@ fig = plot_ccg(dp, [u,92], cbin=0.2, cwin=80, as_grid=True)
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ccg.png" width="400"/>
 
-### Preprocess your waveforms (drift-shift-matching) and spike trains (detect periods with few false positive/negative)
+#### Preprocess your waveforms (drift-shift-matching) and spike trains (detect periods with few false positive/negative)
 ```python
 # all plotting functions return matplotlib figures
 from npyx.spk_wvf import wvf_dsmatch
@@ -235,7 +415,7 @@ t_preprocessed = trn_filtered(dp, u, plot_debug=True)
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/trnfiltered_example1.png" width="600"/>
 
 
-### Plot chunk of raw data with overlaid units
+#### Plot chunk of raw data with overlaid units
 ```python
 units = [1,2,3,4,5,6]
 channels = np.arange(70,250)
@@ -247,7 +427,7 @@ plot_raw_units(dp, times=[0,0.130], units = units, channels = channels,
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/raw.png" width="400"/>
 
-### Plot peri-stimulus time histograms across neurons and conditions
+#### Plot peri-stimulus time histograms across neurons and conditions
 
 ```python
 # Explore responses of 3 neurons to 4 categories of events:
@@ -267,7 +447,7 @@ fig=summary_psth(trains, trains_str, events, events_str, psthb=10, psthw=[-750,7
 ```
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/psth.png" width="600"/>
 
-### Merge datasets acquired on two probes simultaneously
+#### Merge datasets acquired on two probes simultaneously
 ```python
 # The three recordings need to include the same sync channel.
 from npyx.merger import merge_datasets
@@ -344,7 +524,7 @@ PS - The spike times are aligned across datasets by modelling the drift between 
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/error_dist.png" width="600"/>
 <br/>
 
-### Bonus: cool matplotlib plotting utilities which could turn out useful
+### ⭐ Bonus: matplotlib plot prettifier
 ```python
 from npyx.plot import get_ncolors_cmap
 
@@ -392,223 +572,3 @@ mplp(figsize=(3,3), title="My title", ylim=[-10,-2], xlim=[-40,60],
 <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/mplp.png" width="600"/>
 
 <br/>
-
-## Installation:
-
-Using a conda/virtualenv environment is very much advised, as pre-existing packages on a python installation might be incompatible with npyx and break your installation (typically leading to `python -c 'import npyx'` failing). Instructions here: [manage conda environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
-
-Npyx supports Python >=3.7 <=3.10.
-
-- as a user
-  - from pip (normally up to date)
-  ```bash
-  conda create -n my_env python=3.10
-  conda activate my_env
-  pip install npyx
-  # either 11.0 or either cuda toolkit version you have already installed
-  # find out with nvcc --version
-  conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
-  python -c 'import npyx' # should not return any error
-  # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
-  # and make sure that you are installing in a fresh environment.
-  ```
-  - from the remote repository (always up to date)
-  ```bash
-  conda create -n my_env python=3.10
-  conda activate my_env
-  pip install git+https://github.com/m-beau/NeuroPyxels@master
-  # either 11.0 or either cuda toolkit version you have already installed
-  # find out with nvcc --version
-  conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
-  python -c 'import npyx' # should not return any error
-  # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
-  # and make sure that you are installing in a fresh environment.
-  ```
-- as a superuser (recommended if plans to work on it/regularly pull upgrades)
-  > Tip: in an ipython/jupyter session, use `%load_ext autoreload` then `%autoreload` to make your local edits active in your session without having to restart your kernel. Amazing for development.
-    ```bash
-    conda create -n my_env python=3.10
-    conda activate my_env
-    cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
-    git clone https://github.com/m-beau/NeuroPyxels
-    cd NeuroPyxels
-    pip install -e . # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
-    # python setup.py develop deprecated (doesn't handle dependencies, unlike pip)
-    # either 11.0 or either cuda toolkit version you have already installed
-    # find out with nvcc --version
-    conda install -c conda-forge cupy cudatoolkit=11.0 # optional, for heavy preprocessing functions - see 'Dealing with cupy' section below
-    python -c 'import npyx' # should not return any error
-    # If it does, (re)install any missing (conflictual) dependencies with pip (hopefully none!)
-    # and make sure that you are installing in a fresh environment.
-    ```
-    and pull every now and then:
-    ```bash
-    cd path/to/save_dir/NeuroPyxels
-    git pull
-    # And that's it, thanks to the egg link no need to reinstall the package!
-    # be careful though: this will break if you edited the package. If you wish to contribute, I advise you
-    # to either post issues and wait for me to fix your problem, or to get in touch with me and potentially
-    # create your own branch from where you will be able to gracefully merge your edits with the master branch
-    # after revision.
-    ```
-
-### Dealing with cupy (GPU shenanigans)
-To run the preprocessing functions (borrowed from pykilosort), you will need NVIDIA drivers and cuda-toolkit installed on your computer. This can be the hardest part of the installation. To test if your is working OK you should be able to run the following:
-```
-nvidia-smi # Should show how much your GPU is being used right now
-nvcc # This is the CUDA compiler
-```
-Errors with the CUDA installation can sometimes be fixed by downgrading the version of cudatoolkit installed.
-To check the current version run the following:
-```
-conda activate my_env
-conda list cudatoolkit
-```
-To install version 10.0 for example run the following
-```
-conda activate my_env
-conda remove cupy, cudatoolkit
-conda install -c conda-forge cupy cudatoolkit=10.0
-```
-
-
-### Test installation
-You can use the built-in unit testing function 'test_npyx' to make sure that npyx core functions run smoothly, all at once.
-
-```python
-from npyx.testing import test_npyx
-
-# any spike sorted recording compatible with phy
-# (e.g. kilosort output)
-dp = 'datapath/to/myrecording'
-test_npyx(dp)
-
-# if any test fails, enter interactive mode debug mode as follow:
-%pdb ON # must be in a notebook or regular ipython session
-test_npyx(dp, raise_error=True)
-```
-<span style="color:#1F45FC">
-
---- npyx version 2.3.4 unit testing initiated, on directory /media/maxime/AnalysisSSD/test_dataset_artefact... <br>
-
---- Successfully ran 'read_metadata' from npyx.inout. <br>
---- Successfully ran 'get_npix_sync' from npyx.inout. <br>
---- Successfully ran 'get_units' from npyx.gl. <br>
---- Successfully ran 'ids' from npyx.spk_t. <br>
---- Successfully ran 'trn' from npyx.spk_t. <br>
---- Successfully ran 'trn_filtered' from npyx.spk_t. <br>
---- Successfully ran 'wvf' from npyx.spk_wvf. <br>
---- Successfully ran 'wvf_dsmatch' from npyx.spk_wvf. <br>
---- Successfully ran 'get_peak_chan' from npyx.spk_wvf. <br>
---- Successfully ran 'templates' from npyx.spk_wvf. <br>
---- Successfully ran 'ccg' from npyx.corr. <br>
---- Successfully ran 'plot_wvf' from npyx.plot. <br>
---- Successfully ran 'plot_ccg' from npyx.plot. <br>
---- Successfully ran 'plot_raw' from npyx.plot. <br>
-
-</span>
-
-```
-(bunch of plots...)
-```
-
-### Known installation issues
-
-- **cannot import numba.core hence cannot import npyx** <br/>
-Older versions of numba did not feature the .core submodule. You probably run a too old version of numba, vestigial from an old installation - make sure that you install npyx in a fresh conda environment si that happens to you, and eventually that numba is not installed in your root:
-
-  ```# open new terminal
-  pip uninstall numba
-  conda activate my_env
-  pip uninstall numba
-  pip install numba
-  ```
-<br/>
-
-- **core dumped when importing** <br/>
-This seems to be an issue related to PyQt5 required by opencv (opencv-python).
-Solution:
-```
-# activate npyx environment first
-pip uninstall opencv-python
-pip install opencv-python
-# pip install other missing dependencies
-```
-Full log:
-```
-In [1]: from npyx import *
-In [2]: QObject::moveToThread: Current thread (0x5622e1ea6800) is not the object's thread (0x5622e30e86f0).
-Cannot move to target thread (0x5622e1ea6800)
-
-qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "/home/maxime/miniconda3/envs/npyx/lib/python3.7/site-packages/cv2/qt/plugins" even though it was found.
-This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
-
-Available platform plugins are: xcb, eglfs, linuxfb, minimal, minimalegl, offscreen, vnc, wayland-egl, wayland, wayland-xcomposite-egl, wayland-xcomposite-glx, webgl.
-
-Aborted (core dumped)
-```
-<br/>
-
-- **I think I installed everything properly, but npyx is not found if I run 'python -c "import npyx" '!** <br/>
-Typically:
-```bash
-Traceback (most recent call last):
-  File "<stdin>", line 1, in <module>
-ModuleNotFoundError: No module named 'npyx'
-```
-Make sure that the python installation that you are using is indeed the version of your new environment. <br/>
-To do so, run "which python" on linux/mac or "where python" on windows: the output should be the path to the right environment e.g. "/home/.../anaconda/envs/npyx/bin/python". If it isn't, try to deactivate/reactivate your conda environment, or make sure you do not have conflicting python installations on your machine.
-
-## Acknowledgement
-
-If you enjoy this package and use it for your research, you can:
--  cite [this github repo](https://github.com/m-beau/NeuroPyxels) using its [DOI](https://doi.org/10.5281/zenodo.5509776): Beau, M., Lajko, A., Martínez, G., Häusser, M., & Kostadinov, D. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. *Github*, https://doi.org/10.5281/zenodo.5509776
-- star this repo using the top-right star button.
-
-Cheers!
-
-
-## Developer cheatsheet
-
-Useful link to [create a python package from a git repository](https://towardsdatascience.com/build-your-first-open-source-python-project-53471c9942a7)
-
-
-### Push local updates to github:
-```bash
-# ONLY ON DEDICATED BRANCH
-
-cd path/to/save_dir/NeuroPyxels
-git checkout DEDICATED_BRANCH_NAME # ++++++ IMPORTANT
-git add.
-git commit -m "commit details - try to be specific"
-git push origin DEDICATED_BRANCH_NAME # ++++++ IMPORTANT
-
-# Then pull request to master branch using the online github green button! Do not forget this last step, to allow the others repo to sync.
-```
-
-### Push local updates to PyPI (Maxime)
-First change the version in ./setup.py in a text editor
-```python
-setup(name='npyx',
-      version='1.0',... # change to 1.1, 1.1.1...
-```
-Then delete the old distribution files before re-generating them for the new version using twine:
-```bash
-rm -r ./dist
-rm -r ./build
-rm -r ./npyx.egg-info
-python setup.py sdist bdist_wheel # this will generate version 1.1 wheel without overwriting version 1.0 wheel in ./dist
-```
-Before pushing them to PyPI (older versions are saved online!)
-```bash
-twine upload dist/*
-
-Uploading distributions to https://upload.pypi.org/legacy/
-Enter your username: your-username
-Enter your password: ****
-Uploading npyx-1.1-py3-none-any.whl
-100%|████████████████████████████████████████████████████████| 156k/156k [00:01<00:00, 96.8kB/s]
-Uploading npyx-1.1.tar.gz
-100%|█████████████████████████████████████████████████████████| 150k/150k [00:01<00:00, 142kB/s]
-
-```

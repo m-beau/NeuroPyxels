@@ -184,9 +184,9 @@ stat, p = f_oneway(data1, data2, ...)
 #### Repeated Measures ANOVA Test
 # ->> TEST WHETHER TWO OR MORE PAIRED SAMPLES HAVE SIGNIFICANTLY DIFFERENT MEANS
 # <- Assumptions on observations in each sample: 1) iid, 2) Normal distribution, 3) Same variance, 4) paired
-    
+"""
 #%% D] Non parametric statistical hypothesis tests
-
+"""
 #### Mann-Whitney U Test
 # ->> TEST WHETHER TWO SAMPLES HAVE SIGNIFICANTLY DIFFERENT DISTRIBUTIONS
 # <- Assumptions on observations in each sample: 1) iid, 2) can be ranked

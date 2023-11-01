@@ -34,7 +34,7 @@ if 'Arial' in [f.name for f in matplotlib.font_manager.fontManager.ttflist]:
 else:
     print("Oh no! Arial isn't on your system. We strongly recommend that you install Arial for your aesthetic sanity.")
 
-from npyx.utils import phyColorsDic, npa, zscore, isnumeric, assert_iterable, save_np_array, pprint_dic, docstring_decorator
+from npyx.utils import npa, zscore, isnumeric, assert_iterable, save_np_array, pprint_dic, docstring_decorator
 from npyx.stats import fractile_normal, fractile_poisson
 
 from npyx.inout import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map, predefined_chanmap
@@ -111,11 +111,11 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
          axlab_w=None, axlab_s=None,
          ticklab_w=None, ticklab_s=None, ticks_direction=None,
          title=None, title_w=None, title_s=None,
-         lw=None, hide_top_right=None, hide_axis=None,
+         lw=None, hide_top_right=None, hide_axis=None, transparent_background=None,
          tight_layout=None, hspace=None, wspace=None,
          show_legend=None, hide_legend=None, legend_loc=None,
          saveFig=None, saveDir = None, figname=None, _format="pdf",
-         colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None,
+         colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None, ctickslabels=None, clim=None,
          cbar_w=None, cbar_h=None, clabel=None, clabel_w=None, clabel_s=None, cticks_s=None,
          hlines = None, vlines = None, lines_kwargs = None,
          prettify=True):
@@ -307,6 +307,13 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         for sp in lw_spine_keys:
             ax.spines[sp].set_lw(lw)
 
+    # remove background
+    if transparent_background is not None:
+        if transparent_background:
+            ax.patch.set_alpha(0)
+        else:
+            ax.patch.set_alpha(1)
+
     # Optionally plot horizontal and vertical dashed lines
     if lines_kwargs is None: lines_kwargs = {}
     l_kwargs = default_mplp_params['lines_kwargs']
@@ -335,14 +342,16 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
     if legend_loc is not None:
         assert len(legend_loc)==2 or len(legend_loc)==4,\
             "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
-    if show_legend: plt.legend(bbox_to_anchor=legend_loc, prop={'family':'Arial'})
-    elif hide_legend: plt.legend([],[], frameon=False)
+    if show_legend: ax.legend(bbox_to_anchor=legend_loc, loc='lower left',
+                               prop={'family':'Arial'})
+    elif hide_legend: ax.legend([],[], frameon=False)
 
     if colorbar:
         assert vmin is not None and vmax is not None and cmap is not None,\
             "You must provide vmin, vmax and cmap to show a colorbar."
         fig = add_colorbar(fig, ax, None, vmin, vmax,
-                 cbar_w, cbar_h, cticks, clabel, clabel_w, clabel_s, cticks_s, cmap) 
+                 cbar_w, cbar_h, cticks, clabel, clabel_w, clabel_s, cticks_s, ctickslabels, cmap,
+                 clim=clim) 
 
     if prettify:
         fig.patch.set_facecolor('white')
@@ -352,6 +361,50 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         save_mpl_fig(fig, figname, saveDir, _format, dpi=500)
 
     return fig, ax
+
+phyColorsDic = {
+    0:(53./255, 127./255, 255./255),
+    1:(255./255, 0./255, 0./255),
+    2:(255./255,215./255,0./255),
+    3:(238./255, 53./255, 255./255),
+    4:(84./255, 255./255, 28./255),
+    5:(255./255,165./255,0./255),
+    -1:(0., 0., 0.),
+    }
+
+mpl_colors=plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+DistinctColors20 = [[127,127,127],[0,0,143],[182,0,0],[0,140,0],[195,79,255],[1,165,202],[236,157,0],[118,255,0],[255,127,0],
+    [255,117,152],[148,0,115],[0,243,204],[72,83,255],[0,127,255],[0,67,1],[237,183,255],[138,104,0],[97,0,163],[92,0,17],[255,245,133]]
+DistinctColors20 = [[c[0]/255, c[1]/255, c[2]/255] for c in DistinctColors20]
+DistinctColors15 = [[127,127,127],[255,255,0],[0,0,143],[255,0,0],[50,255,255],[255,0,255],[94,0,33],[0,67,0],
+    [255,218,248],[0,178,0],[124,72,255],[211,145,0],[5,171,253],[126,73,0],[147,0,153]]
+DistinctColors15 = [[c[0]/255, c[1]/255, c[2]/255] for c in DistinctColors15]
+
+mark_dict = {
+".":"point",
+",":"pixel",
+"o":"circle",
+"v":"triangle_down",
+"^":"triangle_up",
+"<":"triangle_left",
+">":"triangle_right",
+"1":"tri_down",
+"2":"tri_up",
+"3":"tri_left",
+"4":"tri_right",
+"8":"octagon",
+"s":"square",
+"p":"pentagon",
+"*":"star",
+"h":"hexagon1",
+"H":"hexagon2",
+"+":"plus",
+"D":"diamond",
+"d":"thin_diamond",
+"|":"vline",
+"_":"hline"
+}
 
 def save_mpl_fig(fig, figname, saveDir, _format, dpi=500):
 
@@ -2746,6 +2799,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
     saveDir=op.expanduser(saveDir)
 
     if trains is None:
+        # order of channels is swapped - fix it
         bChs = get_depthSort_peakChans(dp, units=units, use_template=use_template)[:,1].flatten()
     else:
         bChs = None
@@ -3028,8 +3082,8 @@ def imshow_cbar(im, origin='top', xevents_toplot=[], yevents_toplot=[], events_c
 
 def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
                  width=0.01, height=0.5, cticks=None,
-                 clabel=None, clabel_w='regular', clabel_s=20, cticks_s=16,
-                 cmap=None, pad = 0.01):
+                 clabel=None, clabel_w='regular', clabel_s=20, cticks_s=16, ctickslabels=None,
+                 cmap=None, pad = 0.01, clim=None):
     """
     Add colorbar to figure with a predefined axis.
     
@@ -3061,18 +3115,25 @@ def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
 
     # add colorbar
     fig.colorbar(mappable, cax=cbar_ax, ax=ax,
-             orientation='vertical', label=clabel,
-             ticks=cticks, use_gridspec=True)
+             orientation='vertical', label=clabel, use_gridspec=True)
+
 
     # format colorbar ticks, labels etc
+    if ctickslabels is None:
+        ctickslabels = cticks
+    else:
+        assert len(ctickslabels)==len(cticks),\
+            f"ctickslabels should have the same length as cticks ({len(cticks)})!" 
     if clabel is not None:
         cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family='arial', weight=clabel_w, size=clabel_s))
         cbar_ax.yaxis.label.set_rotation(-90)
         cbar_ax.yaxis.label.set_va('bottom')
         cbar_ax.yaxis.label.set_ha('center')
         cbar_ax.yaxis.labelpad = 5
-    cbar_ax.yaxis.set_ticklabels(cticks, ha='left')
+    cbar_ax.yaxis.set_ticks(cticks)
+    cbar_ax.yaxis.set_ticklabels(ctickslabels, ha='left')
     cbar_ax.yaxis.set_tick_params(pad=5, labelsize=cticks_s)
+    cbar_ax.set_ylim(clim)
 
     fig.canvas.draw()
     set_ax_size(ax,*fig.get_size_inches())

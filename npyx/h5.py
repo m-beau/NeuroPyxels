@@ -826,13 +826,14 @@ def get_neuron_id_dict(h5_path):
 
     return neuron_id_dict
 
-def print_h5_contents(h5_path, display = False, txt_output=False, again=False):
+def print_h5_contents(h5_path, display = False, txt_output=True, again=False):
     """
     Arguments:
         - h5_path: str, path to .h5 file
         - display: bool, if True prints contents to console
         - txt_output: bool, if True prints contents to file
-                            (same name as h5 name_content.txt)
+                            (same name as h5 name_content.txt).
+                            Recommended to leave 'True' to reload the h5 contents faster later.
         - again: bool, if False reloads data from txt file when found
                         rather than recomputing from h5 file.
 
@@ -856,7 +857,7 @@ def print_h5_contents(h5_path, display = False, txt_output=False, again=False):
             sys.stdout      = original_stdout
 
     # save to txt file
-    if txt_output and again:
+    if txt_output and (again or not txt_output_path.exists()):
         with open(txt_output_path, "w") as f:
             f.write(print_string)
 

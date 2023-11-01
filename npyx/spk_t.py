@@ -27,15 +27,11 @@ from npyx.utils import (
     assert_float,
     assert_int,
     docstring_decorator,
+    cache_validation_again,
     npa,
     smooth,
     thresh_consec,
 )
-
-def cache_validation_again(metadata):
-    # Only retrieve cached results for calls that are not flagged with again
-    return metadata["input_args"]["again"] == False
-
 
 def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=-1):
     '''
@@ -99,7 +95,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     # Always computed because cannot reasonably be part of file name.
     periods = check_periods(periods)
     if not isinstance(periods, str): # check_periods ensures that it should be 'all' if it is a string
-        sec_bool=np.zeros(len(train), dtype=np.bool)
+        sec_bool=np.zeros(len(train)).astype(bool)
         for section in periods:
             sec_bool[(train>=section[0]*fs)&(train<=section[1]*fs)]=True # comparison in samples
         indices=indices[sec_bool]
@@ -172,7 +168,7 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     periods = check_periods(periods)
     periods = periods * fs # convert from seconds to samples
     if not isinstance(periods, str): # check_periods ensures that it should be 'all' if it is a string
-        sec_bool = np.zeros(len(train), dtype=np.bool)
+        sec_bool = np.zeros(len(train)).astype(bool)
         for section in periods:
             sec_bool = sec_bool|(train>=section[0])&(train<=section[1])
         train=train[sec_bool]
@@ -308,11 +304,11 @@ def binarize(X, bin_size, fs, rec_len=None):
 
     return Xb
 
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
 def trnb(dp, u, b, periods='all', again=False):
     '''
     ********
-    routine from routines_spikes
-    computes binarized spike train (1, Nspikes) - int64, in samples
+    Computes binarized spike train (1, Nspikes) - int64, in samples
     ********
 
     - dp (string): DataPath to the Neuropixels dataset.
@@ -355,7 +351,7 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
         t=np.asarray(train)
         assert t.ndim==1
 
-    periods = firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02)
+    periods = firing_periods(t, fs, t_end, b=b, sd=sd, th=th)
 
     if sav:
         np.save(Path(dpnm,fn), periods)
@@ -369,14 +365,14 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
         - t: array of spike times, in samples
         - fs: sampling rate of spike times, in Hz
         - t_end: recording end time, in samples
-        - b: float, bin size i.e. temporal resolution of presence periods, in ms | Default 1
+        - b: float, bin size i.e. temporal resolution of presence periods, in ms | Default 1. minimum 0.01
         - sd: float, standard deviation of gaussian smoothing window, in ms | Default 1000
         - th: threshold to define presence, in fraction of mean firing rate
     Returns:
         - periods, in samples
     '''
     sav=False
-    if u is not None:
+    if u is not None and not return_smoothed_rate:
         sav=True
         assert dp is not None
         #assert len(trn(dp,u,0))==len(t), 'There seems to be a mismatch between the provided spike trains and the unit index.'
@@ -385,21 +381,14 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
         if op.exists(Path(dpnm,fn)) and not again:
             return np.load(Path(dpnm,fn))
 
-    assert 1<sd<100000
-    assert 0<=th<1
-    assert t.ndim==1
-    t     = np.asarray(t)
+    tbs = inst_firing_rate(t, fs, t_end, b, sd, again) # result is inst. firing rate in Hz - speed bottleneck
 
-    assert b>=1000/fs
-    tb    = binarize(t, b, fs, t_end)
-    sd    = int(sd/b) # convert from ms to bin units
-    b_s   = b/1000 # bin seconds
-    tbs   = smooth(tb, 'gaussian', sd=sd)/b_s # result is inst. firing rate in Hz - speed bottleneck
+    assert 0<=th
     fr_th = mean_firing_rate(t, 0.005, fs)*th
-
     periods = thresh_consec(tbs, fr_th, sgn=1, n_consec=0, exclude_edges=False, only_max=False, ret_values=False)
     if not any(periods): periods=[[0,len(tbs)-1]]
-    periods = (np.array(periods)*(b_s*fs)).astype(np.int64) # conversion from bins to samples
+
+    periods = (np.array(periods)*((b/1000)*fs)).astype(np.int64) # conversion from bins to samples
 
     if sav: np.save(Path(dpnm,fn), periods)
 
@@ -407,6 +396,20 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
         return periods, tbs
 
     return periods
+
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
+def inst_firing_rate(t, fs, t_end, b=1, sd=1000, again=False):
+    assert 1<sd<100000
+    assert t.ndim==1
+    t     = np.asarray(t)
+
+    assert b>=10/fs
+    tb    = binarize(t, b, fs, t_end)
+    sd    = int(sd/b) # convert from ms to bin units
+    b_s   = b/1000 # bin seconds
+    tbs   = smooth(tb, 'gaussian', sd=sd)/b_s # result is inst. firing rate in Hz - speed bottleneck
+
+    return tbs
 
 def find_stable_recording_period(t, fs, t_end, target_period = 30,
                                  b=1000, sd=10000, minimum_fr = 0.4,

@@ -942,6 +942,7 @@ def paired_plot_df(df, columns, **kwargs):
 def paired_plot(X, 
                 xtickslabels = None, 
                 labels=None,
+                labels_style=None,
                 
                 show_dot_edges=True,
                 pad_dots=True,
@@ -954,6 +955,9 @@ def paired_plot(X,
                 lineswidth=2,
                 linesalpha=0.8,
                 aspect_ratio = 1.5,
+
+                markers=None,
+                colors=None,
                 **kwargs):
     """
     Function to make a paired plot (or 'slope graph').
@@ -967,6 +971,7 @@ def paired_plot(X,
                         If passed, must be of length n_features.
         - labels: iterable, data labels (groups of observations).
                   If passed, must be of length n_observations.
+        - labels_style: same as labels, but denoted with different markers rather than colors
                   
         - show_dot_edges: bool, if True adds a black outline to scatter plot dots.
         - pad_dots: bool, if True adds a padding around each scatter plot dot.
@@ -980,9 +985,16 @@ def paired_plot(X,
         - linesalpha: float [0-1], transparency of lines between categories.
         
         - aspect_ratio: float, height/width figure aspect ratio.
+        - colors: list of matplotlib colors, order of colors to use for labels
+        - markers: list of str, order of matplotlib markers to use for labels_style
 
         - **kwargs: any argument to npyx.plot.mplp()
     """
+
+    if markers is None:
+        markers = ['o', '^', 's', 'D', '+', 'x', '*', '1', 'v', '<', '>']
+    if colors is None:
+        colors = get_ncolors_cmap(10)
 
     n_obs, n_feat = X.shape
     
@@ -1011,21 +1023,49 @@ def paired_plot(X,
     
     # scatter plot
     edgealpha = 1 if show_dot_edges else 0
-    if labels is None:
+    if (labels is None) and (labels_style is None):
         ax.scatter(x.T, X.T,
                    s=dotsize, alpha=dotalpha,
                    lw=1, ec=[0,0,0,edgealpha],
                   zorder=100)
     else:
-        labels = npa(labels)
-        assert len(labels) == n_obs,\
-            f"You must pass {n_obs} labels, not {len(labels)}."
-        for l in np.unique(labels):
-            m = (l == labels)
-            ax.scatter(x[m].T, X[m].T,
-                       s=dotsize, alpha=dotalpha,
-                       lw=1, ec=[0,0,0,edgealpha],
-                       label=l, zorder=100)
+        if labels is not None:
+            labels = npa(labels)
+            assert len(labels) == n_obs,\
+                f"You must pass {n_obs} labels, not {len(labels)}."
+            unique_labels = np.unique(labels)
+        if labels_style is not None:
+            labels_style = npa(labels_style)
+            assert len(labels_style) == n_obs,\
+                f"You must pass {n_obs} labels, not {len(labels_style)}."
+            unique_label_styles = np.unique(labels_style)
+        if labels_style is None:
+            for li, l in enumerate(unique_labels):
+                m = (l == labels)
+                ax.scatter(x[m].T, X[m].T,
+                           color = colors[li%len(colors)],
+                            s=dotsize, alpha=dotalpha,
+                            lw=1, ec=[0,0,0,edgealpha],
+                            label=l, zorder=100)
+        elif labels is None:
+            for li, l in enumerate(unique_label_styles):
+                m = (l == labels_style)
+                ax.scatter(x[m].T, X[m].T,
+                        s=dotsize, alpha=dotalpha,
+                        color='grey',
+                        marker=markers[li%len(markers)],
+                        lw=1, ec=[0,0,0,edgealpha],
+                        label=l, zorder=100)
+        else:
+            for li1, l1 in enumerate(unique_labels):
+                for li2, l2 in enumerate(unique_label_styles):
+                    m = (l1 == labels) & (l2 == labels_style)
+                    ax.scatter(x[m].T, X[m].T,
+                                color = colors[li1%len(colors)],
+                                marker = markers[li2%len(markers)],
+                                s=dotsize, alpha=dotalpha,
+                                lw=1, ec=[0,0,0,edgealpha],
+                                label=f"{l1}, {l2}", zorder=100)
     
     # prettify
     if xtickslabels is None:
@@ -1034,7 +1074,7 @@ def paired_plot(X,
         assert len(xtickslabels) == n_feat,\
             f"You must pass {n_feat} xtickslabels, not {len(xtickslabels)}."
     mplp(xticks = xticks, xtickslabels = xtickslabels, xlim = [-0.5, n_feat-0.5],
-         show_legend = (labels is not None),
+         show_legend = (labels is not None)|(labels_style is not None),
          **kwargs)
 
 

@@ -5,23 +5,24 @@
 """
 import os
 import os.path as op
-
-from psutil import disk_partitions; opj=op.join
-from pathlib import Path
-
 import pickle as pkl
-from tqdm.auto import tqdm
-
-import numpy as np
 from math import floor, log10
+from pathlib import Path
 
 import matplotlib
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib.ticker import AutoLocator
+import numpy as np
 from cmcrameri import cm as cmcr
+from matplotlib.ticker import AutoLocator
+from tqdm.auto import tqdm
+
+from psutil import disk_partitions; opj=op.join
+
+
+
 cmcr=cmcr.__dict__
-from IPython.core.display import HTML,display
+from IPython.core.display import HTML, display
 
 # Make matplotlib saved figures text text editable
 mpl.rcParams["svg.fonttype"] = 'none'
@@ -34,19 +35,40 @@ if 'Arial' in [f.name for f in matplotlib.font_manager.fontManager.ttflist]:
 else:
     print("Oh no! Arial isn't on your system. We strongly recommend that you install Arial for your aesthetic sanity.")
 
-from npyx.utils import npa, zscore, isnumeric, assert_iterable, save_np_array, pprint_dic, docstring_decorator
-from npyx.stats import fractile_normal, fractile_poisson
-
-from npyx.inout import read_metadata, extract_rawChunk, assert_chan_in_dataset, chan_map, predefined_chanmap
-from npyx.gl import get_units
-from npyx.merger import assert_multi, get_ds_ids
-from npyx.spk_wvf import get_depthSort_peakChans, wvf, wvf_dsmatch, get_peak_chan, templates
-from npyx.spk_t import trn, train_quality
-from npyx.corr import acg, ccg, gen_sfc, get_cm, scaled_acg, acg_3D, convert_acg_log
 from npyx.behav import align_times, get_processed_ifr, get_processed_popsync
+from npyx.corr import acg, acg_3D, ccg, convert_acg_log, gen_sfc, get_cm, scaled_acg
+from npyx.gl import get_units
+from npyx.inout import (
+    assert_chan_in_dataset,
+    chan_map,
+    extract_rawChunk,
+    predefined_chanmap,
+    read_metadata,
+)
+from npyx.merger import assert_multi, get_ds_ids
+from npyx.spk_t import train_quality, trn
+from npyx.spk_wvf import (
+    get_depthSort_peakChans,
+    get_peak_chan,
+    templates,
+    wvf,
+    wvf_dsmatch,
+)
+from npyx.stats import fractile_normal, fractile_poisson
+from npyx.utils import (
+    assert_iterable,
+    docstring_decorator,
+    isnumeric,
+    npa,
+    pprint_dic,
+    save_np_array,
+    zscore,
+)
 
 #%% plotting utilities ##############################################################################################
 
+# The above code is not doing anything. It is just a comment that mentions the name
+# "default_mplp_params".
 default_mplp_params = dict(
             # title default parameters
             title_w='regular',
@@ -60,6 +82,8 @@ default_mplp_params = dict(
             ticklab_w='regular',
             ticklab_s=22,
             ticks_direction='out',
+            xlabelpad=0,
+            ylabelpad=0,
 
             # ticks default parameters
             xtickrot=0,
@@ -102,22 +126,75 @@ default_mplp_params = dict(
 )
 
 @docstring_decorator(pprint_dic(default_mplp_params))
-def mplp(fig=None, ax=None, figsize=None, axsize=None,
-         xlim=None, ylim=None, xlabel=None, ylabel=None,
-         xticks=None, yticks=None, xtickslabels=None, ytickslabels=None,
-         reset_xticks=None, reset_yticks=None,
-         xtickrot=None, ytickrot=None,
-         xtickha=None, xtickva=None, ytickha=None, ytickva=None,
-         axlab_w=None, axlab_s=None,
-         ticklab_w=None, ticklab_s=None, ticks_direction=None,
-         title=None, title_w=None, title_s=None,
-         lw=None, hide_top_right=None, hide_axis=None, transparent_background=None,
-         tight_layout=None, hspace=None, wspace=None,
-         show_legend=None, hide_legend=None, legend_loc=None,
-         saveFig=None, saveDir = None, figname=None, _format="pdf",
-         colorbar=None, vmin=None, vmax=None, cmap=None, cticks=None, ctickslabels=None, clim=None,
-         cbar_w=None, cbar_h=None, clabel=None, clabel_w=None, clabel_s=None, cticks_s=None,
-         hlines = None, vlines = None, lines_kwargs = None,
+def mplp(fig=None,
+         ax=None,
+         figsize=None,
+         axsize=None,
+         
+         xlim=None,
+         ylim=None,
+         xlabel=None,
+         ylabel=None,
+         xticks=None,
+         yticks=None,
+         xtickslabels=None,
+         ytickslabels=None,
+         reset_xticks=None,
+         reset_yticks=None,
+         
+         xtickrot=None,
+         ytickrot=None,
+         xtickha=None,
+         xtickva=None,
+         ytickha=None,
+         ytickva=None,
+         xlabelpad=None,
+         ylabelpad=None,
+         
+         axlab_w=None,
+         axlab_s=None,
+         ticklab_w=None,
+         ticklab_s=None,
+         ticks_direction=None,
+         
+         title=None,
+         title_w=None,
+         title_s=None,
+         
+         lw=None,
+         hide_top_right=None,
+         hide_axis=None,
+         transparent_background=None,
+         tight_layout=None,
+         
+         hspace=None,
+         wspace=None,
+         
+         show_legend=None,
+         hide_legend=None,
+         legend_loc=None,
+         
+         saveFig=None,
+         saveDir = None,
+         figname=None,
+         _format="pdf",
+         
+         colorbar=None,
+         vmin=None, vmax=None,
+         cmap=None,
+         cticks=None,
+         ctickslabels=None,
+         clim=None,
+         cbar_w=None,
+         cbar_h=None,
+         clabel=None,
+         clabel_w=None,
+         clabel_s=None,
+         cticks_s=None,
+         
+         hlines = None,
+         vlines = None,
+         lines_kwargs = None,
          prettify=True):
     """
     make plots pretty
@@ -173,6 +250,8 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         if xlabel is None: xlabel = ax.get_xlabel()
         if axlab_w is None: axlab_w = default_mplp_params['axlab_w']
         if axlab_s is None: axlab_s = default_mplp_params['axlab_s']
+        if xlabelpad is None: xlabelpad = default_mplp_params['xlabelpad']
+        if ylabelpad is None: ylabelpad = default_mplp_params['ylabelpad']
 
         # tick labels default parameters
         if ticklab_w is None: ticklab_w = default_mplp_params['ticklab_w']
@@ -232,8 +311,18 @@ def mplp(fig=None, ax=None, figsize=None, axsize=None,
         else: ax.axis('on')
 
     # Axis labels
-    if ylabel is not None: ax.set_ylabel(ylabel, weight=axlab_w, size=axlab_s, **hfont)
-    if xlabel is not None: ax.set_xlabel(xlabel, weight=axlab_w, size=axlab_s, **hfont)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel,
+                      weight=axlab_w,
+                      size=axlab_s,
+                      labelpad=ylabelpad,
+                      **hfont)
+    if xlabel is not None:
+        ax.set_xlabel(xlabel,
+                      weight=axlab_w,
+                      size=axlab_s,
+                      labelpad=xlabelpad,
+                      **hfont)
 
     # Setup x/y limits BEFORE altering the ticks
     # since the limits will alter the ticks
@@ -933,31 +1022,43 @@ def paired_plot_df(df, columns, **kwargs):
     - cats: iterable of strings, list of pandas dataframe features
     """
     assert np.all([c in df.columns for c in columns])
-    X = np.zeros(len(df), len(columns))
+    X = np.zeros((len(df), len(columns)))
     for i, c in enumerate(columns):
         X[:,i] = df.loc[:,c]
 
-    paired_plot(X, xticks=columns, **kwargs)
+    if 'xtickslabels' not in kwargs:
+        kwargs['xtickslabels'] = columns
+    paired_plot(X, **kwargs)
     
 def paired_plot(X, 
-                xtickslabels = None, 
+                xtickslabels=None, 
                 labels=None,
                 labels_style=None,
                 
                 show_dot_edges=True,
                 pad_dots=True,
                 
-                jitter_scaler = 0.2,
+                jitter_scaler=0.2,
                 dotsize=60,
                 dotalpha=1,
                 dotpad=3,
                 
                 lineswidth=2,
                 linesalpha=0.8,
-                aspect_ratio = 1.5,
+                aspect_ratio=1.5,
 
                 markers=None,
                 colors=None,
+                labels_order=None,
+                labels_style_order=None,
+                
+                logscale=False,
+                add_histogram=False,
+                binsize=None,
+                hist_color='grey',
+                show_hist_mean=False,
+                hist_kwargs={},
+                
                 **kwargs):
     """
     Function to make a paired plot (or 'slope graph').
@@ -987,6 +1088,15 @@ def paired_plot(X,
         - aspect_ratio: float, height/width figure aspect ratio.
         - colors: list of matplotlib colors, order of colors to use for labels
         - markers: list of str, order of matplotlib markers to use for labels_style
+        
+        - logscale:bool, whether to make y axis log scale or not.
+        
+        - add_histogram: bool, whether to add a histogram of the
+                         rightmost data (X[:,-1]) on the right.
+        - binsize: float, size of side histogram bins.
+        - hist_color: str, color of side histogram.
+        - hist_kwargs: dict, additional arguments to pass to side histogram mplp.
+        - show_hist_mean: bool, whether to add a line at the mean of the side histogram.
 
         - **kwargs: any argument to npyx.plot.mplp()
     """
@@ -1008,7 +1118,14 @@ def paired_plot(X,
     # Instantiate figure
     figh = 6
     figw = figh / aspect_ratio
-    fig, ax = plt.subplots(figsize=(figw, figh))
+    
+    fig   = plt.figure(figsize=(figw, figh))
+    if add_histogram:
+        gs    = fig.add_gridspec(1, 3, wspace=0.5)
+        ax   = fig.add_subplot(gs[0, 0:2])
+    else:
+        gs    = fig.add_gridspec(1, 1)
+        ax   = fig.add_subplot(gs[0, 0])
     
     # lines and scatter padding
     ax.plot(x.T, X.T,
@@ -1033,12 +1150,22 @@ def paired_plot(X,
             labels = npa(labels)
             assert len(labels) == n_obs,\
                 f"You must pass {n_obs} labels, not {len(labels)}."
-            unique_labels = np.unique(labels)
+            if labels_order is None:
+                unique_labels = np.unique(labels)
+            else:
+                assert np.all(np.isin(labels_order, labels)),\
+                    "Some labels in labels_order are not in labels!"
+                unique_labels = labels_order
         if labels_style is not None:
             labels_style = npa(labels_style)
             assert len(labels_style) == n_obs,\
                 f"You must pass {n_obs} labels, not {len(labels_style)}."
-            unique_label_styles = np.unique(labels_style)
+            if labels_style_order is None:
+                unique_label_styles = np.unique(labels_style)
+            else:
+                assert np.all(np.isin(labels_style_order, labels_style)),\
+                    "Some labels in labels_order are not in labels!"
+                unique_label_styles = labels_style_order
         if labels_style is None:
             for li, l in enumerate(unique_labels):
                 m = (l == labels)
@@ -1046,7 +1173,8 @@ def paired_plot(X,
                            color = colors[li%len(colors)],
                             s=dotsize, alpha=dotalpha,
                             lw=1, ec=[0,0,0,edgealpha],
-                            label=l, zorder=100)
+                            label=f"{l} (n={m.sum()})",
+                            zorder=100)
         elif labels is None:
             for li, l in enumerate(unique_label_styles):
                 m = (l == labels_style)
@@ -1055,7 +1183,8 @@ def paired_plot(X,
                         color='grey',
                         marker=markers[li%len(markers)],
                         lw=1, ec=[0,0,0,edgealpha],
-                        label=l, zorder=100)
+                        label=f"{l} (n={m.sum()})",
+                        zorder=100)
         else:
             for li1, l1 in enumerate(unique_labels):
                 for li2, l2 in enumerate(unique_label_styles):
@@ -1065,18 +1194,63 @@ def paired_plot(X,
                                 marker = markers[li2%len(markers)],
                                 s=dotsize, alpha=dotalpha,
                                 lw=1, ec=[0,0,0,edgealpha],
-                                label=f"{l1}, {l2}", zorder=100)
+                                label=f"{l1}, {l2} (n=({m.sum()}))",
+                                zorder=100)
     
     # prettify
+    if logscale:
+        ax.set_yscale('log')
     if xtickslabels is None:
         xtickslabels = xticks
     else:
         assert len(xtickslabels) == n_feat,\
             f"You must pass {n_feat} xtickslabels, not {len(xtickslabels)}."
-    mplp(xticks = xticks, xtickslabels = xtickslabels, xlim = [-0.5, n_feat-0.5],
+    xrot = 45 if max(len(lab) for lab in xtickslabels) > 6 else 0
+        
+    mplp(fig, ax,
+         xticks = xticks,
+         xtickslabels = xtickslabels,
+         xlim = [-0.5, n_feat-0.5],
          show_legend = (labels is not None)|(labels_style is not None),
+         xtickrot=xrot,
          **kwargs)
+    
+    # Eventually add histogram to the side
+    # representing the data on the rightmost column
+    ax2 = fig.add_subplot(gs[0, 2])
+    ylim = ax.get_ylim()
+    if binsize is None:
+        binsize = np.diff(ylim)/30
+    if logscale:
+        bins = np.logspace(np.log10(min(ylim)),
+                           np.log10(max(ylim)) ,
+                           abs(int(np.diff([ylim])//binsize)))
+        ax2.set_yscale('log')
+    else:
+        bins = np.arange(min(ylim), max(ylim)+binsize, binsize)
 
+    ax2.hist(X[:,-1], bins = bins,
+            color = hist_color, orientation = 'horizontal')
+    
+    if 'ylim' not in hist_kwargs:
+        hist_kwargs['ylim'] = ylim
+        
+    if show_hist_mean:
+        mn = X[:,-1].mean()
+        ax2.text(ax2.get_xlim()[1],
+                 mn - 0.03*np.diff(hist_kwargs['ylim']),
+                 f"\u03bc = {mn:.1f}",
+                 va='center', ha='left', fontsize=14)
+        ax2.axhline(mn, ls='--', lw=2, c='k')
+    
+    if 'xlabel' not in hist_kwargs:
+        hist_kwargs['xlabel'] = f'Counts\n({xtickslabels[-1]})'
+        
+    mplp(fig, ax2,
+         yticks=ax.get_yticks(),
+         ytickslabels=['']*len(ax.get_yticks()),
+         xlabelpad=-50,
+         **hist_kwargs)
 
 #%% Stats plots ##############################################################################################
 

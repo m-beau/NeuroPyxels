@@ -50,7 +50,11 @@ def cache_validation_again(metadata):
     WARNING the cached function MUST have an argument named 'again' for this to work.
     """
     # Only retrieve cached results for calls that are not flagged with again
-    return metadata["input_args"]["again"] == "False"
+    try:
+        return metadata["input_args"]["again"] == "False"
+    except:
+        print("Joblib caching error! Not loading from cache.")
+        return False
 
 def docstring_decorator(*args):
     """

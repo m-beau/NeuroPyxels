@@ -926,47 +926,156 @@ def hist_MB(arr, a=None, b=None, s=None,
       
     return fig
 
-def paired_plot(df, cats, ylabel=None, xlabel=None, color="grey",
-               dodge=True, dodge_range=0.1,
-               figsize=(3,5), prettify=True, **mplp_kwargs):
+def paired_plot_df(df, columns, **kwargs):
     """
-    Plot scatter plot of each column of dataframe df against the first column,
-    in a paired-plot fashion (rows are linked by a line).
+    Wrapper of npyx.plot.paired_plot.
+    - df: pandas dataframe
+    - cats: iterable of strings, list of pandas dataframe features
+    """
+    assert np.all([c in df.columns for c in columns])
+    X = np.zeros(len(df), len(columns))
+    for i, c in enumerate(columns):
+        X[:,i] = df.loc[:,c]
+
+    paired_plot(X, xticks=columns, **kwargs)
+    
+def paired_plot(X, 
+                xtickslabels = None, 
+                labels=None,
+                labels_style=None,
+                
+                show_dot_edges=True,
+                pad_dots=True,
+                
+                jitter_scaler = 0.2,
+                dotsize=60,
+                dotalpha=1,
+                dotpad=3,
+                
+                lineswidth=2,
+                linesalpha=0.8,
+                aspect_ratio = 1.5,
+
+                markers=None,
+                colors=None,
+                **kwargs):
+    """
+    Function to make a paired plot (or 'slope graph').
+
     Arguments:
-        - df: pandas dataframe
-        - cats: list of str, columns of dataframe df
-        - ylabel: str, label of y axis
-        - xlabel: str, label of x axis
-        - color: str, color of points
-        - dodge: bool, whether to randomly offset points so that they do not overlap
-        - dodge_range: float, range of random offset
-        - figsize: (x,y) tuple, size of figure in inches
-        - prettify: bool, whether to apply mplp() prettification or not
-        - **mplp_kwargs: any additional formatting parameters, passed to mplp()
+        - X: (n_observations, n_features) np array, data to plot.
+             Each column is a feature, i.e. a plot category; each row is an observation.
+             The plot will display a scatter plot grouped in n_features categories,
+             where each observation is linked by a line across categories.
+        - xtickslabels: iterable of string, labels for x ticks.
+                        If passed, must be of length n_features.
+        - labels: iterable, data labels (groups of observations).
+                  If passed, must be of length n_observations.
+        - labels_style: same as labels, but denoted with different markers rather than colors
+                  
+        - show_dot_edges: bool, if True adds a black outline to scatter plot dots.
+        - pad_dots: bool, if True adds a padding around each scatter plot dot.
+    
+        - jitter_scaler: float, spread of x jitter in each category. Set to 0 to remove jitter.
+        - dotsize: int, size of scatter plot dots.
+        - dotalpha: float [0-1], transparency of scatter plot dots.
+        - dotpad: float, amount of padding around scatter plot dots if pad_dots is True.
+        
+        - lineswidth: float, width of lines between categories.
+        - linesalpha: float [0-1], transparency of lines between categories.
+        
+        - aspect_ratio: float, height/width figure aspect ratio.
+        - colors: list of matplotlib colors, order of colors to use for labels
+        - markers: list of str, order of matplotlib markers to use for labels_style
+
+        - **kwargs: any argument to npyx.plot.mplp()
     """
 
-    plt.figure()
+    if markers is None:
+        markers = ['o', '^', 's', 'D', '+', 'x', '*', '1', 'v', '<', '>']
+    if colors is None:
+        colors = get_ncolors_cmap(10)
 
-    x0=df[cats[0]]*0
-    l=len(x0)
-
-    lines_x = np.zeros((len(cats), l))
-    lines = np.zeros((len(cats), l))
-    for i, cat in enumerate(cats):
-        x = x0+i
-        if dodge: x += np.random.uniform(-dodge_range, dodge_range, l)
-        y = df[cat]
-        assert len(y) == l
-        plt.scatter(x, y, color=color, edgecolor='k')
-
-        lines_x[i,:]=x
-        lines[i,:]=y
-
-    plt.plot(lines_x, lines, color=color, alpha=0.5, zorder=-1)
-
-    mplp(figsize=figsize, ylabel=ylabel, xlabel=xlabel,
-         xlim=[-0.5, i+0.5], xticks=np.arange(i+1), xtickslabels=cats,
-         prettify=prettify, **mplp_kwargs)
+    n_obs, n_feat = X.shape
+    
+    # Define x coordinates
+    xticks = np.arange(n_feat)
+    x = xticks + np.zeros(n_obs)[:,None]
+    jitter = (np.random.random(n_obs * n_feat) - .5) * jitter_scaler
+    jitter = jitter.reshape((n_obs, n_feat))
+    x = x + jitter
+    
+    # Instantiate figure
+    figh = 6
+    figw = figh / aspect_ratio
+    fig, ax = plt.subplots(figsize=(figw, figh))
+    
+    # lines and scatter padding
+    ax.plot(x.T, X.T,
+            color='k', alpha=linesalpha, lw=lineswidth,
+            zorder=-100)
+    if pad_dots:
+        bg_color = ax.get_facecolor()
+        ax.scatter(x.T, X.T,
+                   s=dotsize*dotpad,
+                   color=bg_color, 
+                   alpha=1, zorder=1)
+    
+    # scatter plot
+    edgealpha = 1 if show_dot_edges else 0
+    if (labels is None) and (labels_style is None):
+        ax.scatter(x.T, X.T,
+                   s=dotsize, alpha=dotalpha,
+                   lw=1, ec=[0,0,0,edgealpha],
+                  zorder=100)
+    else:
+        if labels is not None:
+            labels = npa(labels)
+            assert len(labels) == n_obs,\
+                f"You must pass {n_obs} labels, not {len(labels)}."
+            unique_labels = np.unique(labels)
+        if labels_style is not None:
+            labels_style = npa(labels_style)
+            assert len(labels_style) == n_obs,\
+                f"You must pass {n_obs} labels, not {len(labels_style)}."
+            unique_label_styles = np.unique(labels_style)
+        if labels_style is None:
+            for li, l in enumerate(unique_labels):
+                m = (l == labels)
+                ax.scatter(x[m].T, X[m].T,
+                           color = colors[li%len(colors)],
+                            s=dotsize, alpha=dotalpha,
+                            lw=1, ec=[0,0,0,edgealpha],
+                            label=l, zorder=100)
+        elif labels is None:
+            for li, l in enumerate(unique_label_styles):
+                m = (l == labels_style)
+                ax.scatter(x[m].T, X[m].T,
+                        s=dotsize, alpha=dotalpha,
+                        color='grey',
+                        marker=markers[li%len(markers)],
+                        lw=1, ec=[0,0,0,edgealpha],
+                        label=l, zorder=100)
+        else:
+            for li1, l1 in enumerate(unique_labels):
+                for li2, l2 in enumerate(unique_label_styles):
+                    m = (l1 == labels) & (l2 == labels_style)
+                    ax.scatter(x[m].T, X[m].T,
+                                color = colors[li1%len(colors)],
+                                marker = markers[li2%len(markers)],
+                                s=dotsize, alpha=dotalpha,
+                                lw=1, ec=[0,0,0,edgealpha],
+                                label=f"{l1}, {l2}", zorder=100)
+    
+    # prettify
+    if xtickslabels is None:
+        xtickslabels = xticks
+    else:
+        assert len(xtickslabels) == n_feat,\
+            f"You must pass {n_feat} xtickslabels, not {len(xtickslabels)}."
+    mplp(xticks = xticks, xtickslabels = xtickslabels, xlim = [-0.5, n_feat-0.5],
+         show_legend = (labels is not None)|(labels_style is not None),
+         **kwargs)
 
 
 #%% Stats plots ##############################################################################################

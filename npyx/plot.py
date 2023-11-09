@@ -959,7 +959,7 @@ def set_ax_size(ax,w,h):
 def hist_MB(arr, a=None, b=None, s=None,
             title='', xlabel='', ylabel='', legend_label=None,
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
-            saveFig=False, saveDir='', _format='pdf', prettify=True,
+            prettify=True,
             style='bar', density=False, **mplp_kwargs):
     """
     Plot histogram of array arr.
@@ -1010,8 +1010,6 @@ def hist_MB(arr, a=None, b=None, s=None,
     fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize,
                   prettify=prettify, show_legend=show_legend,
                   **mplp_kwargs)
-
-    if saveFig: save_mpl_fig(fig, title, saveDir, _format)
       
     return fig
 
@@ -1028,6 +1026,7 @@ def paired_plot_df(df, columns, **kwargs):
 
     if 'xtickslabels' not in kwargs:
         kwargs['xtickslabels'] = columns
+    #kwargs = kwargs
     paired_plot(X, **kwargs)
     
 def paired_plot(X, 
@@ -1057,6 +1056,7 @@ def paired_plot(X,
                 binsize=None,
                 hist_color='grey',
                 show_hist_mean=False,
+                
                 hist_kwargs={},
                 
                 **kwargs):
@@ -1207,13 +1207,7 @@ def paired_plot(X,
             f"You must pass {n_feat} xtickslabels, not {len(xtickslabels)}."
     xrot = 45 if max(len(lab) for lab in xtickslabels) > 6 else 0
         
-    mplp(fig, ax,
-         xticks = xticks,
-         xtickslabels = xtickslabels,
-         xlim = [-0.5, n_feat-0.5],
-         show_legend = (labels is not None)|(labels_style is not None),
-         xtickrot=xrot,
-         **kwargs)
+    if 'ylim' in kwargs: ax.set_ylim(kwargs['ylim'])
     
     # Eventually add histogram to the side
     # representing the data on the rightmost column
@@ -1232,6 +1226,7 @@ def paired_plot(X,
     ax2.hist(X[:,-1], bins = bins,
             color = hist_color, orientation = 'horizontal')
     
+    hist_kwargs = hist_kwargs.copy() # NEVER edit a default argument directly
     if 'ylim' not in hist_kwargs:
         hist_kwargs['ylim'] = ylim
         
@@ -1251,6 +1246,14 @@ def paired_plot(X,
          ytickslabels=['']*len(ax.get_yticks()),
          xlabelpad=-50,
          **hist_kwargs)
+    
+    mplp(fig, ax,
+         xticks = xticks,
+         xtickslabels = xtickslabels,
+         xlim = [-0.5, n_feat-0.5],
+         show_legend = (labels is not None)|(labels_style is not None),
+         xtickrot=xrot,
+         **kwargs)
 
 #%% Stats plots ##############################################################################################
 

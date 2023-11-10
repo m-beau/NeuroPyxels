@@ -1104,7 +1104,7 @@ def extract_single_channel_features(
     peak_times, peak_values = detect_peaks(relevant_waveform, plot_debug=plot_debug)
 
     if len(peak_times) < 2 or np.all(peak_values < 0):
-        return [0] * 15
+        return [0] * 16
 
     first_trough_t, first_peak_t = find_relevant_peaks(
         peak_times, peak_values, 0.8 * np.std(relevant_waveform)
@@ -1630,6 +1630,7 @@ def h5_feature_extraction(
     _use_chanmap=True,
     _wvf_type="relevant",
     _clip_size=(1e-3, 2e-3),
+    _extract_layer=False,
 ):
     """
     It takes a NeuronsDataset instance coming from an h5 dataset and extracts the features.
@@ -1649,12 +1650,18 @@ def h5_feature_extraction(
     """
     if _label is None:
         _label = "optotagged_label"
-    columns = FEATURES
+    
+    if _extract_layer:
+        assert hasattr(dataset_path, "layer_list"), "The provided dataset does not have layer information"
+    
+    columns = FEATURES + ["layer"] if _extract_layer else FEATURES
 
     feat_df = pd.DataFrame(columns=columns)
 
     if isinstance(dataset_path, NeuronsDataset):
         dataset = dataset_path
+    elif _extract_layer:
+        raise NotImplementedError("Layer extraction not implemented yet when passing a path")
     else:
         dataset = NeuronsDataset(
             dataset_path,
@@ -1712,7 +1719,6 @@ def h5_feature_extraction(
             tmp_features = temporal_features(spike_train, _sampling_rate)
 
             curr_feat = [label, dp, unit, *tmp_features, *wvf_features]
-            feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
 
         except Exception as e:
             exc_type, _, exc_tb = sys.exc_info()
@@ -1726,7 +1732,12 @@ def h5_feature_extraction(
             curr_feat = np.zeros(len(columns))[3:].tolist()
             discarded_info = [label, dp, unit]
             curr_feat = discarded_info + curr_feat
-            feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
+        
+        if _extract_layer:
+            layer = dataset.layer_list[i]
+            curr_feat = curr_feat + [layer]
+        feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
+    
     feat_df = feat_df.infer_objects()
     if save_path is None:
         save_path = os.getcwd()

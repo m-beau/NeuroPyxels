@@ -30,7 +30,7 @@ from .corr import acg
 from .datasets import NeuronsDataset, preprocess_template
 from .gl import get_units
 from .inout import chan_map
-from .spk_t import trn_filtered
+from .spk_t import enforce_rp, trn_filtered
 from .spk_wvf import wvf_dsmatch
 
 # pylint: disable=unsupported-binary-operation
@@ -140,16 +140,12 @@ def acg_burst_vs_mfr(train, mfr, sampling_rate=30_000):
     # Define the burst period as 0-4 ms
     burst_delimiter = int(4 / 0.2)
 
-    acg_peak_idxes, _ = find_peaks(
-        smooth_acg, height=0.5 * np.std(smooth_acg), distance=len(smooth_acg) // 20
-    )
+    acg_peak_idxes, _ = find_peaks(smooth_acg, height=0.5 * np.std(smooth_acg), distance=len(smooth_acg) // 20)
     idxes_after_burst = acg_peak_idxes[acg_peak_idxes > burst_delimiter]
 
     max_burst = np.max(smooth_acg[:burst_delimiter])
 
-    max_oscillation = (
-        np.max(smooth_acg[idxes_after_burst]) if len(idxes_after_burst) > 0 else mfr
-    )
+    max_oscillation = np.max(smooth_acg[idxes_after_burst]) if len(idxes_after_burst) > 0 else mfr
 
     return (
         max_burst / mfr,
@@ -241,9 +237,7 @@ def compute_isi_features(isint):
     # Average coefficient of variation for a sequence of 2 ISIs
     # Relative difference of adjacent ISIs
     CV2_mean = np.mean(2 * np.abs(diff_isi_offset) / sum_isi_offset)
-    CV2_median = np.median(
-        2 * np.abs(diff_isi_offset) / sum_isi_offset
-    )  # (Holt et al., 1996)
+    CV2_median = np.median(2 * np.abs(diff_isi_offset) / sum_isi_offset)  # (Holt et al., 1996)
 
     # Coefficient of variation
     CV = np.std(isint) / np.mean(isint)
@@ -256,9 +250,7 @@ def compute_isi_features(isint):
     # In most cases, they ensure that the statistic is equal to 1 for a Poisson process.
 
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2701610/pdf/pcbi.1000433.pdf
-    local_variation = 3 * np.mean(
-        np.ones((len(isint) - 1)) - (4 * prod_isi_offset) / (sum_isi_offset**2)
-    )
+    local_variation = 3 * np.mean(np.ones((len(isint) - 1)) - (4 * prod_isi_offset) / (sum_isi_offset**2))
 
     # Revised Local Variation, with R the refractory period in the same unit as isint
     # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2701610/pdf/pcbi.1000433.pdf
@@ -411,9 +403,7 @@ def detect_peaks(wvf, margin=0.8, onset=0.2, plot_debug=False):
     all_values = all_values[sorting_idx]
 
     # Exclude peaks found before the provided onset time
-    mask = (all_idxes < len(wvf) // (1 / onset)) | (
-        all_idxes > int(len(wvf) * (1 - onset))
-    )
+    mask = (all_idxes < len(wvf) // (1 / onset)) | (all_idxes > int(len(wvf) * (1 - onset)))
     all_idxes = all_idxes[~mask]
     all_values = all_values[~mask]
 
@@ -669,12 +659,8 @@ def pos_half_width(waveform, peak_time, trough_time):
 
     current_slope = waveform[start_interval:end_interval]
     # get the real time when the crossings happened, not just relative time
-    cross_start = (
-        start_interval + np.where(np.diff(np.sign(current_slope - perc_50)))[0][0]
-    )
-    cross_end = (
-        start_interval + np.where(np.diff(np.sign(current_slope - perc_50)))[0][-1]
-    )
+    cross_start = start_interval + np.where(np.diff(np.sign(current_slope - perc_50)))[0][0]
+    cross_end = start_interval + np.where(np.diff(np.sign(current_slope - perc_50)))[0][-1]
     return cross_start, cross_end, perc_50, cross_end - cross_start
 
 
@@ -702,12 +688,8 @@ def neg_half_width(waveform, peak_time, trough_time):
 
     current_slope = waveform[start_interval:end_interval]
     # get the real time when the crossings happened, not just relative time
-    cross_start = (
-        start_interval + np.where(np.diff(np.sign(current_slope - perc_50)))[0][0]
-    )
-    cross_end = (
-        start_interval + np.where(np.diff(np.sign(current_slope - perc_50)))[0][-1]
-    )
+    cross_start = start_interval + np.where(np.diff(np.sign(current_slope - perc_50)))[0][0]
+    cross_end = start_interval + np.where(np.diff(np.sign(current_slope - perc_50)))[0][-1]
     return cross_start, cross_end, perc_50, cross_end - cross_start
 
 
@@ -729,7 +711,8 @@ def tau_end_slope(waveform, peak_time, trough_time):
     scaling = np.max(np.abs(waveform))
     waveform = waveform / scaling
 
-    y = waveform[peak_time : peak_time + 1000]
+    bound = min(peak_time + 1000, waveform.shape[0])
+    y = waveform[peak_time:]
     x = np.arange(0, len(y))
 
     # # We are fitting an exponential of the type y = a * exp(-b * x)
@@ -741,9 +724,7 @@ def tau_end_slope(waveform, peak_time, trough_time):
 
     # Fit through scipy
     try:
-        params, _ = sp.optimize.curve_fit(
-            exp_func, x, y, check_finite=True, maxfev=10000
-        )
+        params, _ = sp.optimize.curve_fit(exp_func, x, y, check_finite=True, maxfev=100000)
     except RuntimeError:
         return np.zeros_like(x), np.inf, np.nan, np.nan
 
@@ -825,9 +806,7 @@ def recover_chanmap(partial_chanmap: np.ndarray) -> np.ndarray:
     Returns:
       a chanmap with the y coordinates of the channels.
     """
-    assert (
-        partial_chanmap.shape[1] == 1
-    ), "Are you sure you provided an incomplete chanmap?"
+    assert partial_chanmap.shape[1] == 1, "Are you sure you provided an incomplete chanmap?"
     probe_type = None
 
     if set(partial_chanmap.astype(int).ravel().tolist()) == {
@@ -1009,9 +988,7 @@ def filter_out_waves(waveform_2d, peak_channel, max_chan_lookaway=21):
     return considered_channels[np.ptp(considered_waveforms, axis=1) > 30]
 
 
-def find_relevant_waveform(
-    waveform_2d, candidate_channel_somatic, candidate_channel_non_somatic, somatic_mask
-):
+def find_relevant_waveform(waveform_2d, candidate_channel_somatic, candidate_channel_non_somatic, somatic_mask):
     """
     If there are any somatic waveforms, return the best one. Otherwise, if there are any dendritic
     waveforms, return the best one flipped. Otherwise, return None.
@@ -1027,17 +1004,13 @@ def find_relevant_waveform(
     """
     if somatic_mask.any() == True:
         candidate_waveforms = waveform_2d[candidate_channel_somatic]
-        relevant_channel = candidate_channel_somatic[
-            np.argmax(np.ptp(candidate_waveforms, axis=1))
-        ]
+        relevant_channel = candidate_channel_somatic[np.argmax(np.ptp(candidate_waveforms, axis=1))]
         return waveform_2d[relevant_channel], True, relevant_channel
 
     if somatic_mask.any() == False and candidate_channel_non_somatic:
         # All good waveforms found are dendritic, so we return the best one flipped
         candidate_waveforms = waveform_2d[candidate_channel_non_somatic]
-        relevant_channel = candidate_channel_non_somatic[
-            np.argmax(np.ptp(candidate_waveforms, axis=1))
-        ]
+        relevant_channel = candidate_channel_non_somatic[np.argmax(np.ptp(candidate_waveforms, axis=1))]
         return -waveform_2d[relevant_channel], False, relevant_channel
 
     # No relevant waveform found if we reach this point
@@ -1085,9 +1058,7 @@ def find_relevant_peaks(peak_t, peak_v, wvf_std):
     return first_trough_t, first_peak_t
 
 
-def extract_single_channel_features(
-    relevant_waveform, plot_debug=False, interp_coeff=100
-):
+def extract_single_channel_features(relevant_waveform, plot_debug=False, interp_coeff=100, fs=30_000):
     """
     It takes a waveform and returns a list of features that describe the waveform
 
@@ -1098,6 +1069,9 @@ def extract_single_channel_features(
         The return is a list of the features that are being extracted from the waveform.
     """
 
+    # Get ms conversion
+    ms_conversion = 1 / fs * 1000
+
     # First interpolates the waveform for higher precision
     relevant_waveform = interp_wave(relevant_waveform, interp_coeff)
 
@@ -1106,9 +1080,7 @@ def extract_single_channel_features(
     if len(peak_times) < 2 or np.all(peak_values < 0):
         return [0] * 16
 
-    first_trough_t, first_peak_t = find_relevant_peaks(
-        peak_times, peak_values, 0.8 * np.std(relevant_waveform)
-    )
+    first_trough_t, first_peak_t = find_relevant_peaks(peak_times, peak_values, 0.8 * np.std(relevant_waveform))
 
     neg_v = relevant_waveform[first_trough_t]
     neg_t = first_trough_t
@@ -1118,41 +1090,44 @@ def extract_single_channel_features(
 
     # pos 10-90
     _, _, pos_10_90_t = repol_10_90_t(relevant_waveform, first_peak_t, first_trough_t)
+    pos_10_90_t = pos_10_90_t * ms_conversion
 
     # neg 10-90
     _, _, neg_10_90_t = depol_10_90_t(relevant_waveform, first_peak_t, first_trough_t)
+    neg_10_90_t = neg_10_90_t * ms_conversion
 
     # pos half width
     _, _, _, pos50 = pos_half_width(relevant_waveform, first_peak_t, first_trough_t)
+    pos50 = pos50 * ms_conversion / interp_coeff
 
     # neg half width
     _, _, _, neg50 = neg_half_width(relevant_waveform, first_peak_t, first_trough_t)
+    neg50 = neg50 * ms_conversion / interp_coeff
 
     # Trough onset time and amplitude
     onset_t, onset_amp = trough_onset_t(relevant_waveform, first_trough_t)
+    onset_t = onset_t * ms_conversion
 
     # wvf duration
-    wvfd = wvf_width(relevant_waveform, first_peak_t, first_trough_t)
+    wvfd = wvf_width(relevant_waveform, first_peak_t, first_trough_t) * ms_conversion / interp_coeff
 
     # peak-to-trough ratio
     ptr = pt_ratio(relevant_waveform, first_peak_t, first_trough_t)
 
     # recovery time constant
     try:
-        _, _, tau, a_coeff = tau_end_slope(
-            relevant_waveform, first_peak_t, first_trough_t
-        )
+        _, _, tau, a_coeff = tau_end_slope(relevant_waveform, first_peak_t, first_trough_t)
+        tau = tau * ms_conversion / interp_coeff
     except np.linalg.LinAlgError:
         tau = 0
 
     # repolarisation slope coefficients
     repol_coeff, _ = repol_slope(relevant_waveform, first_peak_t, first_trough_t)
+    repol_coeff = repol_coeff * interp_coeff
 
     # depolarisation slope coefficients
     depol_coeff, _ = depol_slope(relevant_waveform, first_trough_t)
-
-    # Multiply slope coefficients by 100 (and divide tau) to undo interpolation effect and obtain meaningful values
-    tau, repol_coeff, depol_coeff = tau / 100, repol_coeff * 100, depol_coeff * 100
+    depol_coeff = depol_coeff * interp_coeff
 
     return [
         neg_v,
@@ -1174,9 +1149,7 @@ def extract_single_channel_features(
     ]
 
 
-def extract_spatial_features(
-    waveform_2d, peak_chan, relevant_channel, somatic_mask, chanmap
-):
+def extract_spatial_features(waveform_2d, peak_chan, relevant_channel, somatic_mask, chanmap):
     """
     - peak_chan: channel from which the 1D waveworm features will be extracted
     """
@@ -1186,9 +1159,7 @@ def extract_spatial_features(
     spatial_spread_ratio = chan_spread(waveform_2d, peak_chan, chanmap)
     # set to 1 if relevant waveform is dendritic already (because normalized)
     max_dendritic_voltage = (
-        dendritic_component(waveform_2d, relevant_channel, somatic_mask)
-        if somatic_mask.any()
-        else 1
+        dendritic_component(waveform_2d, relevant_channel, somatic_mask) if somatic_mask.any() else 1
     )
 
     return spatial_spread_ratio, max_dendritic_voltage
@@ -1256,13 +1227,9 @@ def waveform_features(
         relevant_channel = peak_channel
         somatic = False
 
-    peak_channel_features = extract_single_channel_features(
-        relevant_waveform, plot_debug, interp_coeff
-    )
+    peak_channel_features = extract_single_channel_features(relevant_waveform, plot_debug, interp_coeff, fs)
     spatial_features = (
-        extract_spatial_features(
-            waveform_2d, peak_channel, relevant_channel, somatic_mask, chanmap
-        )
+        extract_spatial_features(waveform_2d, peak_channel, relevant_channel, somatic_mask, chanmap)
         if chanmap is not None
         else [0, 0]
     )
@@ -1449,9 +1416,7 @@ def temporal_features(all_spikes, sampling_rate=30_000) -> list:
 
     isi_features = compute_isi_features(isi_block_clipped)
 
-    acg_burst, acg_oscillation = acg_burst_vs_mfr(
-        all_spikes, isi_features[0], sampling_rate
-    )
+    acg_burst, acg_oscillation = acg_burst_vs_mfr(all_spikes, isi_features[0], sampling_rate)
 
     return [*isi_features, acg_burst, acg_oscillation]
 
@@ -1498,9 +1463,7 @@ def check_json_file(json_path: str) -> None:
 
     datasets = {}
     any_not_found = False
-    for ds in tqdm(
-        json_f.values(), desc="Checking provided json file", position=0, leave=False
-    ):
+    for ds in tqdm(json_f.values(), desc="Checking provided json file", position=0, leave=False):
         dp = Path(ds["dp"])
         datasets[dp.name] = ds
         if not dp.exists():
@@ -1587,26 +1550,18 @@ def feature_extraction_json(
                 try:
                     wvf_features = waveform_features_json(dp, u, plot_debug=_debug)
                     tmp_features = temporal_features_wrap(dp, u)
-                    curr_feat = (
-                        [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]
-                    )
-                    feat_df = feat_df.append(
-                        dict(zip(columns, curr_feat)), ignore_index=True
-                    )
+                    curr_feat = [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]
+                    feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
                 except Exception as e:
                     exc_type, _, exc_tb = sys.exc_info()
-                    print(
-                        f"Something went wrong for the feature computation of neuron {u} in {dp}"
-                    )
+                    print(f"Something went wrong for the feature computation of neuron {u} in {dp}")
                     print(f"{exc_type} at line {exc_tb.tb_lineno}: {e}")
 
                     if not ignore_exceptions:
                         raise
 
                     curr_feat = np.zeros(len(columns))
-                    feat_df = feat_df.append(
-                        dict(zip(columns, curr_feat)), ignore_index=True
-                    )
+                    feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
     finally:
         if save_path is not None:
             today = date.today().strftime("%b-%d-%Y")
@@ -1650,10 +1605,10 @@ def h5_feature_extraction(
     """
     if _label is None:
         _label = "optotagged_label"
-    
+
     if _extract_layer:
         assert hasattr(dataset_path, "layer_list"), "The provided dataset does not have layer information"
-    
+
     columns = FEATURES + ["layer"] if _extract_layer else FEATURES
 
     feat_df = pd.DataFrame(columns=columns)
@@ -1681,7 +1636,11 @@ def h5_feature_extraction(
         unit = int(dataset.info[i].split("/")[-1])
         label = CORRESPONDENCE[dataset.targets[i]]
         waveform = dataset.wf[i].reshape(dataset._n_channels, dataset._central_range)
-        spike_train = dataset.spikes_list[i]
+        spike_train = (
+            enforce_rp(dataset.spikes_list[i], enforced_rp=10, fs=_sampling_rate)
+            if label == "PkC_cs"
+            else dataset.spikes_list[i]
+        )
         # Recover the channelmap
         if _use_chanmap:
             try:
@@ -1722,9 +1681,7 @@ def h5_feature_extraction(
 
         except Exception as e:
             exc_type, _, exc_tb = sys.exc_info()
-            print(
-                f"Something went wrong for the feature computation of neuron {i} (unit {unit} in {dp})"
-            )
+            print(f"Something went wrong for the feature computation of neuron {i} (unit {unit} in {dp})")
             print(f"{exc_type} at line {exc_tb.tb_lineno}: {e}")
             if not ignore_exceptions:
                 raise
@@ -1732,12 +1689,12 @@ def h5_feature_extraction(
             curr_feat = np.zeros(len(columns))[3:].tolist()
             discarded_info = [label, dp, unit]
             curr_feat = discarded_info + curr_feat
-        
+
         if _extract_layer:
             layer = dataset.layer_list[i]
             curr_feat = curr_feat + [layer]
         feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
-    
+
     feat_df = feat_df.infer_objects()
     if save_path is None:
         save_path = os.getcwd()
@@ -1765,9 +1722,7 @@ def get_unusable_features(df: pd.DataFrame) -> pd.DataFrame:
     return np.unique(bad_idx)
 
 
-def prepare_classification(
-    df: pd.DataFrame, bad_idx=None, drop_cols=None
-) -> tuple[pd.DataFrame, pd.Series]:
+def prepare_classification(df: pd.DataFrame, bad_idx=None, drop_cols=None) -> tuple[pd.DataFrame, pd.Series]:
     """
     Prepares the dataframe for classification.
     """

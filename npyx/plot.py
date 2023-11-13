@@ -67,8 +67,6 @@ from npyx.utils import (
 
 #%% plotting utilities ##############################################################################################
 
-# The above code is not doing anything. It is just a comment that mentions the name
-# "default_mplp_params".
 default_mplp_params = dict(
             # title default parameters
             title_w='regular',
@@ -1205,7 +1203,7 @@ def paired_plot(X,
     else:
         assert len(xtickslabels) == n_feat,\
             f"You must pass {n_feat} xtickslabels, not {len(xtickslabels)}."
-    xrot = 45 if max(len(lab) for lab in xtickslabels) > 6 else 0
+    xrot = 45 if max(len(str(lab)) for lab in xtickslabels) > 6 else 0
         
     mplp(fig, ax,
          xticks = xticks,
@@ -1217,40 +1215,41 @@ def paired_plot(X,
     
     # Eventually add histogram to the side
     # representing the data on the rightmost column
-    ax2 = fig.add_subplot(gs[0, 2])
-    ylim = ax.get_ylim()
-    if binsize is None:
-        binsize = np.diff(ylim)/30
-    if logscale:
-        bins = np.logspace(np.log10(min(ylim)),
-                           np.log10(max(ylim)) ,
-                           abs(int(np.diff([ylim])//binsize)))
-        ax2.set_yscale('log')
-    else:
-        bins = np.arange(min(ylim), max(ylim)+binsize, binsize)
+    if add_histogram:
+        ax2 = fig.add_subplot(gs[0, 2])
+        ylim = ax.get_ylim()
+        if binsize is None:
+            binsize = np.diff(ylim)/30
+        if logscale:
+            bins = np.logspace(np.log10(min(ylim)),
+                            np.log10(max(ylim)) ,
+                            abs(int(np.diff([ylim])//binsize)))
+            ax2.set_yscale('log')
+        else:
+            bins = np.arange(min(ylim), max(ylim)+binsize, binsize)
 
-    ax2.hist(X[:,-1], bins = bins,
-            color = hist_color, orientation = 'horizontal')
-    
-    if 'ylim' not in hist_kwargs:
-        hist_kwargs['ylim'] = ylim
+        ax2.hist(X[:,-1], bins = bins,
+                color = hist_color, orientation = 'horizontal')
         
-    if show_hist_mean:
-        mn = X[:,-1].mean()
-        ax2.text(ax2.get_xlim()[1],
-                 mn - 0.03*np.diff(hist_kwargs['ylim']),
-                 f"\u03bc = {mn:.1f}",
-                 va='center', ha='left', fontsize=14)
-        ax2.axhline(mn, ls='--', lw=2, c='k')
-    
-    if 'xlabel' not in hist_kwargs:
-        hist_kwargs['xlabel'] = f'Counts\n({xtickslabels[-1]})'
+        if 'ylim' not in hist_kwargs:
+            hist_kwargs['ylim'] = ylim
+            
+        if show_hist_mean:
+            mn = X[:,-1].mean()
+            ax2.text(ax2.get_xlim()[1],
+                    mn - 0.03*np.diff(hist_kwargs['ylim']),
+                    f"\u03bc = {mn:.1f}",
+                    va='center', ha='left', fontsize=14)
+            ax2.axhline(mn, ls='--', lw=2, c='k')
         
-    mplp(fig, ax2,
-         yticks=ax.get_yticks(),
-         ytickslabels=['']*len(ax.get_yticks()),
-         xlabelpad=-50,
-         **hist_kwargs)
+        if 'xlabel' not in hist_kwargs:
+            hist_kwargs['xlabel'] = f'Counts\n({xtickslabels[-1]})'
+            
+        mplp(fig, ax2,
+            yticks=ax.get_yticks(),
+            ytickslabels=['']*len(ax.get_yticks()),
+            xlabelpad=-50,
+            **hist_kwargs)
 
 #%% Stats plots ##############################################################################################
 

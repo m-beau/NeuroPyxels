@@ -50,7 +50,11 @@ def cache_validation_again(metadata):
     WARNING the cached function MUST have an argument named 'again' for this to work.
     """
     # Only retrieve cached results for calls that are not flagged with again
-    return metadata["input_args"]["again"] == "False"
+    try:
+        return metadata["input_args"]["again"] == "False"
+    except:
+        print("Joblib caching error! Not loading from cache.")
+        return False
 
 def docstring_decorator(*args):
     """
@@ -716,7 +720,7 @@ def make_2D_array(arr_lis, accept_heterogeneous=False):
     return arr
 
 @njit(cache=True)
-def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, verbose=True):
+def split(arr, sample_size=0, n_samples=0, overlap=0, return_last=True, verbose=False):
     '''
     Arguments:
         - arr: array to split into EITHER n_samples OR samples of size sample_size.

@@ -189,7 +189,7 @@ To do so, in your terminal, run "which python" on linux/mac or "where python" on
 
 If you find Neuropyxels useful in your work, we kindly request that you cite:
 
-> Maxime Beau, Federico D'Agostino, Ago Lajko, Gabriela Martínez, & Dimitar Kostadinov. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. Zenodo. https://doi.org/10.5281/zenodo.5509733
+> Maxime Beau, Federico D'Agostino, Ago Lajko, Gabriela Martínez, Michael Häusser & Dimitar Kostadinov. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. Zenodo. https://doi.org/10.5281/zenodo.5509733
 
 You can additionally star this repo using the top-right star button to help it gain more visibility.
 

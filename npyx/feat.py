@@ -169,6 +169,22 @@ def compute_isi(train, quantile=0.02, fs=30_000, rp_seconds=1e-3):
     return isi_ / fs
 
 
+def burst_index(isi: np.ndarray, percentile: float = 0.95) -> float:
+    """
+    Calculate the burst index of a given inter-spike interval (ISI) array.
+
+    Parameters:
+        isi (np.ndarray): Array of inter-spike intervals, in SECONDS.
+        percentile (float): Percentile value used to calculate the burst index. Default is 0.95.
+
+    Returns:
+        float: The burst index value rounded to 2 decimal places.
+    """
+
+    inst_fr = 1 / isi
+    return np.quantile(inst_fr, percentile).round(2)
+
+
 def entropy_log_isi(isint):
     """
     It takes a list of interspike intervals, bins them logarithmically, smooths the resulting histogram,
@@ -269,6 +285,12 @@ def compute_isi_features(isint):
     # Skewness of the inter-spikes intervals distribution
     skewness = skew(isint)
 
+    # std of the ISI
+    std_isi = np.std(isint)
+
+    # Burst index
+    burst_idx = burst_index(isint)
+
     return [
         mfr,
         mifr,
@@ -285,6 +307,8 @@ def compute_isi_features(isint):
         log_CV,
         SI_index,
         skewness,
+        std_isi,
+        burst_idx,
     ]
 
 
@@ -1447,7 +1471,7 @@ def temporal_features_wrap(dp, unit, use_or_operator=True, use_consecutive=False
         enforced_rp=0.2,
     )
 
-    tf = temporal_features(unit_spikes) if len(unit_spikes) > 1 else np.zeros(15)
+    tf = temporal_features(unit_spikes) if len(unit_spikes) > 1 else np.zeros(17)
     return [str(dp), unit] + list(tf)
 
 
@@ -1502,7 +1526,7 @@ def feature_extraction_json(
         A dataframe with all the features for all the cells in the json file.
         This will include:
             - neuron information (optolabel, data_path, unit)
-            - temporal features (15)
+            - temporal features (17)
             - waveform features (18)
     """
 
@@ -1600,7 +1624,7 @@ def h5_feature_extraction(
         A dataframe with all the features for all the cells in the dataset.
         This will include:
             - neuron information (optolabel, data_path, unit)
-            - temporal features (15)
+            - temporal features (17)
             - waveform features (18)
     """
     if _label is None:

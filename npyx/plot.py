@@ -1631,11 +1631,12 @@ def plt_wvf(waveforms, subcm=None, waveforms_std=None,
                 for tpl_i, tpl in enumerate(tplts):
                     ax[i].plot(x_tplts, tpl[:,i]*tpl_scalings[tpl_i], linewidth=1, color=(0,0,0), alpha=0.7, zorder=10000)
             if plot_mean:
-                ax[i].plot(x, datam[i, :], linewidth=2, color=color_dark, alpha=1)
+                ax[i].plot(x, datam[i, :], linewidth=1.7, color=color_dark, alpha=1)
             if plot_std:
-                ax[i].plot(x, datam[i, :]+waveforms_std[i,:], linewidth=1, color=color, alpha=0.5)
-                ax[i].plot(x, datam[i, :]-waveforms_std[i,:], linewidth=1, color=color, alpha=0.5)
-                ax[i].fill_between(x, datam[i, :]-waveforms_std[i,:], datam[i, :]+waveforms_std[i,:], facecolor=color, interpolate=True, alpha=0.2)
+                # outline on std is ugly
+                #ax[i].plot(x, datam[i, :]+waveforms_std[i,:], linewidth=1, color=color, alpha=0.5)
+                #ax[i].plot(x, datam[i, :]-waveforms_std[i,:], linewidth=1, color=color, alpha=0.5)
+                ax[i].fill_between(x, datam[i, :]-waveforms_std[i,:], datam[i, :]+waveforms_std[i,:], facecolor=color, interpolate=True, alpha=0.3)
             ax[i].set_ylim([ylim1, ylim2])
             ax[i].set_xlim([x[0], x[-1]])
             ax[i].spines['right'].set_visible(False)

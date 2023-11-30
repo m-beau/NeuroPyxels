@@ -158,7 +158,7 @@ def metadata(dp):
         for filt_key in ['highpass','lowpass']:
             meta[filt_key]={}
             filt_key_i=filt_index[filt_key]
-            meta[filt_key]['sampling_rate']=int(meta_oe["continuous"][filt_key_i]['sample_rate'])
+            meta[filt_key]['sampling_rate']=float(meta_oe["continuous"][filt_key_i]['sample_rate'])
             meta[filt_key]['n_channels_binaryfile']=int(meta_oe["continuous"][filt_key_i]['num_channels'])
             if params_f.exists():
                 meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
@@ -260,9 +260,9 @@ def metadata(dp):
 
             # sampling rate
             if meta_glx[filt_key]['typeThis'] == 'imec':
-                meta[filt_key]['sampling_rate']=int(meta_glx[filt_key]['imSampRate'])
+                meta[filt_key]['sampling_rate']=float(meta_glx[filt_key]['imSampRate'])
             else:
-                meta[filt_key]['sampling_rate']=int(meta_glx[meta_glx['typeThis'][:2]+'SampRate'])
+                meta[filt_key]['sampling_rate']=float(meta_glx[meta_glx['typeThis'][:2]+'SampRate'])
 
             meta[filt_key]['n_channels_binaryfile']=int(meta_glx[filt_key]['nSavedChans'])
             if params_f.exists():

@@ -10,11 +10,11 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import psutil
+from joblib import Memory
 from tqdm.notebook import tqdm
 
 import os.path as op; opj=op.join
 
-from joblib import Memory
 cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
 cache_memory = Memory(cachedir, verbose=0)
 
@@ -24,11 +24,10 @@ from math import ceil
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 from npyx.gl import get_npyx_memory, get_units
 from npyx.inout import chan_map, get_binary_file_path, read_metadata
 from npyx.preprocess import apply_filter, bandpass_filter, med_substract, whitening
-from npyx.utils import npa, split, xcorr_1d_loop, cache_validation_again
+from npyx.utils import cache_validation_again, npa, split, xcorr_1d_loop
 
 
 @cache_memory.cache(cache_validation_callback=cache_validation_again)
@@ -171,10 +170,14 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
             if n_spikes>10:
                 if i%(n_spikes//10)==0 and verbose: print(f'{round((i/n_spikes)*100)}%...', end=' ')
             f.seek(t1, 0) # 0 for absolute file positioning
-            wave = f.read(n_channels_dat*t_waveforms*item_size)
-            wave = np.frombuffer(wave, dtype=dtype).reshape((t_waveforms,n_channels_dat))
-            # get rid of sync channel
-            waveforms[i,:,:] = wave[:,:-1] if meta['acquisition_software']=='SpikeGLX' else wave
+            try:
+                wave = f.read(n_channels_dat*t_waveforms*item_size)
+                wave = np.frombuffer(wave, dtype=dtype).reshape((t_waveforms,n_channels_dat))
+                # get rid of sync channel
+                waveforms[i,:,:] = wave[:,:-1] if meta['acquisition_software']=='SpikeGLX' else wave
+            except:
+                print(f"WARNING it seems the binary file at {dp} is corrupted. Waveform {i} (at byte {t1}, {t1/n_channels_dat/item_size/sample_rate}s) could not be loaded.")
+                waveforms[i,:,:] = np.nan
     if med_sub_in_time:
         medians = np.median(waveforms, axis = 1)
         waveforms = waveforms - medians[:,np.newaxis,:]

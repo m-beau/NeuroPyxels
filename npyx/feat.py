@@ -54,6 +54,8 @@ FEATURES = [
     "LcV",
     "SI",
     "SKW",
+    "std_isi",
+    "burst_idx",
     "acg_burst_vs_mfr",
     "acg_oscill_vs_mfr",
     "relevant_channel",

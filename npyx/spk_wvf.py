@@ -178,6 +178,8 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
             except:
                 print(f"WARNING it seems the binary file at {dp} is corrupted. Waveform {i} (at byte {t1}, {t1/n_channels_dat/item_size/sample_rate}s) could not be loaded.")
                 waveforms[i,:,:] = np.nan
+    nanmask = np.isnan(waveforms[:,0,0])
+    waveforms = waveforms[~nanmask,:,:]
     if med_sub_in_time:
         medians = np.median(waveforms, axis = 1)
         waveforms = waveforms - medians[:,np.newaxis,:]

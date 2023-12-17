@@ -180,6 +180,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
                 waveforms[i,:,:] = np.nan
     nanmask = np.isnan(waveforms[:,0,0])
     waveforms = waveforms[~nanmask,:,:]
+    n_spikes -= np.sum(nanmask)
     if med_sub_in_time:
         medians = np.median(waveforms, axis = 1)
         waveforms = waveforms - medians[:,np.newaxis,:]

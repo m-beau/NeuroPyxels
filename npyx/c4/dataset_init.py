@@ -83,10 +83,10 @@ HULL_LINES_DICT = {
 }
 
 DATASETS_URL = {
-    "hausser": "https://figshare.com/ndownloader/files/41720781?private_link=9a9dfce1c64cb807fc96",
+    "hausser": "https://figshare.com/ndownloader/files/43102990?private_link=9a9dfce1c64cb807fc96",
     "lisberger": "https://figshare.com/ndownloader/files/41721090?private_link=9a9dfce1c64cb807fc96",
     "medina": "https://figshare.com/ndownloader/files/41721195?private_link=9a9dfce1c64cb807fc96",
-    "hull_labelled": "https://figshare.com/ndownloader/files/41720784?private_link=9a9dfce1c64cb807fc96",
+    "hull_labelled": "https://figshare.com/ndownloader/files/43102996?private_link=9a9dfce1c64cb807fc96",
     "hull_unlabelled": "https://figshare.com/ndownloader/files/41720901?private_link=9a9dfce1c64cb807fc96",
 }
 

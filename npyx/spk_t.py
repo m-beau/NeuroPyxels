@@ -52,15 +52,15 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     '''
 
     dp = Path(dp)
-    assert unit in get_units(dp), 'WARNING unit {} not found in dataset {}!'.format(unit, dp)
+    assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
     # Search if the variable is already saved in dp/routinesMemory
     dpnm = get_npyx_memory(dp)
 
     fn=f'ids{unit}_{enforced_rp}.npy'
     if op.exists(Path(dpnm,fn)) and not again:
-        if verbose: print("File {} found in routines memory.".format(fn))
+        if verbose:
+            print(f"File {fn} found in routines memory.")
         indices = np.asarray(np.load(Path(dpnm,fn)), dtype='int64')
-    # if not, compute it
     else:
         if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
         if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
@@ -82,7 +82,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
         # Save it
         if sav:
             np.save(dpnm/fn, indices)
-            
+
     # Optional selection of spies without duplicates
     dp_source = npyx.merger.get_source_dp_u(dp, unit)[0]
     fs=read_metadata(dp_source)["highpass"]['sampling_rate']
@@ -110,9 +110,7 @@ def load_amplitudes(dp, unit, verbose=False, periods='all', again=False, enforce
     {ids.__doc__}'''
     dp = Path(dp)
     unit_ids = ids(dp, unit, True, verbose, periods, again, enforced_rp)
-    amps = np.load(dp/'amplitudes.npy')[unit_ids]
-    
-    return amps
+    return np.load(dp/'amplitudes.npy')[unit_ids]
 
 @cache_memory.cache(cache_validation_callback=cache_validation_again)
 def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=0):
@@ -140,7 +138,8 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
     fn=f'trn{unit}_{enforced_rp}+.npy'
     if (dpnm/fn).exists() and not again:
-        if verbose: print("File {} found in routines memory.".format(fn))
+        if verbose:
+            print(f"File {fn} found in routines memory.")
         try: train = np.load(dpnm/fn) # handling of weird allow_picke=True error
         except: pass
 
@@ -179,8 +178,7 @@ def duplicates_mask(t, enforced_rp=0, fs=30000):
     '''
     - t: in samples,sampled at fs Hz
     - enforced_rp: in ms'''
-    duplicate_m = np.append([False], np.diff(t)<=enforced_rp*fs/1000)
-    return duplicate_m
+    return np.append([False], np.diff(t)<=enforced_rp*fs/1000)
 
 def enforce_rp(t, enforced_rp=0, fs=30000):
     '''
@@ -218,9 +216,7 @@ def inst_cv2(t):
 
     isint = np.diff(t)
 
-    cv2 = 2 * np.abs(isint[1:] - isint[:-1]) / (isint[1:] + isint[:-1])
-
-    return cv2
+    return 2 * np.abs(isint[1:] - isint[:-1]) / (isint[1:] + isint[:-1])
 
 @cache_memory.cache
 def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
@@ -392,10 +388,7 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
 
     if sav: np.save(Path(dpnm,fn), periods)
 
-    if return_smoothed_rate:
-        return periods, tbs
-
-    return periods
+    return (periods, tbs) if return_smoothed_rate else periods
 
 @cache_memory.cache(cache_validation_callback=cache_validation_again)
 def inst_firing_rate(t, fs, t_end, b=1, sd=1000, again=False):
@@ -407,9 +400,7 @@ def inst_firing_rate(t, fs, t_end, b=1, sd=1000, again=False):
     tb    = binarize(t, b, fs, t_end)
     sd    = int(sd/b) # convert from ms to bin units
     b_s   = b/1000 # bin seconds
-    tbs   = smooth(tb, 'gaussian', sd=sd)/b_s # result is inst. firing rate in Hz - speed bottleneck
-
-    return tbs
+    return smooth(tb, 'gaussian', sd=sd)/b_s
 
 def find_stable_recording_period(t, fs, t_end, target_period = 30,
                                  b=1000, sd=10000, minimum_fr = 0.4,
@@ -794,9 +785,9 @@ def trn_filtered(dp, unit, period_m=[0,20],
     # use spike times themselves to define beginning and end of good Sections
     # as the FP and FN sections do not necessarily overlap
     good_sections = good_sections_from_mask(good_spikes_m, t_s)
-    
+
     if len(good_sections)>0:#
-        total_good_sections = sum([s[1]-s[0] for s in good_sections])
+        total_good_sections = sum(s[1]-s[0] for s in good_sections)
         if use_consecutive:
             # get the longest consecutive section of time that passes
             # both our criteria
@@ -810,10 +801,9 @@ def trn_filtered(dp, unit, period_m=[0,20],
             if len(consecutive_good_chunk) > consecutive_n_seconds:
                 good_spikes_m = (t_s>consecutive_good_chunk[0])&(t_s<consecutive_good_chunk[-1]+1)
                 return t[good_spikes_m], good_spikes_m
-        else:
-            if total_good_sections > consecutive_n_seconds:
-                return t[good_spikes_m], good_spikes_m
-        
+        elif total_good_sections > consecutive_n_seconds:
+            return t[good_spikes_m], good_spikes_m
+
     if verbose: print('No consecutive section passed the filters')
     return np.array([0]), (t*0).astype(bool)
 
@@ -867,8 +857,7 @@ def gaussian_cut(x, a, mu, sigma, x_cut):
 
 
 def curve_fit_(x, num, p1):
-    pop_t = curve_fit(gaussian_cut, x, num, p1, maxfev=10000)
-    return pop_t
+    return curve_fit(gaussian_cut, x, num, p1, maxfev=10000)
 
 def ampli_fit_gaussian_cut(x, n_bins):
     # inputs: vector we want to estimate where the missing values start
@@ -885,9 +874,9 @@ def ampli_fit_gaussian_cut(x, n_bins):
     mode_seed = bins[np.where(num == max(num))]
     #mode_seed = bins[np.argmax(num)]
     # find the bin width
-    bin_steps = np.diff(bins[0:2])[0]
+    bin_steps = np.diff(bins[:2])[0]
     #get the mean values of each bin
-    x = bins[0:len(bins) - 1] + bin_steps / 2
+    x = bins[:-1] + bin_steps / 2
     # get the value of the start of the first bin
     next_low_bin = x[0] - bin_steps
     #next_low = bins[0] - bin_steps/2
@@ -944,29 +933,20 @@ def estimate_bins(x, rule):
 
     # Freedman-Diaconis rule
     if rule == 'Fd':
-
-        data = np.asarray(x, dtype=np.float_)
-        iqr_ = iqr(data, scale=1, nan_policy="omit")
-        n = data.size
-        bw = (2 * iqr_) / np.power(n, 1 / 3)
-        datmin= min(data)
-        datmax = max(data)
-        datrng = datmax - datmin
-        bins = int(datrng/bw + 1)
-
-        # q75, q25 = np.percentile(x, [75, 25])
-        # iqr_ = q75 - q25
-        # print('iqr', iqr_)
-        # h = 2 * iqr_ * (n ** (-1/3))
-        # print('h', h)
-        # b = int(round((maxi-mini)/h, 0))
-
-        return bins
-
-    # Square-root choice
+        return Freedman_Diaconis_bin_estimate(x)
     elif rule == 'Sqrt':
-        b = int(np.sqrt(n))
-        return b
+        return int(np.sqrt(n))
+
+
+def Freedman_Diaconis_bin_estimate(x):
+    data = np.asarray(x, dtype=np.float_)
+    iqr_ = iqr(data, scale=1, nan_policy="omit")
+    n = data.size
+    bw = (2 * iqr_) / np.power(n, 1 / 3)
+    datmin= min(data)
+    datmax = max(data)
+    datrng = datmax - datmin
+    return int(datrng/bw + 1)
 
 # circular import
 import npyx.merger

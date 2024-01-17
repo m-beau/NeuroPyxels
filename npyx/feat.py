@@ -1153,7 +1153,9 @@ def extract_single_channel_features(relevant_waveform, plot_debug=False, interp_
 
     # depolarisation slope coefficients
     depol_coeff, _ = depol_slope(relevant_waveform, first_trough_t)
-    depol_coeff = depol_coeff * interp_coeff
+
+    # Multiply slope coefficients by 100 (and divide tau) to undo interpolation effect and obtain meaningful values
+    tau, repol_coeff, depol_coeff = tau / interp_coeff, repol_coeff * interp_coeff, depol_coeff * interp_coeff
 
     return [
         neg_v,

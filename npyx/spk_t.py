@@ -18,20 +18,20 @@ cache_memory = Memory(cachedir, verbose=0)
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.optimize import curve_fit
-from scipy.stats import iqr, norm
-
 from npyx.gl import check_periods, get_npyx_memory, get_units
 from npyx.inout import read_metadata
 from npyx.utils import (
     assert_float,
     assert_int,
-    docstring_decorator,
     cache_validation_again,
+    docstring_decorator,
     npa,
     smooth,
     thresh_consec,
 )
+from scipy.optimize import curve_fit
+from scipy.stats import iqr, norm
+
 
 def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=-1):
     '''
@@ -482,7 +482,7 @@ def train_quality(dp, unit, period_m=[0,20],
                   use_or_operator = True,
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold = 0.05,
                   again = False, save = True, verbose = False, plot_debug = False,
-                  enforced_rp = 0):
+                  enforced_rp = 0, saveFig=False, saveDir=None, _format='png'):
     """
     Subselect spike times which meet two criteria:
         low number of 'missed spikes' (false negatives)
@@ -535,6 +535,10 @@ def train_quality(dp, unit, period_m=[0,20],
         - save: bool, whether to save result to npyxMemory for future fast reloading
         - verbose: bool, whether to print extra information for debugging purposes.
         - enforced_rp: float, enforced refractory period in ms (if 2 spikes are closer than enforced_rp ms, only the first one  is kept.)
+        - plot_debug: bool, whether to plot the fp/fn rates and the spikes that passed the filter.
+        - saveFig: bool, whether to save the debug plot.
+        - saveDir: str, path to save the debug plot.
+        - _format: str, format to save the debug plot.
     
     Returns:
         - good_spikes_m: mask of spikes belonging to the intersection of the chunks with low enough fp/fn rates.
@@ -545,9 +549,9 @@ def train_quality(dp, unit, period_m=[0,20],
     dp = Path(dp)
 
     # Hard-coded parameters
-    c_bin = 0.2
-    c_win = 100
-    n_bins_acg_baseline=80 # from start and end of acg window
+    # c_bin = 0.2
+    # c_win = 100
+    # n_bins_acg_baseline=80 # from start and end of acg window
     n_spikes_threshold = 300
     fs = 30_000
     title = f"{unit}, {dp.name}" # for plot_debug
@@ -594,7 +598,9 @@ def train_quality(dp, unit, period_m=[0,20],
             npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      None, None, None,None,
                      fp_threshold, fn_threshold,
-                     good_fp_start_end_plot, good_fn_start_end_plot, title)
+                     good_fp_start_end_plot, good_fn_start_end_plot, title,
+                     saveFig=saveFig, saveDir=saveDir, _format=_format,
+                     figname=f"fp_fn_{unit}_{period_m}")
         
         return good_spikes_m, good_fp_start_end.tolist(), good_fn_start_end.tolist()
     
@@ -726,7 +732,9 @@ def train_quality(dp, unit, period_m=[0,20],
             npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
                      fp_threshold, fn_threshold,
-                     good_fp_start_end, good_fn_start_end, title)
+                     good_fp_start_end, good_fn_start_end, title,
+                     saveFig=saveFig, saveDir=saveDir, _format=_format,
+                     figname=f"fp_fn_{unit}_{period_m}")
 
         return good_spikes_m, good_fp_start_end, good_fn_start_end
     
@@ -740,7 +748,9 @@ def train_quality(dp, unit, period_m=[0,20],
             npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
                      fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
                      fp_threshold, fn_threshold,
-                     None, None, title)
+                     None, None, title,
+                     saveFig=saveFig, saveDir=saveDir, _format=_format,
+                     figname=f"fp_fn_{unit}_{period_m}")
             
         return good_spikes_m, [0], [0]
 
@@ -752,7 +762,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold=0.05,
                   use_consecutive = False, consecutive_n_seconds = 180,
                   again = False, save = True, verbose = False, plot_debug = False,
-                  enforced_rp=0):
+                  enforced_rp=0, saveFig=False, saveDir=None, _format='pdf'):
     """
     Returns spike times (in sample) meeting the false positive and false negative criteria.
     Mainly wrapper of train_quality().
@@ -779,7 +789,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
     good_spikes_m, good_fp_start_end, good_fn_start_end = train_quality(dp, unit, period_m,
                     fp_chunk_span, fp_chunk_size, fn_chunk_span, fn_chunk_size, use_or_operator,
                     violations_ms, fp_threshold, fn_threshold, again, save, verbose, plot_debug,
-                    enforced_rp=enforced_rp)
+                    enforced_rp, saveFig, saveDir, _format)
 
     # use spike times themselves to define beginning and end of good Sections
     # as the FP and FN sections do not necessarily overlap

@@ -85,7 +85,7 @@ HULL_LINES_DICT = {
 DATASETS_URL = {
     "hausser": "https://figshare.com/ndownloader/files/43102990?private_link=9a9dfce1c64cb807fc96",
     "lisberger": "https://figshare.com/ndownloader/files/41721090?private_link=9a9dfce1c64cb807fc96",
-    "medina": "https://figshare.com/ndownloader/files/41721195?private_link=9a9dfce1c64cb807fc96",
+    "medina": "https://figshare.com/ndownloader/files/42117129?private_link=9a9dfce1c64cb807fc96",
     "hull_labelled": "https://figshare.com/ndownloader/files/43102996?private_link=9a9dfce1c64cb807fc96",
     "hull_unlabelled": "https://figshare.com/ndownloader/files/41720901?private_link=9a9dfce1c64cb807fc96",
 }
@@ -136,28 +136,18 @@ def combine_features(df1, df2):
     return df1.merge(df2, on=common_columns, how="left")
 
 
-def get_paths_from_dir(
-    path_to_dir, include_lisberger=False, include_medina=False, include_hull_unlab=False
-):
+def get_paths_from_dir(path_to_dir, include_lisberger=False, include_medina=False, include_hull_unlab=False):
     # List all files in the directory
     files = os.listdir(path_to_dir)
 
     # Filter datasets based on conditions
     filtered_datasets = [dataset for dataset in files if dataset.endswith(".h5")]
     if not include_lisberger:
-        filtered_datasets = [
-            dataset for dataset in filtered_datasets if "lisberger" not in dataset
-        ]
+        filtered_datasets = [dataset for dataset in filtered_datasets if "lisberger" not in dataset]
     if not include_medina:
-        filtered_datasets = [
-            dataset
-            for dataset in filtered_datasets
-            if "medina_unlabelled" not in dataset
-        ]
+        filtered_datasets = [dataset for dataset in filtered_datasets if "medina_unlabelled" not in dataset]
     if not include_hull_unlab:
-        filtered_datasets = [
-            dataset for dataset in filtered_datasets if "hull_unlabelled" not in dataset
-        ]
+        filtered_datasets = [dataset for dataset in filtered_datasets if "hull_unlabelled" not in dataset]
 
     # Include 'hull_labelled' and 'hausser' datasets always
     required_datasets = ["hull_labelled", "hausser"]
@@ -242,9 +232,7 @@ def make_dataset_df(dataset: datasets.NeuronsDataset):
 
     include = 1
 
-    for i in tqdm(
-        range(len(dataset)), desc="Generating dataframe", leave=False, position=0
-    ):
+    for i in tqdm(range(len(dataset)), desc="Generating dataframe", leave=False, position=0):
         dp = "/".join(dataset.info[i].split("/")[:-1])
         unit = int(dataset.info[i].split("/")[-1])
         label = dataset.labels_list[i]
@@ -255,18 +243,12 @@ def make_dataset_df(dataset: datasets.NeuronsDataset):
     return pd.DataFrame(rows, columns=columns)
 
 
-def extract_and_check(
-    *dataset_paths, save=True, save_folder="./", lisberger=False, **kwargs
-):
-    unchecked_dataset = extract_and_merge_datasets(
-        *dataset_paths, quality_check=False, **kwargs
-    )
+def extract_and_check(*dataset_paths, save=True, save_folder="./", lisberger=False, **kwargs):
+    unchecked_dataset = extract_and_merge_datasets(*dataset_paths, quality_check=False, **kwargs)
 
     for i in range(len(unchecked_dataset)):
         if unchecked_dataset.genetic_line_list[i] == "unknown":
-            unchecked_dataset.genetic_line_list[i] = HULL_LINES_DICT[
-                unchecked_dataset.labels_list[i]
-            ]
+            unchecked_dataset.genetic_line_list[i] = HULL_LINES_DICT[unchecked_dataset.labels_list[i]]
 
     # Create a dataframe with the features of the dataset
     dataset_df = make_dataset_df(unchecked_dataset)
@@ -306,26 +288,18 @@ def prepare_classification_dataset(
         desc="Preparing waveforms and 3D acgs",
     ):
         if _acgs_path is None:
-            _, acg_3d = corr.crosscorr_vs_firing_rate(
-                spikes, spikes, win_size=win_size, bin_size=bin_size
-            )
+            _, acg_3d = corr.crosscorr_vs_firing_rate(spikes, spikes, win_size=win_size, bin_size=bin_size)
             acg_3d, _ = corr.convert_acg_log(acg_3d, bin_size, win_size)
             acgs.append(acg_3d.ravel())
         if not multi_chan_wave:
             processed_wave = dataset.conformed_waveforms[i]
         elif process_multi_channel:
-            processed_wave = datasets.preprocess_template(
-                dataset.wf[i].reshape(_n_channels, -1)
-            ).ravel()
+            processed_wave = datasets.preprocess_template(dataset.wf[i].reshape(_n_channels, -1)).ravel()
         else:
             processed_wave = dataset.wf[i]
 
         waveforms.append(processed_wave)
-    acgs = (
-        np.stack(acgs, axis=0)
-        if _acgs_path is None
-        else acgs[_acg_mask if _acg_mask is not None else slice(None)]
-    )
+    acgs = np.stack(acgs, axis=0) if _acgs_path is None else acgs[_acg_mask if _acg_mask is not None else slice(None)]
     acgs *= _acg_multi_factor
     acgs_max = np.max(acgs, axis=1)
     waveforms = np.stack(waveforms, axis=0)
@@ -356,17 +330,10 @@ def plot_quality_checks(dataframe, lab, fig_title):
     )
 
 
-def save_quality_plots(
-    dataframe: pd.DataFrame, save_folder="./", unlabelled=False, lisberger=False
-):
+def save_quality_plots(dataframe: pd.DataFrame, save_folder="./", unlabelled=False, lisberger=False):
     lab = []
     for i, row in dataframe.iterrows():
-        if (
-            ("YC" in row["dataset"])
-            or ("DK" in row["dataset"])
-            or ("MO" in row["dataset"])
-            or ("HS" in row["dataset"])
-        ):
+        if ("YC" in row["dataset"]) or ("DK" in row["dataset"]) or ("MO" in row["dataset"]) or ("HS" in row["dataset"]):
             lab.append("hausser")
         else:
             lab.append("hull")
@@ -431,9 +398,7 @@ def save_acg(spike_train, unit_n, save_name=None):
 
     if len(spike_train.ravel()) > 1:
         plt.figure()
-        npyx_plot.plot_acg(
-            ".npyx_placeholder", unit_n, train=spike_train, figsize=(5, 4.5)
-        )
+        npyx_plot.plot_acg(".npyx_placeholder", unit_n, train=spike_train, figsize=(5, 4.5))
 
         plt.savefig(f"{save_name}-acg.pdf", format="pdf", bbox_inches="tight")
     else:
@@ -462,17 +427,13 @@ def save_wvf(waveform, save_name=None):
         raise NotImplementedError("Please specify a save name")
 
     plt.figure()
-    npyx_plot.plt_wvf(
-        waveform, figh_inch=8, figw_inch=5, title=str(save_name).split("/")[-1]
-    )
+    npyx_plot.plt_wvf(waveform, figh_inch=8, figw_inch=5, title=str(save_name).split("/")[-1])
 
     plt.savefig(f"{save_name}-wvf.pdf", format="pdf", bbox_inches="tight")
     plt.close()
 
 
-def make_summary_plots_wvf(
-    dataset: datasets.NeuronsDataset, save_folder=".", monkey=False
-):
+def make_summary_plots_wvf(dataset: datasets.NeuronsDataset, save_folder=".", monkey=False):
     prefix = "monkey_" if monkey else ""
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
@@ -508,16 +469,13 @@ def make_summary_plots_wvf(
         plt.close()
 
 
-def make_summary_plots_preprocessed_wvf(
-    dataset: datasets.NeuronsDataset, save_folder=".", monkey=False
-):
+def make_summary_plots_preprocessed_wvf(dataset: datasets.NeuronsDataset, save_folder=".", monkey=False):
     prefix = "monkey_" if monkey else ""
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
         lab_wvf = dataset.conformed_waveforms[lab_mask]
         col = npyx_plot.to_hex(COLORS_DICT[CORRESPONDENCE[lab]])
         for relevant_waveform in lab_wvf:
-
             plt.plot(
                 relevant_waveform,
                 color=col,
@@ -562,7 +520,6 @@ def make_summary_plots_wvf_by_line(dataset: datasets.NeuronsDataset, save_folder
                 continue
 
             for relevant_waveform in lab_wvf:
-
                 # Normalise before plotting
                 plt.plot(
                     relevant_waveform,
@@ -615,22 +572,14 @@ def make_summary_plots_acg_by_line(dataset: datasets.NeuronsDataset, save_folder
                 xlabel="Time (ms)",
                 ylabel="Autocorrelation (Hz)",
                 figsize=(6, 5),
-                xtickslabels=np.arange(
-                    -(WIN_SIZE // 2), ((WIN_SIZE // 2) + 1), WIN_SIZE // 8
-                ).round(1),
-                xticks=np.arange(
-                    0, int(WIN_SIZE / BIN_SIZE) + 1, int(WIN_SIZE / BIN_SIZE) // 8
-                ),
+                xtickslabels=np.arange(-(WIN_SIZE // 2), ((WIN_SIZE // 2) + 1), WIN_SIZE // 8).round(1),
+                xticks=np.arange(0, int(WIN_SIZE / BIN_SIZE) + 1, int(WIN_SIZE / BIN_SIZE) // 8),
             )
-            npyx_plot.save_mpl_fig(
-                fig[0], f"summary_acg_{CORRESPONDENCE[lab]}_{line}", save_folder, "pdf"
-            )
+            npyx_plot.save_mpl_fig(fig[0], f"summary_acg_{CORRESPONDENCE[lab]}_{line}", save_folder, "pdf")
             plt.close()
 
 
-def make_summary_plots_acg(
-    dataset: datasets.NeuronsDataset, save_folder=".", monkey=False
-):
+def make_summary_plots_acg(dataset: datasets.NeuronsDataset, save_folder=".", monkey=False):
     prefix = "monkey_" if monkey else ""
     for lab in np.unique(dataset.targets):
         lab_mask = dataset.targets == lab
@@ -643,22 +592,14 @@ def make_summary_plots_acg(
             xlabel="Time (ms)",
             ylabel="Autocorrelation (Hz)",
             figsize=(6, 5),
-            xtickslabels=np.arange(
-                -(WIN_SIZE // 2), ((WIN_SIZE // 2) + 1), WIN_SIZE // 8
-            ).round(1),
-            xticks=np.arange(
-                0, int(WIN_SIZE / BIN_SIZE) + 1, int(WIN_SIZE / BIN_SIZE) // 8
-            ),
+            xtickslabels=np.arange(-(WIN_SIZE // 2), ((WIN_SIZE // 2) + 1), WIN_SIZE // 8).round(1),
+            xticks=np.arange(0, int(WIN_SIZE / BIN_SIZE) + 1, int(WIN_SIZE / BIN_SIZE) // 8),
         )
-        npyx_plot.save_mpl_fig(
-            fig[0], f"{prefix}summary_acg_{CORRESPONDENCE[lab]}", save_folder, "pdf"
-        )
+        npyx_plot.save_mpl_fig(fig[0], f"{prefix}summary_acg_{CORRESPONDENCE[lab]}", save_folder, "pdf")
         plt.close()
 
 
-def make_raw_plots(
-    dataset: datasets.NeuronsDataset, path_to_dir=".", folder="single_unit_plots"
-):
+def make_raw_plots(dataset: datasets.NeuronsDataset, path_to_dir=".", folder="single_unit_plots"):
     save_folder = os.path.join(path_to_dir, folder)
 
     # If the save folder does not exist, create it
@@ -673,16 +614,12 @@ def make_raw_plots(
     if not os.path.exists(save_folder_acg):
         os.makedirs(save_folder_acg)
 
-    for plotting_id in tqdm(
-        range(len(dataset)), desc="Plotting raw plots", leave=False
-    ):
+    for plotting_id in tqdm(range(len(dataset)), desc="Plotting raw plots", leave=False):
         label = dataset.labels_list[plotting_id]
         line = dataset.genetic_line_list[plotting_id]
         absolute_info = "_".join(dataset.info[plotting_id].split("/"))
 
-        fname = "_".join(
-            [str(label), "neuron", str(plotting_id), str(line), absolute_info]
-        )
+        fname = "_".join([str(label), "neuron", str(plotting_id), str(line), absolute_info])
 
         save_id_wvf = os.path.join(save_folder_wvf, fname)
         save_id_acg = os.path.join(save_folder_acg, fname)
@@ -706,12 +643,8 @@ def find_unusable_index(feat_df, dataset_df, unusable_features_idx):
     return mask[mask].index
 
 
-def report_unusable_features(
-    feat_df, dataset_df, unusable_features_idx, args, save=True, lisberger=False
-):
-    absolute_unusable_idx = find_unusable_index(
-        feat_df, dataset_df, unusable_features_idx
-    )
+def report_unusable_features(feat_df, dataset_df, unusable_features_idx, args, save=True, lisberger=False):
+    absolute_unusable_idx = find_unusable_index(feat_df, dataset_df, unusable_features_idx)
     prefix = "monkey_" if lisberger else ""
     dataset_df_path = os.path.join(args.data_folder, f"{prefix}dataset_info.csv")
     dataset_df = pd.read_csv(dataset_df_path)
@@ -719,22 +652,16 @@ def report_unusable_features(
     features_ok[absolute_unusable_idx] = False
     dataset_df["features_ok"] = features_ok.astype(int)
     # dataset_df["included"] = dataset_df["features_ok"] * dataset_df["included"]
-    new_dataset_df_path = os.path.join(
-        args.data_folder, args.name, f"{prefix}dataset_info.csv"
-    )
+    new_dataset_df_path = os.path.join(args.data_folder, args.name, f"{prefix}dataset_info.csv")
     if save:
         dataset_df.to_csv(new_dataset_df_path, index=False)
 
-    print(
-        f"Some neurons failed feature extraction: \n {feat_df.iloc[unusable_features_idx]}"
-    )
+    print(f"Some neurons failed feature extraction: \n {feat_df.iloc[unusable_features_idx]}")
     # print(f"Corresponding IDs in dataset_df: {absolute_unusable_idx}")
     return dataset_df
 
 
-def save_features(
-    feat_df, features_name, args, bad_idx=None, drop_cols=None, monkey=False
-):
+def save_features(feat_df, features_name, args, bad_idx=None, drop_cols=None, monkey=False):
     if hasattr(args, "name"):
         features_path = os.path.join(args.data_folder, args.name, features_name)
     else:
@@ -742,9 +669,7 @@ def save_features(
     if not os.path.exists(features_path):
         os.mkdir(features_path)
 
-    features, labels = feat.prepare_classification(
-        feat_df, bad_idx=bad_idx, drop_cols=drop_cols
-    )
+    features, labels = feat.prepare_classification(feat_df, bad_idx=bad_idx, drop_cols=drop_cols)
 
     prefix = "monkey_" if monkey else ""
 
@@ -764,9 +689,7 @@ def summary_plots(args, dataset_class, by_line=True, raw=True, monkey=False):
     # Make summary plots
     make_summary_plots_acg(dataset_class, save_folder=plots_folder, monkey=monkey)
     make_summary_plots_wvf(dataset_class, save_folder=plots_folder, monkey=monkey)
-    make_summary_plots_preprocessed_wvf(
-        dataset_class, save_folder=plots_folder, monkey=monkey
-    )
+    make_summary_plots_preprocessed_wvf(dataset_class, save_folder=plots_folder, monkey=monkey)
 
     if by_line:
         by_line_folder = os.path.join(plots_folder, "overlaid_by_mouse_line")
@@ -803,17 +726,13 @@ def calc_snr(wvf, noise_samples=15, return_db=False):
 
 def main(data_folder=".", plot=True, name="feature_spaces"):
     # Parse the arguments into a class to preserve compatibility
-    args = ArgsNamespace(
-        data_folder=data_folder, plot=plot, name=name
-    )
+    args = ArgsNamespace(data_folder=data_folder, plot=plot, name=name)
 
     # get datasets directories and eventually download them
     datasets_abs = get_paths_from_dir(args.data_folder)
 
     # Extract and check the datasets, saving a dataframe with the results
-    dataset_df, dataset_class = extract_and_check(
-        *datasets_abs, save_folder=args.data_folder, _labels_only=True
-    )
+    dataset_df, dataset_class = extract_and_check(*datasets_abs, save_folder=args.data_folder, _labels_only=True)
 
     if args.plot:
         plots_folder = summary_plots(args, dataset_class)
@@ -833,19 +752,12 @@ def main(data_folder=".", plot=True, name="feature_spaces"):
     unusable_features_idx = feat.get_unusable_features(feat_df)
 
     if len(unusable_features_idx) > 0:
-        dataset_df = report_unusable_features(
-            feat_df, dataset_df, unusable_features_idx, args
-        )
+        dataset_df = report_unusable_features(feat_df, dataset_df, unusable_features_idx, args)
 
     # Print to a text file called readme the cell counts in dataset.info
     with open(os.path.join(args.data_folder, args.name, "readme.txt"), "w") as f:
         f.write("Cell counts in dataset.info:\n")
-        f.write(
-            dataset_df.groupby(["label", "genetic_line"])["included"]
-            .sum()
-            .to_frame()
-            .to_markdown(tablefmt="grid")
-        )
+        f.write(dataset_df.groupby(["label", "genetic_line"])["included"].sum().to_frame().to_markdown(tablefmt="grid"))
         f.write("\n")
 
     # Save quality checks and feature extraction inclusion results
@@ -871,12 +783,10 @@ def main(data_folder=".", plot=True, name="feature_spaces"):
         bad_idx=unusable_features_idx,
         drop_cols=waveform_features,
     )
-    save_features(
-        feat_df, "engineered_combined_features", args, bad_idx=unusable_features_idx
-    )
+    save_features(feat_df, "engineered_combined_features", args, bad_idx=unusable_features_idx)
 
     ### Generating raw features dataframes
-    
+
     # 2d acgs and peak waveform feature spaces
     common_preprocessing = quality_checked_dataset.conformed_waveforms
     labels = quality_checked_dataset.labels_list
@@ -888,15 +798,11 @@ def main(data_folder=".", plot=True, name="feature_spaces"):
     )
     raw_acgs_df = pd.DataFrame(
         quality_checked_dataset.acg,
-        columns=[
-            f"raw_acg_{i}" for i in range(quality_checked_dataset.acg.shape[1])
-        ],
+        columns=[f"raw_acg_{i}" for i in range(quality_checked_dataset.acg.shape[1])],
     )
 
     save_features(
-        pd.concat(
-            [lab_df, raw_acgs_df, raw_wvf_single_common_preprocessing_df], axis=1
-        ),
+        pd.concat([lab_df, raw_acgs_df, raw_wvf_single_common_preprocessing_df], axis=1),
         "raw_2d_acg_peak_wvf",
         args,
         bad_idx=None,
@@ -912,12 +818,8 @@ def main(data_folder=".", plot=True, name="feature_spaces"):
     #### After running the monkey init, prompt to compute 3D acgs.
     from .acg_vs_firing_rate import main as acg_main
 
-    mouse_3d_acgs_path = os.path.join(
-        args.data_folder, "acgs_vs_firing_rate", "acgs_3d_logscale.npy"
-    )
-    monkey_3d_acgs_path = os.path.join(
-        args.data_folder, "acgs_vs_firing_rate", "monkey_acgs_3d_logscale.npy"
-    )
+    mouse_3d_acgs_path = os.path.join(args.data_folder, "acgs_vs_firing_rate", "acgs_3d_logscale.npy")
+    monkey_3d_acgs_path = os.path.join(args.data_folder, "acgs_vs_firing_rate", "monkey_acgs_3d_logscale.npy")
     if not os.path.exists(mouse_3d_acgs_path):
         print("\n Computing log 3D acgs for mouse. \n")
         acg_main(data_path=args.data_folder, dataset=args.name, monkey=False)
@@ -957,11 +859,7 @@ def main(data_folder=".", plot=True, name="feature_spaces"):
             "features.csv",
         )
     )
-    monkey_lab_df = pd.read_csv(
-        os.path.join(
-            args.data_folder, "feature_spaces", "raw_2d_acg_peak_wvf", "labels.csv"
-        )
-    )
+    monkey_lab_df = pd.read_csv(os.path.join(args.data_folder, "feature_spaces", "raw_2d_acg_peak_wvf", "labels.csv"))
     monkey_raw_wvf_df = monkey_raw_df.filter(regex="raw_wvf")
 
     save_features(

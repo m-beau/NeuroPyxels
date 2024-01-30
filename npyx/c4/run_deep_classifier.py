@@ -14,10 +14,10 @@ from typing import Dict, Optional, Tuple, Union
 import matplotlib
 import matplotlib.pyplot as plt
 
-try:
-    matplotlib.use("TkAgg")
-except Exception:
-    pass
+# try:
+#     matplotlib.use("TkAgg")
+# except Exception:
+#     pass
 
 import numpy as np
 import pandas as pd

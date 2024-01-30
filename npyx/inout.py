@@ -158,7 +158,7 @@ def metadata(dp):
         for filt_key in ['highpass','lowpass']:
             meta[filt_key]={}
             filt_key_i=filt_index[filt_key]
-            meta[filt_key]['sampling_rate']=int(meta_oe["continuous"][filt_key_i]['sample_rate'])
+            meta[filt_key]['sampling_rate']=float(meta_oe["continuous"][filt_key_i]['sample_rate'])
             meta[filt_key]['n_channels_binaryfile']=int(meta_oe["continuous"][filt_key_i]['num_channels'])
             if params_f.exists():
                 meta[filt_key]['n_channels_analysed']=params['n_channels_dat']
@@ -260,9 +260,9 @@ def metadata(dp):
 
             # sampling rate
             if meta_glx[filt_key]['typeThis'] == 'imec':
-                meta[filt_key]['sampling_rate']=int(meta_glx[filt_key]['imSampRate'])
+                meta[filt_key]['sampling_rate']=float(meta_glx[filt_key]['imSampRate'])
             else:
-                meta[filt_key]['sampling_rate']=int(meta_glx[meta_glx['typeThis'][:2]+'SampRate'])
+                meta[filt_key]['sampling_rate']=float(meta_glx[meta_glx['typeThis'][:2]+'SampRate'])
 
             meta[filt_key]['n_channels_binaryfile']=int(meta_glx[filt_key]['nSavedChans'])
             if params_f.exists():
@@ -476,7 +476,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
     filt_suffix = {'highpass':'ap', 'lowpass':'lf'}[filt_key]
     assert unit in ['seconds', 'samples']
 
-    sync_dp = dp/'sync_chan'
+    sync_dp = dp / 'sync_chan'
     meta    = read_metadata(dp)
     srate   = meta[filt_key]['sampling_rate'] if unit=='seconds' else 1
 
@@ -536,11 +536,14 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
                                 "found in sync_chan directory: extracting sync channel from binary.\n"))
             npz_files = list_files(sync_dp, 'npz')
             if any(npz_files):
-                if verbose: print('Compressed binary found - extracting from there...')
-                fname      = npz_files[0][:-9]
-                sync_fname = npz_files[0][:-4]
-                binary     = np.load(sync_dp/(sync_fname+'.npz'))
-                binary     = binary[dir(binary.f)[0]].astype(np.int8)
+                for npz_file in npz_files:
+                    filt_suffix_npz = npz_file.split('.')[-2][:2]
+                    if filt_suffix_npz == filt_suffix:
+                        if verbose: print(f'Compressed binary found {npz_file} - extracting from there...')
+                        fname      = npz_file[:-9]
+                        sync_fname = npz_file[:-4]
+                        binary     = np.load(sync_dp/(sync_fname+'.npz'))
+                        binary     = binary[dir(binary.f)[0]].astype(np.int8)
 
         else: os.mkdir(sync_dp)
 
@@ -550,7 +553,7 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
             ap_files = list_files(dp, 'ap.bin')
             lf_files = list_files(dp, 'lf.bin')
 
-            if   filt_suffix == 'ap':
+            if filt_suffix == 'ap':
                 assert any(ap_files), f'No .ap.bin file found at {dp}!! Aborting.'
                 fname=ap_files[0]
             elif filt_suffix == 'lf':

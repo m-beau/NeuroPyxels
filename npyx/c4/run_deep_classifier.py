@@ -11,14 +11,7 @@ import tarfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 
-import matplotlib
 import matplotlib.pyplot as plt
-
-# try:
-#     matplotlib.use("TkAgg")
-# except Exception:
-#     pass
-
 import numpy as np
 import pandas as pd
 
@@ -33,32 +26,11 @@ with contextlib.suppress(ImportError):
 
     from torchvision import transforms
 
-try:
+with contextlib.suppress(ImportError):
     from laplace import BaseLaplace, Laplace
     from laplace.utils import KronDecomposed
-except ImportError:
-    KronDecomposed = None
-    BaseLaplace = None
-    print(
-        (
-            "\nlaplace could not be imported - "
-            "some functions from the submodule npyx.c4 will not work.\n"
-            "To install laplace, see https://pypi.org/project/laplace-torch/."
-        )
-    )
-
-try:
+with contextlib.suppress(ImportError):
     from imblearn.over_sampling import RandomOverSampler
-except ImportError:
-    print(
-        (
-            "\nimblearn could not be imported - "
-            "some functions from the submodule npyx.c4 will not work.\n"
-            "To install imblearn, see https://pypi.org/project/imblearn/."
-        )
-    )
-
-
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import f1_score
 from sklearn.model_selection import LeaveOneOut, StratifiedKFold
@@ -69,10 +41,9 @@ import npyx.datasets as datasets
 import npyx.plot as npyx_plot
 from npyx.ml import set_seed
 
-from . import acg_augmentations
+from . import acg_augmentations, waveform_augmentations
 from . import dl_transforms as custom_transforms
 from . import plots_functions as pf
-from . import waveform_augmentations
 from .dataset_init import (
     BIN_SIZE,
     WAVEFORM_SAMPLES,
@@ -91,12 +62,11 @@ from .dl_utils import (
     load_waveform_encoder,
     load_waveform_vae,
 )
+from .misc import require_advanced_deps
 
 SEED = 42
 
-VAES_URL = (
-    "https://figshare.com/ndownloader/files/42144024?private_link=93152fd04f501c7760c5"
-)
+VAES_URL = "https://figshare.com/ndownloader/files/42144024?private_link=93152fd04f501c7760c5"
 
 WVF_VAE_PATH_SINGLE = os.path.join(
     Path.home(),
@@ -148,9 +118,7 @@ def download_vaes():
         print("VAE checkpoints were not found, downloading...")
 
         vaes_archive = os.path.join(models_folder, "vaes.tar")
-        download_file(
-            VAES_URL, vaes_archive, description="Downloading VAEs checkpoints"
-        )
+        download_file(VAES_URL, vaes_archive, description="Downloading VAEs checkpoints")
 
         with tarfile.open(vaes_archive, "r:") as tar:
             for file in tar:
@@ -210,9 +178,7 @@ class CustomDataset(data.Dataset):
         self.wave_transform = wave_transform
         self.layer = layer
         if self.layer is not None:
-            assert len(layer) == len(
-                data
-            ), f"Layer and data must have same length, got {len(layer)} and {len(data)}"
+            assert len(layer) == len(data), f"Layer and data must have same length, got {len(layer)} and {len(data)}"
         self.multi_chan_wave = multi_chan_wave
 
     def __len__(self):
@@ -238,9 +204,7 @@ class CustomDataset(data.Dataset):
         if self.wave_transform is not None:
             waveform = self.wave_transform(waveform).squeeze()
         if self.layer is not None:
-            data_point = np.concatenate((acg.ravel(), waveform, layer)).astype(
-                "float32"
-            )
+            data_point = np.concatenate((acg.ravel(), waveform, layer)).astype("float32")
         else:
             data_point = np.concatenate((acg.ravel(), waveform)).astype("float32")
         return data_point, target
@@ -276,12 +240,14 @@ def plot_training_curves(train_losses, f1_train, epochs, save_folder=None):
     plt.close("all")
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def calculate_accuracy(y_pred, y):
     top_pred = y_pred.argmax(1, keepdim=True)
     correct = top_pred.eq(y.view_as(top_pred)).sum()
     return correct.float() / y.shape[0]
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def train(
     model,
     iterator,
@@ -335,6 +301,7 @@ def train(
     )
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def layer_correction(
     probabilities: Union[np.ndarray, torch.Tensor],
     layer_info: Union[np.ndarray, torch.Tensor],
@@ -383,6 +350,7 @@ def layer_correction(
     return new_probs
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def get_kronecker_hessian_attributes(*kronecker_hessians: KronDecomposed):
     hessians = []
     for h in kronecker_hessians:
@@ -396,6 +364,7 @@ def get_kronecker_hessian_attributes(*kronecker_hessians: KronDecomposed):
     return hessians
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def predict_unlabelled(
     model: Union[BaseLaplace, torch.nn.Module],
     test_loader: data.DataLoader,
@@ -428,14 +397,13 @@ def predict_unlabelled(
             if not isinstance(model, BaseLaplace):
                 model_probabilities = torch.softmax(model_probabilities, dim=-1)
             if enforce_layer:
-                model_probabilities = layer_correction(
-                    model_probabilities, x[:, -4:], labelling
-                )
+                model_probabilities = layer_correction(model_probabilities, x[:, -4:], labelling)
             probabilities.append(model_probabilities)
 
     return torch.cat(probabilities).cpu()
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def get_model_probabilities(
     model: torch.nn.Module,
     train_loader: data.DataLoader,
@@ -471,9 +439,7 @@ def get_model_probabilities(
     probs_normal = []
     with torch.no_grad():
         for x, _ in test_loader:
-            model_uncalibrated_probabilities = torch.softmax(
-                model(x.float().to(device)), dim=-1
-            )
+            model_uncalibrated_probabilities = torch.softmax(model(x.float().to(device)), dim=-1)
             if enforce_layer:
                 model_uncalibrated_probabilities = layer_correction(
                     model_uncalibrated_probabilities, x[:, -4:], labelling
@@ -498,9 +464,7 @@ def get_model_probabilities(
         for x, _ in test_loader:
             model_calibrated_probabilities = la(x.float().to(device))
             if enforce_layer:
-                model_calibrated_probabilities = layer_correction(
-                    model_calibrated_probabilities, x[:, -4:], labelling
-                )
+                model_calibrated_probabilities = layer_correction(model_calibrated_probabilities, x[:, -4:], labelling)
             probs_laplace.append(model_calibrated_probabilities)
 
     return torch.cat(probs_normal).cpu(), torch.cat(probs_laplace).cpu(), la
@@ -589,6 +553,7 @@ class CNNCerebellum(nn.Module):
         return x
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def define_transformations(
     norm_acg,
     log_acg=True,
@@ -638,6 +603,7 @@ def define_transformations(
     return acg_transformations, wave_transformations
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def save_ensemble(models_states, file_path):
     # Create a temporary directory to store the models_states
     temp_dir = "models"
@@ -655,6 +621,7 @@ def save_ensemble(models_states, file_path):
     shutil.rmtree(temp_dir)
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def load_ensemble(
     file_path,
     device=None,
@@ -675,9 +642,7 @@ def load_ensemble(
     # Extract the tar archive containing the models
     with tarfile.open(file_path, "r:gz") as tar:
         file_count = len(tar.getmembers())
-        progress_bar = tqdm(
-            total=file_count, desc="Extracting models files", unit="file"
-        )
+        progress_bar = tqdm(total=file_count, desc="Extracting models files", unit="file")
 
         for file in tar:
             tar.extract(file, temp_dir)
@@ -736,9 +701,7 @@ def load_ensemble(
                     **model_kwargs,
                 ).to(device)
 
-                model.load_state_dict(
-                    torch.load(model_path, map_location=device), strict=True
-                )
+                model.load_state_dict(torch.load(model_path, map_location=device), strict=True)
                 model.eval()
                 models.append(model)
             else:
@@ -764,6 +727,7 @@ def load_ensemble(
     return models
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def load_calibrated_ensemble(models, hessians):
     calibrated_models = []
 
@@ -780,15 +744,11 @@ def load_calibrated_ensemble(models, hessians):
             hessian_structure="kron",
             last_layer_name="fc2",
         )
-        hessian = (
-            hessian if isinstance(hessian, torch.Tensor) else KronDecomposed(**hessian)
-        )
+        hessian = hessian if isinstance(hessian, torch.Tensor) else KronDecomposed(**hessian)
         setattr(
             calibrated_model,
             "mean",
-            torch.nn.utils.parameters_to_vector(
-                calibrated_model.model.last_layer.parameters()
-            ).detach(),
+            torch.nn.utils.parameters_to_vector(calibrated_model.model.last_layer.parameters()).detach(),
         )
         setattr(calibrated_model, "H", hessian)
         calibrated_model.optimize_prior_precision(method="marglik")
@@ -797,6 +757,7 @@ def load_calibrated_ensemble(models, hessians):
     return calibrated_models
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def ensemble_predict(
     ensemble,
     test_iterator,
@@ -807,9 +768,7 @@ def ensemble_predict(
 ):
     predicted_probabilities = []
 
-    for model in tqdm(
-        ensemble, leave=True, position=0, desc="Predicting with ensemble"
-    ):
+    for model in tqdm(ensemble, leave=True, position=0, desc="Predicting with ensemble"):
         if not isinstance(model, BaseLaplace):
             model.eval()
         probabilities = predict_unlabelled(
@@ -832,11 +791,10 @@ def ensemble_predict(
     elif method == "raw":
         return predicted_probabilities
     else:
-        raise ValueError(
-            "Invalid method. Choose either 'average', 'majority_voting' or 'raw'."
-        )
+        raise ValueError("Invalid method. Choose either 'average', 'majority_voting' or 'raw'.")
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def cross_validate(
     dataset,
     targets,
@@ -891,13 +849,7 @@ def cross_validate(
         folds_f1 = []
 
         cross_seed = SEED + np.random.randint(0, 100)
-        kfold = (
-            LeaveOneOut()
-            if loo
-            else StratifiedKFold(
-                n_splits=n_splits, shuffle=True, random_state=cross_seed
-            )
-        )
+        kfold = LeaveOneOut() if loo else StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=cross_seed)
 
         for fold, (train_idx, val_idx) in tqdm(
             enumerate(kfold.split(dataset, targets)),
@@ -921,9 +873,7 @@ def cross_validate(
             spikes_val = np.array(spikes, dtype="object")[val_idx].tolist()
 
             oversample = RandomOverSampler(random_state=cross_seed)
-            resample_idx, _ = oversample.fit_resample(
-                np.arange(len(dataset_train)).reshape(-1, 1), y_train
-            )
+            resample_idx, _ = oversample.fit_resample(np.arange(len(dataset_train)).reshape(-1, 1), y_train)
             resample_idx = resample_idx.ravel()
             dataset_train = dataset_train[resample_idx]
             y_train = y_train[resample_idx]
@@ -993,9 +943,7 @@ def cross_validate(
 
             optimizer = optim.AdamW(model.parameters(), lr=1e-3)
 
-            scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                optimizer, epochs, 1, last_epoch=-1
-            )
+            scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, epochs, 1, last_epoch=-1)
 
             criterion = nn.CrossEntropyLoss()
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1061,9 +1009,7 @@ def cross_validate(
         all_runs_f1_scores.append(run_f1)
         all_runs_targets.append(np.array(run_true_targets))
         all_runs_predictions.append(np.array(run_model_pred))
-        all_runs_probabilities.append(
-            np.concatenate(run_probabilities, axis=0)[sort_idx]
-        )
+        all_runs_probabilities.append(np.concatenate(run_probabilities, axis=0)[sort_idx])
         folds_stddev.append(np.array(folds_f1).std())
 
     plot_training_curves(train_losses, f1_train, epochs, save_folder=save_folder)
@@ -1081,9 +1027,7 @@ def cross_validate(
 
     if save_folder is not None:
         np.save(
-            os.path.join(
-                save_folder, "ensemble_predictions_ncells_nclasses_nmodels.npy"
-            ),
+            os.path.join(save_folder, "ensemble_predictions_ncells_nclasses_nmodels.npy"),
             raw_probabilities,
         )
 
@@ -1121,9 +1065,7 @@ def plot_confusion_matrices(
     n_models = len(results_dict["f1_scores"])
     n_classes = results_dict["predicted_probability"].shape[1]
     n_observations = results_dict["predicted_probability"].shape[0] // n_models
-    predictions_matrix = results_dict["predicted_probability"].reshape(
-        (n_models, n_observations, n_classes)
-    )
+    predictions_matrix = results_dict["predicted_probability"].reshape((n_models, n_observations, n_classes))
 
     predictions_matrix = predictions_matrix.transpose(1, 2, 0)
     predicted_probabilities = predictions_matrix.mean(axis=2)
@@ -1132,9 +1074,7 @@ def plot_confusion_matrices(
     #     true_labels = results_dict["true_targets"]
     #     predicted_probabilities = results_dict["predicted_probability"]
 
-    for threshold in tqdm(
-        list(np.arange(0.4, 1, 0.1)) + [0.0], desc="Saving results figures"
-    ):
+    for threshold in tqdm(list(np.arange(0.4, 1, 0.1)) + [0.0], desc="Saving results figures"):
         threshold = round(threshold, 2)
         fig = pf.plot_results_from_threshold(
             true_labels,
@@ -1143,22 +1083,15 @@ def plot_confusion_matrices(
             threshold,
             f"{' '.join(model_name.split('_')).title()} {plots_prefix}({features_name})",
             collapse_classes=False,
-            _shuffle_matrix=[4, 5, 3, 1, 2, 0]
-            if "MLI_A" in labelling.keys()
-            else [3, 4, 1, 0, 2],
-            f1_scores=results_dict["f1_scores"]
-            if "f1_scores" in results_dict
-            else None,
-            _folds_stddev=results_dict["folds_stddev"]
-            if "folds_stddev" in results_dict
-            else None,
+            _shuffle_matrix=[4, 5, 3, 1, 2, 0] if "MLI_A" in labelling.keys() else [3, 4, 1, 0, 2],
+            f1_scores=results_dict["f1_scores"] if "f1_scores" in results_dict else None,
+            _folds_stddev=results_dict["folds_stddev"] if "folds_stddev" in results_dict else None,
         )
-        npyx_plot.save_mpl_fig(
-            fig, f"{prefix}{model_name}_at_threshold_{threshold}", save_folder, "pdf"
-        )
+        npyx_plot.save_mpl_fig(fig, f"{prefix}{model_name}_at_threshold_{threshold}", save_folder, "pdf")
         plt.close()
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def ensemble_inference(
     dataset_test: np.ndarray,
     targets_test: np.ndarray,
@@ -1236,9 +1169,7 @@ def ensemble_inference(
 
     if save_folder is not None:
         np.save(
-            os.path.join(
-                save_folder, "ensemble_predictions_ncells_nclasses_nmodels.npy"
-            ),
+            os.path.join(save_folder, "ensemble_predictions_ncells_nclasses_nmodels.npy"),
             raw_probabilities,
         )
 
@@ -1276,13 +1207,9 @@ def post_hoc_layer_correction(
 
 
 def encode_layer_info_original(layer_information):
-    layer_info = pd.Series(layer_information).replace(
-        to_replace=datasets.LAYERS_CORRESPONDENCE
-    )
+    layer_info = pd.Series(layer_information).replace(to_replace=datasets.LAYERS_CORRESPONDENCE)
 
-    preprocessor = ColumnTransformer(
-        transformers=[("encoder", OneHotEncoder(handle_unknown="ignore"), [-1])]
-    )
+    preprocessor = ColumnTransformer(transformers=[("encoder", OneHotEncoder(handle_unknown="ignore"), [-1])])
 
     return preprocessor.fit_transform(layer_info.to_frame()).toarray()
 
@@ -1290,22 +1217,17 @@ def encode_layer_info_original(layer_information):
 def encode_layer_info(layer_information):
     # Deal with some layers potentially missing from the data provided
     N_values = len(datasets.LAYERS_CORRESPONDENCE.keys())
-    layer_information = np.append(
-        layer_information, list(datasets.LAYERS_CORRESPONDENCE.keys())
-    )
+    layer_information = np.append(layer_information, list(datasets.LAYERS_CORRESPONDENCE.keys()))
 
-    layer_info = pd.Series(layer_information).replace(
-        to_replace=datasets.LAYERS_CORRESPONDENCE
-    )
+    layer_info = pd.Series(layer_information).replace(to_replace=datasets.LAYERS_CORRESPONDENCE)
 
-    preprocessor = ColumnTransformer(
-        transformers=[("encoder", OneHotEncoder(handle_unknown="ignore"), [-1])]
-    )
+    preprocessor = ColumnTransformer(transformers=[("encoder", OneHotEncoder(handle_unknown="ignore"), [-1])])
 
     result = preprocessor.fit_transform(layer_info.to_frame()).toarray()
     return result[:-N_values]
 
 
+@require_advanced_deps("torch", "torchvision", "laplace")
 def main(
     data_folder: str,
     freeze_vae_weights: bool = False,
@@ -1350,9 +1272,7 @@ def main(
 
     global N_CHANNELS
     N_CHANNELS = 4 if args.multi_chan_wave else 10
-    assert (
-        np.array([args.freeze_vae_weights, args.VAE_random_init]).sum() <= 1
-    ), "Only one of the two can be True"
+    assert np.array([args.freeze_vae_weights, args.VAE_random_init]).sum() <= 1, "Only one of the two can be True"
 
     datasets_abs = get_paths_from_dir(args.data_folder)
 
@@ -1369,18 +1289,14 @@ def main(
 
     # Apply quality checks and filter out granule cells
     checked_dataset = dataset_class.apply_quality_checks()
-    LABELLING, CORRESPONDENCE, granule_mask = checked_dataset.filter_out_granule_cells(
-        return_mask=True
-    )
+    LABELLING, CORRESPONDENCE, granule_mask = checked_dataset.filter_out_granule_cells(return_mask=True)
 
     dataset, _ = prepare_classification_dataset(
         checked_dataset,
         normalise_acgs=False,
         multi_chan_wave=args.multi_chan_wave or args.augment_wvf,
         process_multi_channel=args.multi_chan_wave,
-        _acgs_path=os.path.join(
-            args.data_folder, "acgs_vs_firing_rate", "acgs_3d_logscale.npy"
-        ),
+        _acgs_path=os.path.join(args.data_folder, "acgs_vs_firing_rate", "acgs_3d_logscale.npy"),
         _acg_mask=(~granule_mask),
         _acg_multi_factor=10,
         _n_channels=N_CHANNELS,
@@ -1405,9 +1321,7 @@ def main(
     if args.mli_clustering:
         features_suffix += "_mli_clustering"
     features_suffix += "_layer" if args.use_layer else ""
-    augmented = ("_augmented_acgs" if args.augment_acg else "") + (
-        "_augmented_waveforms" if args.augment_wvf else ""
-    )
+    augmented = ("_augmented_acgs" if args.augment_acg else "") + ("_augmented_waveforms" if args.augment_wvf else "")
     model_name = f"deep_semisup{suffix}{augmented}"
 
     save_folder = os.path.join(
@@ -1487,9 +1401,7 @@ def main(
         normalise_acgs=False,
         multi_chan_wave=args.multi_chan_wave,
         process_multi_channel=args.multi_chan_wave,
-        _acgs_path=os.path.join(
-            args.data_folder, "acgs_vs_firing_rate", "monkey_acgs_3d_logscale.npy"
-        ),
+        _acgs_path=os.path.join(args.data_folder, "acgs_vs_firing_rate", "monkey_acgs_3d_logscale.npy"),
         _acg_mask=~mli_b,
         _acg_multi_factor=10,
         _n_channels=N_CHANNELS,
@@ -1497,11 +1409,7 @@ def main(
 
     if args.mli_clustering:
         monkey_targets = (
-            pd.Series(monkey_dataset_class.labels_list)
-            .replace(to_replace=LABELLING)
-            .squeeze()
-            .copy()
-            .to_numpy()
+            pd.Series(monkey_dataset_class.labels_list).replace(to_replace=LABELLING).squeeze().copy().to_numpy()
         )
     else:
         monkey_targets = (
@@ -1556,13 +1464,9 @@ def main(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Run deep semi-superivsed classifier on neural data"
-    )
+    parser = argparse.ArgumentParser(description="Run deep semi-superivsed classifier on neural data")
 
-    parser.add_argument(
-        "-dp", "--data-folder", type=str, help="Path to the folder containing the data"
-    )
+    parser.add_argument("-dp", "--data-folder", type=str, help="Path to the folder containing the data")
 
     parser.add_argument(
         "--freeze_vae_weights",
@@ -1599,14 +1503,10 @@ if __name__ == "__main__":
     )
     parser.set_defaults(mli_clustering=False)
 
-    parser.add_argument(
-        "--use_layer", action="store_true", help="Use layer information during training"
-    )
+    parser.add_argument("--use_layer", action="store_true", help="Use layer information during training")
     parser.set_defaults(use_layer=False)
 
-    parser.add_argument(
-        "--loo", action="store_true", help="Use leave-one-out cross-validation"
-    )
+    parser.add_argument("--loo", action="store_true", help="Use leave-one-out cross-validation")
     parser.set_defaults(loo=False)
 
     parser.add_argument(

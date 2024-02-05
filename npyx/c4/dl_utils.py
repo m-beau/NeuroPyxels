@@ -9,16 +9,10 @@ with contextlib.suppress(ImportError):
     import torch.nn.functional as F
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-try:
+with contextlib.suppress(ImportError):
     from torchvision import transforms
-except ImportError:
-    print(
-        (
-            "\ntorchvision could not be imported - "
-            "some functions from the submodule npyx.c4 will not work.\n"
-            "To install torchvision, see https://pypi.org/project/torchvision/."
-        )
-    )
+
+from .misc import require_advanced_deps
 
 
 class ConvEncoderResize(nn.Module):
@@ -126,9 +120,7 @@ class ConvEncoderWVF(nn.Module):
 
 
 class ForwardDecoder(nn.Module):
-    def __init__(
-        self, d_latent, central_range, n_channels, hidden_units=None, initialise=True
-    ):
+    def __init__(self, d_latent, central_range, n_channels, hidden_units=None, initialise=True):
         super().__init__()
         self.central_range = central_range
         self.n_channels = n_channels
@@ -189,19 +181,11 @@ class ConvolutionalEncoder(nn.Module):
     def __init__(self, d_latent, initialise=False, pool="max"):
         super().__init__()
         self.conv1 = nn.Conv2d(1, 8, kernel_size=(1, 10))
-        self.maxpool1 = (
-            nn.MaxPool2d(kernel_size=(2, 2))
-            if pool == "max"
-            else nn.AvgPool2d(kernel_size=(2, 2))
-        )
+        self.maxpool1 = nn.MaxPool2d(kernel_size=(2, 2)) if pool == "max" else nn.AvgPool2d(kernel_size=(2, 2))
         self.batchnorm1 = nn.BatchNorm2d(8)
 
         self.conv2 = nn.Conv2d(8, 16, (5, 1))
-        self.maxpool2 = (
-            nn.MaxPool2d(kernel_size=(1, 2))
-            if pool == "max"
-            else nn.AvgPool2d(kernel_size=(1, 2))
-        )
+        self.maxpool2 = nn.MaxPool2d(kernel_size=(1, 2)) if pool == "max" else nn.AvgPool2d(kernel_size=(1, 2))
         self.batchnorm2 = nn.BatchNorm2d(16)
 
         self.flatten = nn.Flatten()
@@ -237,11 +221,7 @@ class ConvolutionalEncoder(nn.Module):
         mu = h[:, : self.d_latent]
         log_var = h[:, self.d_latent :]
         # return mu and log_var
-        return (
-            mu
-            if return_mu
-            else dist.Normal(mu, torch.exp(log_var), validate_args=False)
-        )
+        return mu if return_mu else dist.Normal(mu, torch.exp(log_var), validate_args=False)
 
 
 class ACG3DVAE(BaseVAE):
@@ -251,28 +231,19 @@ class ACG3DVAE(BaseVAE):
             self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.encoder = ConvolutionalEncoder(d_latent, pool=pool).to(self.device)
-        self.decoder = ForwardDecoder(
-            d_latent, acg_width, acg_bins, hidden_units=[250, 500]
-        ).to(self.device)
+        self.decoder = ForwardDecoder(d_latent, acg_width, acg_bins, hidden_units=[250, 500]).to(self.device)
         self.acg_bins = acg_bins
         self.acg_width = acg_width
 
     def encode_numpy(self, x):
         with torch.no_grad():
             self.encoder.eval()
-            x_tensor = (
-                torch.tensor(x)
-                .to(self.device)
-                .float()
-                .reshape(-1, 1, self.acg_bins, self.acg_width)
-            )
+            x_tensor = torch.tensor(x).to(self.device).float().reshape(-1, 1, self.acg_bins, self.acg_width)
             return self.encode(x_tensor).detach().cpu().numpy()
 
 
 class WFConvVAE(BaseVAE):
-    def __init__(
-        self, d_latent, central_range, n_channels, initialise=True, device=None
-    ):
+    def __init__(self, d_latent, central_range, n_channels, initialise=True, device=None):
         super().__init__()
         if device is None:
             self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -293,12 +264,7 @@ class WFConvVAE(BaseVAE):
     def encode_numpy(self, x, augment=False):
         with torch.no_grad():
             self.encoder.eval()
-            x_tensor = (
-                torch.tensor(x)
-                .to(self.device)
-                .float()
-                .reshape(-1, 1, self.n_channels, self.central_range)
-            )
+            x_tensor = torch.tensor(x).to(self.device).float().reshape(-1, 1, self.n_channels, self.central_range)
             return self.encode(x_tensor, augment).detach().cpu().numpy()
 
 
@@ -315,9 +281,7 @@ class ACGForwardVAE(nn.Module):
     def encode_numpy(self, x):
         with torch.no_grad():
             self.encoder.eval()
-            x_tensor = (
-                torch.tensor(x).to(self.device).float().reshape(-1, 1, self.in_features)
-            )
+            x_tensor = torch.tensor(x).to(self.device).float().reshape(-1, 1, self.in_features)
             return self.encode(x_tensor).detach().cpu().numpy()
 
 
@@ -337,6 +301,7 @@ class Decoder(nn.Module):
         return h.reshape(-1, 1, self.in_features)
 
 
+@require_advanced_deps("torch")
 def define_forward_vae(in_features, init_weights=True, params=None, device=None):
     if params is None:
         best_params = {
@@ -393,9 +358,7 @@ def define_forward_vae(in_features, init_weights=True, params=None, device=None)
     decoder_layers.append(nn.Linear(d_latent, in_features))
 
     encoder = nn.Sequential(*encoder_layers[:-1], nn.Linear(in_features, 2 * d_latent))
-    decoder = nn.Sequential(
-        *decoder_layers[:0:-1], nn.Linear(first_units, (initial_in_features))
-    )
+    decoder = nn.Sequential(*decoder_layers[:0:-1], nn.Linear(first_units, (initial_in_features)))
 
     encoder = Encoder(encoder, d_latent)
     decoder = Decoder(decoder, d_latent, initial_in_features)
@@ -423,6 +386,7 @@ class CNNCerebellum(nn.Module):
         return x
 
 
+@require_advanced_deps("torch")
 def load_acg_vae(
     encoder_path,
     win_size,
@@ -450,9 +414,8 @@ def load_acg_vae(
     return vae
 
 
-def load_waveform_encoder(
-    encoder_args, encoder_path, in_features, initialise=True, device=None
-):
+@require_advanced_deps("torch")
+def load_waveform_encoder(encoder_args, encoder_path, in_features, initialise=True, device=None):
     enc, _ = define_forward_vae(in_features, params=encoder_args, device=device)
 
     if initialise:
@@ -461,6 +424,7 @@ def load_waveform_encoder(
     return enc
 
 
+@require_advanced_deps("torch")
 def load_waveform_vae(encoder_args, encoder_path, device=None):
     if "device" not in encoder_args.keys():
         encoder_args["device"] = device
@@ -493,6 +457,7 @@ class Encoder(nn.Module):
         return dist.Normal(mu, torch.exp(log_var), validate_args=False)
 
 
+@require_advanced_deps("torch")
 def ELBO_VAE(enc, dec, X, dataset_size, device, beta=1, n_samples=10):
     """
     Computes the Evidence Lower Bound (ELBO) for a Variational Autoencoder (VAE).
@@ -513,15 +478,11 @@ def ELBO_VAE(enc, dec, X, dataset_size, device, beta=1, n_samples=10):
     ELBO = torch.zeros(batch_size).to(device)
     for _ in range(n_samples):
         q_z = enc.forward(X)  # q(Z | X)
-        z = (
-            q_z.rsample()
-        )  # Samples from the encoder posterior q(Z | X) using the reparameterization trick
+        z = q_z.rsample()  # Samples from the encoder posterior q(Z | X) using the reparameterization trick
 
         reconstruction = dec.forward(z)  # distribution p(x | z)
 
-        prior = dist.Normal(
-            torch.zeros_like(q_z.loc).to(device), torch.ones_like(q_z.scale).to(device)
-        )
+        prior = dist.Normal(torch.zeros_like(q_z.loc).to(device), torch.ones_like(q_z.scale).to(device))
 
         MSE = F.mse_loss(reconstruction, X, reduction="none").sum(dim=(1, 2, 3))
 

@@ -187,6 +187,7 @@ def get_paths_from_dir(path_to_dir, include_lisberger=False, include_medina=Fals
                 corresponding_path,
                 f"Downloading {dataset_name} dataset",
             )
+            datasets_abs.append(corresponding_path)
     return sorted(datasets_abs, key=os.path.getsize)
 
 

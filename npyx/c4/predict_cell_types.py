@@ -29,6 +29,7 @@ from npyx.spk_t import trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 
 from .dataset_init import ArgsNamespace, download_file, extract_and_check
+from .misc import require_advanced_deps
 from .plots_functions import (
     C4_COLORS,
     plot_features_1cell_vertical,
@@ -82,9 +83,7 @@ def handle_outdated_model(exc_type, model_type):
     try:
         yield
     except exc_type:
-        models_folder = os.path.join(
-            Path.home(), ".npyx_c4_resources", "models", model_type
-        )
+        models_folder = os.path.join(Path.home(), ".npyx_c4_resources", "models", model_type)
         if os.path.exists(models_folder):
             print(
                 "An error occurred while loading the models, likely due to a change in version. The models folder was removed to force a re-download."
@@ -98,7 +97,7 @@ def directory_checks(data_path):
     assert os.path.exists(data_path), "Data folder does not exist."
     if os.path.isfile(data_path) and data_path.endswith(".h5"):
         print(
-            "You are using an h5 file as input. Make sure it is formatted correctly accoring to the C4 collaboration pipeline."
+            "You are using an h5 file as input. Make sure it is formatted correctly according to the C4 collaboration pipeline."
         )
         return
 
@@ -156,16 +155,12 @@ def prepare_dataset_from_binary(dp, units):
         acgs_3d.append(acg.ravel() * 10)
 
     if bad_units:
-        print(
-            f"Units {str(bad_units)[1:-1]} were skipped because they had too few good spikes."
-        )
+        print(f"Units {str(bad_units)[1:-1]} were skipped because they had too few good spikes.")
     acgs_3d = np.array(acgs_3d)
     waveforms = np.array(waveforms)
 
     if len(acgs_3d) == 0:
-        raise ValueError(
-            "No units were found with the provided parameter choices after quality checks."
-        )
+        raise ValueError("No units were found with the provided parameter choices after quality checks.")
 
     return np.concatenate((acgs_3d, waveforms), axis=1), bad_units
 
@@ -175,9 +170,7 @@ def get_layer_information(args, good_units):
         layer = []
         neuron_ids, _ = datasets.get_h5_absolute_ids(args.data_path)
         for neuron_n in np.sort(neuron_ids):
-            layer_neuron_n = datasets.get_neuron_attr(
-                args.data_path, neuron_n, "phyllum_layer"
-            )
+            layer_neuron_n = datasets.get_neuron_attr(args.data_path, neuron_n, "phyllum_layer")
             layer_neuron_n = datasets.decode_string(layer_neuron_n)
             layer.append(layer_neuron_n)
         layer = np.array(layer)
@@ -186,9 +179,7 @@ def get_layer_information(args, good_units):
         assert os.path.exists(
             layer_path
         ), "Layer information not found. Make sure to have a cluster_layer.tsv file in the data folder if you want to use it."
-        layer_df = pd.read_csv(
-            layer_path, sep="\t"
-        )  # layer will be in a cluster_layer.tsv file
+        layer_df = pd.read_csv(layer_path, sep="\t")  # layer will be in a cluster_layer.tsv file
 
         layer_dict = {}
         for index in layer_df.index:
@@ -198,9 +189,7 @@ def get_layer_information(args, good_units):
         layer = np.array([layer_dict[cluster_id] for cluster_id in good_units])
 
     if np.all(layer == 0):
-        print(
-            "Warning: all units are assigned to layer 0 (unknown). Make sure that the layer information is correct."
-        )
+        print("Warning: all units are assigned to layer 0 (unknown). Make sure that the layer information is correct.")
         print("\nFalling back to no layer information.")
         args.use_layer = False
         one_hot_layer = None
@@ -283,16 +272,12 @@ def prepare_dataset_from_binary_parallel(dp, units):
             acgs_3d.append(dataset_results[i][2])
 
     if bad_units:
-        print(
-            f"Units {str(bad_units)[1:-1]} were skipped because they had too few good spikes."
-        )
+        print(f"Units {str(bad_units)[1:-1]} were skipped because they had too few good spikes.")
     acgs_3d = np.array(acgs_3d)
     waveforms = np.array(waveforms)
 
     if len(acgs_3d) == 0:
-        raise ValueError(
-            "No units were found with the provided parameter choices after quality checks."
-        )
+        raise ValueError("No units were found with the provided parameter choices after quality checks.")
 
     return np.concatenate((acgs_3d, waveforms), axis=1), bad_units
 
@@ -323,13 +308,9 @@ def prepare_dataset(args: ArgsNamespace) -> tuple:
             units = get_units(args.data_path, args.quality)
 
         if args.parallel:
-            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(
-                args.data_path, units
-            )
+            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(args.data_path, units)
         else:
-            prediction_dataset, bad_units = prepare_dataset_from_binary(
-                args.data_path, units
-            )
+            prediction_dataset, bad_units = prepare_dataset_from_binary(args.data_path, units)
 
         good_units = [u for u in units if u not in bad_units]
 
@@ -363,27 +344,25 @@ def format_predictions(predictions_matrix: np.ndarray):
     # compute prediction confidences
     mean_top_pred_confidence = mean_predictions.max(1)
     delta_mean_confidences = np.diff(np.sort(mean_predictions, axis=1), axis=1)[:, -1]
-    n_votes = np.array(
-        [
-            (predictions_matrix[i, :, :].argmax(0) == pred).sum()
-            for i, pred in enumerate(predictions)
-        ]
-    )
+    n_votes = np.array([(predictions_matrix[i, :, :].argmax(0) == pred).sum() for i, pred in enumerate(predictions)])
 
     return predictions, mean_top_pred_confidence, delta_mean_confidences, n_votes  #
 
 
+@require_advanced_deps("dill")
 def save_serialised(la, filepath):
     with open(filepath, "wb") as outpt:
         dill.dump(la, outpt, recurse=True)
 
 
+@require_advanced_deps("dill")
 def load_serialised(filepath):
     with open(filepath, "rb") as inpt:
         la = dill.load(inpt)
     return la
 
 
+@require_advanced_deps("torch", "dill")
 def load_precalibrated_ensemble(
     models_directory,
     fast=False,
@@ -405,9 +384,7 @@ def load_precalibrated_ensemble(
 
     # Workaround to avoid unknown bug when loading the models
     del models[0]
-    models.append(
-        load_serialised(os.path.join(models_directory, "calibrated_model_0.pkl"))
-    )
+    models.append(load_serialised(os.path.join(models_directory, "calibrated_model_0.pkl")))
 
     return models
 
@@ -421,11 +398,10 @@ def save_calibrated_ensemble(calibrated_models, save_directory):
         desc="Saving calibration for later use",
         total=len(calibrated_models),
     ):
-        save_serialised(
-            cal_model, os.path.join(save_directory, f"calibrated_model_{i}.pkl")
-        )
+        save_serialised(cal_model, os.path.join(save_directory, f"calibrated_model_{i}.pkl"))
 
 
+@require_advanced_deps("torch", "laplace", "requests", "dill")
 def main(
     data_path: str = ".",
     quality: str = "good",
@@ -496,9 +472,7 @@ def main(
     hessians_url = HESSIANS_URL_DICT[model_type]
 
     # First download the models if they are not already downloaded
-    models_folder = os.path.join(
-        Path.home(), ".npyx_c4_resources", "models", model_type
-    )
+    models_folder = os.path.join(Path.home(), ".npyx_c4_resources", "models", model_type)
     models_archive = os.path.join(models_folder, "trained_models.tar.gz")
     hessians_archive = os.path.join(models_folder, "hessians.pt")
     serialised_ensemble = os.path.join(models_folder, "calibrated_models")
@@ -509,9 +483,7 @@ def main(
             download_file(models_url, models_archive, description="Downloading models")
         if not os.path.exists(hessians_archive):
             os.makedirs(models_folder, exist_ok=True)
-            download_file(
-                hessians_url, hessians_archive, description="Downloading hessians"
-            )
+            download_file(hessians_url, hessians_archive, description="Downloading hessians")
 
     # Prepare the data for prediction
     prediction_dataset, good_units = prepare_dataset(args)
@@ -563,9 +535,7 @@ def main(
         labelling=labelling,
     )
 
-    predictions, mean_top_pred_confidence, _, n_votes = format_predictions(
-        raw_probabilities
-    )
+    predictions, mean_top_pred_confidence, _, n_votes = format_predictions(raw_probabilities)
     predictions_str = [correspondence[int(prediction)] for prediction in predictions]
 
     predictions_df = pd.DataFrame(
@@ -693,9 +663,7 @@ if __name__ == "__main__":
         default=None,
         help="Which units to classify. If not specified, falls back to all units of 'quality' (all good units by default).",
     )
-    parser.add_argument(
-        "--mli_clustering", action="store_true", help="Divide MLI into two clusters."
-    )
+    parser.add_argument("--mli_clustering", action="store_true", help="Divide MLI into two clusters.")
     parser.set_defaults(mli_clustering=False)
 
     parser.add_argument(

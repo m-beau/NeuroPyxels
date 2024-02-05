@@ -1,12 +1,12 @@
 from datetime import date
 
-import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.pyplot as plt
+
 # try:
 #     matplotlib.use('TkAgg')
 # except:
 #     pass
-
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -28,7 +28,7 @@ C4_COLORS = {
     "PkC_cs": [0, 0, 0],
     "MLI": [224, 85, 159],
     "MFB": [214, 37, 41],
-    "GrC": [42, 161, 73],
+    "GrC": [143, 103, 169],
     "GoC": [56, 174, 62],
     "laser": [96, 201, 223],
     "drug": [239, 126, 34],
@@ -38,9 +38,7 @@ C4_COLORS = {
 }
 
 
-def make_plotting_df(
-    df: pd.DataFrame, save: bool = True, save_path: str = None
-) -> pd.DataFrame:
+def make_plotting_df(df: pd.DataFrame, save: bool = True, save_path: str = None) -> pd.DataFrame:
     dataframe = df.copy()
 
     colors_dict = C4_COLORS
@@ -157,12 +155,8 @@ def save_amplitudes(times, amplitudes, dpi=300, save_name=None):
     if len(amplitudes) > len(times):
         amplitudes = amplitudes[: len(times)]
 
-    fig, ax = plt.subplots(
-        1, 2, figsize=(12, 5), sharey=True, gridspec_kw={"width_ratios": [3, 1]}
-    )
-    ax[0].plot(
-        times / (30000 * 60), amplitudes, marker="o", markersize=2, linestyle="None"
-    )
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5), sharey=True, gridspec_kw={"width_ratios": [3, 1]})
+    ax[0].plot(times / (30000 * 60), amplitudes, marker="o", markersize=2, linestyle="None")
     ax[0].set_xlabel("Time (min)")
     ax[0].set_ylabel(r"Amplitude ($\mu$V)")
     ax[0].spines["top"].set_visible(False)
@@ -173,9 +167,7 @@ def save_amplitudes(times, amplitudes, dpi=300, save_name=None):
     ax[1].spines["top"].set_visible(False)
     ax[1].spines["right"].set_visible(False)
     plt.tight_layout()
-    plt.savefig(
-        f"{save_name}-amplitudes.png", format="png", dpi=dpi, bbox_inches="tight"
-    )
+    plt.savefig(f"{save_name}-amplitudes.png", format="png", dpi=dpi, bbox_inches="tight")
     plt.close()
 
 
@@ -207,9 +199,7 @@ def plot_confusion_from_proba(
         true_targets = np.array([_shuffle_matrix.index(x) for x in true_targets])
 
     predictions = np.argmax(predicted_proba, axis=1)
-    pred_values = predicted_proba[
-        np.arange(len(predicted_proba)), predictions
-    ].squeeze()
+    pred_values = predicted_proba[np.arange(len(predicted_proba)), predictions].squeeze()
 
     sup_threshold = pred_values > threshold
 
@@ -234,17 +224,11 @@ def plot_confusion_from_proba(
         labels=list(range(len(correspondence.keys()))),
     )
 
-    unclass_confusion = np.concatenate(
-        (confusion, count_unclass.reshape(-1, 1)), axis=1
-    )
+    unclass_confusion = np.concatenate((confusion, count_unclass.reshape(-1, 1)), axis=1)
 
-    unclass_confusion_last = (
-        (unclass_confusion / unclass_confusion.sum(axis=1)[:, None]) * 100
-    )[:, -1]
+    unclass_confusion_last = ((unclass_confusion / unclass_confusion.sum(axis=1)[:, None]) * 100)[:, -1]
 
-    mean_confusion = (
-        unclass_confusion / unclass_confusion[:, :-1].sum(axis=1)[:, None]
-    ) * 100
+    mean_confusion = (unclass_confusion / unclass_confusion[:, :-1].sum(axis=1)[:, None]) * 100
 
     mean_confusion[:, -1] = unclass_confusion_last
     mean_confusion = np.nan_to_num(mean_confusion, nan=0.0)
@@ -276,18 +260,10 @@ def plot_confusion_from_proba(
     for i in range(mean_confusion.shape[0]):
         for j in range(mean_confusion.shape[1]):
             if np.isnan(mean_confusion[i, j]):
-                ax.text(
-                    j + 0.5, i + 0.5, "nan", ha="center", va="center", color="black"
-                )
+                ax.text(j + 0.5, i + 0.5, "nan", ha="center", va="center", color="black")
 
-    x_labels = [
-        int(ax.get_xticklabels()[i].get_text())
-        for i in range(len((ax.get_xticklabels())))
-    ]
-    y_labels = [
-        int(ax.get_yticklabels()[i].get_text())
-        for i in range(len(ax.get_yticklabels()))
-    ]
+    x_labels = [int(ax.get_xticklabels()[i].get_text()) for i in range(len((ax.get_xticklabels())))]
+    y_labels = [int(ax.get_yticklabels()[i].get_text()) for i in range(len(ax.get_yticklabels()))]
 
     correspondence_unlab = dict(correspondence)
     correspondence_unlab[max(correspondence.keys()) + 1] = "unclassified"
@@ -334,9 +310,7 @@ def plot_results_from_threshold(
     _shuffle_matrix: list = None,
     _folds_stddev: np.ndarray = None,
 ):
-    fig, ax = plt.subplots(
-        1, 2, figsize=(20, 8), gridspec_kw={"width_ratios": [1.5, 1]}
-    )
+    fig, ax = plt.subplots(1, 2, figsize=(20, 8), gridspec_kw={"width_ratios": [1.5, 1]})
 
     colors_dict = C4_COLORS
 
@@ -353,9 +327,7 @@ def plot_results_from_threshold(
         true_label_mask = true_targets == label
 
         true_positive_p = predicted_proba[predicted_label_mask & true_label_mask, label]
-        false_positive_p = predicted_proba[
-            predicted_label_mask & (~true_label_mask), label
-        ]
+        false_positive_p = predicted_proba[predicted_label_mask & (~true_label_mask), label]
 
         if collapse_classes:
             all_true_positives.append(true_positive_p)
@@ -364,16 +336,12 @@ def plot_results_from_threshold(
 
         skip_tp, skip_fp = False, False
         try:
-            density_correct_factor_tp = (
-                len(true_positive_p) + len(false_positive_p)
-            ) / len(true_positive_p)
+            density_correct_factor_tp = (len(true_positive_p) + len(false_positive_p)) / len(true_positive_p)
         except ZeroDivisionError:
             skip_tp = True
 
         try:
-            density_correct_factor_fp = (
-                len(true_positive_p) + len(false_positive_p)
-            ) / len(false_positive_p)
+            density_correct_factor_fp = (len(true_positive_p) + len(false_positive_p)) / len(false_positive_p)
         except ZeroDivisionError:
             skip_fp = True
 
@@ -403,9 +371,7 @@ def plot_results_from_threshold(
             )
 
     if collapse_classes:
-        plot_collapsed_densities(
-            all_true_positives, all_false_positives, kde_bandwidth, ax
-        )
+        plot_collapsed_densities(all_true_positives, all_false_positives, kde_bandwidth, ax)
     ax[0].set_xlim([0.2, 1])
     ax[0].set_ylim([0, 0.1])
     yl = ax[0].get_ylim()
@@ -440,7 +406,9 @@ def plot_results_from_threshold(
         if type(f1_scores) not in [np.ndarray, list]:
             f1_string = f"F1 score: {f1_scores:.3f}"
         else:
-            f1_string = f"Mean F1 score across {len(f1_scores)} runs: {np.mean(f1_scores):.3f}, std: {np.std(f1_scores):.3f}"
+            f1_string = (
+                f"Mean F1 score across {len(f1_scores)} runs: {np.mean(f1_scores):.3f}, std: {np.std(f1_scores):.3f}"
+            )
         if _folds_stddev is not None:
             f1_string += f"\n Stdev across folds: {_folds_stddev.mean():.3f}"
     else:
@@ -457,9 +425,7 @@ def plot_results_from_threshold(
     return fig
 
 
-def plot_collapsed_densities(
-    all_true_positives, all_false_positives, kde_bandwidth, ax
-):
+def plot_collapsed_densities(all_true_positives, all_false_positives, kde_bandwidth, ax):
     true_positive_p = np.concatenate(all_true_positives)
     false_positive_p = np.concatenate(all_false_positives)
     kde = sm.nonparametric.KDEUnivariate(true_positive_p)
@@ -580,9 +546,7 @@ def plot_cosine_similarity(
 def threshold_predictions(features, predicted_probabilties, threshold):
     predicted_values = predicted_probabilties.argmax(axis=1)
 
-    top_pred_prob = predicted_probabilties[
-        np.arange(len(predicted_probabilties)), predicted_values
-    ].squeeze()
+    top_pred_prob = predicted_probabilties[np.arange(len(predicted_probabilties)), predicted_values].squeeze()
 
     sup_threshold = top_pred_prob > threshold
 
@@ -624,9 +588,7 @@ def plot_waveforms(waveforms, title, col=None, central_range=WAVEFORM_SAMPLES, a
         xlabel="Time (ms)",
         ylabel="Amplitude (a.u.)",
         figsize=(6, 5) if ax is None else None,
-        xtickslabels=np.arange(
-            -(central_range // 2) / 30, ((central_range // 2) + 1) / 30, 10 / 30
-        ).round(1),
+        xtickslabels=np.arange(-(central_range // 2) / 30, ((central_range // 2) + 1) / 30, 10 / 30).round(1),
         xticks=np.arange(0, central_range + 1, 10),
     )
     return ax
@@ -666,12 +628,8 @@ def plot_acgs(acgs, title, col=None, win_size=WIN_SIZE, bin_size=BIN_SIZE, ax=No
         xlabel="Time (ms)",
         ylabel="Autocorrelation (Hz)",
         figsize=(6, 5) if ax is None else None,
-        xtickslabels=np.arange(
-            -(win_size // 2), ((win_size // 2) + 1), win_size // 8
-        ).round(1),
-        xticks=np.arange(
-            0, int(win_size / bin_size) + 1, int(win_size / bin_size) // 8
-        ),
+        xtickslabels=np.arange(-(win_size // 2), ((win_size // 2) + 1), win_size // 8).round(1),
+        xticks=np.arange(0, int(win_size / bin_size) + 1, int(win_size / bin_size) // 8),
     )
 
     return ax
@@ -703,9 +661,7 @@ def plot_features_1cell_vertical(
     if predictions is not None:
         n_obs, n_classes, n_models = predictions.shape
         mean_predictions = predictions.mean(2)
-        pred_dict = {
-            v: np.round(mean_predictions[i, k], 2) for k, v in LABELMAP.items()
-        }
+        pred_dict = {v: np.round(mean_predictions[i, k], 2) for k, v in LABELMAP.items()}
         pred_str = str(pred_dict).replace("{", "").replace("}", "").replace("'", "")
         pred = np.argmax(mean_predictions[i])
         confidence = mean_predictions[i, pred]
@@ -734,17 +690,11 @@ def plot_features_1cell_vertical(
             ct = LABELMAP[cti]
             color_ = [c / 255 for c in C4_COLORS[ct]]
             neuron_predictions = predictions[i, cti, :]
-            axx = fig.add_subplot(
-                grid[cti * row_width : cti * row_width + row_width, -1]
-            )
-            npyx_plot.hist_MB(
-                neuron_predictions, 0, 1, 0.05, ax=axx, color=color_, lw=2
-            )
+            axx = fig.add_subplot(grid[cti * row_width : cti * row_width + row_width, -1])
+            npyx_plot.hist_MB(neuron_predictions, 0, 1, 0.05, ax=axx, color=color_, lw=2)
             mean_color = "k" if sum(color_) != 0 else "grey"
             axx.axvline(np.mean(neuron_predictions), color=mean_color, ls="--", lw=1.5)
-            xtickslabels = (
-                ["0"] + [""] * 4 + ["1"] if (cti == n_classes - 1) else [""] * 6
-            )
+            xtickslabels = ["0"] + [""] * 4 + ["1"] if (cti == n_classes - 1) else [""] * 6
             xlabel = "Confidence" if (cti == n_classes - 1) else ""
             mplp(
                 fig,
@@ -883,9 +833,7 @@ def plot_survival_confidence(
             lw=2,
             label=ct,
         )
-    fig1, ax = mplp(
-        xlabel="Confidence", ylabel="N classified", xlim=[0, 1], show_legend=True
-    )
+    fig1, ax = mplp(xlabel="Confidence", ylabel="N classified", xlim=[0, 1], show_legend=True)
 
     plt.figure()
     for i, ct in enumerate(unique_labels):
@@ -898,9 +846,7 @@ def plot_survival_confidence(
             lw=2,
             label=ct,
         )
-    fig2, ax = mplp(
-        xlabel="Confidence", ylabel="% classified", xlim=[0, 1], show_legend=True
-    )
+    fig2, ax = mplp(xlabel="Confidence", ylabel="% classified", xlim=[0, 1], show_legend=True)
 
     if saveDir is not None:
         npyx_plot.save_mpl_fig(fig1, "survival_plot_Ncells", saveDir, "pdf")

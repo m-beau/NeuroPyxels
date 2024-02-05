@@ -711,24 +711,24 @@ def n_decimals(x):
 
 def get_bestticks(start, end, step=None, light=False):
     """
-    Returns the best ticks for a given array of values (i.e. an sparser array of equally spaced values).
-    If the array if np.arange(10), the returned array will be np.arange(0,10,1).
-    If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
+    Returns the best ticks for a start and end tick.
+    If step is specified, it will be the space between ticks.
+    If light is True, the step will be multiplied by 2.
     """
     span = end - start
     if step is None:
-        upper10=ceil_power10(span)
-        if span<=upper10/5:
-            step=upper10*0.01
-        elif span<=upper10/2:
-            step=upper10*0.05
+        upper10 = ceil_power10(span)
+        if span <= upper10/5:
+            step = upper10*0.01
+        elif span <= upper10/2:
+            step = upper10*0.05
         else:
-            step=upper10*0.1
+            step = upper10*0.1
     if light: step=2*step
-    assert step<span, f'Step {step} is too large for array span {span}!'
-    ticks=np.arange(myceil(start,step),myfloor(end,step)+step,step)
-    ticks=np.round(ticks, n_decimals(step))
-    if step==int(step):ticks=ticks.astype(np.int64)
+    assert step < span, f'Step {step} is too large for array span {span}!'
+    ticks = np.arange(myceil(start, step), myfloor(end, step) + step, step)
+    ticks = np.round(ticks, n_decimals(step))
+    if step == int(step): ticks = ticks.astype(np.int64)
 
     return ticks
 
@@ -738,11 +738,13 @@ def get_bestticks_from_array(arr, step=None, light=False):
     If the array if np.arange(10), the returned array will be np.arange(0,10,1).
     If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
     """
-    arr = np.array(arr)
-    start, end = 0, len(arr)-1
-    ticks_i = get_bestticks(start, end, step, light)
-    ticks = arr[ticks_i]
-
+    # arr = np.array(arr)
+    # start, end = 0, len(arr)-1
+    # ticks_i = get_bestticks(start, end, step, light).astype(int)
+    # ticks = arr[ticks_i]
+    
+    ticks = get_bestticks(arr[0], arr[-1], step, light)
+    
     return ticks
 
 def get_labels_from_ticks(ticks):
@@ -957,7 +959,7 @@ def set_ax_size(ax,w,h):
 def hist_MB(arr, a=None, b=None, s=None,
             title='', xlabel='', ylabel='', legend_label=None,
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
-            saveFig=False, saveDir='', _format='pdf', prettify=True,
+            prettify=True,
             style='bar', density=False, **mplp_kwargs):
     """
     Plot histogram of array arr.
@@ -1008,8 +1010,6 @@ def hist_MB(arr, a=None, b=None, s=None,
     fig, ax = mplp(fig, ax, xlim=xlim, figsize=figsize,
                   prettify=prettify, show_legend=show_legend,
                   **mplp_kwargs)
-
-    if saveFig: save_mpl_fig(fig, title, saveDir, _format)
       
     return fig
 
@@ -1026,6 +1026,7 @@ def paired_plot_df(df, columns, **kwargs):
 
     if 'xtickslabels' not in kwargs:
         kwargs['xtickslabels'] = columns
+    #kwargs = kwargs
     paired_plot(X, **kwargs)
     
 def paired_plot(X, 
@@ -1055,6 +1056,7 @@ def paired_plot(X,
                 binsize=None,
                 hist_color='grey',
                 show_hist_mean=False,
+                
                 hist_kwargs={},
                 
                 **kwargs):
@@ -1205,13 +1207,7 @@ def paired_plot(X,
             f"You must pass {n_feat} xtickslabels, not {len(xtickslabels)}."
     xrot = 45 if max(len(str(lab)) for lab in xtickslabels) > 6 else 0
         
-    mplp(fig, ax,
-         xticks = xticks,
-         xtickslabels = xtickslabels,
-         xlim = [-0.5, n_feat-0.5],
-         show_legend = (labels is not None)|(labels_style is not None),
-         xtickrot=xrot,
-         **kwargs)
+    if 'ylim' in kwargs: ax.set_ylim(kwargs['ylim'])
     
     # Eventually add histogram to the side
     # representing the data on the rightmost column
@@ -1231,6 +1227,7 @@ def paired_plot(X,
         ax2.hist(X[:,-1], bins = bins,
                 color = hist_color, orientation = 'horizontal')
         
+        hist_kwargs = hist_kwargs.copy() # NEVER edit a default argument directly
         if 'ylim' not in hist_kwargs:
             hist_kwargs['ylim'] = ylim
             
@@ -1241,7 +1238,7 @@ def paired_plot(X,
                     f"\u03bc = {mn:.1f}",
                     va='center', ha='left', fontsize=14)
             ax2.axhline(mn, ls='--', lw=2, c='k')
-        
+            
         if 'xlabel' not in hist_kwargs:
             hist_kwargs['xlabel'] = f'Counts\n({xtickslabels[-1]})'
             
@@ -1250,7 +1247,13 @@ def paired_plot(X,
             ytickslabels=['']*len(ax.get_yticks()),
             xlabelpad=-50,
             **hist_kwargs)
-
+    mplp(fig, ax,
+         xticks = xticks,
+         xtickslabels = xtickslabels,
+         xlim = [-0.5, n_feat-0.5],
+         show_legend = (labels is not None)|(labels_style is not None),
+         xtickrot=xrot,
+         **kwargs)
 #%% Stats plots ##############################################################################################
 
 def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1, x=None, ax=None, color=None,
@@ -1303,7 +1306,8 @@ def plot_pval_borders(Y, p, dist='poisson', Y_pred=None, gauss_baseline_fract=1,
 def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
                      fp=None, fn=None, fp_t=None, fn_t=None, fp_threshold=0.05, fn_threshold=0.05,
                      good_fp_periods=None, good_fn_periods=None, title=None, axis=None,
-                     downsample=0.1):
+                     downsample=0.1,
+                     saveFig=False, saveDir=None, _format='pdf', figname=None):
     """
     - train: seconds
     - downsample: [0-1] value, if not None fraction of amplitudes to plot
@@ -1356,6 +1360,11 @@ def plot_fp_fn_rates(train, period_s, amplitudes, good_spikes_m,
     
     if title is not None:
         fig.suptitle(title)
+        
+    if saveFig:
+        if figname is None:
+            figname = "fp_fn_rates"
+        save_mpl_fig(fig, figname, saveDir, _format)
     if axis is None:
         return fig
     else:
@@ -1921,7 +1930,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
                    whiten=False, nRangeWhiten=None, med_sub=False, nRangeMedSub=None, hpfilt=0, hpfiltf=300,
                    filter_forward=False, filter_backward=False,ignore_ks_chanfilt=0,
                    show_allyticks=0, yticks_jump=None, plot_ylabels=True, events=[], set0atEvent=1,
-                   again=False, ax=None):
+                   again=False, ax=None, enforced_peakChan=None):
     f'''
     Plot raw traces with colored overlaid spike times of specified units.
 
@@ -1996,7 +2005,10 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
 
     for iu, u in enumerate(units):
         print('plotting unit {}...'.format(u))
-        peakChan=get_peak_chan(dp,u, use_template=True)
+        if enforced_peakChan is None:
+            peakChan=get_peak_chan(dp,u, use_template=True)
+        else:
+            peakChan=enforced_peakChan
         assert peakChan in channels, "WARNING the peak channel of {}, {}, is not in the set of channels plotted here!".format(u, peakChan)
         peakChan_rel=np.nonzero(peakChan==channels)[0][0]
         ch1, ch2 = max(0,peakChan_rel-Nchan_plot//2), min(rc.shape[0], peakChan_rel-Nchan_plot//2+Nchan_plot)
@@ -2026,6 +2038,185 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
         save_mpl_fig(fig, rcn, saveDir, _format)
 
     return fig
+
+
+def plot_raw_trials(dp, window, trials, channel=None, units=None,
+                    y_offset=200, bg_color='k', lw=1, bg_alpha=1,
+                    spk_window=82, unit_colors=None, unit_lw=1.1,
+                    title=None, saveDir='~/Downloads', saveFig=0, _format='pdf',
+                    figsize=None, plot_baselines=False, events=None, event_tile=None,
+                    whiten=False, nRangeWhiten=None, med_sub=True, nRangeMedSub=None, hpfilt=0, hpfiltf=300,
+                    filter_forward=False, filter_backward=False, ignore_ks_chanfilt=0,
+                    yticks_jump=None, plot_ylabels=True,
+                    again=False, ax=None):
+    f'''
+    Plot raw traces on a given channel across trials
+    eventually with colored overlaid spike times of specified units.
+
+    Arguments:
+        - dp: str, path to dataset
+        - window: list of 2 floats, time window to plot for each trial (in ms)
+        - trials: list of floats, time of trials to plot (seconds)
+        - channel: int, channel to plot (default None: takes the peak channel of the first unit in units)
+        - units: list of ints, units to plot (default None: only plots background data)
+        
+        - y_offset: float, vertical offset between rows in uV
+        - bg_color: str, color of background trace
+        - lw: float, linewidth of background trace
+        - bg_alpha: float, alpha of background trace
+        
+        - spk_window: int, width of plotted unit spikes (in samples)
+        - unit_colors: list of colors, same length as 'units' (or None to default to matplotlib tab10)
+        - unit_lw: float, linewidth of unit spikes
+        
+        - title: str, figure title and overwrites figurename if saveFig
+        - saveDir: str, directory where to save figure
+        - saveFig: bool, whether to save figure
+        - _format: str, format of figure to save
+        
+        - figsize: tuple of 2 floats, size of figure in inches
+        - plot_baselines: bool, whether to plot dotted lines at 0 for every channel
+        - events: list of floats, times where to plot vertical lines within window, in seconds.
+        
+        - whiten: bool, whether to whiten the data across channels. If nRangeWhiten is not None,
+                  whitening matrix is computed with the nRangeWhiten closest channels.
+        - nRangeWhiten: int, see whiten.
+        - med_sub: bool, whether to median-subtract the data across channels. If nRangeMedSub is not none,
+                   median of each channel is computed using the nRangeMedSub closest channels.
+        - nRangeMedSub: int, see med_sub.
+        - hpfilt: bool, whether to high-pass filter the data, using a 3 nodes butterworth filter of cutoff frequency hpfiltf.
+        - hpfiltf: see hpfilt
+        - filter_forward: bool, whether to filter forward
+        - filter_backward: bool, whether to filter backward
+        - ignore_ks_chanfilt: bool, whether to ignore the filtered channelmap from kilosort.
+        
+        - show_allyticks: bool, whether to show a y tick label for every trial
+        - yticks_jump: int, plot ytick label every yticks_jump ticks
+        - plot_ylabels: bool, whether to plot y labels
+        
+        - again: bool, whether to recompute data rather than loading it from disc
+        - ax: matplotlib axes, where plot will be plotted if provided
+    '''
+
+    # Define channel of interest
+    if channel is None:
+        assert units is not None, "If you do not provide any units to overlay, you need to specify the peak channel!"
+        channel = get_peak_chan(dp, units[0])
+    channel = assert_chan_in_dataset(dp, [channel], ignore_ks_chanfilt)[0]
+    
+    # Load raw data
+    meta = read_metadata(dp)
+    fs = meta['highpass']['sampling_rate']
+    reclen = meta['recording_length_seconds']
+    traces = []
+    for tr in trials:
+        
+        times = [tr + window[0]/1000, tr + window[1]/1000 + 1/fs]
+        assert times[0]>=0, f"Trial times cannot be negative {tr}-{window[0]}={times[0]}!"
+        assert times[1]<=reclen, f"Trial times cannot occur after the end of the recording ({tr}+{window[1]}={times[1]} does)!"
+        rc = extract_rawChunk(dp, times, channel, 'highpass', False,
+                        whiten, med_sub, hpfilt, hpfiltf, filter_forward, filter_backward,
+                        nRangeWhiten, nRangeMedSub, False,
+                        ignore_ks_chanfilt, True, 0, 1, again)
+        traces.append(rc.ravel())
+    traces = np.array(traces)
+    traces = traces[::-1, :] # first trial up
+
+    # Offset data
+    plt_offsets = np.arange(0, len(traces)*y_offset, y_offset)
+    traces += plt_offsets[:,np.newaxis]
+    
+    # Initialize figure
+    if ax is None:
+        if figsize is None: figsize = (10, len(trials) * 2)
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+    
+    # Plot background traces
+    traces_t = np.arange(window[0], window[1] + 1000/fs, 1000/fs).round(5)
+    traces_t = np.tile(traces_t, (traces.shape[0], 1))
+    if traces_t.shape[1] == traces.shape[1] + 1: traces_t = traces_t[:,:-1]
+    assert traces_t.shape[1] == traces.shape[1],\
+        f"traces is of shape {traces.shape} when traces_t is of shape {traces_t.shape}!"
+    ax.plot(traces_t.T, traces.T, linewidth=lw, color=bg_color, alpha=bg_alpha, zorder=0)
+    
+    # Eventually plot baselines and events
+    if plot_baselines:
+        for i in np.arange(traces.shape[0]):
+            y=i*y_offset
+            ax.plot([traces_t[0,0], traces_t[0,-1]], [y, y], color=(0.5, 0.5, 0.5),
+                    linestyle='--', linewidth=1, zorder=-100)
+    if events is not None:
+        for e in events:
+            assert e>=window[0] and e<= window[1], f"Event {e} is not within window {window}!"
+            ax.axvline(e, color=(0.3, 0.3, 0.3), linestyle='--', linewidth=2, zorder=1)
+    ax.axvline(0, color=(0.3, 0.3, 0.3), linestyle='--', linewidth=2, zorder=10)
+    
+    if event_tile is not None:
+        assert len(event_tile)==2, "event_tile should be a list of 2 floats!"
+        assert event_tile[0]>=window[0] and event_tile[1]<= window[1], f"Event tile {event_tile} is not within window {window}!"
+        y1 = traces.max() + y_offset/2 - y_offset/6
+        y2 = traces.max() + y_offset/2
+        ax.fill_between([event_tile[0], event_tile[1]], [y1, y1], [y2, y2],
+                        color='dodgerblue', alpha=1)
+
+    # Eventually plot overlaid units
+    if units is not None:
+    
+        assert assert_iterable(units)
+        assert len(units)>=1
+
+        if unit_colors is not None:
+            assert len(unit_colors)==len(units), 'The length of the list of colors should be the same as the list of units!!'
+            for ic, c in enumerate(unit_colors):
+                if isinstance(c, str): unit_colors[ic] = to_rgb(c)
+        else:
+            unit_colors = [get_ncolors_cmap(10, 'tab10')[u%10] for u in np.arange(len(units))]
+
+        for iu, u in enumerate(units):
+            print(f"Plotting unit {u}...")
+            spike_train = trn(dp, u, enforced_rp=1) # in samples
+            for tri, tr in enumerate(trials):
+                
+                traces_t_samples = traces_t[tri] * fs / 1000 # form ms to samples
+                tr = tr * fs # from s to samples
+                
+                spikes_to_plot = spike_train[(spike_train > (tr + (window[0] * fs / 1000) + spk_window//2)) &\
+                                             (spike_train < (tr + (window[1] * fs / 1000) - spk_window//2))]
+                spikes_to_plot = spikes_to_plot - tr # set t1 as time 0
+                print(f"Found {len(spikes_to_plot)} spikes to plot for trial {tri}.")
+                
+                all_t_spk_t = np.array([])
+                all_t_spk_v = np.array([])
+                for spike in spikes_to_plot:
+                    t_spk_slice = (traces_t_samples >= spike - spk_window//2) & (traces_t_samples <= spike + spk_window//2)
+                    all_t_spk_t = np.append(np.append(all_t_spk_t, [np.nan]), traces_t[tri, t_spk_slice])
+                    all_t_spk_v = np.append(np.append(all_t_spk_v, [np.nan]), traces[len(traces)-1-tri, t_spk_slice])
+                ax.plot(np.array(all_t_spk_t).ravel(), np.array(all_t_spk_v).ravel(),
+                        linewidth=unit_lw, color=unit_colors[iu], alpha=1, zorder=0)
+
+    # Plot formatting
+    y_mask = np.ones(traces.shape[0], dtype=bool)
+    if yticks_jump is not None:
+        assert isinstance(yticks_jump, int), "yticks_jump should be an int!"
+        y_mask[::yticks_jump] = False
+    yticks = plt_offsets[y_mask]
+    ytickslabels = np.arange(traces.shape[0])[y_mask] if plot_ylabels else [''] * len(yticks)
+    xticks = get_bestticks_from_array(np.arange(window[0], window[1]+1), step=None, light=True)
+    xtickslabels = xticks
+    ylim = [traces.min()-y_offset/2, traces.max()+y_offset/2]
+
+    # figure saving
+    figname = f'raw_trials_{Path(dp).name}_{units}_{window}'
+    if whiten: figname += f'_whitened_{nRangeWhiten}' 
+    if med_sub: figname += f'_medsub_{nRangeMedSub}'
+    if hpfilt: figname += f"_filt_{hpfiltf}_{filter_forward}_{filter_backward}"
+    if title is not None: rcn=title
+    
+    mplp(xticks=xticks, yticks=yticks, xtickslabels=xtickslabels, ytickslabels=ytickslabels[::-1],
+         xlabel='Time (ms)', ylabel='Trial #', ylim=ylim, xlim=window,
+         saveFig=saveFig, saveDir=saveDir, _format=_format, figname=figname)
 
 #%% Peri-event plots ##############################################################################################
 

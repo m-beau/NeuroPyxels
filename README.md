@@ -201,9 +201,9 @@ Npyx works with the data formatting employed by [SpikeGLX](https://billkarsh.git
 
 ### 💡 Design philosophy
 
-- Memoization
+- [Memoization](https://en.wikipedia.org/wiki/Memoization)
 
-  <ins>Npyx is fast because it rarely computes the same thing twice by relying heavily on caching</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at **npix_dataset/npyxMemory**, from where they are simply reloaded if called again.
+  <ins>Npyx is fast because it rarely computes the same thing twice by relying heavily on caching (memoization as purists like to call it)</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at **npix_dataset/npyxMemory**, from where they are simply reloaded if called again.
 
   An important argument controlling this behaviour is **`again`** (boolean), by default set to False: if True, most npyx functions will recompute their output rather than loading it from npyxMemory. This is important to be aware of this behaviour, as it can lead to mind boggling bugs. For instance, if you load a spike train then re-curate your dataset, e.g. by splitting unit 56 into 504 and 505, the train of the old 'unit 56' will still exist at kilosort_dataset/npyxMemory and you will remain able to load it even though the unit is gone!
 

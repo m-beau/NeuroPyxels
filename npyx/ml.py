@@ -1,20 +1,12 @@
+import contextlib
 import os
 import random
 
 import numpy as np
 import pandas as pd
 
-try:
+with contextlib.suppress(ImportError):
     import torch
-except ImportError:
-    print(
-        (
-            "\nPyTorch could not be imported - "
-            "some functions from the submodule npyx.ml will not work.\n"
-            "To install PyTorch, follow the instructions at http://pytorch.org"
-        )
-    )
-
 from imblearn.over_sampling import RandomOverSampler
 from sklearn.base import TransformerMixin
 from sklearn.ensemble import RandomForestClassifier
@@ -23,7 +15,7 @@ from sklearn.model_selection import LeaveOneOut
 from tqdm.auto import tqdm
 
 
-def set_seed(seed=None, seed_torch=True):
+def set_seed(seed=None, seed_torch=False):
     """
     Function that controls randomness. NumPy and random modules must be imported.
 
@@ -158,15 +150,11 @@ def run_cross_validation(
 
     mean_train = np.array(run_train_accuracies).mean()
     mean_validation = (np.array(run_true_targets) == np.array(run_model_pred)).mean()
-    print(
-        f"Mean train accuracy is {mean_train:.3f} while cross-validation accuracy is {mean_validation:.3f}"
-    )
+    print(f"Mean train accuracy is {mean_train:.3f} while cross-validation accuracy is {mean_validation:.3f}")
     print(
         f"Mean cross-validation F1 score across {n_runs} runs is {np.array(all_runs_f1_scores).mean():.3f}, with std {np.array(all_runs_f1_scores).std():.3f}"
     )
-    print(
-        f"Average standard deviation in F1 score across folds is {np.array(folds_stddev).mean():.3f}"
-    )
+    print(f"Average standard deviation in F1 score across folds is {np.array(folds_stddev).mean():.3f}")
 
     all_targets = np.concatenate(all_runs_targets).squeeze()
     all_probabilities = np.concatenate(all_runs_probabilities).squeeze()

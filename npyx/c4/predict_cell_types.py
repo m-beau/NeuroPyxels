@@ -11,12 +11,12 @@ from typing import Optional
 if __name__ == "__main__":
     __package__ = "npyx.c4"
 
-import dill
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 
 with contextlib.suppress(ImportError):
+    import dill
     import torch
     import torch.utils.data as data
 

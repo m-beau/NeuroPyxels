@@ -4,6 +4,7 @@ if __name__ == "__main__":
     __package__ = "npyx.c4"
 
 import argparse
+import contextlib
 import datetime
 import pickle
 import warnings
@@ -13,7 +14,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import requests
 import seaborn as sns
 from scipy.optimize import OptimizeWarning
 from tqdm.auto import tqdm
@@ -22,6 +22,11 @@ import npyx.corr as corr
 import npyx.datasets as datasets
 import npyx.feat as feat
 import npyx.plot as npyx_plot
+
+from .misc import require_advanced_deps
+
+with contextlib.suppress(ImportError):
+    import requests
 
 warnings.filterwarnings("ignore", category=OptimizeWarning)
 matplotlib.rcParams["pdf.fonttype"] = 42  # necessary to make the text editable
@@ -96,6 +101,7 @@ class ArgsNamespace:
         self.__dict__.update(kwargs)
 
 
+@require_advanced_deps("requests")
 def download_file(url, output_path, description=None):
     response = requests.get(url, stream=True)
     total_size = int(response.headers.get("content-length", 0))

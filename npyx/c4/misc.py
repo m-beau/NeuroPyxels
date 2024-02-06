@@ -9,7 +9,9 @@ def require_advanced_deps(*deps):
             if missing_deps:
                 raise ImportError(
                     f"This function ('{func.__name__}') requires additional dependencies to run: {', '.join(missing_deps)}. \n"
-                    "Please re-install the 'c4' version of npyx or manually install the missing dependencies to run it."
+                    "Please re-install the 'c4' version of npyx by running 'pip install npyx[c4]' \n"
+                    "Alternatively, manually install the missing dependencies. \n"
+                    "For more information, please refer to: https://github.com/m-beau/NeuroPyxels#%EF%B8%8F-installation. \n"
                 )
             return func(*args, **kwargs)
 

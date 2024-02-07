@@ -56,7 +56,7 @@ from .dataset_init import (
     save_results,
 )
 from .dl_utils import (
-    ConvolutionalEncoder,
+    CNNCerebellum,
     Encoder,
     load_acg_vae,
     load_waveform_encoder,
@@ -468,89 +468,6 @@ def get_model_probabilities(
             probs_laplace.append(model_calibrated_probabilities)
 
     return torch.cat(probs_normal).cpu(), torch.cat(probs_laplace).cpu(), la
-
-
-class CNNCerebellum(nn.Module):
-    """
-    A convolutional neural network for classifying cerebellar data.
-
-    Args:
-        acg_head (ConvolutionalEncoder): The encoder for the ACG data.
-        waveform_head (Encoder): The encoder for the waveform data.
-        n_classes (int): The number of classes to classify.
-        freeze_vae_weights (bool): Whether to freeze the weights of the VAE.
-        use_layer (bool): Whether to use the layer data.
-        multi_chan_wave (bool): Whether to use multiple channels for the waveform data.
-
-    Attributes:
-        acg_head (ConvolutionalEncoder): The encoder for the ACG data.
-        wvf_head (Encoder): The encoder for the waveform data.
-        use_layer (bool): Whether to use the layer data.
-        multi_chan_wave (bool): Whether to use multiple channels for the waveform data.
-        fc1 (nn.LazyLinear): The first fully connected layer.
-        fc2 (nn.LazyLinear): The second fully connected layer.
-        batch_norm (nn.BatchNorm1d): The batch normalization layer.
-
-    Methods:
-        forward(x: torch.Tensor, layer: Optional[torch.Tensor] = None) -> torch.Tensor:
-            Performs a forward pass through the network.
-
-    """
-
-    def __init__(
-        self,
-        acg_head: ConvolutionalEncoder,
-        waveform_head: Encoder,
-        n_classes: int = 5,
-        freeze_vae_weights: bool = False,
-        use_layer: bool = False,
-        multi_chan_wave: bool = False,
-    ) -> None:
-        super(CNNCerebellum, self).__init__()
-        self.acg_head = acg_head
-        self.wvf_head = waveform_head
-        self.use_layer = use_layer
-        self.multi_chan_wave = multi_chan_wave
-
-        if freeze_vae_weights:
-            for param in self.acg_head.parameters():
-                param.requires_grad = False
-            for param in self.wvf_head.parameters():
-                param.requires_grad = False
-        self.fc1 = nn.LazyLinear(100)
-        self.fc2 = nn.LazyLinear(n_classes)
-        self.batch_norm = nn.BatchNorm1d(24) if self.use_layer else nn.BatchNorm1d(20)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        acg = x[:, :1010]
-
-        if self.use_layer:
-            wvf = x[:, 1010:-4]
-            layer = x[:, -4:]
-        else:
-            wvf = x[:, 1010:]
-
-        if self.multi_chan_wave:
-            wvf = wvf.reshape(-1, 1, 4, 90)
-
-        acg = self.acg_head.forward(acg.reshape(-1, 1, 10, 101))
-        wvf = self.wvf_head.forward(wvf)
-
-        acg_tensor = acg.mean
-        wvf_tensor = wvf.mean
-
-        if self.use_layer:
-            x = torch.cat((acg_tensor, wvf_tensor, layer), dim=1)
-        else:
-            x = torch.cat((acg_tensor, wvf_tensor), dim=1)
-
-        x = self.batch_norm(x)
-
-        x = F.relu(self.fc1(x))
-
-        x = self.fc2(torch.cat((x, layer), dim=1)) if self.use_layer else self.fc2(x)
-
-        return x
 
 
 @require_advanced_deps("torch", "torchvision", "laplace")

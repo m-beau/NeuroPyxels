@@ -13,7 +13,8 @@ try:
                     run_deep_classifier, dl_transforms, waveform_augmentations
     C4_IMPORTED = True
 except ImportError:
-    # Do not import extra C4 functionality if torch is not installed.
+    # Do not import extra C4 functionality in the main namespace if torch is not installed.
+    # Also affects import printing.
     C4_IMPORTED = False
     pass
 

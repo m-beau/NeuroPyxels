@@ -56,3 +56,10 @@ def require_advanced_deps(*deps):
         return wrapper
 
     return decorator
+
+
+class MissingTorch:
+    def __init__(self) -> None:
+        raise ImportError(
+            f"This class requires the 'torch' package to be initialised. \n" f"{import_error_info_string}"
+        )

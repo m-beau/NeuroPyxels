@@ -165,8 +165,8 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
     periods = check_periods(periods)
-    periods = periods * fs # convert from seconds to samples
     if not isinstance(periods, str): # check_periods ensures that it should be 'all' if it is a string
+        periods = periods * fs # convert from seconds to samples
         sec_bool = np.zeros(len(train)).astype(bool)
         for section in periods:
             sec_bool = sec_bool|(train>=section[0])&(train<=section[1])

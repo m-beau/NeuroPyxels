@@ -333,7 +333,8 @@ def detect_new_spikesorting(dp, print_message=True, qualities=None):
         ), "this function should be ran on an original sorted dataset, not on a merged dataset."
         last_spikesort = os.path.getmtime(dp / "spike_clusters.npy")
         last_tsv_update = os.path.getmtime(dp / "cluster_group.tsv")
-        spikesorted = last_tsv_update == last_spikesort
+        # spikesorted = last_tsv_update == last_spikesort
+        spikesorted = abs(last_tsv_update - last_spikesort) < 1.0 # do not edit out!!
 
     else:
         qualities_old = pd.read_csv(dp / "cluster_group.tsv", delim_whitespace=True)
@@ -388,7 +389,7 @@ def load_units_qualities(dp, again=False):
             )
             qualities = generate_units_qualities(dp)
         else:
-            if "unsorted" not in qualities["group"].values:
+            if "unsorted" not in qualities["group"].values and re_spikesorted:
                 # the file can only be 'not re_spikesorted' if it has been edited by npyx (or manually)
                 # so in the rare case where all neurons are called 'mua' or 'good' or 'noise' with none left unsorted,
                 # but npyx already regenerated the tsv file, we should NOT regenerate the file

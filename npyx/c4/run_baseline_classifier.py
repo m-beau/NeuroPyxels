@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import os
 import warnings
 from pathlib import Path
@@ -8,7 +9,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from imblearn.over_sampling import RandomOverSampler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessClassifier
@@ -25,6 +25,10 @@ from npyx.ml import run_cross_validation
 
 from . import plots_functions as pf
 from .dataset_init import ArgsNamespace, save_results
+from .misc import require_advanced_deps
+
+with contextlib.suppress(ImportError):
+    from imblearn.over_sampling import RandomOverSampler
 
 matplotlib.rcParams["pdf.fonttype"] = 42  # necessary to make the text editable
 matplotlib.rcParams["ps.fonttype"] = 42
@@ -42,6 +46,7 @@ CROSS_VAL_REPEATS = 10
 SEED = 2023
 
 
+@require_advanced_deps("imblearn")
 def train_predict_test(
     train_features: np.ndarray,
     train_targets: np.ndarray,
@@ -180,32 +185,23 @@ def save_predictions_df(
     if probability_type is None:
         probability_type = "predicted_probability"
 
-    predictions_df = pd.DataFrame(
-        data=results_dict[probability_type], columns=list(labelling.keys())[::-1]
-    )
-    predictions_df["true_targets"] = [
-        correspondence[true] for true in results_dict["true_targets"]
-    ]
+    predictions_df = pd.DataFrame(data=results_dict[probability_type], columns=list(labelling.keys())[::-1])
+    predictions_df["true_targets"] = [correspondence[true] for true in results_dict["true_targets"]]
     predictions_df["predicted_targets"] = [
-        correspondence[pred]
-        for pred in np.argmax(results_dict[probability_type], axis=1)
+        correspondence[pred] for pred in np.argmax(results_dict[probability_type], axis=1)
     ]
 
     engineered_features = "engineered" in args.features_folder
 
     if engineered_features:
-        dataset_info["included"] = (
-            dataset_info["features_ok"] * dataset_info["included"]
-        )
+        dataset_info["included"] = dataset_info["features_ok"] * dataset_info["included"]
     included = dataset_info["included"].values.ravel().astype(bool)
 
     if not args.use_granule:
         included = included & (dataset_info["label"] != "GrC").values.ravel()
 
     masked_df = (
-        dataset_info.iloc[included]
-        .copy()
-        .drop(columns=["label", "included", "features_ok", "quality_check"])
+        dataset_info.iloc[included].copy().drop(columns=["label", "included", "features_ok", "quality_check"])
     ).reset_index(drop=True)
 
     repeated_df = pd.concat([masked_df] * repeats, axis=0).reset_index(drop=True)
@@ -275,15 +271,9 @@ def main(
     mouse_features = pd.read_csv(os.path.join(args.features_folder, "features.csv"))
     mouse_info_path = Path(args.features_folder).parent.joinpath("dataset_info.csv")
 
-    monkey_features = pd.read_csv(
-        os.path.join(args.features_folder, "monkey_features.csv")
-    )
-    monkey_targets = pd.read_csv(
-        os.path.join(args.features_folder, "monkey_labels.csv")
-    )
-    monkey_info_path = Path(args.features_folder).parent.joinpath(
-        "monkey_dataset_info.csv"
-    )
+    monkey_features = pd.read_csv(os.path.join(args.features_folder, "monkey_features.csv"))
+    monkey_targets = pd.read_csv(os.path.join(args.features_folder, "monkey_labels.csv"))
+    monkey_info_path = Path(args.features_folder).parent.joinpath("monkey_dataset_info.csv")
 
     model_class, default_params = get_model_class(args)
 
@@ -327,9 +317,7 @@ def main(
         repeats=CROSS_VAL_REPEATS,
     )
 
-    for threshold in tqdm(
-        list(np.arange(0.5, 1, 0.1)) + [0.0], desc="Saving results figures"
-    ):
+    for threshold in tqdm(list(np.arange(0.5, 1, 0.1)) + [0.0], desc="Saving results figures"):
         threshold = round(threshold, 2)
         fig = pf.plot_results_from_threshold(
             results_dict["true_targets"],
@@ -339,30 +327,20 @@ def main(
             f"{' '.join(model.split('_')).title()} {plots_prefix}({features_name})",
             collapse_classes=False,
             _shuffle_matrix=[3, 4, 1, 0, 2],
-            f1_scores=results_dict["f1_scores"]
-            if "f1_scores" in results_dict
-            else None,
-            _folds_stddev=results_dict["folds_stddev"]
-            if "folds_stddev" in results_dict
-            else None,
+            f1_scores=results_dict["f1_scores"] if "f1_scores" in results_dict else None,
+            _folds_stddev=results_dict["folds_stddev"] if "folds_stddev" in results_dict else None,
         )
-        npyx_plot.save_mpl_fig(
-            fig, f"{prefix}{model}_at_threshold_{threshold}", save_folder, "pdf"
-        )
+        npyx_plot.save_mpl_fig(fig, f"{prefix}{model}_at_threshold_{threshold}", save_folder, "pdf")
         plt.close()
 
     if "feature_importance_list" in results_dict.keys():
-        plot_feature_importance(
-            results_dict["feature_importance_list"], features, save_folder
-        )
+        plot_feature_importance(results_dict["feature_importance_list"], features, save_folder)
 
     # Now test on the other type of data
 
     if args.train_monkey:
         if not args.use_granule:
-            mouse_features, mouse_targets = filter_out_granule_cells(
-                mouse_features, mouse_targets
-            )
+            mouse_features, mouse_targets = filter_out_granule_cells(mouse_features, mouse_targets)
         mouse_y = mouse_targets.replace(to_replace=LABELLING).squeeze()
 
         prefix = "mouse_tested_"
@@ -409,9 +387,7 @@ def main(
         repeats=CROSS_VAL_REPEATS,
     )
 
-    for threshold in tqdm(
-        list(np.arange(0.5, 1, 0.1)) + [0.0], desc="Saving results figures"
-    ):
+    for threshold in tqdm(list(np.arange(0.5, 1, 0.1)) + [0.0], desc="Saving results figures"):
         threshold = round(threshold, 2)
         fig = pf.plot_results_from_threshold(
             results_dict["true_targets"],
@@ -421,23 +397,15 @@ def main(
             f"{' '.join(model.split('_')).title()} {plots_prefix}({features_name})",
             collapse_classes=False,
             _shuffle_matrix=[3, 4, 1, 0, 2],
-            f1_scores=results_dict["f1_scores"]
-            if "f1_scores" in results_dict
-            else None,
-            _folds_stddev=results_dict["folds_stddev"]
-            if "folds_stddev" in results_dict
-            else None,
+            f1_scores=results_dict["f1_scores"] if "f1_scores" in results_dict else None,
+            _folds_stddev=results_dict["folds_stddev"] if "folds_stddev" in results_dict else None,
         )
-        npyx_plot.save_mpl_fig(
-            fig, f"{prefix}{model}_at_threshold_{threshold}", save_folder, "pdf"
-        )
+        npyx_plot.save_mpl_fig(fig, f"{prefix}{model}_at_threshold_{threshold}", save_folder, "pdf")
         plt.close()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Run a baseline model on the given features."
-    )
+    parser = argparse.ArgumentParser(description="Run a baseline model on the given features.")
 
     parser.add_argument(
         "-f",

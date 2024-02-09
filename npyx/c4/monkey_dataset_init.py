@@ -15,11 +15,21 @@ from .dataset_init import *
 
 def get_lisberger_dataset(data_path):
     files = os.listdir(data_path)
-    lisberger_dataset = [
-        dataset
-        for dataset in files
-        if dataset.endswith(".h5") and "lisberger" in dataset
-    ][0]
+
+    if all("lisberger" not in dataset for dataset in files):
+        download = input("Dataset lisberger not found. Download? (y/n)")
+        if download != "y":
+            raise FileNotFoundError("Lisberger dataset not found. Exiting.")
+
+        corresponding_path = os.path.join(data_path, "C4_database_lisberger.h5")
+        download_file(
+            DATASETS_URL["lisberger"],
+            corresponding_path,
+            "Downloading lisberger dataset",
+        )
+        return corresponding_path
+
+    lisberger_dataset = [dataset for dataset in files if dataset.endswith(".h5") and "lisberger" in dataset][0]
     return os.path.join(data_path, lisberger_dataset)
 
 
@@ -28,10 +38,7 @@ MONKEY_CENTRAL_RANGE = int(WAVEFORM_SAMPLES * 40_000 / 30_000)
 
 def main(data_folder=".", plot=True, name="feature_spaces", save_raw=False):
     # Parse the arguments into a class to preserve compatibility
-    args = ArgsNamespace(
-        data_folder=data_folder, plot=plot, name=name, save_raw=save_raw
-    )
-
+    args = ArgsNamespace(data_folder=data_folder, plot=plot, name=name, save_raw=save_raw)
     datasets_abs = get_lisberger_dataset(args.data_folder)
 
     # Extract and check the datasets, saving a dataframe with the results
@@ -72,9 +79,7 @@ def main(data_folder=".", plot=True, name="feature_spaces", save_raw=False):
         resampled_dataset = npyx.datasets.resample_waveforms(dataset_class, 30_000)
 
     if args.plot:
-        plots_folder = summary_plots(
-            args, resampled_dataset, by_line=False, raw=False, monkey=True
-        )
+        plots_folder = summary_plots(args, resampled_dataset, by_line=False, raw=False, monkey=True)
 
     dataset_inner_path = os.path.join(args.data_folder, args.name)
     if not os.path.exists(dataset_inner_path):
@@ -97,21 +102,14 @@ def main(data_folder=".", plot=True, name="feature_spaces", save_raw=False):
     unusable_features_idx = npyx.feat.get_unusable_features(feat_df)
 
     if len(unusable_features_idx) > 0:
-        dataset_df = report_unusable_features(
-            feat_df, dataset_df, unusable_features_idx, args, lisberger=True
-        )
+        dataset_df = report_unusable_features(feat_df, dataset_df, unusable_features_idx, args, lisberger=True)
 
     #! Insert here any other mask to remove neurons from the dataset in feature creation
 
     # Print to a text file called readme the cell counts in dataset.info
     with open(os.path.join(args.data_folder, args.name, "monkey_readme.txt"), "w") as f:
         f.write("Cell counts in dataset.info:\n")
-        f.write(
-            dataset_df.groupby(["label", "genetic_line"])["included"]
-            .sum()
-            .to_frame()
-            .to_markdown(tablefmt="grid")
-        )
+        f.write(dataset_df.groupby(["label", "genetic_line"])["included"].sum().to_frame().to_markdown(tablefmt="grid"))
         f.write("\n")
 
     # Save quality checks and feature extraction inclusion results

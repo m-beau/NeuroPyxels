@@ -40,6 +40,9 @@ requirements = [
     "tqdm",
     "h5py",
     "seaborn",
+]
+
+c4_requirements = [
     "torch==1.13.1",
     "torchvision==0.14.1",
     "torchaudio==0.13.1",
@@ -50,9 +53,7 @@ requirements = [
 ]
 dependency_links = ["https://download.pytorch.org/whl/cpu"]
 
-entry_points = {
-    "console_scripts": ["predict_cell_types = npyx.c4.predict_cell_types:main"]
-}
+entry_points = {"console_scripts": ["predict_cell_types = npyx.c4.predict_cell_types:main"]}
 
 setup(
     name="npyx",
@@ -64,8 +65,8 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/Npix-routines/NeuroPyxels",
     packages=["npyx", "npyx.c4"],
-    # package_dir={'rtn': 'rtn'},
     install_requires=requirements,
+    extras_require={"c4": c4_requirements},
     dependency_links=dependency_links,
     entry_points=entry_points,
     keywords="neuropixels,kilosort,phy,data analysis,electrophysiology,neuroscience",

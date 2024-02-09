@@ -60,7 +60,7 @@ HESSIANS_URL_DICT = {
 C4_MESSAGE = (
     "\n"
     "Welcome to the cerebellar cell type classifier of the Cerebellar Cell types Classification Collaboration (C4)!\n"
-    "\nYou can use this command ('c4' or 'predict_cell_types') to run the C4 classifier on a phy-compatible dataset (find out preprint here: https://www.biorxiv.org/content/10.1101/2024.01.30.577845v1)."
+    "\nYou can use this command ('c4' or 'predict_cell_types') to run the C4 classifier on a phy-compatible dataset (find our preprint here: https://www.biorxiv.org/content/10.1101/2024.01.30.577845v1)."
     "\nTo run the classifier on the phy-compatible dataset in the current working directory, simply run 'c4 .'. To run it on a phy-compatible dataset present elsewhere, run 'c4 path/to/my/dataset'."
     "\nBy default, the classifier will predict the cell types of all the 'good' units of the dataset (as defined in phy by manual curation), and it will not use layer information. To alter this behaviour, see the options below."
     "\n"

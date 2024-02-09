@@ -26,7 +26,7 @@ requirements = [
     "ipython",
     "numpy",
     "scipy",
-    "pandas<=1.5.3",
+    "pandas",
     "numba",
     "statsmodels",
     "matplotlib",

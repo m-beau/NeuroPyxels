@@ -53,7 +53,7 @@ c4_requirements = [
 ]
 dependency_links = ["https://download.pytorch.org/whl/cpu"]
 
-entry_points = {"console_scripts": ["predict_cell_types = npyx.c4.predict_cell_types:main"]}
+entry_points = {"console_scripts": ["predict_cell_types = npyx.c4.predict_cell_types:main", "c4 = npyx.c4.predict_cell_types:run_c4"]}
 
 setup(
     name="npyx",

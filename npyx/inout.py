@@ -172,10 +172,9 @@ def metadata(dp):
                 binary_rel_path = binary_folder+binary_file[0]
                 meta[filt_key]['binary_relative_path']=binary_rel_path
                 meta[filt_key]['binary_byte_size']=os.path.getsize(dp/binary_rel_path)
-                if filt_key=='highpass' and params_f.exists():
-                    if params['dat_path']!=binary_rel_path:
-                        print((f'\033[34;1mWARNING edit dat_path in params.py '
-                        f'so that it matches relative location of high pass filtered binary file: {binary_rel_path}'))
+                if filt_key=='highpass' and params_f.exists() and params['dat_path']!=binary_rel_path:
+                    print((f'\033[34;1mWARNING edit dat_path in params.py '
+                    f'so that it matches relative location of high pass filtered binary file: {binary_rel_path}'))
             else:
                 meta[filt_key]['binary_relative_path']='not_found'
                 meta[filt_key]['binary_byte_size']='unknown'
@@ -839,10 +838,9 @@ def preprocess_binary_file(dp=None, filt_key='ap', fname=None, target_dp=None, m
     if fname is None:
         fname = get_binary_file_path(dp, filt_key, True)
 
-    if not again_if_preprocessed_filename:
-        if detected_preprocessed_fname(fname):
-            print(f"\nBinary file name {fname} seems to have already been preprocessed. If you wish to re-process it, set 'again_if_preprocessed_filename' to True.\n")
-            return fname
+    if not again_if_preprocessed_filename and detected_preprocessed_fname(fname):
+        print(f"\nBinary file name {fname} seems to have already been preprocessed. If you wish to re-process it, set 'again_if_preprocessed_filename' to True.\n")
+        return fname
 
     fname=Path(fname)
     dp = fname.parent

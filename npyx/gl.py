@@ -171,8 +171,10 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None, warnings=True
 
 
 def json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
+
     DSs = get_datasets(ds_master, ds_paths_master, ds_behav_master, warnings=False)
-    connected_pairs_df = pd.DataFrame(columns=["ds", "dp", "ss", "cs", "nc", "holds_no_behav", "holds_no_sync"])
+    
+    pair_dicts = []
     for dsname, ds in DSs.items():
         for dsk, dsv in ds.items():
             if "probe" in dsk:
@@ -207,10 +209,7 @@ def json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
                                 holds_no_sync = False
 
                             holds_no_behav = True  ## TODO
-                            connected_pairs_df = pd.concat(
-                                (
-                                    connected_pairs_df,
-                                    {
+                            pair_dicts.append({
                                         "ds": dsname,
                                         "dp": dp,
                                         "ss": ss + 0.1 * probei,
@@ -218,10 +217,9 @@ def json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
                                         "nc": cnc + 0.1 * probei,
                                         "holds_no_behav": holds_no_behav,
                                         "holds_no_sync": holds_no_sync,
-                                    },
-                                ),
-                                ignore_index=True,
-                            )
+                                    })
+
+    connected_pairs_df = pd.DataFrame(pair_dicts)
     return connected_pairs_df
 
 

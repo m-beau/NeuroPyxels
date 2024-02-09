@@ -24,6 +24,7 @@ from math import ceil
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 from npyx.gl import get_npyx_memory, get_units
 from npyx.inout import chan_map, get_binary_file_path, read_metadata
 from npyx.preprocess import apply_filter, bandpass_filter, med_substract, whitening
@@ -35,7 +36,8 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
         spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
         save=True, verbose=False, again=False,
         whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
-        nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=True):
+        nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=True,
+        return_corrupt_mask=False):
     '''
     ********
     Extracts a sample of waveforms from the raw data file.
@@ -93,11 +95,20 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
         if verbose: print("File {} found in NeuroPyxels cache.".format(fn))
         return np.load(Path(dpnm,fn))
 
-    waveforms = get_waveforms(dp, u, n_waveforms, t_waveforms, selection, periods, spike_ids, wvf_batch_size, ignore_nwvf,
-                 whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub, ignore_ks_chanfilt, verbose)
-    # Save it
+    waveforms = get_waveforms(dp, u, n_waveforms, t_waveforms,
+                 selection, periods, spike_ids, wvf_batch_size, ignore_nwvf,
+                 whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
+                 ignore_ks_chanfilt, verbose,
+                 True, return_corrupt_mask)
+    if return_corrupt_mask:
+        (waveforms, corrupt_mask) = waveforms
+        
+    # Memoize
     if (save and (spike_ids is None)):
         np.save(Path(dpnm,fn), waveforms)
+        
+    if return_corrupt_mask:
+        return waveforms, corrupt_mask
 
     return waveforms
 
@@ -116,7 +127,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
                   spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
                   whiten=0, med_sub=0, hpfilt=0, hpfiltf=300,
                   nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=0, verbose=False,
-                  med_sub_in_time=True):
+                  med_sub_in_time=True, return_corrupt_mask=False):
     f"{wvf.__doc__}"
 
     # Extract and process metadata
@@ -178,9 +189,9 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
             except:
                 print(f"WARNING it seems the binary file at {dp} is corrupted. Waveform {i} (at byte {t1}, {t1/n_channels_dat/item_size/sample_rate}s) could not be loaded.")
                 waveforms[i,:,:] = np.nan
-    nanmask = np.isnan(waveforms[:,0,0])
-    waveforms = waveforms[~nanmask,:,:]
-    n_spikes -= np.sum(nanmask)
+    corrupt_mask = np.isnan(waveforms[:,0,0])
+    waveforms = waveforms[~corrupt_mask,:,:]
+    n_spikes -= np.sum(corrupt_mask)
     if med_sub_in_time:
         medians = np.median(waveforms, axis = 1)
         waveforms = waveforms - medians[:,np.newaxis,:]
@@ -206,6 +217,9 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     # Correct voltage scaling
     waveforms *= meta['bit_uV_conv_factor']
 
+    if return_corrupt_mask:
+        return waveforms, corrupt_mask
+    
     return waveforms.astype(np.float32)
 
 def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
@@ -356,22 +370,37 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         spike_ids_split = spike_ids_split_all[spike_ids_subsample]
     else:
         spike_ids_split=spike_ids_split_all
-    spike_ids_split_indices = np.arange(0,spike_ids_split.shape[0],1)
+    # spike_ids_split_indices = np.arange(0,spike_ids_split.shape[0],1)
 
     ## Extract the waveforms using the wvf function in blocks of 10 (n_waveforms_per_batch).
     # After waves have been extracted, put the index of the channel with the
     # max amplitude as well as the max amplitude into the peak_chan_split array
     spike_ids_split = spike_ids_split.flatten()
-    raw_waves = wvf(dp, u = None, n_waveforms= 100, t_waveforms = t_waveforms,
+    raw_waves, corrupt_mask = wvf(dp, u = None,
+                    n_waveforms= 100, t_waveforms = t_waveforms,
                     selection='regular', periods=periods, spike_ids=spike_ids_split,
                     wvf_batch_size =wvf_batch_size , ignore_nwvf=ignore_nwvf,
                     save=save , verbose = verbose,  again=True,
                     whiten = whiten, med_sub = med_sub,
                     hpfilt = hpfilt, hpfiltf = hpfiltf, nRangeWhiten=nRangeWhiten,
-                    nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True)
+                    nRangeMedSub=nRangeMedSub, ignore_ks_chanfilt=True,
+                    return_corrupt_mask=True)
+    
+    # Remove waveforms and spike_ids of batches with corrupt waveforms
     spike_ids_split = spike_ids_split.reshape(-1,n_waveforms_per_batch)
+    if np.any(corrupt_mask):
+        reshaped_corrupt_mask = corrupt_mask.reshape(-1,n_waveforms_per_batch).copy()
+        reshaped_corrupt_mask[np.any(reshaped_corrupt_mask, axis=1)] = True # if any of the waveforms in a batch is corrupt, mark the batch as corrupt
+        corrupt_mask = reshaped_corrupt_mask.ravel()[~corrupt_mask] # match size of raw_waveforms
+        raw_waves = raw_waves[~corrupt_mask]
+        
+        corrupt_batches_mask = np.any(reshaped_corrupt_mask, axis=1)
+        spike_ids_split = spike_ids_split[~corrupt_batches_mask]
+    
+    # Compute mean waveforms, batch-wise
     raw_waves = raw_waves.reshape(spike_ids_split.shape[0], n_waveforms_per_batch, t_waveforms, -1)
     mean_waves = np.mean(raw_waves, axis = 1)
+    
     ## Find peak channel (and store amplitude) of every batch
     # only consider amplitudes on channels around original peak channel
     original_peak_chan = get_peak_chan(dp, u, again=again)
@@ -380,11 +409,13 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
     amp_t_span = 20 #samples
     t1, t2 = max(0,mean_waves.shape[1]//2-amp_t_span), min(mean_waves.shape[1]//2+amp_t_span, mean_waves.shape[1])
     amplitudes = np.ptp(mean_waves[:,t1:t2,c_left:c_right], axis=1)
+    
+    spike_ids_split_indices = np.arange(0, spike_ids_split.shape[0], 1)
     batch_peak_channels = np.zeros(shape=(spike_ids_split_indices.shape[0], 3))
     batch_peak_channels[:,0] = spike_ids_split_indices # store batch indices (batch = averaged 10 spikes)
     batch_peak_channels[:,1] = c_left+np.argmax(amplitudes, axis = 1) # store peak channel of each batch
     batch_peak_channels[:,2] = np.max(amplitudes, axis = 1) # store peak channel amplitude
-
+    
     # Filter out batches with too large amplitude (probably artefactual)
     batch_peak_channels = batch_peak_channels[batch_peak_channels[:,2] < max_allowed_amplitude]
 

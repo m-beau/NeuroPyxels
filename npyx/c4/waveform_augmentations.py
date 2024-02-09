@@ -1,9 +1,6 @@
-import random
-
 import numpy as np
 
-from npyx.corr import acg as make_acg
-from npyx.datasets import preprocess_template, resample_acg
+from npyx.datasets import preprocess_template
 
 from .dataset_init import calc_snr
 
@@ -31,9 +28,7 @@ class SelectWave(object):
 
     def __call__(self, sample):
         sample = sample.reshape(self.n_channels, -1)
-        sample = sample[
-            sample.shape[0] // 2 - self.window : sample.shape[0] // 2 + self.window, :
-        ]
+        sample = sample[sample.shape[0] // 2 - self.window : sample.shape[0] // 2 + self.window, :]
         snrs = np.array([calc_snr(wave) for wave in sample])
         good_mask = snrs > 20
 

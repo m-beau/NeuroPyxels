@@ -172,26 +172,18 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None, warnings=True
 
 def json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
     DSs = get_datasets(ds_master, ds_paths_master, ds_behav_master, warnings=False)
-    connected_pairs_df = pd.DataFrame(
-        columns=["ds", "dp", "ss", "cs", "nc", "holds_no_behav", "holds_no_sync"]
-    )
+    connected_pairs_df = pd.DataFrame(columns=["ds", "dp", "ss", "cs", "nc", "holds_no_behav", "holds_no_sync"])
     for dsname, ds in DSs.items():
         for dsk, dsv in ds.items():
             if "probe" in dsk:
                 probei = 0  # if merged dataset: int(dsk[-1])-1
                 if "ss_cnc_real" in dsv.keys():
                     if np.any(dsv["ss_cnc_real"]):
-                        dp_dic = {
-                            probe: str(ds[probe]["dp"])
-                            for probe in ds.keys()
-                            if "probe" in probe
-                        }
+                        dp_dic = {probe: str(ds[probe]["dp"]) for probe in ds.keys() if "probe" in probe}
                         dp, ds_table = merge_datasets(dp_dic)
 
                         putative_pairs = [str(pair) for pair in dsv["ss_cnc_put"]]
-                        assert (
-                            len(putative_pairs) > 0
-                        ), f"No connected pairs found in dataset {dsname} at {ds_master}!"
+                        assert len(putative_pairs) > 0, f"No connected pairs found in dataset {dsname} at {ds_master}!"
                         real_pairs = [str(pair) for pair in dsv["ss_cnc_real"]]
                         if not np.all(np.isin(real_pairs, putative_pairs)):
                             print(
@@ -215,92 +207,92 @@ def json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
                                 holds_no_sync = False
 
                             holds_no_behav = True  ## TODO
-                            connected_pairs_df = connected_pairs_df.append(
-                                {
-                                    "ds": dsname,
-                                    "dp": dp,
-                                    "ss": ss + 0.1 * probei,
-                                    "cs": cs + 0.1 * probei,
-                                    "nc": cnc + 0.1 * probei,
-                                    "holds_no_behav": holds_no_behav,
-                                    "holds_no_sync": holds_no_sync,
-                                },
+                            connected_pairs_df = pd.concat(
+                                (
+                                    connected_pairs_df,
+                                    {
+                                        "ds": dsname,
+                                        "dp": dp,
+                                        "ss": ss + 0.1 * probei,
+                                        "cs": cs + 0.1 * probei,
+                                        "nc": cnc + 0.1 * probei,
+                                        "holds_no_behav": holds_no_behav,
+                                        "holds_no_sync": holds_no_sync,
+                                    },
+                                ),
                                 ignore_index=True,
                             )
     return connected_pairs_df
 
-def make_connected_pairs_df(ds_master,
-        ds_paths_master,
-        ds_behav_master,
-        upsample_sync         = True, # sync spikes are the synchronous spikes + random fraction of the asynchronous spikes to match Ns
 
-        pval_th                         = 0.05,
+def make_connected_pairs_df(
+    ds_master,
+    ds_paths_master,
+    ds_behav_master,
+    upsample_sync=True,  # sync spikes are the synchronous spikes + random fraction of the asynchronous spikes to match Ns
+    pval_th=0.05,
+    sync_win=0.5,  # ms
+    cisi_upper_threshold=0.1,  # s
+    n_pcs_firing_fraction_threshold=0.5,  # [0-1]
+    cbin_inh=0.5,
+    cwin_inh=100,
+    min_win=[0.5, 3],
+    min_win_nbins=3,
+    enforced_rp=0.3,  # ms
+    W_sd=10,
+):
 
-        sync_win                        = 0.5, # ms
-        cisi_upper_threshold            = 0.1, # s
-
-        n_pcs_firing_fraction_threshold = 0.5, # [0-1]
-
-        cbin_inh                        = 0.5,
-        cwin_inh                        = 100,
-        min_win                         = [0.5, 3],
-        min_win_nbins                   = 3,
-        enforced_rp                     = 0.3, # ms
-
-        W_sd                            = 10):
-    
     df = json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master)
 
-    connected_pairs_df_fn = (f"sync_df"
-             f"{pval_th}_{sync_win}_{cisi_upper_threshold}_{n_pcs_firing_fraction_threshold}"
-             f"_{cbin_inh}_{cwin_inh}_{min_win}_{min_win_nbins}_{enforced_rp}_{W_sd}_{upsample_sync}")
+    connected_pairs_df_fn = (
+        f"sync_df"
+        f"{pval_th}_{sync_win}_{cisi_upper_threshold}_{n_pcs_firing_fraction_threshold}"
+        f"_{cbin_inh}_{cwin_inh}_{min_win}_{min_win_nbins}_{enforced_rp}_{W_sd}_{upsample_sync}"
+    )
 
-    DPs = np.unique(df['dp'])
+    DPs = np.unique(df["dp"])
     connected_pairs_df = None
     for dp in DPs:
 
-        saveDir = Path(dp).parent / 'popsync_analysis'
-        assert saveDir.exists(),\
-            f"WARNING : {saveDir} does not exist. Run monosynapticity_exploration notebook first."
+        saveDir = Path(dp).parent / "popsync_analysis"
+        assert saveDir.exists(), f"WARNING : {saveDir} does not exist. Run monosynapticity_exploration notebook first."
         df_ = pd.read_pickle(saveDir / f"{connected_pairs_df_fn}.pkl")
 
-        df_['pval_thresh'] = df_['pcnc_inh_pval']<pval_th
-        df_ = df_.pivot(index=['pc', 'nc'], columns='cisi_popsync')
-        df_.columns = ['_'.join(col).strip() for col in df_.columns.values]
+        df_["pval_thresh"] = df_["pcnc_inh_pval"] < pval_th
+        df_ = df_.pivot(index=["pc", "nc"], columns="cisi_popsync")
+        df_.columns = ["_".join(col).strip() for col in df_.columns.values]
         df_.reset_index(inplace=True)
-        df_['connected'] = [{'TrueTrue':True,
-                            'TrueFalse':False,
-                            'FalseTrue':False,
-                            'FalseFalse':False}[f"{p1}{p2}"]
-                            for p1, p2 in zip(df_['pval_thresh_>0'], df_['pval_thresh_0'])]
-        df_['color'] = [{'TrueTrue':'red',
-                            'TrueFalse':'grey',
-                            'FalseTrue':'grey',
-                            'FalseFalse':'black'}[f"{p1}{p2}"]
-                            for p1, p2 in zip(df_['pval_thresh_>0'], df_['pval_thresh_0'])]
+        df_["connected"] = [
+            {"TrueTrue": True, "TrueFalse": False, "FalseTrue": False, "FalseFalse": False}[f"{p1}{p2}"]
+            for p1, p2 in zip(df_["pval_thresh_>0"], df_["pval_thresh_0"])
+        ]
+        df_["color"] = [
+            {"TrueTrue": "red", "TrueFalse": "grey", "FalseTrue": "grey", "FalseFalse": "black"}[f"{p1}{p2}"]
+            for p1, p2 in zip(df_["pval_thresh_>0"], df_["pval_thresh_0"])
+        ]
 
         # add dp
-        df_.insert(0, 'dp', dp)
+        df_.insert(0, "dp", dp)
 
         if connected_pairs_df is None:
             connected_pairs_df = df_
         else:
-            connected_pairs_df = connected_pairs_df.append(df_)
+            connected_pairs_df = pd.concat((connected_pairs_df, df_), axis=0)
     connected_pairs_df.reset_index(inplace=True, drop=True)
-    connected_pairs_df.insert(2, 'cs', np.nan)
-    connected_pairs_df.rename(columns={'pc':'ss'}, inplace=True)
+    connected_pairs_df.insert(2, "cs", np.nan)
+    connected_pairs_df.rename(columns={"pc": "ss"}, inplace=True)
 
     for i in range(len(connected_pairs_df)):
-        dp, ss, nc = connected_pairs_df.loc[i, ['dp', 'ss', 'nc']]
-        m = (df['dp'] == dp)&(df['ss'] == ss)&(df['nc'] == nc)
-        if np.sum(m)!=1: continue
-        cs = df.loc[m, 'cs'].values[0]
-        connected_pairs_df.loc[i, 'cs'] = cs
+        dp, ss, nc = connected_pairs_df.loc[i, ["dp", "ss", "nc"]]
+        m = (df["dp"] == dp) & (df["ss"] == ss) & (df["nc"] == nc)
+        if np.sum(m) != 1:
+            continue
+        cs = df.loc[m, "cs"].values[0]
+        connected_pairs_df.loc[i, "cs"] = cs
 
     connected_pairs_df.to_pickle(Path(ds_master).parent / "connected_pairs_df.pkl")
 
     return connected_pairs_df
-
 
 
 def get_rec_len(dp, unit="seconds"):
@@ -341,8 +333,8 @@ def detect_new_spikesorting(dp, print_message=True, qualities=None):
         ), "this function should be ran on an original sorted dataset, not on a merged dataset."
         last_spikesort = os.path.getmtime(dp / "spike_clusters.npy")
         last_tsv_update = os.path.getmtime(dp / "cluster_group.tsv")
-        #spikesorted = last_tsv_update == last_spikesort
-        spikesorted = abs(last_tsv_update-last_spikesort) < 1.0
+        # spikesorted = last_tsv_update == last_spikesort
+        spikesorted = abs(last_tsv_update - last_spikesort) < 1.0 # do not edit out!!
 
     else:
         qualities_old = pd.read_csv(dp / "cluster_group.tsv", delim_whitespace=True)
@@ -406,19 +398,14 @@ def load_units_qualities(dp, again=False):
             qualities_new = generate_units_qualities(dp)
 
             sorted_clusters = qualities.loc[qualities["group"] != "unsorted", :]
-            unsorted_clusters_m = ~np.isin(
-                qualities_new["cluster_id"], sorted_clusters["cluster_id"]
-            )
+            unsorted_clusters_m = ~np.isin(qualities_new["cluster_id"], sorted_clusters["cluster_id"])
             unsorted_clusters = qualities_new.loc[unsorted_clusters_m, :]
 
-            qualities = unsorted_clusters.append(sorted_clusters).sort_values(
-                "cluster_id"
-            )
+            qualities = pd.concat((unsorted_clusters, sorted_clusters), axis=0)
+            qualities = qualities.sort_values("cluster_id")
             save_qualities(dp, qualities)
     else:
-        print(
-            "cluster groups table not found in provided data path. Generated from spike_clusters.npy."
-        )
+        print("cluster groups table not found in provided data path. Generated from spike_clusters.npy.")
         qualities = generate_units_qualities(dp)
         save_qualities(dp, qualities)
 
@@ -486,9 +473,7 @@ def get_units(dp, quality="all", chan_range=None, again=False):
 
     # For regular datasets
     peak_channels = get_depthSort_peakChans(dp, units=units, quality=quality)
-    chan_mask = (peak_channels[:, 1] >= chan_range[0]) & (
-        peak_channels[:, 1] <= chan_range[1]
-    )
+    chan_mask = (peak_channels[:, 1] >= chan_range[0]) & (peak_channels[:, 1] <= chan_range[1])
     units = peak_channels[chan_mask, 0].flatten()
 
     return units
@@ -506,9 +491,7 @@ def check_periods(periods):
     periods = npa(periods)
     if periods.ndim == 1:
         periods = periods.reshape(1, -1)
-    assert (
-        periods.ndim == 2
-    ), "When feeding a single period [t1,t2], do not forget the outer brackets [[t1,t2]]!"
+    assert periods.ndim == 2, "When feeding a single period [t1,t2], do not forget the outer brackets [[t1,t2]]!"
     assert periods.shape[1] == 2, err_mess
     assert np.all(
         np.diff(periods, axis=1) > 0

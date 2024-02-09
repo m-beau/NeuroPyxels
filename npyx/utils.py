@@ -24,7 +24,7 @@ import scipy.signal as sgnl
 
 import logging
 from math import pi, log
-from scipy import fft, ifft
+from scipy.fft import fft, ifft
 from scipy.optimize import curve_fit
 from scipy.signal import cspline1d_eval, cspline1d
 

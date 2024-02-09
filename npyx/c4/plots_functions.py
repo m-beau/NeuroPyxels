@@ -1,12 +1,6 @@
 from datetime import date
 
-import matplotlib
 import matplotlib.pyplot as plt
-
-# try:
-#     matplotlib.use('TkAgg')
-# except:
-#     pass
 import numpy as np
 import pandas as pd
 import seaborn as sns

@@ -4,7 +4,19 @@ from . import utils, inout, gl, spk_t, spk_wvf, corr, stats, plot,\
               behav, merger, circuitProphyler, feat, metrics,\
               info, model, h5, testing, ml, datasets
 
-from .c4 import acg_augmentations, dataset_init, dataset_init, dl_utils, predict_cell_types, run_deep_classifier
+from .c4 import dataset_init, misc
+
+try:
+    import torch
+    from .c4 import acg_augmentations, acg_vs_firing_rate, dl_utils, encode_features,\
+                    monkey_dataset_init, plots_functions, predict_cell_types, run_baseline_classifier,\
+                    run_deep_classifier, dl_transforms, waveform_augmentations
+    C4_IMPORTED = True
+except ImportError:
+    # Do not import extra C4 functionality in the main namespace if torch is not installed.
+    # Also affects import printing.
+    C4_IMPORTED = False
+    pass
 
 from .utils import *
 from .inout import *
@@ -45,4 +57,6 @@ npyx submodules:
 
 __version__ = "3.0.2"
 
-print(f"\n\033[32;1mnpyx version {__version__} imported.\033[0m")
+npyx_build = "npyx[c4]" if C4_IMPORTED else "npyx"
+
+print(f"\n\033[32;1m{npyx_build} version {__version__} imported.\033[0m")

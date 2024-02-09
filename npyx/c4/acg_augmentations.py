@@ -1,15 +1,7 @@
-import random
+import numpy as np
+from scipy.signal import fftconvolve
 
 import npyx
-import numpy as np
-try:
-    import torch
-except ImportError:
-    pass
-
-from npyx.corr import acg as make_acg
-from npyx.datasets import resample_acg
-from scipy.signal import fftconvolve
 
 
 def fast_acg3d(
@@ -50,9 +42,7 @@ def fast_acg3d(
 
     bin_size_seconds = bin_size / 1000.0
     intervals = np.searchsorted(spike_times, np.arange(max_indices))
-    firing_rate = 1 / (
-        (bin_size_seconds) * (spike_times[intervals] - spike_times[intervals - 1])
-    )
+    firing_rate = 1 / ((bin_size_seconds) * (spike_times[intervals] - spike_times[intervals - 1]))
     firing_rate = np.nan_to_num(firing_rate)
 
     # Smooth the firing rate with a convolution if requested
@@ -68,9 +58,7 @@ def fast_acg3d(
         smoothed_firing_rate = fftconvolve(padded_firing_rate, kernel, mode="valid")
 
         # Trim the edges of the smoothed firing rate array to remove the padded values
-        trimmed_smoothed_firing_rate = smoothed_firing_rate[
-            half_kernel_size:-half_kernel_size
-        ]
+        trimmed_smoothed_firing_rate = smoothed_firing_rate[half_kernel_size:-half_kernel_size]
 
         firing_rate = trimmed_smoothed_firing_rate
 
@@ -80,13 +68,9 @@ def fast_acg3d(
 
     # Find the bin number for each spike based on its firing rate
     current_firing_rate = firing_rate[spike_times]
-    current_firing_rate_bin_number = np.searchsorted(
-        firing_rate_bins, current_firing_rate
-    )
+    current_firing_rate_bin_number = np.searchsorted(firing_rate_bins, current_firing_rate)
     current_firing_rate_bin_number[current_firing_rate_bin_number == 0] = 1
-    current_firing_rate_bin_number[
-        current_firing_rate_bin_number == len(firing_rate_bins)
-    ] = (len(firing_rate_bins) - 1)
+    current_firing_rate_bin_number[current_firing_rate_bin_number == len(firing_rate_bins)] = len(firing_rate_bins) - 1
 
     # Calculate spike counts for each firing rate bin
     bin_indices = np.arange(num_firing_rate_bins)
@@ -95,20 +79,12 @@ def fast_acg3d(
         bin_spikes = spike_times[current_firing_rate_bin_number == bin_number + 1]
         start = bin_spikes + np.ceil(time_axis[0] / bin_size)
         stop = start + len(time_axis)
-        mask = (
-            (start >= 0)
-            & (stop < len(spiketrain))
-            & (bin_spikes >= spike_times[0])
-            & (bin_spikes < spike_times[-1])
-        )
+        mask = (start >= 0) & (stop < len(spiketrain)) & (bin_spikes >= spike_times[0]) & (bin_spikes < spike_times[-1])
         masked_start = start[mask].astype(int)
         masked_stop = stop[mask].astype(int)
 
         spike_counts[bin_number, :] = np.sum(
-            [
-                spiketrain[masked_start[i] : masked_stop[i]]
-                for i in range(len(masked_start))
-            ],
+            [spiketrain[masked_start[i] : masked_stop[i]] for i in range(len(masked_start))],
             axis=0,
         )
 
@@ -142,9 +118,7 @@ class SubselectPeriod(object):
         if portion_to_use == 0:
             spikes = spikes[spikes < recording_portions[0]]
         elif portion_to_use == 1:
-            spikes = spikes[
-                (spikes >= recording_portions[0]) & (spikes < recording_portions[1])
-            ]
+            spikes = spikes[(spikes >= recording_portions[0]) & (spikes < recording_portions[1])]
         else:
             spikes = spikes[spikes >= recording_portions[1]]
 
@@ -201,9 +175,7 @@ class RandomJitter(object):
         if self.p <= np.random.rand() or sample is not None:
             return spikes, sample
 
-        random_moving = np.random.randint(
-            -self.max_shift, self.max_shift, size=spikes.shape[0]
-        )
+        random_moving = np.random.randint(-self.max_shift, self.max_shift, size=spikes.shape[0])
         return (spikes + random_moving).astype(int), None
 
 
@@ -274,9 +246,7 @@ class Make3DACG(object):
         acg_3d = np.nan_to_num(acg_3d)
 
         if self.log_acg:
-            acg_3d, _ = npyx.corr.convert_acg_log(
-                acg_3d, self.bin_size, self.window_size
-            )
+            acg_3d, _ = npyx.corr.convert_acg_log(acg_3d, self.bin_size, self.window_size)
 
         if self.cut:
             acg_3d = acg_3d[:, acg_3d.shape[1] // 2 :]

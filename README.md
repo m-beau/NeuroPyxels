@@ -63,7 +63,7 @@ We recommend using a conda environment. Pre-existing packages on a python instal
   cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
   git clone https://github.com/m-beau/NeuroPyxels
   cd NeuroPyxels
-  pip install -e . # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
+  pip install . # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
   # optionally (see 'Dealing with cupy' section below):
   conda install -c conda-forge cupy cudatoolkit=11.0
   # test installation:
@@ -201,9 +201,9 @@ Npyx works with the data formatting employed by [SpikeGLX](https://billkarsh.git
 
 ### 💡 Design philosophy
 
-- Memoization
+- [Memoization](https://en.wikipedia.org/wiki/Memoization)
 
-  <ins>Npyx is fast because it rarely computes the same thing twice by relying heavily on caching</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at **npix_dataset/npyxMemory**, from where they are simply reloaded if called again.
+  <ins>Npyx is fast because it rarely computes the same thing twice by relying heavily on caching (memoization as purists like to call it)</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at **npix_dataset/npyxMemory**, from where they are simply reloaded if called again.
 
   An important argument controlling this behaviour is **`again`** (boolean), by default set to False: if True, most npyx functions will recompute their output rather than loading it from npyxMemory. This is important to be aware of this behaviour, as it can lead to mind boggling bugs. For instance, if you load a spike train then re-curate your dataset, e.g. by splitting unit 56 into 504 and 505, the train of the old 'unit 56' will still exist at kilosort_dataset/npyxMemory and you will remain able to load it even though the unit is gone!
 

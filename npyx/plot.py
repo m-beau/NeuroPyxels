@@ -3736,11 +3736,11 @@ def plot_sfcm(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
             ax.plot([xl[0],xl[1]], [rngi[0]-0.5,rngi[0]-0.5], ls="-", c=[0.5,0.5,0.5], lw=0.5)
             ax.plot([xl[0],xl[1]], [rngi[1]+0.5,rngi[1]+0.5], ls="-", c=[0.5,0.5,0.5], lw=0.5)
             border_width = 2
-            rect_y = mpl.patches.Rectangle((xl[0],rngi[0]-0.5), border_width, np.diff(rngi)+1, facecolor=reg_colors[region])
-            rect_x = mpl.patches.Rectangle((rngi[0]-0.5, yl[0]-border_width), np.diff(rngi)+1, 100, facecolor=reg_colors[region])
+            rect_y = mpl.patches.Rectangle((xl[0],rngi[0]-0.5), border_width, np.diff(rngi)[0]+1, facecolor=reg_colors[region])
+            rect_x = mpl.patches.Rectangle((rngi[0]-0.5, yl[0]-border_width), np.diff(rngi)[0]+1, 100, facecolor=reg_colors[region])
             ax.add_patch(rect_y)
             ax.add_patch(rect_x)
-            ax.text(x=border_width+1, y=rngi[0]+np.diff(rngi)/2, s=region, c=reg_colors[region],
+            ax.text(x=border_width+1, y=rngi[0]+np.diff(rngi)[0]/2, s=region, c=reg_colors[region],
                     fontsize=16, fontweight='bold', rotation=90, va='center')
 
     if markers:

@@ -10,7 +10,7 @@ try:
     import torch
     from .c4 import acg_augmentations, acg_vs_firing_rate, dl_utils, encode_features,\
                     monkey_dataset_init, plots_functions, predict_cell_types, run_baseline_classifier,\
-                    run_deep_classifier, dl_transforms, waveform_augmentations
+                    run_deep_classifier, dl_transforms, waveform_augmentations, run_cell_types_classifier
     C4_IMPORTED = True
 except ImportError:
     # Do not import extra C4 functionality in the main namespace if torch is not installed.
@@ -55,7 +55,7 @@ npyx submodules:
  .h5
 """
 
-__version__ = "3.0.2"
+__version__ = "4.0.0"
 
 npyx_build = "npyx[c4]" if C4_IMPORTED else "npyx"
 

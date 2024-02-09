@@ -63,7 +63,7 @@ We recommend using a conda environment. Pre-existing packages on a python instal
   cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
   git clone https://github.com/m-beau/NeuroPyxels
   cd NeuroPyxels
-  pip install -e . # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
+  pip install . # this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).
   # optionally (see 'Dealing with cupy' section below):
   conda install -c conda-forge cupy cudatoolkit=11.0
   # test installation:

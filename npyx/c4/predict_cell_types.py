@@ -328,7 +328,7 @@ def prepare_dataset(args: ArgsNamespace) -> tuple:
     return prediction_dataset, good_units
 
 
-def format_predictions(predictions_matrix: np.ndarray):
+def format_predictions(predictions_matrix: np.ndarray) -> tuple:
     """
     Formats the predictions matrix by computing the mean predictions, prediction confidences, delta mean confidences,
     and number of votes.
@@ -338,7 +338,7 @@ def format_predictions(predictions_matrix: np.ndarray):
         predictions for each observation, class, and model.
 
     Returns:
-        tuple: A tuple containing four numpy arrays:
+        tuple: A tuple containing five numpy arrays:
             - predictions: A 1D numpy array containing the predicted class for each observation.
             - mean_top_pred_confidence: A 1D numpy array containing the mean confidence of the top predicted class for
             each observation.
@@ -346,6 +346,8 @@ def format_predictions(predictions_matrix: np.ndarray):
             predicted class and the second top predicted class for each observation.
             - n_votes: A 1D numpy array containing the number of models that predicted the top predicted class for each
             observation.
+            - top_pred_confidence_ratio: A 1D numpy array containing the confidence ratio between the top predicted class
+            and the second top predicted class for each observation (as used in the C4 paper).
     """
 
     mean_predictions = predictions_matrix.mean(axis=2)
@@ -356,8 +358,9 @@ def format_predictions(predictions_matrix: np.ndarray):
     mean_top_pred_confidence = mean_predictions.max(1)
     delta_mean_confidences = np.diff(np.sort(mean_predictions, axis=1), axis=1)[:, -1]
     n_votes = np.array([(predictions_matrix[i, :, :].argmax(0) == pred).sum() for i, pred in enumerate(predictions)])
+    top_pred_confidence_ratio = np.sort(mean_predictions, axis=1)[:, -1] / np.sort(mean_predictions, axis=1)[:, -2]
 
-    return predictions, mean_top_pred_confidence, delta_mean_confidences, n_votes  #
+    return predictions, mean_top_pred_confidence, delta_mean_confidences, n_votes, top_pred_confidence_ratio
 
 
 @require_advanced_deps("dill")
@@ -419,7 +422,7 @@ def run_cell_types_classifier(
     units: Optional[list] = None,
     mli_clustering: bool = False,
     layer: bool = False,
-    threshold: float = 0.5,
+    threshold: float = 2,
     parallel: bool = True,
 ) -> None:
     """
@@ -546,19 +549,21 @@ def run_cell_types_classifier(
         labelling=labelling,
     )
 
-    predictions, mean_top_pred_confidence, _, n_votes = format_predictions(raw_probabilities)
+    predictions, mean_top_pred_confidence, _, n_votes, confidence_ratio = format_predictions(raw_probabilities)
     predictions_str = [correspondence[int(prediction)] for prediction in predictions]
 
     predictions_df = pd.DataFrame(
         {
             "cluster_id": good_units,
             "predicted_cell_type": predictions_str,
-            "confidence": mean_top_pred_confidence,
+            "pred_probability": mean_top_pred_confidence,
+            "confidence_ratio": confidence_ratio,
             "model_votes": [f"{n}/{len(ensemble)}" for n in n_votes],
         }
     )
 
-    confidence_mask = predictions_df["confidence"] >= args.threshold
+    # Filter out predictions with low confidence
+    confidence_mask = predictions_df["confidence_ratio"] >= args.threshold
     predictions_df = predictions_df[confidence_mask]
 
     # If running on an .h5 file we need to create a save directory
@@ -575,8 +580,11 @@ def run_cell_types_classifier(
         sep="\t",
         index=False,
     )
-    predictions_df[["cluster_id", "confidence"]].to_csv(
-        os.path.join(save_path, "cluster_confidence.tsv"), sep="\t", index=False
+    predictions_df[["cluster_id", "pred_probability"]].to_csv(
+        os.path.join(save_path, "cluster_pred_probability.tsv"), sep="\t", index=False
+    )
+    predictions_df[["cluster_id", "confidence_ratio"]].to_csv(
+        os.path.join(save_path, "cluster_confidence_ratio.tsv"), sep="\t", index=False
     )
     predictions_df[["cluster_id", "model_votes"]].to_csv(
         os.path.join(save_path, "cluster_model_votes.tsv"), sep="\t", index=False
@@ -618,16 +626,24 @@ def run_cell_types_classifier(
                 unit_id=unit,
             )
 
-    num_cores = get_n_cores(len(good_units))
-    with redirect_stdout_fd(open(os.devnull, "w")):
-        Parallel(n_jobs=num_cores, prefer="processes")(
-            delayed(aux_plot_features)(i, unit, correspondence)
-            for i, unit in tqdm(
-                enumerate(good_units),
-                desc="Plotting classification results",
-                total=len(good_units),
+    if args.parallel:
+        num_cores = get_n_cores(len(good_units))
+        with redirect_stdout_fd(open(os.devnull, "w")):
+            Parallel(n_jobs=num_cores, prefer="processes")(
+                delayed(aux_plot_features)(i, unit, correspondence)
+                for i, unit in tqdm(
+                    enumerate(good_units),
+                    desc="Plotting classification results",
+                    total=len(good_units),
+                )
             )
-        )
+    else:
+        for i, unit in tqdm(
+            enumerate(good_units),
+            desc="Plotting classification results",
+            total=len(good_units),
+        ):
+            aux_plot_features(i, unit, correspondence)
 
     plot_survival_confidence(
         raw_probabilities,
@@ -697,8 +713,8 @@ def main(c4=False):
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.5,
-        help="Threshold to keep model predictions. Only predictions with a probability higher than the threshold will be kept. \nOptional argument, default is 0.5.",
+        default="2",
+        help="Confidence ratio threshold to keep model predictions. Only predictions with a confidence ratio (defined as the ratio between the probability assigned by the model to the most probable and the second most probable prediction) higher than the threshold will be kept. \nOptional argument, default is 2.",
     )
 
     parser.add_argument(

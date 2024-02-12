@@ -131,7 +131,7 @@ def directory_checks(data_path):
         os.remove(os.path.join(data_path, "cluster_cell_types.tsv"))
 
 
-def prepare_dataset_from_binary(dp, units):
+def prepare_dataset_from_binary(dp, units, again=False):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -147,7 +147,7 @@ def prepare_dataset_from_binary(dp, units):
             continue
         # We set period_m to None to use the whole recording
         try:
-            t, _ = trn_filtered(dp, u, period_m=None)
+            t, _ = trn_filtered(dp, u, period_m=None, again=again)
         except (IndexError, pd.errors.EmptyDataError, ValueError):
             t, _ = trn_filtered(dp, u, period_m=None, again=True, enforced_rp=-1)
         if len(t) < 10:
@@ -155,7 +155,7 @@ def prepare_dataset_from_binary(dp, units):
             continue
 
         try:
-            wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
+            wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=again)
         except (IndexError, pd.errors.EmptyDataError, ValueError):
             wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
         waveforms.append(datasets.preprocess_template(wvf))
@@ -233,7 +233,7 @@ def prepare_dataset_from_h5(data_path):
     return dataset, dataset_class.h5_ids.tolist()
 
 
-def aux_prepare_dataset(dp, u):
+def aux_prepare_dataset(dp, u, again=False):
     t = trn(dp, u)
     if len(t) < 100:
         # Bad units
@@ -242,7 +242,7 @@ def aux_prepare_dataset(dp, u):
     # We set period_m to None to use the whole recording
     # We catch here and for the waveforms common errors that can be solved by setting again=True in npyx
     try:
-        t, _ = trn_filtered(dp, u, period_m=None)
+        t, _ = trn_filtered(dp, u, period_m=None, again=again)
     except (IndexError, pd.errors.EmptyDataError, ValueError, pickle.UnpicklingError):
         t, _ = trn_filtered(dp, u, period_m=None, again=True, enforced_rp=-1)
     if len(t) < 10:
@@ -250,7 +250,7 @@ def aux_prepare_dataset(dp, u):
         return [True, [], []]
 
     try:
-        wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
+        wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=again)
     except (IndexError, pd.errors.EmptyDataError, ValueError, pickle.UnpicklingError):
         wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
     waveforms = datasets.preprocess_template(wvf)
@@ -262,7 +262,7 @@ def aux_prepare_dataset(dp, u):
     return [False, waveforms, acgs_3d]
 
 
-def prepare_dataset_from_binary_parallel(dp, units):
+def prepare_dataset_from_binary_parallel(dp, units, again=False):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -271,7 +271,7 @@ def prepare_dataset_from_binary_parallel(dp, units):
 
     with redirect_stdout_fd(open(os.devnull, "w")):
         dataset_results = Parallel(n_jobs=num_cores, prefer="processes")(
-            delayed(aux_prepare_dataset)(dp, u)
+            delayed(aux_prepare_dataset)(dp, u, again)
             for u in tqdm(units, desc="Preparing waveforms and ACGs for classification")
         )
 
@@ -319,9 +319,9 @@ def prepare_dataset(args: ArgsNamespace) -> tuple:
             units = get_units(args.data_path, args.quality)
 
         if args.parallel:
-            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(args.data_path, units)
+            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(args.data_path, units, args.again)
         else:
-            prediction_dataset, bad_units = prepare_dataset_from_binary(args.data_path, units)
+            prediction_dataset, bad_units = prepare_dataset_from_binary(args.data_path, units, args.again)
 
         good_units = [u for u in units if u not in bad_units]
 
@@ -424,6 +424,7 @@ def run_cell_types_classifier(
     layer: bool = False,
     threshold: float = 2,
     parallel: bool = True,
+    again: bool = False,
 ) -> None:
     """
     Predicts the cell types of units in a given dataset using a pre-trained ensemble of classifiers.
@@ -449,6 +450,7 @@ def run_cell_types_classifier(
         use_layer=layer,
         threshold=threshold,
         parallel=parallel,
+        again=again,
     )
 
     assert args.quality in [
@@ -491,11 +493,11 @@ def run_cell_types_classifier(
     hessians_archive = os.path.join(models_folder, "hessians.pt")
     serialised_ensemble = os.path.join(models_folder, "calibrated_models")
 
-    if not os.path.exists(serialised_ensemble):
-        if not os.path.exists(models_archive):
+    if not os.path.exists(serialised_ensemble) or args.again:
+        if not os.path.exists(models_archive) or args.again:
             os.makedirs(models_folder, exist_ok=True)
             download_file(models_url, models_archive, description="Downloading models")
-        if not os.path.exists(hessians_archive):
+        if not os.path.exists(hessians_archive) or args.again:
             os.makedirs(models_folder, exist_ok=True)
             download_file(hessians_url, hessians_archive, description="Downloading hessians")
 
@@ -724,6 +726,16 @@ def main(c4=False):
     )
     parser.add_argument("--serial", dest="parallel", action="store_false", help="Do not use parallel processing.")
     parser.set_defaults(parallel=True)
+
+    parser.add_argument(
+        "--again",
+        action="store_true",
+        help=(
+            "If the program fails due to an input/output issue, such as model loading or data loading, use this flag to force a re-download of the models and make npyx clear its cache and re-compute waveforms and spike-trains from the binary file."
+            "\n Optional argument, default is False."
+        ),
+    )
+    parser.set_defaults(again=False)
 
     # Check if no arguments were provided, and if so, print help and exit
     if len(sys.argv) == 1:

@@ -55,7 +55,7 @@ npyx submodules:
  .h5
 """
 
-__version__ = "4.0.1"
+__version__ = "4.0.2"
 
 npyx_build = "npyx[c4]" if C4_IMPORTED else "npyx"
 

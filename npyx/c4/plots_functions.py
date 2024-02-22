@@ -655,6 +655,8 @@ def plot_features_1cell_vertical(
     if predictions is not None:
         n_obs, n_classes, n_models = predictions.shape
         mean_predictions = predictions.mean(2)
+        confidence_ratios = mean_predictions.max(1) / np.sort(mean_predictions, 1)[:, -2]
+        confidence_ratio = confidence_ratios[i]
         pred_dict = {v: np.round(mean_predictions[i, k], 2) for k, v in LABELMAP.items()}
         pred_str = str(pred_dict).replace("{", "").replace("}", "").replace("'", "")
         pred = np.argmax(mean_predictions[i])
@@ -665,7 +667,7 @@ def plot_features_1cell_vertical(
         color = [c / 255 for c in C4_COLORS[ct]]
         ttl = (
             f"Cell {i if unit_id is None else unit_id} | Prediction: {ct}\n"
-            f"Confidence: \u03BC = {confidence:.2f}, \u0394\u03BC = {delta_conf:.2f}, votes = {n_votes}/{n_models}\n"
+            f"Confidence: \u03BC = {confidence:.2f}, \u0394\u03BC = {delta_conf:.2f}, ratio = {confidence_ratio:.2f}, votes = {n_votes}/{n_models}\n"
             f" {pred_str}"
         )
     else:
@@ -786,13 +788,20 @@ def plot_survival_confidence(
     ignore_below_confidence=None,
     saveDir=None,
     correspondence_colors=C4_COLORS,
+    use_confidence_ratio=True,
 ):
     assert np.all(
         np.isin(np.arange(confidence_matrix.shape[1]), list(correspondence.keys()))
     ), "Keys in correspondence must be in range of confidence_matrix.shape[1]"
 
     # compute confidences and threshold them
-    mean_confidences = confidence_matrix.mean(2).max(1)
+    if use_confidence_ratio:
+        prediction_confidence = (
+            np.sort(confidence_matrix.mean(2), axis=1)[:, -1] / np.sort(confidence_matrix.mean(2), axis=1)[:, -2]
+        )
+    else:
+        prediction_confidence = confidence_matrix.mean(2).max(1)
+
     labels = [correspondence[i] for i in confidence_matrix.mean(2).argmax(1)]
     unique_labels = np.unique(labels)
     assert np.all(
@@ -800,22 +809,28 @@ def plot_survival_confidence(
     ), "Cell types missing from correspondence_colors!"
 
     if ignore_below_confidence is not None:
-        ignore_m = mean_confidences < ignore_below_confidence
-        mean_confidences = mean_confidences[~ignore_m]
+        ignore_m = prediction_confidence < ignore_below_confidence
+        prediction_confidence = prediction_confidence[~ignore_m]
         labels = np.array(labels)[~ignore_m]
 
-    conf_b = 0.01
-    conf_thresholds = np.arange(0, 1, conf_b)
+    if use_confidence_ratio:
+        conf_b = 0.5
+        conf_thresholds = np.arange(1, 50, conf_b)
+    else:
+        conf_b = 0.01
+        conf_thresholds = np.arange(0, 1, conf_b)
 
     plot_arr = np.zeros((len(unique_labels), 2, len(conf_thresholds)))
     for thi, conf_threshold in enumerate(conf_thresholds):
         for i, ct in enumerate(unique_labels):
-            n_classified = ((mean_confidences > conf_threshold) & (labels == ct)).sum()
+            n_classified = ((prediction_confidence > conf_threshold) & (labels == ct)).sum()
             perc_classified = n_classified / (labels == ct).sum()
 
             plot_arr[i, 0, thi] = n_classified
             plot_arr[i, 1, thi] = perc_classified
 
+    confidence_type = "Confidence ratio" if use_confidence_ratio else "Confidence"
+    xlim = [1, 50] if use_confidence_ratio else [0, 1]
     # plot
     plt.figure()
     for i, ct in enumerate(unique_labels):
@@ -827,7 +842,7 @@ def plot_survival_confidence(
             lw=2,
             label=ct,
         )
-    fig1, ax = mplp(xlabel="Confidence", ylabel="N classified", xlim=[0, 1], show_legend=True)
+    fig1, ax = mplp(xlabel=confidence_type, ylabel="N classified", xlim=xlim, show_legend=True)
 
     plt.figure()
     for i, ct in enumerate(unique_labels):
@@ -840,7 +855,7 @@ def plot_survival_confidence(
             lw=2,
             label=ct,
         )
-    fig2, ax = mplp(xlabel="Confidence", ylabel="% classified", xlim=[0, 1], show_legend=True)
+    fig2, ax = mplp(xlabel=confidence_type, ylabel="% classified", xlim=xlim, show_legend=True)
 
     if saveDir is not None:
         npyx_plot.save_mpl_fig(fig1, "survival_plot_Ncells", saveDir, "pdf")

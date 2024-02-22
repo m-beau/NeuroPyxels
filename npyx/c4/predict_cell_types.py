@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import multiprocessing
 import os
+import pickle
 import shutil
 import sys
 import time
@@ -130,7 +131,7 @@ def directory_checks(data_path):
         os.remove(os.path.join(data_path, "cluster_cell_types.tsv"))
 
 
-def prepare_dataset_from_binary(dp, units):
+def prepare_dataset_from_binary(dp, units, again=False):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -146,7 +147,7 @@ def prepare_dataset_from_binary(dp, units):
             continue
         # We set period_m to None to use the whole recording
         try:
-            t, _ = trn_filtered(dp, u, period_m=None)
+            t, _ = trn_filtered(dp, u, period_m=None, again=again)
         except (IndexError, pd.errors.EmptyDataError, ValueError):
             t, _ = trn_filtered(dp, u, period_m=None, again=True, enforced_rp=-1)
         if len(t) < 10:
@@ -154,7 +155,7 @@ def prepare_dataset_from_binary(dp, units):
             continue
 
         try:
-            wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
+            wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=again)
         except (IndexError, pd.errors.EmptyDataError, ValueError):
             wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
         waveforms.append(datasets.preprocess_template(wvf))
@@ -232,24 +233,25 @@ def prepare_dataset_from_h5(data_path):
     return dataset, dataset_class.h5_ids.tolist()
 
 
-def aux_prepare_dataset(dp, u):
+def aux_prepare_dataset(dp, u, again=False):
     t = trn(dp, u)
     if len(t) < 100:
         # Bad units
         return [True, [], []]
 
     # We set period_m to None to use the whole recording
+    # We catch here and for the waveforms common errors that can be solved by setting again=True in npyx
     try:
-        t, _ = trn_filtered(dp, u, period_m=None)
-    except (IndexError, pd.errors.EmptyDataError, ValueError):
+        t, _ = trn_filtered(dp, u, period_m=None, again=again)
+    except (IndexError, pd.errors.EmptyDataError, ValueError, pickle.UnpicklingError):
         t, _ = trn_filtered(dp, u, period_m=None, again=True, enforced_rp=-1)
     if len(t) < 10:
         # Bad units
         return [True, [], []]
 
     try:
-        wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120)
-    except (IndexError, pd.errors.EmptyDataError, ValueError):
+        wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=again)
+    except (IndexError, pd.errors.EmptyDataError, ValueError, pickle.UnpicklingError):
         wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
     waveforms = datasets.preprocess_template(wvf)
 
@@ -260,7 +262,7 @@ def aux_prepare_dataset(dp, u):
     return [False, waveforms, acgs_3d]
 
 
-def prepare_dataset_from_binary_parallel(dp, units):
+def prepare_dataset_from_binary_parallel(dp, units, again=False):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -269,7 +271,7 @@ def prepare_dataset_from_binary_parallel(dp, units):
 
     with redirect_stdout_fd(open(os.devnull, "w")):
         dataset_results = Parallel(n_jobs=num_cores, prefer="processes")(
-            delayed(aux_prepare_dataset)(dp, u)
+            delayed(aux_prepare_dataset)(dp, u, again)
             for u in tqdm(units, desc="Preparing waveforms and ACGs for classification")
         )
 
@@ -317,16 +319,16 @@ def prepare_dataset(args: ArgsNamespace) -> tuple:
             units = get_units(args.data_path, args.quality)
 
         if args.parallel:
-            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(args.data_path, units)
+            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(args.data_path, units, args.again)
         else:
-            prediction_dataset, bad_units = prepare_dataset_from_binary(args.data_path, units)
+            prediction_dataset, bad_units = prepare_dataset_from_binary(args.data_path, units, args.again)
 
         good_units = [u for u in units if u not in bad_units]
 
     return prediction_dataset, good_units
 
 
-def format_predictions(predictions_matrix: np.ndarray):
+def format_predictions(predictions_matrix: np.ndarray) -> tuple:
     """
     Formats the predictions matrix by computing the mean predictions, prediction confidences, delta mean confidences,
     and number of votes.
@@ -336,7 +338,7 @@ def format_predictions(predictions_matrix: np.ndarray):
         predictions for each observation, class, and model.
 
     Returns:
-        tuple: A tuple containing four numpy arrays:
+        tuple: A tuple containing five numpy arrays:
             - predictions: A 1D numpy array containing the predicted class for each observation.
             - mean_top_pred_confidence: A 1D numpy array containing the mean confidence of the top predicted class for
             each observation.
@@ -344,6 +346,8 @@ def format_predictions(predictions_matrix: np.ndarray):
             predicted class and the second top predicted class for each observation.
             - n_votes: A 1D numpy array containing the number of models that predicted the top predicted class for each
             observation.
+            - top_pred_confidence_ratio: A 1D numpy array containing the confidence ratio between the top predicted class
+            and the second top predicted class for each observation (as used in the C4 paper).
     """
 
     mean_predictions = predictions_matrix.mean(axis=2)
@@ -354,8 +358,9 @@ def format_predictions(predictions_matrix: np.ndarray):
     mean_top_pred_confidence = mean_predictions.max(1)
     delta_mean_confidences = np.diff(np.sort(mean_predictions, axis=1), axis=1)[:, -1]
     n_votes = np.array([(predictions_matrix[i, :, :].argmax(0) == pred).sum() for i, pred in enumerate(predictions)])
+    top_pred_confidence_ratio = np.sort(mean_predictions, axis=1)[:, -1] / np.sort(mean_predictions, axis=1)[:, -2]
 
-    return predictions, mean_top_pred_confidence, delta_mean_confidences, n_votes  #
+    return predictions, mean_top_pred_confidence, delta_mean_confidences, n_votes, top_pred_confidence_ratio
 
 
 @require_advanced_deps("dill")
@@ -417,8 +422,9 @@ def run_cell_types_classifier(
     units: Optional[list] = None,
     mli_clustering: bool = False,
     layer: bool = False,
-    threshold: float = 0.5,
+    threshold: float = 2,
     parallel: bool = True,
+    again: bool = False,
 ) -> None:
     """
     Predicts the cell types of units in a given dataset using a pre-trained ensemble of classifiers.
@@ -444,6 +450,7 @@ def run_cell_types_classifier(
         use_layer=layer,
         threshold=threshold,
         parallel=parallel,
+        again=again,
     )
 
     assert args.quality in [
@@ -486,11 +493,11 @@ def run_cell_types_classifier(
     hessians_archive = os.path.join(models_folder, "hessians.pt")
     serialised_ensemble = os.path.join(models_folder, "calibrated_models")
 
-    if not os.path.exists(serialised_ensemble):
-        if not os.path.exists(models_archive):
+    if not os.path.exists(serialised_ensemble) or args.again:
+        if not os.path.exists(models_archive) or args.again:
             os.makedirs(models_folder, exist_ok=True)
             download_file(models_url, models_archive, description="Downloading models")
-        if not os.path.exists(hessians_archive):
+        if not os.path.exists(hessians_archive) or args.again:
             os.makedirs(models_folder, exist_ok=True)
             download_file(hessians_url, hessians_archive, description="Downloading hessians")
 
@@ -544,19 +551,21 @@ def run_cell_types_classifier(
         labelling=labelling,
     )
 
-    predictions, mean_top_pred_confidence, _, n_votes = format_predictions(raw_probabilities)
+    predictions, mean_top_pred_confidence, _, n_votes, confidence_ratio = format_predictions(raw_probabilities)
     predictions_str = [correspondence[int(prediction)] for prediction in predictions]
 
     predictions_df = pd.DataFrame(
         {
             "cluster_id": good_units,
             "predicted_cell_type": predictions_str,
-            "confidence": mean_top_pred_confidence,
+            "pred_probability": mean_top_pred_confidence,
+            "confidence_ratio": confidence_ratio,
             "model_votes": [f"{n}/{len(ensemble)}" for n in n_votes],
         }
     )
 
-    confidence_mask = predictions_df["confidence"] >= args.threshold
+    # Filter out predictions with low confidence
+    confidence_mask = predictions_df["confidence_ratio"] >= args.threshold
     predictions_df = predictions_df[confidence_mask]
 
     # If running on an .h5 file we need to create a save directory
@@ -573,8 +582,11 @@ def run_cell_types_classifier(
         sep="\t",
         index=False,
     )
-    predictions_df[["cluster_id", "confidence"]].to_csv(
-        os.path.join(save_path, "cluster_confidence.tsv"), sep="\t", index=False
+    predictions_df[["cluster_id", "pred_probability"]].to_csv(
+        os.path.join(save_path, "cluster_pred_probability.tsv"), sep="\t", index=False
+    )
+    predictions_df[["cluster_id", "confidence_ratio"]].to_csv(
+        os.path.join(save_path, "cluster_confidence_ratio.tsv"), sep="\t", index=False
     )
     predictions_df[["cluster_id", "model_votes"]].to_csv(
         os.path.join(save_path, "cluster_model_votes.tsv"), sep="\t", index=False
@@ -616,16 +628,24 @@ def run_cell_types_classifier(
                 unit_id=unit,
             )
 
-    num_cores = get_n_cores(len(good_units))
-    with redirect_stdout_fd(open(os.devnull, "w")):
-        Parallel(n_jobs=num_cores, prefer="processes")(
-            delayed(aux_plot_features)(i, unit, correspondence)
-            for i, unit in tqdm(
-                enumerate(good_units),
-                desc="Plotting classification results",
-                total=len(good_units),
+    if args.parallel:
+        num_cores = get_n_cores(len(good_units))
+        with redirect_stdout_fd(open(os.devnull, "w")):
+            Parallel(n_jobs=num_cores, prefer="processes")(
+                delayed(aux_plot_features)(i, unit, correspondence)
+                for i, unit in tqdm(
+                    enumerate(good_units),
+                    desc="Plotting classification results",
+                    total=len(good_units),
+                )
             )
-        )
+    else:
+        for i, unit in tqdm(
+            enumerate(good_units),
+            desc="Plotting classification results",
+            total=len(good_units),
+        ):
+            aux_plot_features(i, unit, correspondence)
 
     plot_survival_confidence(
         raw_probabilities,
@@ -643,11 +663,11 @@ def run_cell_types_classifier(
     )
 
     end_time = time.perf_counter()
-    print("Cell type classfication execution time: ", end_time - start_time)
+    print(f"Cell type classfication execution time: {end_time - start_time:.2f} seconds.")
 
 
 def main(c4=False):
-    parser = argparse.ArgumentParser(description= "C4 cell types classifier.")
+    parser = argparse.ArgumentParser(description="C4 cell types classifier.")
 
     parser.add_argument(
         "-dp",
@@ -672,7 +692,11 @@ def main(c4=False):
         default=None,
         help="Which units to classify. If not specified, falls back to all units of 'quality' (all good units by default). Specify the unit IDs as space-separated integers after the '--units' argument.",
     )
-    parser.add_argument("--mli_clustering", action="store_true", help="Divide MLI into two clusters. Optional argument, default is to not use MLI clustering.")
+    parser.add_argument(
+        "--mli_clustering",
+        action="store_true",
+        help="Divide MLI into two clusters. Optional argument, default is to not use MLI clustering.",
+    )
     parser.set_defaults(mli_clustering=False)
 
     parser.add_argument(
@@ -684,15 +708,15 @@ def main(c4=False):
             "\nThe cluster_layer.tsv file should contain two columns: 'cluster_id' and 'layer', and could be either manually created (e.g. if you did histology) or automatically generated by phyllum."
             "\nBe aware that the layer information has a strong influence on the model's predictions, and should be used with caution if not coming from phyllum."
             "\nOptional argument, default is to not use layer information."
-            ),
+        ),
     )
     parser.set_defaults(layer=False)
 
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.5,
-        help="Threshold to keep model predictions. Only predictions with a probability higher than the threshold will be kept. \nOptional argument, default is 0.5.",
+        default="2",
+        help="Confidence ratio threshold to keep model predictions. Only predictions with a confidence ratio (defined as the ratio between the probability assigned by the model to the most probable and the second most probable prediction) higher than the threshold will be kept. \nOptional argument, default is 2.",
     )
 
     parser.add_argument(
@@ -702,13 +726,25 @@ def main(c4=False):
     )
     parser.add_argument("--serial", dest="parallel", action="store_false", help="Do not use parallel processing.")
     parser.set_defaults(parallel=True)
-    
+
+    parser.add_argument(
+        "--again",
+        action="store_true",
+        help=(
+            "If the program fails due to an input/output issue, such as model loading or data loading, use this flag to force a re-download of the models and make npyx clear its cache and re-compute waveforms and spike-trains from the binary file."
+            "\n Optional argument, default is False."
+        ),
+    )
+    parser.set_defaults(again=False)
+
     # Check if no arguments were provided, and if so, print help and exit
     if len(sys.argv) == 1:
         if c4:
             print(C4_MESSAGE)
         else:
-            print("\nNo arguments provided. If you wanted to run the cell types classifier in the current folder, use the following command:")
+            print(
+                "\nNo arguments provided. If you wanted to run the cell types classifier in the current folder, use the following command:"
+            )
             print("\npredict_cell_types .\n")
             print("Here is the full help message for the predict_cell_types command:\n")
         parser.print_help()
@@ -717,8 +753,10 @@ def main(c4=False):
     args = parser.parse_args()
     run_cell_types_classifier(**vars(args))
 
+
 def run_c4():
     main(c4=True)
+
 
 if __name__ == "__main__":
     main(c4=False)

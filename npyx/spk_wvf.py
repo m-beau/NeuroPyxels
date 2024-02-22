@@ -796,13 +796,21 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
 
     return peak_chans # units, channels
 
+def get_chan_pos(dp, chan):
+    'Returns (x, y) position of channel on Neuropixels probe.'
+    pos = np.load(Path(dp,'channel_positions.npy'))
+    cm = chan_map(dp, probe_version='local')
+    chan_pos = pos[cm[:,0]==chan].ravel()
+
+    return chan_pos
+
 def get_peak_pos(dp, unit, use_template=False, periods='all'):
     "Returns [x,y] relative position on the probe in um (y=0 at probe tip)."
+
     dp, unit = get_source_dp_u(dp, unit)
     peak_chan=get_peak_chan(dp, unit, use_template, periods=periods)
-    pos = np.load(Path(dp,'channel_positions.npy'))
-    cm=chan_map(dp, probe_version='local')
-    return pos[cm[:,0]==peak_chan].ravel()
+
+    return get_chan_pos(dp, peak_chan)
 
 def get_chDis(dp, ch1, ch2):
     '''dp: datapath to dataset

@@ -70,15 +70,15 @@ from npyx.utils import (
 default_mplp_params = dict(
             # title default parameters
             title_w='regular',
-            title_s=22,
+            title_s=20,
 
             # axes labels default parameters
             axlab_w='regular',
-            axlab_s=22,
+            axlab_s=18,
 
             # tick labels default parameters
             ticklab_w='regular',
-            ticklab_s=22,
+            ticklab_s=16,
             ticks_direction='out',
             xlabelpad=0,
             ylabelpad=0,
@@ -114,8 +114,8 @@ default_mplp_params = dict(
             cbar_h=0.4,
             clabel=None,
             clabel_w='regular',
-            clabel_s=22,
-            cticks_s=22,
+            clabel_s=18,
+            cticks_s=16,
 
             # horizontal and vertical lines default parameters
             hlines = None, # provide any iterable of values to plot horizontal lines along the y axis

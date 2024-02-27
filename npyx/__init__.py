@@ -26,6 +26,7 @@ from .spk_wvf import *
 from .corr import *
 from .stats import *
 from .plot import *
+from .mplp import *
 from .behav import *
 from .merger import *
 from .circuitProphyler import *

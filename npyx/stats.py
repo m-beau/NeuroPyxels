@@ -86,13 +86,15 @@ def check_outliers(x, th_sd=2, remove=False):
            2) you cannot find the problem, VERY VALUABLE DATA POINTS - FORBIDDEN TO EXCLUDE THEM.'''
     x = np.asarray(x)
     assert x.ndim==1
-    
+
     mn = np.mean(x)
     sd = np.std(x)
-    
+
     outliers = [i for i in x if ((i>mn+th_sd*sd) or (i<mn-th_sd*sd))]
-    print('STATCHECK: OUTLIERS - Detected {} outliers (threshold: {}s.d.).'.format(len(outliers), th_sd))
-    
+    print(
+        f'STATCHECK: OUTLIERS - Detected {len(outliers)} outliers (threshold: {th_sd}s.d.).'
+    )
+
     return x[~np.isin(x, outliers)] if remove else len(outliers)
 
 def check_normality(x, test='shapiro', qqplot=True):
@@ -100,7 +102,7 @@ def check_normality(x, test='shapiro', qqplot=True):
     x = np.asarray(x)
     assert x.ndim==1
     assert test in ['shapiro', 'lillifors', 'agostino', 'anderson', 'kstest']
-    
+
     # Tests of best fit with a given distribution
     if test=='shapiro':
         D, Pval = stt.shapiro(x)
@@ -110,12 +112,12 @@ def check_normality(x, test='shapiro', qqplot=True):
         D, Pval = stt.kstest(x, 'norm')
     elif test=='anderson':
         D, Crit_vals, Pval = stt.anderson(x)
-        
+
     # Tests based on descriptive statistics of the sample
     elif test=='agostino':
         D, Pval = stt.normaltest(x)
 
-    print('STATCHECK: NORMALITY - statistics={}, Pval={} with {} test.'.format(D, Pval, test))
+    print(f'STATCHECK: NORMALITY - statistics={D}, Pval={Pval} with {test} test.')
     if qqplot:
         stt.probplot(x, dist="norm")
     return D, Pval
@@ -278,13 +280,13 @@ def split_distr_N(arr, N, bin_val, window_a=None, window_b=None, windows=None, e
     else:
         N_wins=windows
     N_masks=npa([(arr>=w1)&(arr<w2) for (w1,w2) in N_wins])
-    
+
     if equalAUC:
-        min_1=min([np.count_nonzero(m) for m in N_masks])
+        min_1 = min(np.count_nonzero(m) for m in N_masks)
         for i,m in enumerate(N_masks):
             m_1=np.nonzero(m)[0]
             N_masks[i]=np.isin(np.arange(len(m)), m_1[np.random.choice(range(len(m_1)), min_1, replace=False)])
-            
+
     return N_masks, N_wins
 
 #%% Extract time stamps with given properties
@@ -317,36 +319,34 @@ def get_synced_stamps(t1, t2, sync_halfwin=60, isolation_halfwin=0, return_isis=
     # Get isolated spikes from train 1 only
     t1, t2 = npa(t1), npa(t2)
     t1=get_isolated_stamps(t1, isolation_halfwin)
-    
+
     # Merge series1 and 2 and sort them + compute their ISIs
     t_12=np.append(t1, t2)
     i_12=np.append(1*np.ones((len(t1))),2*np.ones((len(t2))))
     t_i_12=np.vstack((t_12, i_12))
-    
+
     # Sort accordingly to time stamps
     t_i_12=t_i_12[:,t_i_12[0,:].argsort()]
     isi_i_12=np.zeros((2, t_i_12.shape[1]-1)) # isi: inter stamp interval
     isi_i_12[0,:]=t_i_12[0,1:]-t_i_12[0,:-1]
     isi_i_12[1,:]=t_i_12[1,:-1]
-    
+
     # Get spikes where the isi with the closest spike 2 is smaller than sync_halfwin
     mask_f=(isi_i_12[1,:-1]==1)&(isi_i_12[1,1:]==2)&(isi_i_12[0,:-1]<=sync_halfwin) # gets stamp of 1 followed by a 2 with isi smaller than sync_halfwin.
     mask_r=(isi_i_12[1,:-1]==2)&(isi_i_12[1,1:]==1)&(isi_i_12[0,:-1]<=sync_halfwin) # gets stamp of 2 followed by a 1 with isi smaller than halfwin - interested by index i+1 (stamps 1)
-    mask_r[1:]=mask_r[:-1]; mask_r[0]=False # i are stamp 2, i+1 are stamp 1. i positions take value of i+1 because we want stamp 1.
-    
+    mask_r[1:]=mask_r[:-1]
+    mask_r[0]=False # i are stamp 2, i+1 are stamp 1. i positions take value of i+1 because we want stamp 1.
+
     isi1_sync=np.append(isi_i_12[0,:-1][mask_f], isi_i_12[0,:-2][mask_f[:-1]])
     t1_sync=t_i_12[0,:-2][mask_f|mask_r] # ISIs where you have a consecutive [1,2] as index: spikes of 1 followed by 2
     assert np.all(np.isin(t1_sync, t1))
-    
+
     if np.any(t1[~np.isin(t1, t1_sync)]):
         t1_unsync=np.random.choice(t1[~np.isin(t1, t1_sync)], len(t1_sync))
     else:
         t1_unsync=npa([])
-    
-    if return_isis:
-        return t1_sync, t1_unsync, isi1_sync
-    
-    return  t1_sync, t1_unsync
+
+    return (t1_sync, t1_unsync, isi1_sync) if return_isis else (t1_sync, t1_unsync)
 
 def get_CIH(spk1, spk2):
     '''WARNING direction matters - will return CIH of 1 to 2, not 2 to 1.

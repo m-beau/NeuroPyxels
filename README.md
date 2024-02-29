@@ -151,9 +151,10 @@ Older versions of numba did not feature the .core submodule. If you get this err
 
 - **core dumped when importing** <br/>
 This seems to be an issue related to PyQt5 required by opencv (opencv-python).
-Solution:
+Solution (from [post(https://stackoverflow.com/questions/71088095/opencv-could-not-load-the-qt-platform-plugin-xcb-in-even-though-it-was-fou)]):
 ```
 # activate npyx environment first
+pip uninstall PyQt5
 pip uninstall opencv-python
 pip install opencv-python
 # pip install other missing dependencies

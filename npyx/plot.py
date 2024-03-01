@@ -41,7 +41,7 @@ from npyx.utils import (
     zscore,
 )
 
-from npyx.mplp import (
+from npyx.plot_utils import (
     mplp,
     save_mpl_fig,
     add_colorbar,

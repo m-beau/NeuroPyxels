@@ -131,7 +131,7 @@ def directory_checks(data_path):
         os.remove(os.path.join(data_path, "cluster_cell_types.tsv"))
 
 
-def prepare_dataset_from_binary(dp, units, again=False):
+def prepare_dataset_from_binary(dp, units, again=False, fp_threshold=0.05, fn_threshold=0.05):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -147,9 +147,18 @@ def prepare_dataset_from_binary(dp, units, again=False):
             continue
         # We set period_m to None to use the whole recording
         try:
-            t, _ = trn_filtered(dp, u, period_m=None, again=again)
+            t, _ = trn_filtered(dp, u, period_m=None,
+                                fp_threshold=fp_threshold,
+                                fn_threshold=fn_threshold,
+                                consecutive_n_seconds=180,
+                                again=again)
         except (IndexError, pd.errors.EmptyDataError, ValueError):
-            t, _ = trn_filtered(dp, u, period_m=None, again=True, enforced_rp=-1)
+            t, _ = trn_filtered(dp, u, period_m=None,
+                                fp_threshold=fp_threshold,
+                                fn_threshold=fn_threshold,
+                                consecutive_n_seconds=180,
+                                again=True,
+                                enforced_rp=-1)
         if len(t) < 10:
             bad_units.append(u)
             continue
@@ -233,7 +242,7 @@ def prepare_dataset_from_h5(data_path):
     return dataset, dataset_class.h5_ids.tolist()
 
 
-def aux_prepare_dataset(dp, u, again=False):
+def aux_prepare_dataset(dp, u, again=False, fp_threshold=0.05, fn_threshold=0.05):
     t = trn(dp, u)
     if len(t) < 100:
         # Bad units
@@ -242,9 +251,18 @@ def aux_prepare_dataset(dp, u, again=False):
     # We set period_m to None to use the whole recording
     # We catch here and for the waveforms common errors that can be solved by setting again=True in npyx
     try:
-        t, _ = trn_filtered(dp, u, period_m=None, again=again)
+        t, _ = trn_filtered(dp, u, period_m=None,
+                            fp_threshold=fp_threshold,
+                            fn_threshold=fn_threshold,
+                            consecutive_n_seconds=180,
+                            again=again)
     except (IndexError, pd.errors.EmptyDataError, ValueError, pickle.UnpicklingError):
-        t, _ = trn_filtered(dp, u, period_m=None, again=True, enforced_rp=-1)
+        t, _ = trn_filtered(dp, u, period_m=None,
+                            fp_threshold=fp_threshold,
+                            fn_threshold=fn_threshold,
+                            consecutive_n_seconds=180,
+                            again=True,
+                            enforced_rp=-1)
     if len(t) < 10:
         # Bad units
         return [True, [], []]
@@ -262,7 +280,7 @@ def aux_prepare_dataset(dp, u, again=False):
     return [False, waveforms, acgs_3d]
 
 
-def prepare_dataset_from_binary_parallel(dp, units, again=False):
+def prepare_dataset_from_binary_parallel(dp, units, again=False, fp_threshold=0.05, fn_threshold=0.05):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -271,7 +289,7 @@ def prepare_dataset_from_binary_parallel(dp, units, again=False):
 
     with redirect_stdout_fd(open(os.devnull, "w")):
         dataset_results = Parallel(n_jobs=num_cores, prefer="processes")(
-            delayed(aux_prepare_dataset)(dp, u, again)
+            delayed(aux_prepare_dataset)(dp, u, again, fp_threshold, fn_threshold)
             for u in tqdm(units, desc="Preparing waveforms and ACGs for classification")
         )
 
@@ -425,6 +443,8 @@ def run_cell_types_classifier(
     threshold: float = 2,
     parallel: bool = True,
     again: bool = False,
+    fp_threshold: float = 0.05,
+    fn_threshold: float = 0.05,
 ) -> None:
     """
     Predicts the cell types of units in a given dataset using a pre-trained ensemble of classifiers.
@@ -451,12 +471,19 @@ def run_cell_types_classifier(
         threshold=threshold,
         parallel=parallel,
         again=again,
+        fp_threshold=fp_threshold,
+        fn_threshold=fn_threshold,
     )
 
     assert args.quality in [
         "all",
         "good",
     ], "Invalid value for 'quality'. Must be either 'all' or 'good'."
+
+    assert (args.fp_threshold >= 0) & (args.fp_threshold < 1),\
+        "Invalid value for 'fp_threshold'. Must be within [0-1[."
+    assert (args.fn_threshold >= 0) & (args.fn_threshold < 1),\
+        "Invalid value for 'fn_threshold'. Must be within [0-1[."
 
     # Perform some checks on the data folder
     directory_checks(args.data_path)
@@ -736,6 +763,20 @@ def main(c4=False):
         ),
     )
     parser.set_defaults(again=False)
+
+    parser.add_argument(
+        "--fp_threshold",
+        type=float,
+        default="0.05",
+        help="False positive rate (a.k.a. fraction of refractory period violations) threshold. To be deemed classifiable, a unit must feature three minutes of data with less than a fp_threshold fraction of false positive (and fn_threshold false negative) rate. To include more units despite their refractory period violations, increease this threshold. \nOptional argument, default is 0.05.",
+    )
+
+    parser.add_argument(
+        "--fn_threshold",
+        type=float,
+        default="0.05",
+        help="False negative rate (a.k.a. AUC fraction of amplitude clipping) threshold. To be deemed classifiable, a unit must feature three minutes of data with less than a fn_threshold fraction of false negative (and fp_threshold false positive) rate. To include more units despite their refractory period violations, increease this threshold. \nOptional argument, default is 0.05.",
+    )
 
     # Check if no arguments were provided, and if so, print help and exit
     if len(sys.argv) == 1:

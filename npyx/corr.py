@@ -804,7 +804,7 @@ def convert_acg_log(lin_acg, cbin, cwin, n_log_bins=100,
         plt.scatter(t_log, alog,
                     color='k', marker='+',
                     zorder=100, alpha=0.8, s=60, lw=2)
-        npyx.plot.mplp(figsize=(20, 6), xlim=[-cwin//2, cwin//2], xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
+        npyx.plot_utils.mplp(figsize=(20, 6), xlim=[-cwin//2, cwin//2], xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
 
         plt.figure()
         plt.plot(original_bins, alin)
@@ -813,7 +813,7 @@ def convert_acg_log(lin_acg, cbin, cwin, n_log_bins=100,
                     color='k', marker='+',
                     zorder=100, alpha=0.8, s=60, lw=2)
         plt.xscale('symlog')
-        npyx.plot.mplp(figsize=(20, 6),
+        npyx.plot_utils.mplp(figsize=(20, 6),
              xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
 
     return log_acg, t_log

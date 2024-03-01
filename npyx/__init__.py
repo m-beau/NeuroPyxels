@@ -26,7 +26,7 @@ from .spk_wvf import *
 from .corr import *
 from .stats import *
 from .plot import *
-from .mplp import *
+from .plot_utils import *
 from .behav import *
 from .merger import *
 from .circuitProphyler import *
@@ -56,7 +56,7 @@ npyx submodules:
  .h5
 """
 
-__version__ = "4.0.3"
+__version__ = "4.0.4"
 
 npyx_build = "npyx[c4]" if C4_IMPORTED else "npyx"
 

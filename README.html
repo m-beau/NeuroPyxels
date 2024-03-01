@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>NeuroPyxels&colon; loading&comma; processing and plotting Neuropixels data in Python&lt;&sol;h1&gt; &lt;img src&equals;&quot;https&colon;&sol;&sol;raw&period;githubusercontent&period;com&sol;m-beau&sol;NeuroPyxels&sol;master&sol;images&sol;NeuroPyxels&lowbar;logo&lowbar;final&period;png&quot; width&equals;&quot;150&quot; title&equals;&quot;Neuropyxels&quot; alt&equals;&quot;Neuropixels&quot; align&equals;&quot;right&quot; vspace &equals; &quot;50&quot;&gt;</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <p><a href="https://pypi.org/project/npyx/"><img src="https://img.shields.io/pypi/v/npyx.svg" alt="PyPI Version"></a>
+<a href="https://doi.org/10.5281/zenodo.5509733"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.5509733.svg" alt="DOI"></a>
+<a href="https://github.com/m-beau/NeuroPyxels/blob/master/LICENSE"><img src="https://img.shields.io/pypi/l/npyx.svg" alt="License"></a>
+<a href="https://pepy.tech/project/npyx"><img src="https://static.pepy.tech/badge/npyx" alt="Downloads"></a></p>
+<h1 id="neuropyxels-loading-processing-and-plotting-neuropixels-data-in-python-">NeuroPyxels: loading, processing and plotting Neuropixels data in Python</h1> <img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/NeuroPyxels_logo_final.png" width="150" title="Neuropyxels" alt="Neuropixels" align="right" vspace = "50"></h1>
+<p><strong>Maxime Beau, Federico D'Agostino, Ago Lajko, Gabriela Martínez, Michael Häusser &amp; Dimitar Kostadinov.</strong></p>
+<p><a href="https://github.com/m-beau/NeuroPyxels">NeuroPyxels</a> (npyx) is a python library built for electrophysiologists using Neuropixels electrodes. This package results from the needs of a pythonist who really did not want to transition to MATLAB to work with Neuropixels: it features a suite of core utility functions for loading, processing and plotting Neuropixels data.</p>
+<p>❓<strong>Any questions or issues?</strong>: <a href="https://github.com/Maxime-Beau/Neuropyxels/issues">Create a github issue</a> to get support, or create a <a href="https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request">pull request</a>. Alternatively, you can email <a href="mailto:maximebeaujeanroch047@gmail.com">us: maximebeaujeanroch047[at]gmail[dot]com</a>. You can also use the <a href="neuropixelsgroup.slack.com">Neuropixels slack workgroup</a>.</p>
+<ul>
+<li><strong><a href="https://github.com/m-beau/NeuroPyxels#%EF%B8%8F-installation">⬇️ Installation</a></strong></li>
+<li><strong><a href="https://github.com/m-beau/NeuroPyxels#-support-and-citing">🤗 Support and citing </a></strong></li>
+<li><strong><a href="https://github.com/m-beau/NeuroPyxels#%EF%B8%8F-documentation">🔍️ Documentation</a></strong>
+<ul>
+<li><a href="https://github.com/m-beau/NeuroPyxels#-design-philosophy">💡 Design philosophy</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#-directory-structure">📁 Directory structure</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#-common-use-cases">👉 Common use cases</a>
+<ul>
+<li><a href="https://github.com/m-beau/NeuroPyxels#load-recording-metadata">Load recording metadata</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#load-synchronization-channel">Load synchronization channel</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset">Get good units from dataset</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u">Load spike times from unit u</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#load-waveforms-from-unit-u">Load waveforms from unit u</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#compute-autocrosscorrelogram-between-2-units">Compute auto/crosscorrelogram between 2 units</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u">Plot waveform and crosscorrelograms of unit u</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#preprocess-your-waveforms-drift-shift-matching-and-spike-trains-detect-periods-with-few-false-positivenegative">Preprocess your waveforms and spike trains</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units">Plot chunk of raw data with overlaid units</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#plot-peri-stimulus-time-histograms-across-neurons-and-conditions">Plot peri-stimulus time histograms across neurons and conditions</a></li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously">Merge datasets acquired on two probes simultaneously</a></li>
+</ul>
+</li>
+<li><a href="https://github.com/m-beau/NeuroPyxels#-bonus-matplotlib-plot-prettifier">⭐ Bonus: matplotlib plot prettifier (mplp)</a></li>
+</ul>
+</li>
+</ul>
+<h2 id="️-installation">⬇️ Installation:</h2>
+<p>We recommend using a conda environment. Pre-existing packages on a python installation might be incompatible with npyx and break your installation. You can find instructions on setting up a conda environment <a href="https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html">here</a>.</p>
+<pre><code class="language-bash">  conda create -n my_env python=3.10
+  conda activate my_env
+  pip install npyx
+  <span class="hljs-comment"># optionally (see &#x27;Dealing with cupy&#x27; section below):</span>
+  conda install -c conda-forge cupy cudatoolkit=11.0
+  <span class="hljs-comment"># test installation:</span>
+  python -c <span class="hljs-string">&#x27;import npyx&#x27;</span> <span class="hljs-comment"># should not return any error</span>
+</code></pre>
+<details>
+  <summary>Advanced installation</summary>
+<ul>
+<li>
+<p>if you want the very latest version:</p>
+<pre><code class="language-bash">conda create -n my_env python=3.10
+conda activate my_env
+pip install git+https://github.com/m-beau/NeuroPyxels@master
+<span class="hljs-comment"># optionally (see &#x27;Dealing with cupy&#x27; section below):</span>
+conda install -c conda-forge cupy cudatoolkit=11.0
+<span class="hljs-comment"># test installation:</span>
+python -c <span class="hljs-string">&#x27;import npyx&#x27;</span> <span class="hljs-comment"># should not return any error</span>
+</code></pre>
+</li>
+<li>
+<p>If you want to edit npyx locally and eventually contribute:</p>
+<blockquote>
+<p>💡 Tip: in an ipython/jupyter session, use <code>%load_ext autoreload</code> then <code>%autoreload 2</code> to make your local edits active in your session without having to restart your kernel. Amazing for development.</p>
+</blockquote>
+<pre><code class="language-bash">conda create -n my_env python=3.10
+conda activate my_env
+<span class="hljs-built_in">cd</span> path/to/save_dir <span class="hljs-comment"># any directory where your code will be accessible by your editor and safe. NOT downloads folder.</span>
+git <span class="hljs-built_in">clone</span> https://github.com/m-beau/NeuroPyxels
+<span class="hljs-built_in">cd</span> NeuroPyxels
+pip install . <span class="hljs-comment"># this will create an egg link to save_dir, which means that you do not need to reinstall the package each time you edit it (e.g. after pulling from github).</span>
+<span class="hljs-comment"># optionally (see &#x27;Dealing with cupy&#x27; section below):</span>
+conda install -c conda-forge cupy cudatoolkit=11.0
+<span class="hljs-comment"># test installation:</span>
+python -c <span class="hljs-string">&#x27;import npyx&#x27;</span> <span class="hljs-comment"># should not return any error</span>
+</code></pre>
+<p>and pull every now and then:</p>
+<pre><code class="language-bash"><span class="hljs-built_in">cd</span> path/to/save_dir/NeuroPyxels
+git pull
+<span class="hljs-comment"># And that&#x27;s it, thanks to the egg link no need to reinstall the package!</span>
+</code></pre>
+</li>
+</ul>
+</details>
+</br>
+Npyx supports Python >=3.7.
+<h3 id="dealing-with-cupy-gpu-shenanigans">Dealing with cupy (GPU shenanigans)</h3>
+<p>To run some preprocessing functions, you will need NVIDIA drivers and cuda-toolkit installed on your computer. It is a notorious source of bugs. To test your CUDA installation do the following:</p>
+<pre><code class="language-bash">nvidia-smi <span class="hljs-comment"># Should show how much your GPU is being used right now</span>
+nvcc <span class="hljs-comment"># This is the CUDA compiler</span>
+</code></pre>
+<p>If it doesn't work, try up/downgrading the version of cudatoolkit installed:</p>
+<pre><code class="language-bash"><span class="hljs-comment"># check the current version</span>
+conda activate my_env
+conda list cudatoolkit
+<span class="hljs-comment"># E.g. install version 10.0</span>
+conda activate my_env
+conda remove cupy, cudatoolkit
+conda install -c conda-forge cupy cudatoolkit=10.0
+</code></pre>
+<h3 id="test-installation">Test installation</h3>
+<p>You can use the built-in unit testing function 'test_npyx' to make sure that npyx core functions run smoothly, all at once.</p>
+<pre><code class="language-python"><span class="hljs-keyword">from</span> npyx.testing <span class="hljs-keyword">import</span> test_npyx
+
+<span class="hljs-comment"># any spike sorted recording compatible with phy</span>
+<span class="hljs-comment"># (e.g. kilosort output)</span>
+dp = <span class="hljs-string">&#x27;datapath/to/myrecording&#x27;</span>
+test_npyx(dp)
+
+<span class="hljs-comment"># if any test fails, re-run them with the following to print the error log, and try to fix it or post an issue on github:</span>
+test_npyx(dp, raise_error=<span class="hljs-literal">True</span>)
+</code></pre>
+<span style="color:#1F45FC">
+<p>--- npyx version 2.3.4 unit testing initiated, on directory /media/maxime/AnalysisSSD/test_dataset_artefact... <br></p>
+<p>--- Successfully ran 'read_metadata' from npyx.inout. <br>
+--- Successfully ran 'get_npix_sync' from npyx.inout. <br>
+--- Successfully ran 'get_units' from <a href="http://npyx.gl">npyx.gl</a>. <br>
+--- Successfully ran 'ids' from npyx.spk_t. <br>
+--- Successfully ran 'trn' from npyx.spk_t. <br>
+--- Successfully ran 'trn_filtered' from npyx.spk_t. <br>
+--- Successfully ran 'wvf' from npyx.spk_wvf. <br>
+--- Successfully ran 'wvf_dsmatch' from npyx.spk_wvf. <br>
+--- Successfully ran 'get_peak_chan' from npyx.spk_wvf. <br>
+--- Successfully ran 'templates' from npyx.spk_wvf. <br>
+--- Successfully ran 'ccg' from npyx.corr. <br>
+--- Successfully ran 'plot_wvf' from npyx.plot. <br>
+--- Successfully ran 'plot_ccg' from npyx.plot. <br>
+--- Successfully ran 'plot_raw' from npyx.plot. <br></p>
+</span>
+<pre><code>(bunch of plots...)
+</code></pre>
+<details>
+  <summary>:warning: Known installation issues</summary>
+<ul>
+<li>
+<p><strong>cannot import numba.core hence cannot import npyx</strong> <br/>
+Older versions of numba did not feature the .core submodule. If you get this error, you are probably running a too old version of numba. Make sure that you have installed npyx in a fresh conda environment if that happens to you. If you still get an error, check that numba is not installed in your root directory.</p>
+<pre><code class="language-#">pip uninstall numba
+conda activate my_env
+pip uninstall numba
+pip install numba
+</code></pre>
+</li>
+</ul>
+<br/>
+<ul>
+<li><strong>core dumped when importing</strong> <br/>
+This seems to be an issue related to PyQt5 required by opencv (opencv-python).
+Solution:</li>
+</ul>
+<pre><code># activate npyx environment first
+pip uninstall opencv-python
+pip install opencv-python
+# pip install other missing dependencies
+</code></pre>
+<p>Full log:</p>
+<pre><code>In [1]: from npyx import *
+In [2]: QObject::moveToThread: Current thread (0x5622e1ea6800) is not the object's thread (0x5622e30e86f0).
+Cannot move to target thread (0x5622e1ea6800)
+
+qt.qpa.plugin: Could not load the Qt platform plugin &quot;xcb&quot; in &quot;/home/maxime/miniconda3/envs/npyx/lib/python3.7/site-packages/cv2/qt/plugins&quot; even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: xcb, eglfs, linuxfb, minimal, minimalegl, offscreen, vnc, wayland-egl, wayland, wayland-xcomposite-egl, wayland-xcomposite-glx, webgl.
+
+Aborted (core dumped)
+</code></pre>
+<br/>
+<ul>
+<li><strong>I think I installed everything properly, but npyx is not found if I run 'python -c &quot;import npyx&quot; '!</strong> <br/>
+Typically:</li>
+</ul>
+<pre><code class="language-bash">Traceback (most recent call last):
+  File <span class="hljs-string">&quot;&lt;stdin&gt;&quot;</span>, line 1, <span class="hljs-keyword">in</span> &lt;module&gt;
+ModuleNotFoundError: No module named <span class="hljs-string">&#x27;npyx&#x27;</span>
+</code></pre>
+<p>Make sure that the python installation that you are using is indeed the version of your new environment. <br/>
+To do so, in your terminal, run &quot;which python&quot; on linux/mac or &quot;where python&quot; on windows: the output should be the path to the right environment e.g. &quot;/home/.../anaconda/envs/npyx/bin/python&quot;. If it isn't, try to deactivate/reactivate your conda environment, or make sure you do not have conflicting python installations on your machine.</p>
+</details>
+<h2 id="-support-and-citing">🤗 Support and citing</h2>
+<p>If you find Neuropyxels useful in your work, we kindly request that you cite:</p>
+<blockquote>
+<p>Maxime Beau, Federico D'Agostino, Ago Lajko, Gabriela Martínez, Michael Häusser &amp; Dimitar Kostadinov. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. Zenodo. <a href="https://doi.org/10.5281/zenodo.5509733">https://doi.org/10.5281/zenodo.5509733</a></p>
+</blockquote>
+<p>You can additionally star this repo using the top-right star button to help it gain more visibility.</p>
+<p>Cheers!</p>
+<h2 id="️-documentation">🔍️ Documentation:</h2>
+<p>Npyx works with the data formatting employed by <a href="https://billkarsh.github.io/SpikeGLX/">SpikeGLX</a> and <a href="https://open-ephys.org/neuropixels">OpenEphys</a> (binary data and meta data) used in combination with <a href="https://phy.readthedocs.io/en/latest/">Phy</a>-compatible spike-sorters (<a href="https://github.com/MouseLand/Kilosort">Kilosort</a>, <a href="https://spyking-circus.readthedocs.io/en/latest/">SpyKING CIRCUS</a>...). <span style="color:pink"><strong>Any dataset compatible with phy can also be analyzed with npyx, in essence.</strong></span></p>
+<h3 id="-design-philosophy">💡 Design philosophy</h3>
+<ul>
+<li>
+<p><a href="https://en.wikipedia.org/wiki/Memoization">Memoization</a></p>
+<p><ins>Npyx is fast because it rarely computes the same thing twice by relying heavily on caching (memoization as purists like to call it)</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at <strong>npix_dataset/npyxMemory</strong>, from where they are simply reloaded if called again.</p>
+<p>An important argument controlling this behaviour is <strong><code>again</code></strong> (boolean), by default set to False: if True, most npyx functions will recompute their output rather than loading it from npyxMemory. This is important to be aware of this behaviour, as it can lead to mind boggling bugs. For instance, if you load a spike train then re-curate your dataset, e.g. by splitting unit 56 into 504 and 505, the train of the old 'unit 56' will still exist at kilosort_dataset/npyxMemory and you will remain able to load it even though the unit is gone!</p>
+</li>
+<li>
+<p>Ubiquitous arguments</p>
+<p>Most npyx functions take at least one input: <strong><code>dp</code></strong>, which is the path to your Neuropixels-phy dataset. You can find a <a href="https://phy.readthedocs.io/en/latest/sorting_user_guide/#installation">full description of the structure of such datasets</a> on the phy documentation.</p>
+<p>Other typical parameters are: <strong><code>verbose</code></strong> (whether to print a bunch of informative messages, useful when debugging), <strong><code>saveFig</code></strong> (boolean) and <strong><code>saveDir</code></strong> (whether to save the figure in saveDir for plotting functions).</p>
+<p>Importantly, <strong><code>dp</code></strong> can also be the path to a <strong>merged dataset</strong>, generated with <code>npyx.merge_datasets()</code> - <ins>every function will run as smoothly on merged datasets as on any regular dataset</ins>. See below for more details.</p>
+</li>
+<li>
+<p>Minimal and modular reliance of spike-sorter output</p>
+<p>Every function requires the files <code>myrecording.ap.meta</code>/<code>myrecording.oebin</code> (metadata from SpikeGLX/OpenEphys), <code>params.py</code>, <code>spike_times.npy</code> and <code>spike_clusters.npy</code>.</p>
+<p>If you have started spike sorting, <code>cluster_groups.tsv</code> will also be required obviously (will be created filled with 'unsorted' groups if none is found).</p>
+<p>Then, specific functions will require specific files: loading waveforms with <code>npyx.spk_wvf.wvf</code> or extracting your sync channel with <code>npyx.io.get_npix_sync</code> require the raw data <code>myrecording.ap.bin</code>, <code>npyx.spk_wvf.templates</code> the files <code>templates.npy</code> and <code>spike_templates.npy</code>, and so on. This allows you to only transfer the strictly necassary files for your use case from a machine to the next: for instance, if you only want to make behavioural analysis of spike trains but do not care about the waveforms, you can run <code>get_npix_sync</code> on a first machine (which will generate a <code>sync_chan</code> folder containing extracted onsets/offsets from the sync channel(s)), then exclusively transfer the <code>dataset/sync_chan/</code> folder along with <code>spike_times.npy</code> and <code>spike_clusters.npy</code> (all very light files) on another computer and analyze your data there seemlessly.</p>
+</li>
+</ul>
+<h3 id="-directory-structure">📁 Directory structure</h3>
+<p>The <strong><code>dp</code></strong> parameter of all npyx functions must be the <strong>absolute path to <code>myrecording</code></strong> below.</p>
+<p>For SpikeGLX recordings:</p>
+<pre><code>myrecording/
+  myrecording.ap.meta
+  params.py
+  spike_times.npy
+  spike_clusters.npy
+  cluster_groups.tsv # optional, if manually curated with phy
+  myrecording.ap.bin # optional, if wanna plot waveforms
+
+  # other kilosort/spyking circus outputs here
+</code></pre>
+<p>For Open-Ephys recordings:</p>
+<pre><code>myrecording/
+  myrecording.oebin
+  params.py
+  spike_times.npy
+  spike_clusters.npy
+  cluster_groups.tsv # if manually curated with phy
+
+  # other spikesorter outputs here
+
+  continuous/
+    Neuropix-PXI-100.somethingsomething (1, AP...)/
+      continuous.dat # optional, if wanna plot waveforms
+    Neuropix-PXI-100.somethingsomething (2, LFP...)/
+      continuous.dat # optional, if want to plot LFP with plot_raw
+
+  events/
+    Neuropix-PXI-100.somethingsomething (1, AP...)/
+      TTL somethingelse/
+        timestamps.npy # optional, if need to get synchronyzation channel to load with get_npix_sync e.g. to merge datasets
+    Neuropix-PXI-100.somethingsomething (2, LFP...)/
+      TTL somethingelse/
+        timestamps.npy # same timestamps for LFP channel
+</code></pre>
+<h3 id="-common-use-cases">👉 Common use cases</h3>
+<h4 id="load-recording-metadata">Load recording metadata</h4>
+<pre><code class="language-python"><span class="hljs-keyword">from</span> npyx <span class="hljs-keyword">import</span> *
+
+dp = <span class="hljs-string">&#x27;datapath/to/myrecording&#x27;</span>
+
+<span class="hljs-comment"># load contents of .lf.meta and .ap.meta or .oebin files as python dictionnary.</span>
+<span class="hljs-comment"># The metadata of the high and lowpass filtered files are in meta[&#x27;highpass&#x27;] and meta[&#x27;lowpass&#x27;]</span>
+<span class="hljs-comment"># Quite handy to get probe version, sampling frequency, recording length etc</span>
+meta = read_metadata(dp) <span class="hljs-comment"># works for spikeGLX (contents of .meta files) and open-ephys (contents of .oebin file)</span>
+
+</code></pre>
+<h4 id="load-synchronization-channel">Load synchronization channel</h4>
+<pre><code class="language-python"><span class="hljs-keyword">from</span> npyx.inout <span class="hljs-keyword">import</span> get_npix_sync <span class="hljs-comment"># star import is sufficient, but I like explicit imports!</span>
+
+<span class="hljs-comment"># If SpikeGLX: slow the first time, then super fast</span>
+onsets, offsets = get_npix_sync(dp, filt_key=<span class="hljs-string">&#x27;highpass&#x27;</span>) <span class="hljs-comment"># works for spikeGLX (extracted from .ap.bin file) and open-ephys (/events/..AP/TTL/timestamps.npy)</span>
+<span class="hljs-comment"># onsets/offsets are dictionnaries</span>
+<span class="hljs-comment"># keys: ids of sync channel where a TTL was detected (0,1,2... for spikeGLX, name of TTL folders in events/..AP for openephys),</span>
+<span class="hljs-comment"># values: times of up (onsets) or down (offsets) threshold crosses, in seconds.</span>
+</code></pre>
+<h4 id="preprocess-binary-data">Preprocess binary data</h4>
+<p>Makes a preprocessed copy of the binary file in dp, moves original binary file at dp/original_data
+This will be as fast as literally copying your file, with a decent GPU!</p>
+<pre><code class="language-python"><span class="hljs-keyword">from</span> npyx.inout <span class="hljs-keyword">import</span> preprocess_binary_file <span class="hljs-comment"># star import is sufficient, but I like explicit imports!</span>
+
+<span class="hljs-comment"># can perform bandpass filtering (butterworth 3 nodes) and median subtraction (aka common average referenceing, CAR)</span>
+<span class="hljs-comment"># in the future: ADC realignment (like CatGT), whitening, spatial filtering (experimental).</span>
+filtered_fname = preprocess_binary_file(dp, filt_key=<span class="hljs-string">&#x27;ap&#x27;</span>, median_subtract=<span class="hljs-literal">True</span>, f_low=<span class="hljs-literal">None</span>, f_high=<span class="hljs-number">300</span>, order=<span class="hljs-number">3</span>, verbose=<span class="hljs-literal">True</span>)
+</code></pre>
+<h4 id="get-good-units-from-dataset">Get good units from dataset</h4>
+<pre><code class="language-python"><span class="hljs-keyword">from</span> npyx.gl <span class="hljs-keyword">import</span> get_units
+units = get_units(dp, quality=<span class="hljs-string">&#x27;good&#x27;</span>)
+</code></pre>
+<h4 id="load-spike-times-from-unit-u">Load spike times from unit u</h4>
+<pre><code class="language-python"><span class="hljs-keyword">from</span> npyx.spk_t <span class="hljs-keyword">import</span> trn
+u=<span class="hljs-number">234</span>
+t = trn(dp, u) <span class="hljs-comment"># gets all spikes from unit 234, in samples</span>
+</code></pre>
+<h4 id="load-waveforms-from-unit-u">Load waveforms from unit u</h4>
+<pre><code class="language-python"><span class="hljs-keyword">from</span> npyx.inout <span class="hljs-keyword">import</span> read_spikeglx_meta
+<span class="hljs-keyword">from</span> npyx.spk_t <span class="hljs-keyword">import</span> ids, trn
+<span class="hljs-keyword">from</span> npyx.spk_wvf <span class="hljs-keyword">import</span> get_peak_chan, wvf, templates
+
+<span class="hljs-comment"># returns a random sample of 100 waveforms from unit 234, in uV, across 384 channels</span>
+waveforms = wvf(dp, u) <span class="hljs-comment"># return array of shape (n_waves, n_samples, n_channels)=(100, 82, 384) by default</span>
+waveforms = wvf(dp, u, n_waveforms=<span class="hljs-number">1000</span>, t_waveforms=<span class="hljs-number">90</span>) <span class="hljs-comment"># now 1000 random waveforms, 90 samples=3ms long</span>
+
+<span class="hljs-comment"># Get the unit peak channel (channel with the biggest amplitude)</span>
+peak_chan = get_peak_chan(dp,u)
+<span class="hljs-comment"># extract the waveforms located on peak channel</span>
+w=waves[:,:,peak_chan]
+
+<span class="hljs-comment"># Extract waveforms of spikes occurring between</span>
+<span class="hljs-comment"># 0-100s and 300-400s in the recording,</span>
+<span class="hljs-comment"># because that&#x27;s when your mouse sneezed</span>
+waveforms = wvf(dp, u, periods=[(<span class="hljs-number">0</span>,<span class="hljs-number">100</span>),(<span class="hljs-number">300</span>,<span class="hljs-number">400</span>)])
+
+<span class="hljs-comment"># alternatively, longer but more flexible:</span>
+fs=meta[<span class="hljs-string">&#x27;highpass&#x27;</span>][<span class="hljs-string">&#x27;sampling_rate&#x27;</span>]
+t=trn(dp,u)/fs <span class="hljs-comment"># convert in s</span>
+<span class="hljs-comment"># get ids of unit u: all spikes have a unique index in the dataset,</span>
+<span class="hljs-comment"># which is their rank sorted by time (as in spike_times.npy)</span>
+u_ids = ids(dp,u)
+ids=ids(dp,u)[(t&gt;<span class="hljs-number">900</span>)&amp;(t&lt;<span class="hljs-number">1000</span>)]
+mask = (t&lt;<span class="hljs-number">100</span>)|((t&gt;<span class="hljs-number">300</span>)&amp;(t&lt;<span class="hljs-number">400</span>))
+waves = wvf(dp, u, spike_ids=u_ids[mask])
+
+<span class="hljs-comment"># If you want to load the templates instead (faster and does not require binary file):</span>
+temp = templates(dp,u) <span class="hljs-comment"># return array of shape (n_templates, 82, n_channels)</span>
+</code></pre>
+<h4 id="compute-autocrosscorrelogram-between-2-units">Compute auto/crosscorrelogram between 2 units</h4>
+<pre><code class="language-python"><span class="hljs-keyword">from</span> npyx.corr <span class="hljs-keyword">import</span> ccg, ccg_stack
+
+<span class="hljs-comment"># returns ccg between 234 and 92 with a binsize of 0.2 and a window of 80</span>
+c = ccg(dp, [<span class="hljs-number">234</span>,<span class="hljs-number">92</span>], cbin=<span class="hljs-number">0.2</span>, cwin=<span class="hljs-number">80</span>)
+
+<span class="hljs-comment"># Only using spikes from the first and third minutes of recording</span>
+c = ccg(dp, [<span class="hljs-number">234</span>,<span class="hljs-number">92</span>], cbin=<span class="hljs-number">0.2</span>, cwin=<span class="hljs-number">80</span>, periods=[(<span class="hljs-number">0</span>,<span class="hljs-number">60</span>), (<span class="hljs-number">120</span>,<span class="hljs-number">180</span>)])
+
+<span class="hljs-comment"># better, compute a big stack of crosscorrelograms with a given name</span>
+<span class="hljs-comment"># The first time, CCGs will be computed in parallel using all the available CPU cores</span>
+<span class="hljs-comment"># and it will be saved in the background and, reloadable instantaneously in the future</span>
+source_units = [<span class="hljs-number">1</span>,<span class="hljs-number">2</span>,<span class="hljs-number">3</span>,<span class="hljs-number">4</span>,<span class="hljs-number">5</span>]
+target_units = [<span class="hljs-number">6</span>,<span class="hljs-number">7</span>,<span class="hljs-number">8</span>,<span class="hljs-number">9</span>,<span class="hljs-number">10</span>]
+c_stack = ccg_stack(dp, source_units, target_units, <span class="hljs-number">0.2</span>, <span class="hljs-number">80</span>, name=<span class="hljs-string">&#x27;my_relevant_ccg_stack&#x27;</span>)
+c_stack = ccg_stack(dp, name=<span class="hljs-string">&#x27;my_relevant_ccg_stack&#x27;</span>) <span class="hljs-comment"># will work to reaload in the future</span>
+</code></pre>
+<h4 id="plot-waveform-and-crosscorrelogram-of-unit-u">Plot waveform and crosscorrelogram of unit u</h4>
+<pre><code class="language-python"><span class="hljs-comment"># all plotting functions return matplotlib figures</span>
+<span class="hljs-keyword">from</span> npyx.plot <span class="hljs-keyword">import</span> plot_wvf, get_peak_chan
+
+u=<span class="hljs-number">234</span>
+<span class="hljs-comment"># plot waveform, 2.8ms around templates center, on 16 channels around peak channel</span>
+<span class="hljs-comment"># (the peak channel is found automatically, no need to worry about finding it)</span>
+fig = plot_wvf(dp, u, Nchannels=<span class="hljs-number">16</span>, t_waveforms=<span class="hljs-number">2.8</span>)
+
+<span class="hljs-comment"># But if you wished to get it, simply run</span>
+peakchannel = get_peak_chan(dp, u)
+</code></pre>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/wvf.png" width="300"/>
+<pre><code class="language-python"><span class="hljs-comment"># plot ccg between 234 and 92</span>
+<span class="hljs-comment"># as_grid also plot the autocorrelograms</span>
+fig = plot_ccg(dp, [u,<span class="hljs-number">92</span>], cbin=<span class="hljs-number">0.2</span>, cwin=<span class="hljs-number">80</span>, as_grid=<span class="hljs-literal">True</span>)
+</code></pre>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ccg.png" width="400"/>
+<h4 id="preprocess-your-waveforms-drift-shift-matching-and-spike-trains-detect-periods-with-few-false-positivenegative">Preprocess your waveforms (drift-shift-matching) and spike trains (detect periods with few false positive/negative)</h4>
+<pre><code class="language-python"><span class="hljs-comment"># all plotting functions return matplotlib figures</span>
+<span class="hljs-keyword">from</span> npyx.spk_wvf <span class="hljs-keyword">import</span> wvf_dsmatch
+<span class="hljs-keyword">from</span> npyx.spk_t <span class="hljs-keyword">import</span> trn_filtered
+
+<span class="hljs-comment"># wvf_dsmatch subselect &#x27;best looking&#x27; waveforms</span>
+<span class="hljs-comment"># by first matching them by drift state (Z, peak channel and XY, amplitude on peak channel)</span>
+<span class="hljs-comment"># then shifting them around to realign them (using the crosscorr of its whole spatial footprint)</span>
+<span class="hljs-comment"># on the plot, black is the original waveform as it would be plotted in phy,</span>
+<span class="hljs-comment"># green is drift-matched, red is drift-shift matched</span>
+w_preprocessed = wvf_dsmatch(dp, u, plot_debug=<span class="hljs-literal">True</span>)
+</code></pre>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1_driftmatch.png" width="500"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/dsmatch_example1.png" width="350"/>
+<pre><code class="language-python"><span class="hljs-comment"># trn_filtered clips the recording in 10s (default) chunks</span>
+<span class="hljs-comment"># and estimates the false positive/false negative spike sporting rates on such chunks</span>
+<span class="hljs-comment"># before masking out spikes occurring inside &#x27;bad chunks&#x27;,</span>
+<span class="hljs-comment"># defined as chunks with too high FP OR FN rates (5% and 5% by default)</span>
+t_preprocessed = trn_filtered(dp, u, plot_debug=<span class="hljs-literal">True</span>)
+</code></pre>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/trnfiltered_example1.png" width="600"/>
+<h4 id="plot-chunk-of-raw-data-with-overlaid-units">Plot chunk of raw data with overlaid units</h4>
+<pre><code class="language-python">units = [<span class="hljs-number">1</span>,<span class="hljs-number">2</span>,<span class="hljs-number">3</span>,<span class="hljs-number">4</span>,<span class="hljs-number">5</span>,<span class="hljs-number">6</span>]
+channels = np.arange(<span class="hljs-number">70</span>,<span class="hljs-number">250</span>)
+<span class="hljs-comment"># raw data are whitened, high-pass filtered and median-subtracted by default - parameters are explicit below</span>
+plot_raw_units(dp, times=[<span class="hljs-number">0</span>,<span class="hljs-number">0.130</span>], units = units, channels = channels,
+               colors=[<span class="hljs-string">&#x27;orange&#x27;</span>, <span class="hljs-string">&#x27;red&#x27;</span>, <span class="hljs-string">&#x27;limegreen&#x27;</span>, <span class="hljs-string">&#x27;darkgreen&#x27;</span>, <span class="hljs-string">&#x27;cyan&#x27;</span>, <span class="hljs-string">&#x27;navy&#x27;</span>],
+               lw=<span class="hljs-number">1.5</span>, offset=<span class="hljs-number">450</span>, figsize=(<span class="hljs-number">6</span>,<span class="hljs-number">16</span>), Nchan_plot=<span class="hljs-number">10</span>,
+               med_sub=<span class="hljs-number">1</span>, whiten=<span class="hljs-number">1</span>, hpfilt=<span class="hljs-number">1</span>)
+</code></pre>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/raw.png" width="400"/>
+<h4 id="plot-peri-stimulus-time-histograms-across-neurons-and-conditions">Plot peri-stimulus time histograms across neurons and conditions</h4>
+<pre><code class="language-python"><span class="hljs-comment"># Explore responses of 3 neurons to 4 categories of events:</span>
+fs=<span class="hljs-number">30000</span> <span class="hljs-comment"># Hz</span>
+units=[<span class="hljs-number">1</span>,<span class="hljs-number">2</span>,<span class="hljs-number">3</span>]
+trains=[trn(dp,u)/fs <span class="hljs-keyword">for</span> u <span class="hljs-keyword">in</span> units] <span class="hljs-comment"># make list of trains of 3 units</span>
+trains_str=units <span class="hljs-comment"># can give specific names to units here, show on the left of each row</span>
+events=[licks, sneezes, visual_stimuli, auditory_stimuli] <span class="hljs-comment"># get events corresponding to 4 conditions</span>
+events_str=[<span class="hljs-string">&#x27;licking&#x27;</span>, <span class="hljs-string">&#x27;sneezing&#x27;</span>, <span class="hljs-string">&#x27;visual_stim&#x27;</span>, <span class="hljs-string">&#x27;auditory_stim&#x27;</span>] <span class="hljs-comment"># can give specific names to events here, show above each column</span>
+events_col=<span class="hljs-string">&#x27;batlow&#x27;</span> <span class="hljs-comment"># colormap from which the event colors will be drawn</span>
+fig=summary_psth(trains, trains_str, events, events_str, psthb=<span class="hljs-number">10</span>, psthw=[-<span class="hljs-number">750</span>,<span class="hljs-number">750</span>],
+                 zscore=<span class="hljs-number">0</span>, bsl_subtract=<span class="hljs-literal">False</span>, bsl_window=[-<span class="hljs-number">3000</span>,-<span class="hljs-number">750</span>], convolve=<span class="hljs-literal">True</span>, gsd=<span class="hljs-number">2</span>,
+                 events_toplot=[<span class="hljs-number">0</span>], events_col=events_col, trains_col_groups=trains_col_groups,
+                 title=<span class="hljs-literal">None</span>, saveFig=<span class="hljs-number">0</span>, saveDir=<span class="hljs-string">&#x27;~/Downloads&#x27;</span>, _<span class="hljs-built_in">format</span>=<span class="hljs-string">&#x27;pdf&#x27;</span>,
+                 figh=<span class="hljs-literal">None</span>, figratio=<span class="hljs-literal">None</span>, transpose=<span class="hljs-number">1</span>,
+                 as_heatmap=<span class="hljs-literal">False</span>,  vmin=<span class="hljs-literal">None</span>, center=<span class="hljs-literal">None</span>, vmax=<span class="hljs-literal">None</span>, cmap_str=<span class="hljs-literal">None</span>)
+</code></pre>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/psth.png" width="600"/>
+<h4 id="merge-datasets-acquired-on-two-probes-simultaneously">Merge datasets acquired on two probes simultaneously</h4>
+<pre><code class="language-python"><span class="hljs-comment"># The three recordings need to include the same sync channel.</span>
+<span class="hljs-keyword">from</span> npyx.merger <span class="hljs-keyword">import</span> merge_datasets
+dps = [<span class="hljs-string">&#x27;same_folder/lateralprobe_dataset&#x27;</span>,
+       <span class="hljs-string">&#x27;same_folder/medialprobe_dataset&#x27;</span>,
+       <span class="hljs-string">&#x27;same_folder/anteriorprobe_dataset&#x27;</span>]
+probenames = [<span class="hljs-string">&#x27;lateral&#x27;</span>,<span class="hljs-string">&#x27;medial&#x27;</span>,<span class="hljs-string">&#x27;anterior&#x27;</span>]
+dp_dict = {p:dp <span class="hljs-keyword">for</span> p, dp <span class="hljs-keyword">in</span> <span class="hljs-built_in">zip</span>(dps, probenames)}
+
+<span class="hljs-comment"># This will merge the 3 datasets (only relevant information, not the raw data) in a new folder at</span>
+<span class="hljs-comment"># dp_merged: same_folder/merged_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset</span>
+<span class="hljs-comment"># where all npyx functions can smoothly run.</span>
+<span class="hljs-comment"># The only difference is that units now need to be called as floats,</span>
+<span class="hljs-comment"># of format u.x (u=unit id, x=dataset id [0-2]).</span>
+<span class="hljs-comment"># lateralprobe, medial probe and anteriorprobe x will be respectively 0,1 and 2.</span>
+dp_merged, datasets_table = merge_datasets(dp_dic)
+
+
+--- Merged data (<span class="hljs-keyword">from</span> <span class="hljs-number">2</span> dataset(s)) will be saved here: /same_folder/merged_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset.
+
+--- Loading spike trains of <span class="hljs-number">2</span> datasets...
+
+sync channel extraction directory found: /same_folder/lateralprobe_dataset/sync_chan
+Data found on sync channels:
+chan <span class="hljs-number">2</span> (<span class="hljs-number">201</span> events).
+chan <span class="hljs-number">4</span> (<span class="hljs-number">16</span> events).
+chan <span class="hljs-number">5</span> (<span class="hljs-number">175</span> events).
+chan <span class="hljs-number">6</span> (<span class="hljs-number">28447</span> events).
+chan <span class="hljs-number">7</span> (<span class="hljs-number">93609</span> events).
+Which channel shall be used to synchronize probes? &gt;&gt;&gt; <span class="hljs-number">7</span>
+
+sync channel extraction directory found: /same_folder/medialprobe_dataset/sync_chan
+Data found on sync channels:
+chan <span class="hljs-number">2</span> (<span class="hljs-number">201</span> events).
+chan <span class="hljs-number">4</span> (<span class="hljs-number">16</span> events).
+chan <span class="hljs-number">5</span> (<span class="hljs-number">175</span> events).
+chan <span class="hljs-number">6</span> (<span class="hljs-number">28447</span> events).
+chan <span class="hljs-number">7</span> (<span class="hljs-number">93609</span> events).
+Which channel shall be used to synchronize probes? &gt;&gt;&gt; <span class="hljs-number">7</span>
+
+sync channel extraction directory found: /same_folder/anteriorprobe_dataset/sync_chan
+Data found on sync channels:
+chan <span class="hljs-number">2</span> (<span class="hljs-number">201</span> events).
+chan <span class="hljs-number">4</span> (<span class="hljs-number">16</span> events).
+chan <span class="hljs-number">5</span> (<span class="hljs-number">175</span> events).
+chan <span class="hljs-number">6</span> (<span class="hljs-number">28194</span> events).
+chan <span class="hljs-number">7</span> (<span class="hljs-number">93609</span> events).
+Which channel shall be used to synchronize probes? &gt;&gt;&gt; <span class="hljs-number">7</span>
+
+--- Aligning spike trains of <span class="hljs-number">2</span> datasets...
+More than <span class="hljs-number">50</span> sync signals found - <span class="hljs-keyword">for</span> performance reasons, sub-sampling to <span class="hljs-number">50</span> homogenoeously spaced sync signals to align data.
+<span class="hljs-number">50</span> sync events used <span class="hljs-keyword">for</span> alignement - start-end drift of -<span class="hljs-number">3080.633</span>ms
+
+--- Merged spike_times <span class="hljs-keyword">and</span> spike_clusters saved at /same_folder/merged_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset.
+
+--&gt; Merge successful! Use a <span class="hljs-built_in">float</span> u.x <span class="hljs-keyword">in</span> <span class="hljs-built_in">any</span> npyx function to call unit u <span class="hljs-keyword">from</span> dataset x:
+- u<span class="hljs-number">.0</span> <span class="hljs-keyword">for</span> dataset lateralprobe_dataset,
+- u<span class="hljs-number">.1</span> <span class="hljs-keyword">for</span> dataset medialprobe_dataset,
+- u<span class="hljs-number">.2</span> <span class="hljs-keyword">for</span> dataset anteriorprobe_dataset.
+</code></pre>
+<p><ins>Now any npyx function runs on the merged dataset!</ins>
+Under the hood, it will create a <code>merged_dataset_dataset1_dataset2/npyxMemory</code> folder to save any data computed across dataframes, but will use the original <code>dataset1/npyxMemory</code> folder to save data related to this dataset exclusively (e.g. waveforms). Hence, there is no redundancy: space and time are saved.</p>
+<p>This is also why <ins>it is primordial that you do not move your datatasets from their original paths after merging them</ins> - else, functions ran on merged_dataset1_dataset2 will not know where to go fetch the data! They refer to the paths in <code>merged_dataset_dataset1_dataset2/datasets_table.csv</code>. If you really need to, you can move your datasets but do not forget to edit this file accordingly.</p>
+<pre><code class="language-python"><span class="hljs-comment"># These will work!</span>
+t = trn(dp_merged, <span class="hljs-number">92.1</span>) <span class="hljs-comment"># get spikes of unit 92 in dataset 1 i.e. medialprobe</span>
+fig=plot_ccg(dp_merged,[<span class="hljs-number">10.0</span>, <span class="hljs-number">92.1</span>, cbin=<span class="hljs-number">0.2</span>, cwin=<span class="hljs-number">80</span>]) <span class="hljs-comment"># compute CCG between 2 units across datasets</span>
+</code></pre>
+<p>PS - The spike times are aligned across datasets by modelling the drift between the clocks of the neuropixels headstages linearly: TTL probe 1 = a * TTL probe 1 + b (if a!=1, there is drift between the clocks), so spiketimes_probe2_aligned_to_probe1  = a * spiketimes_probe2 + b
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ttl1-ttl2_1.png" width="600"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/ttl1-ttl2_2.png" width="600"/>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/error_dist.png" width="600"/>
+<br/></p>
+<h3 id="-bonus-matplotlib-plot-prettifier">⭐ Bonus: matplotlib plot prettifier</h3>
+<pre><code class="language-python"><span class="hljs-keyword">from</span> npyx.plot <span class="hljs-keyword">import</span> get_ncolors_cmap
+
+<span class="hljs-comment"># allows you to easily extract the (r,g,b) tuples from a matplotlib or crameri colormap</span>
+<span class="hljs-comment"># to use them in other plots!</span>
+colors = get_ncolors_cmap(<span class="hljs-string">&#x27;coolwarm&#x27;</span>, <span class="hljs-number">10</span>, plot=<span class="hljs-number">1</span>)
+colors = get_ncolors_cmap(<span class="hljs-string">&#x27;viridis&#x27;</span>, <span class="hljs-number">10</span>, plot=<span class="hljs-number">1</span>)
+<span class="hljs-comment"># in a jupyter notebook, will also plot he HTML colormap:</span>
+</code></pre>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/colormaps.png" width="600"/>
+<pre><code class="language-python"><span class="hljs-keyword">from</span> npyx.plot <span class="hljs-keyword">import</span> mplp
+<span class="hljs-keyword">import</span> matplotlib.pyplot <span class="hljs-keyword">as</span> plt
+
+<span class="hljs-comment"># mplp() will turn any matplotlib plot into something you can work with.</span>
+<span class="hljs-comment"># fed up googling around and landing on stack overflow to tweak your figures?</span>
+<span class="hljs-comment"># just read mplp parameters, they are self-explanatory!</span>
+
+df1 = pd.load(<span class="hljs-string">&quot;my_dataframe.csv&quot;</span>)
+
+<span class="hljs-comment"># Seaborn figure (seaborn is simply a wrapper for matplotlib):</span>
+fig = plt.figure()
+sns.scatterplot(data=df1,
+                x=<span class="hljs-string">&#x27;popsync&#x27;</span>, y=<span class="hljs-string">&#x27;depth&#x27;</span>, hue=<span class="hljs-string">&#x27;mean_popsync&#x27;</span>,
+                palette=<span class="hljs-string">&#x27;plasma&#x27;</span>, alpha=<span class="hljs-number">1</span>, linewidth=<span class="hljs-number">1</span>, edgecolor=<span class="hljs-string">&#x27;black&#x27;</span>)
+</code></pre>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/no_mplp.png" width="600"/>
+<pre><code class="language-python"><span class="hljs-comment"># Same figure, tweaked with mplp():</span>
+fig = plt.figure()
+sns.scatterplot(data=df1,
+                x=<span class="hljs-string">&#x27;popsync&#x27;</span>, y=<span class="hljs-string">&#x27;depth&#x27;</span>, hue=<span class="hljs-string">&#x27;mean_popsync&#x27;</span>,
+                palette=<span class="hljs-string">&#x27;plasma&#x27;</span>, alpha=<span class="hljs-number">1</span>, linewidth=<span class="hljs-number">1</span>, edgecolor=<span class="hljs-string">&#x27;black&#x27;</span>)
+mplp(figsize=(<span class="hljs-number">3</span>,<span class="hljs-number">3</span>), title=<span class="hljs-string">&quot;My title&quot;</span>, ylim=[-<span class="hljs-number">10</span>,-<span class="hljs-number">2</span>], xlim=[-<span class="hljs-number">40</span>,<span class="hljs-number">60</span>],
+      xlabel = <span class="hljs-string">&quot;My x label (rotated ticks)&quot;</span>, ylabel=<span class="hljs-string">&quot;My y label&quot;</span>,
+      xtickrot=<span class="hljs-number">45</span>,
+      hide_legend=<span class="hljs-literal">True</span>, colorbar=<span class="hljs-literal">True</span>,
+      vmin=df[<span class="hljs-string">&#x27;mean_popsync&#x27;</span>].<span class="hljs-built_in">min</span>(), vmax=df[<span class="hljs-string">&#x27;mean_popsync&#x27;</span>].<span class="hljs-built_in">max</span>(),
+      cbar_w=<span class="hljs-number">0.03</span>, cbar_h=<span class="hljs-number">0.4</span>, clabel=<span class="hljs-string">&quot;My colorbar label\n(no more ugly legend!)&quot;</span>, cmap=<span class="hljs-string">&quot;plasma&quot;</span>,
+      clabel_s=<span class="hljs-number">16</span>, cticks_s=<span class="hljs-number">14</span>, ticklab_s=<span class="hljs-number">16</span>,
+      saveFig=saveFig, saveDir=saveDir, figname = <span class="hljs-string">f&quot;popsync_<span class="hljs-subst">{pair}</span>&quot;</span>)
+</code></pre>
+<img src="https://raw.githubusercontent.com/m-beau/NeuroPyxels/master/images/mplp.png" width="600"/>
+<br/>
+            
+            
+        </body>
+        </html>

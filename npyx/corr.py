@@ -82,7 +82,7 @@ def make_matrix_2xNevents(dic):
 
     return m
 
-@cache_memory.cache
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
 def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
                            periods='all', verbose=False, trains=None, enforced_rp=0, log_window_end=None, n_log_bins=10):
     '''Returns the crosscorrelation function of two spike trains.
@@ -356,7 +356,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
     return sortedC
 
-@cache_memory.cache
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
 def ccg_hz(dp, u1, u2, cbin, cwin,
            fs=30000, again = False,
            enforced_rp=0, periods='all', trains=None,
@@ -383,10 +383,9 @@ def ccg_hz(dp, u1, u2, cbin, cwin,
         if ci is True:
             - (low, high): (float, float), bimonial confidence interval of the expected CCG for alpha value of ci_alpha
     """
-    if ci:
-        if not rate_corrected:
-            rate_corrected = True
-            print("set rate_corrected to True next time when using ci.")
+    if ci and not rate_corrected:
+        rate_corrected = True
+        print("set rate_corrected to True next time when using ci.")
     if trains is not None:
         assert len(trains) == 2, "This function only works for two units at a time."
         t1 = trains[0]
@@ -805,7 +804,7 @@ def convert_acg_log(lin_acg, cbin, cwin, n_log_bins=100,
         plt.scatter(t_log, alog,
                     color='k', marker='+',
                     zorder=100, alpha=0.8, s=60, lw=2)
-        npyx.plot.mplp(figsize=(20, 6), xlim=[-cwin//2, cwin//2], xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
+        npyx.plot_utils.mplp(figsize=(20, 6), xlim=[-cwin//2, cwin//2], xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
 
         plt.figure()
         plt.plot(original_bins, alin)
@@ -814,7 +813,7 @@ def convert_acg_log(lin_acg, cbin, cwin, n_log_bins=100,
                     color='k', marker='+',
                     zorder=100, alpha=0.8, s=60, lw=2)
         plt.xscale('symlog')
-        npyx.plot.mplp(figsize=(20, 6),
+        npyx.plot_utils.mplp(figsize=(20, 6),
              xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
 
     return log_acg, t_log
@@ -1339,7 +1338,9 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
                 pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn,
                                 fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
                 for p in pks:
-                    features=features.append(dict(zip(features.columns,np.append(sigustack[i, :], p))), ignore_index=True)
+                    new_row = pd.DataFrame([dict(zip(features.columns, np.append(sigustack[i, :], p)))])
+                    features = pd.concat([features, new_row], ignore_index=True)
+                    # features = features.append(dict(zip(features.columns,np.append(sigustack[i, :], p))), ignore_index=True)
             features.to_csv(feat_path, index=False)
             return sigstack, sigustack, features
 
@@ -1381,7 +1382,9 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
             sigstack.append(stack[i, j, :])
             if ret_features:
                 for p in pks:
-                    features=features.append(dict(zip(features.columns,np.append(ustack[i, j, :], p))), ignore_index=True)
+                    new_row = pd.DataFrame([dict(zip(features.columns,np.append(ustack[i, j, :], p)))])
+                    features = pd.concat([features, new_row], ignore_index=True)
+                    # features = features.append(dict(zip(features.columns,np.append(ustack[i, j, :], p))), ignore_index=True)
 
     if np.any(sigustack):
         sigustack=npa(sigustack)
@@ -1456,6 +1459,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
                ['uSrc'', uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
                (see __doc__ of get_ccg_sig() for features description)
         - sfcm: np array, Nunits x Nunit with 0 if no significant correlation and metric if significant correlation.
+        - peakChs, sigstack, sigustack
     '''
     assert corr_type in ['all', 'main', 'synchrony', 'excitations', 'inhibitions', 'connections', 'cs_pause']
     # filter for main modulation irrespectively of sign
@@ -1560,13 +1564,15 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     if (pre_chanrange is not None)|(post_chanrange is not None):
         peakChs = npyx.spk_wvf.get_depthSort_peakChans(dp, use_template=use_template_for_peakchan)
         if pre_chanrange is not None:
-            pre_units=sfc.uSrc[sfc.t_ms_center>=0].append(sfc.uTrg[sfc.t_ms_center<0]).sort_index().values
+            pre_units = pd.concat([sfc.uSrc[sfc.t_ms_center >= 0], sfc.uTrg[sfc.t_ms_center < 0]]).sort_index().values
+            # pre_units=sfc.uSrc[sfc.t_ms_center>=0].append(sfc.uTrg[sfc.t_ms_center<0]).sort_index().values
             peak_m=(peakChs[:,1]>pre_chanrange[0])&(peakChs[:,1]<pre_chanrange[1])
             range_m=np.isin(pre_units,peakChs[peak_m,0])
             sfc.drop(index=sfc.index[~range_m], inplace=True)
             sfc.reset_index(inplace=True, drop=True)
         if post_chanrange is not None:
-            post_units=sfc.uSrc[sfc.t_ms_center<0].append(sfc.uTrg[sfc.t_ms_center>=0]).sort_index().values
+            post_units = pd.concat([sfc.uSrc[sfc.t_ms_center < 0], sfc.uTrg[sfc.t_ms_center >= 0]]).sort_index().values
+            # post_units=sfc.uSrc[sfc.t_ms_center<0].append(sfc.uTrg[sfc.t_ms_center>=0]).sort_index().values
             peak_m=(peakChs[:,1]>post_chanrange[0])&(peakChs[:,1]<post_chanrange[1])
             range_m=np.isin(post_units,peakChs[peak_m,0])
             sfc.drop(index=sfc.index[~range_m], inplace=True)

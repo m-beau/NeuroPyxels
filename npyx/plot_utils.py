@@ -636,7 +636,13 @@ def get_bestticks_from_array(arr, step=None, light=False):
     If the array if np.arange(10), the returned array will be np.arange(0,10,1).
     If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
     """
-    return get_bestticks(arr[0], arr[-1], step, light)
+    arr_sort = np.sort(arr)
+    bestticks = get_bestticks(arr_sort[0], arr_sort[-1], step, light)
+
+    if arr[0] > arr[-1]:
+        bestticks = bestticks[::-1]
+
+    return bestticks
 
 def get_labels_from_ticks(ticks):
     ticks=npa(ticks)

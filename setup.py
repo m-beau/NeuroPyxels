@@ -25,7 +25,7 @@ with open("README.md", "r", encoding="utf-8") as readme_file:
 requirements = [
     "ipython",
     "numpy",
-    "scipy",
+    "scipy==1.10.0",
     "pandas",
     "numba",
     "statsmodels",

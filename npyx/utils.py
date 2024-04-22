@@ -15,7 +15,6 @@ warnings.simplefilter('default', category=NumbaPendingDeprecationWarning)#'ignor
 from ast import literal_eval as ale
 import numpy as np
 from numpy.fft import rfft, irfft
-import matplotlib.pyplot as plt
 
 from six import integer_types
 from statsmodels.nonparametric.smoothers_lowess import lowess
@@ -51,9 +50,11 @@ def cache_validation_again(metadata):
     """
     # Only retrieve cached results for calls that are not flagged with again
     try:
-        return metadata["input_args"]["again"] == "False"
+        again = ale(metadata["input_args"]["again"])
+        load_from_cache = (not bool(again))
+        return load_from_cache
     except:
-        print("Joblib caching error! Not loading from cache.")
+        print(f"Joblib caching error (again argument missing?)! Not loading from cache.\n(see {metadata}")
         return False
 
 def docstring_decorator(*args):

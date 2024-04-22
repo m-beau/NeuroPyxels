@@ -68,7 +68,7 @@ def metadata(dp):
         - meta: dictionnary containing contents of meta file.
         the structure of meta is as follow:
         {
-        'probe_version':'3A', '1.0_staggered', '2.0_1shank', '2.0_4shanks',
+        'probe_version': either of '3A', '1.0_staggered', '2.0_1shank', '2.0_4shanks', 'ultra_high_density';
         'highpass':
             {
             'binary_relative_path':relative path to binary file from dp,
@@ -93,13 +93,15 @@ def metadata(dp):
         'glx':{3.0:'3A', # option 3
                0.0:'1.0',
                21:'2.0_singleshank',
-               24:'2.0_fourshanks'},
+               24:'2.0_fourshanks',
+               1123:'ultra_high_density'},
         'oe':{"Neuropix-3a":'3A', # source_processor_name keys
                 "Neuropix-PXI":'1.0',
                 '?1':'2.0_singleshank', # do not know yet
                 '?2':'2.0_fourshanks'}, # do not know yet
         'int':{'3A':1, '1.0':1,
-               '2.0_singleshank':2, '2.0_fourshanks':2}
+               '2.0_singleshank':2, '2.0_fourshanks':2,
+               'ultra_high_density':3}
         }
 
     # import params.py data
@@ -229,13 +231,14 @@ def metadata(dp):
         # Find the voltage range, gain, encoding
         # and deduce the conversion from units/bit to uV
         Vrange=(meta_glx["highpass"]['imAiRangeMax']-meta_glx["highpass"]['imAiRangeMin'])*1e6
-        if meta['probe_version'] in ['3A', '1.0']:
+        if meta['probe_version'] in ['3A', '1.0', 'ultra_high_density']:
             if Vrange!=1.2e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (1.2*10^6). Might be normal!')
             bits_encoding=10
             ampFactor=ale(meta_glx["highpass"]['~imroTbl'][1].split(' ')[3]) # typically 500
             #if ampFactor!=500: print(f'\u001b[31mHeads-up, the voltage amplification factor seems to be {ampFactor}, which is not the default (500). Might be normal!')
         elif meta['probe_version'] in ['2.0_singleshank', '2.0_fourshanks']:
-            if Vrange!=1e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
+            if Vrange!=1e6:
+                print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
             bits_encoding=14
             ampFactor=80 # hardcoded
         meta['bit_uV_conv_factor']=(Vrange/2**bits_encoding/ampFactor)
@@ -625,7 +628,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
     - times: list of boundaries of the time window, in seconds [t1, t2].
     - channels (default: np.arange(384)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
-    - filt_key: 'ap' or 'lf', whether to exxtract from the high-pass or low-pass filtered binary file
+    - filt_key: 'highpass' or 'lowpass', whether to extract from the high-pass or low-pass filtered binary file
     - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
     - whiten: whether to whiten the data across channels. If nRangeWhiten is not None,
               whitening matrix is computed with the nRangeWhiten closest channels.
@@ -651,7 +654,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     # Find binary file
     dp = Path(dp)
     meta = read_metadata(dp)
-    fname = get_binary_file_path(dp, filt_suffix='ap', absolute_path=True)
+    fname = get_binary_file_path(dp, filt_suffix='ap' if filt_key == 'highpass' else 'lf', absolute_path=True)
 
     fs = meta[filt_key]['sampling_rate']
     Nchans=meta[filt_key]['n_channels_binaryfile']

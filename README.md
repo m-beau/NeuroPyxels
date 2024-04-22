@@ -151,9 +151,10 @@ Older versions of numba did not feature the .core submodule. If you get this err
 
 - **core dumped when importing** <br/>
 This seems to be an issue related to PyQt5 required by opencv (opencv-python).
-Solution:
+Solution (from [post](https://stackoverflow.com/questions/71088095/opencv-could-not-load-the-qt-platform-plugin-xcb-in-even-though-it-was-fou)):
 ```
 # activate npyx environment first
+pip uninstall PyQt5
 pip uninstall opencv-python
 pip install opencv-python
 # pip install other missing dependencies
@@ -189,7 +190,7 @@ To do so, in your terminal, run "which python" on linux/mac or "where python" on
 
 If you find Neuropyxels useful in your work, we kindly request that you cite:
 
-> Maxime Beau, Federico D'Agostino, Ago Lajko, Gabriela Martínez, Michael Häusser & Dimitar Kostadinov. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. Zenodo. https://doi.org/10.5281/zenodo.5509733
+> Maxime Beau, Federico D'Agostino, Ago Lajko, Gabriela Martínez, Michael Häusser & Dimitar Kostadinov. NeuroPyxels: loading, processing and plotting Neuropixels data in python. Zenodo https://doi.org/10.5281/zenodo.5509733 (2021).
 
 You can additionally star this repo using the top-right star button to help it gain more visibility.
 

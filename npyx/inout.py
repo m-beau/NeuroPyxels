@@ -628,7 +628,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
     - times: list of boundaries of the time window, in seconds [t1, t2].
     - channels (default: np.arange(384)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
-    - filt_key: 'ap' or 'lf', whether to exxtract from the high-pass or low-pass filtered binary file
+    - filt_key: 'highpass' or 'lowpass', whether to extract from the high-pass or low-pass filtered binary file
     - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
     - whiten: whether to whiten the data across channels. If nRangeWhiten is not None,
               whitening matrix is computed with the nRangeWhiten closest channels.
@@ -654,7 +654,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     # Find binary file
     dp = Path(dp)
     meta = read_metadata(dp)
-    fname = get_binary_file_path(dp, filt_suffix='ap', absolute_path=True)
+    fname = get_binary_file_path(dp, filt_suffix='ap' if filt_key == 'highpass' else 'lf', absolute_path=True)
 
     fs = meta[filt_key]['sampling_rate']
     Nchans=meta[filt_key]['n_channels_binaryfile']

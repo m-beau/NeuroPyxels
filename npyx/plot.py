@@ -119,7 +119,7 @@ mark_dict = {
 def hist_MB(arr, a=None, b=None, s=None,
             title='', xlabel='', ylabel='', legend_label=None,
             ax=None, color=None, alpha=1, figsize=None, xlim=None,
-            prettify=True,
+            prettify=True, edgecolor=None,
             style='bar', density=False, **mplp_kwargs):
     """
     Plot histogram of array arr.
@@ -154,7 +154,8 @@ def hist_MB(arr, a=None, b=None, s=None,
     else:
         fig, ax = ax.get_figure(), ax
     if style == 'bar':
-        ax.bar(x=x, height=y, width=s, color=color, edgecolor=color, alpha=alpha, label=legend_label)
+        if edgecolor is None: edgecolor=color
+        ax.bar(x=x, height=y, width=s, color=color, edgecolor=edgecolor, alpha=alpha, label=legend_label)
     elif style == 'step':
         x_step = np.concatenate((x[0:1]-s, x, [x[-1]+s]))
         y_step = np.concatenate(([0], y, [0]))
@@ -177,7 +178,7 @@ def paired_plot_df(df, columns, **kwargs):
     """
     Wrapper of npyx.plot.paired_plot.
     - df: pandas dataframe
-    - cats: iterable of strings, list of pandas dataframe features
+    - columns: iterable of strings, list of pandas dataframe features
     """
     assert np.all([c in df.columns for c in columns])
     X = np.zeros((len(df), len(columns)))
@@ -186,7 +187,7 @@ def paired_plot_df(df, columns, **kwargs):
 
     if 'xtickslabels' not in kwargs:
         kwargs['xtickslabels'] = columns
-    #kwargs = kwargs
+
     paired_plot(X, **kwargs)
     
 def paired_plot(X, 
@@ -365,7 +366,8 @@ def paired_plot(X,
     else:
         assert len(xtickslabels) == n_feat,\
             f"You must pass {n_feat} xtickslabels, not {len(xtickslabels)}."
-    xrot = 45 if max(len(str(lab)) for lab in xtickslabels) > 6 else 0
+    if 'xtickrot' not in kwargs:
+        kwargs['xtickrot'] = 45 if max(len(str(lab)) for lab in xtickslabels) > 6 else 0
         
     if 'ylim' in kwargs: ax.set_ylim(kwargs['ylim'])
     
@@ -384,7 +386,7 @@ def paired_plot(X,
         else:
             bins = np.arange(min(ylim), max(ylim)+binsize, binsize)
 
-        ax2.hist(X[:,-1], bins = bins,
+        ax2.hist(X[:,-1], bins = bins, edgecolor='k', lw=1,
                 color = hist_color, orientation = 'horizontal')
         
         hist_kwargs = hist_kwargs.copy() # NEVER edit a default argument directly
@@ -400,19 +402,22 @@ def paired_plot(X,
             ax2.axhline(mn, ls='--', lw=2, c='k')
             
         if 'xlabel' not in hist_kwargs:
-            hist_kwargs['xlabel'] = f'Counts\n({xtickslabels[-1]})'
+            xlab = f'Counts\n({xtickslabels[-1]})' if (len(xtickslabels) > 1) else 'Counts'
+            hist_kwargs['xlabel'] = xlab
+        if 'hlines' in kwargs:
+            hist_kwargs['hlines'] = kwargs['hlines']
             
         mplp(fig, ax2,
             yticks=ax.get_yticks(),
             ytickslabels=['']*len(ax.get_yticks()),
-            xlabelpad=-50,
+            #xlabelpad=-50,
             **hist_kwargs)
+
     mplp(fig, ax,
          xticks = xticks,
          xtickslabels = xtickslabels,
          xlim = [-0.5, n_feat-0.5],
          show_legend = (labels is not None)|(labels_style is not None),
-         xtickrot=xrot,
          **kwargs)
 #%% Stats plots ##############################################################################################
 

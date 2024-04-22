@@ -375,7 +375,7 @@ def load_units_qualities(dp, again=False):
     f = "cluster_group.tsv"
     dp = Path(dp)
     if (dp / f).exists():
-        qualities = pd.read_csv(dp / f, delim_whitespace=True)
+        qualities = pd.read_csv(dp / f, sep='\s+')
         re_spikesorted = detect_new_spikesorting(dp)
         regenerate = True if (again or re_spikesorted) else False
         assert (

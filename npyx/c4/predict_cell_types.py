@@ -29,6 +29,9 @@ from npyx.gl import get_units, load_units_qualities
 from npyx.spk_t import trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 
+import ast
+ale = ast.literal_eval
+
 from .dataset_init import ArgsNamespace, download_file, extract_and_check
 from .misc import require_advanced_deps
 from .plots_functions import (
@@ -332,7 +335,7 @@ def prepare_dataset(args: ArgsNamespace) -> tuple:
     else:
         # First extract the units from the phy output folder
         if args.units is not None:
-            units = args.units
+            units = [int(u) for u in args.units]
         else:
             units = get_units(args.data_path, args.quality)
 
@@ -715,9 +718,9 @@ def main(c4=False):
     parser.add_argument(
         "--units",
         nargs="+",
-        type=int,
+        type=str,
         default=None,
-        help="Which units to classify. If not specified, falls back to all units of 'quality' (all good units by default). Specify the unit IDs as space-separated integers after the '--units' argument.",
+        help="List of units to classify '[u1, u2, u3...]'. If not specified, falls back to all units of 'quality' (all good units by default). Specify the unit IDs as space-separated integers after the '--units' argument.",
     )
     parser.add_argument(
         "--mli_clustering",
@@ -792,7 +795,9 @@ def main(c4=False):
         sys.exit(0)
 
     args = parser.parse_args()
-    run_cell_types_classifier(**vars(args))
+    args = vars(args)
+    args['units']=ale(args['units'][0])
+    run_cell_types_classifier(**args)
 
 
 def run_c4():

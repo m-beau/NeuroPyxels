@@ -757,6 +757,73 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
 
     return rc
 
+def extract_channel_subset(directory_with_binary,
+                           chanmin,
+                           chanmax,
+                           batch_size_s=500,
+                           filt_suffix='ap'):
+    """Extract subset of channels from binary file into another binary file.
+
+    Saves the extracted subset of channels to another binary file in the same directory,
+    with the same name + the channel range appended to it.
+
+    Parameters:
+        - directory_with_binary: str, path to dataset (will find binary file in there)
+        - chanmin: minimum channel
+        - chanmax: end of channel range to extract, included
+        - batch_size_s: size of data batches loaded and saved, in seconds
+                        If memory error: decrease batch_size_s
+        - filt_suffix: str, 'ap' or 'lf', whether to extract channels from the ap or lfp binary.
+    """
+
+    ## Compute channels to export and define file names
+    binary_fn = get_binary_file_path(directory_with_binary, filt_suffix)
+    assert binary_fn is not "not_found",\
+        f"Binary not found at {directory_with_binary}!"
+    target_fname = f'_chan{chanmin}-{chanmax}'.join([binary_fn.name.split(f'.{filt_suffix}.bin')[0], f'.{filt_suffix}.bin'])
+    target_fn = binary_fn.parent / target_fname
+    
+    ## Load binary metadata
+    meta = read_metadata(directory_with_binary)
+    filt_suffix_long = {'ap': 'highpass', 'lf': 'lowpass'}[filt_suffix]
+    fs = meta[filt_suffix_long]['sampling_rate']
+    dtype = np.dtype(meta[filt_suffix_long]['datatype'])
+    item_size = dtype.itemsize
+    Nchans = meta[filt_suffix_long]['n_channels_binaryfile']
+    assert (chanmin < Nchans - 1) & (chanmax < Nchans - 1)
+    
+    ## precompute binary batch time windows
+    filesize_bytes = os.path.getsize(binary_fn)
+    filesize_samples = filesize_bytes / Nchans / item_size
+    assert filesize_samples == int(filesize_samples),\
+        f"It doesn't seem like the binary file {binary_fn} holds a multiple of {Nchans} channels encoded as {item_size} bytes items...!"
+    filesize_samples = int(filesize_samples)
+    
+    batch_size_samples = int(batch_size_s * fs)
+    Nbatch = int(np.ceil(filesize_samples / batch_size_samples))
+    batch_windows = [[i * batch_size_samples,
+                      i * batch_size_samples + batch_size_samples]
+                     for i in range(Nbatch)]
+    batch_windows[-1][-1] = filesize_samples - 1
+
+    ## Run data extraction loop
+
+    # Memory-map binary data
+    memmap_f = np.memmap(binary_fn,
+                         dtype=dtype,
+                         offset=0,
+                         shape=(filesize_samples, Nchans),
+                         mode='r')
+    
+    with open(target_fn, 'wb') as fw:
+        for (t1, t2) in tqdm(batch_windows, desc="Extracting channels"):
+        
+            # Read binary data
+            rawData = memmap_f[t1:t2, chanmin:chanmax + 1]
+        
+            # Write binary data
+            rawData.tofile(fw)
+
 def assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt=False):
     channels = np.array(channels)
     if ignore_ks_chanfilt:

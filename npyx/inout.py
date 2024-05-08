@@ -767,7 +767,7 @@ def extract_channel_subset(directory_with_binary,
     Saves the extracted subset of channels to another binary file in the same directory,
     with the same name + the channel range appended to it.
 
-    Parameters:
+    Arguments:
         - directory_with_binary: str, path to dataset (will find binary file in there)
         - chanmin: minimum channel
         - chanmax: end of channel range to extract, included
@@ -823,6 +823,33 @@ def extract_channel_subset(directory_with_binary,
         
             # Write binary data
             rawData.tofile(fw)
+
+def read_custom_binary(fn, Nchans, dtype='int16'):
+    """
+    Returns a memory map of a neuropixels binary file with a custom number of channels.
+    
+    Arguments:
+    - fn: str, path to binary file
+    - Nchans: int, number of channels of binary file
+    - dtype: str, datatype of saved binary data (original neuropixels 1.0 data: int16)
+
+    Returns:
+    - memmap_f: memory mapped binary file of shape (n_samples, Nchans).
+                Index it as follow to extract data: memmap_f[time1:time2, channel1:channel2].
+                Sampling rate is typically 30_000 Hz, check with source binary file.
+    """
+    dtype = np.dtype(dtype)
+    item_size = dtype.itemsize
+    filesize_bytes = os.path.getsize(fn)
+    filesize_samples = int(filesize_bytes / Nchans / item_size)
+
+    memmap_f = np.memmap(fn,
+                     dtype=dtype,
+                     offset=0,
+                     shape=(filesize_samples, Nchans),
+                     mode='r')
+    
+    return memmap_f
 
 def assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt=False):
     channels = np.array(channels)

@@ -29,6 +29,9 @@ from npyx.gl import get_units, load_units_qualities
 from npyx.spk_t import trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 
+import ast
+ale = ast.literal_eval
+
 from .dataset_init import ArgsNamespace, download_file, extract_and_check
 from .misc import require_advanced_deps
 from .plots_functions import (
@@ -64,7 +67,8 @@ C4_MESSAGE = (
     "\nYou can use this command ('c4' or 'predict_cell_types') to run the C4 classifier on a phy-compatible dataset (find our preprint here: https://www.biorxiv.org/content/10.1101/2024.01.30.577845v1)."
     "\nTo run the classifier on the phy-compatible dataset in the current working directory, simply run 'c4 -dp .'. To run it on a phy-compatible dataset present elsewhere, run 'c4 -dp path/to/my/dataset'."
     "\nBy default, the classifier will predict the cell types of all the 'good' units of the dataset (as defined in phy by manual curation), and it will not use layer information. To alter this behaviour, see the options below."
-    "\n"
+    "\n\n"
+    "If the results feel off, it might be because of a caching bug (they happen frequently, sorry about that). To solve your problem, try running the classifier again with the option '--again'."
 )
 
 
@@ -131,7 +135,9 @@ def directory_checks(data_path):
         os.remove(os.path.join(data_path, "cluster_cell_types.tsv"))
 
 
-def prepare_dataset_from_binary(dp, units, again=False, fp_threshold=0.05, fn_threshold=0.05):
+def prepare_dataset_from_binary(dp, units, again=False,
+                                fp_threshold=0.05, fn_threshold=0.05,
+                                peak_sign="negative"):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -167,7 +173,8 @@ def prepare_dataset_from_binary(dp, units, again=False, fp_threshold=0.05, fn_th
             wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=again)
         except (IndexError, pd.errors.EmptyDataError, ValueError):
             wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
-        waveforms.append(datasets.preprocess_template(wvf))
+        waveforms.append(datasets.preprocess_template(wvf,
+                                                      peak_sign=peak_sign))
 
         _, acg = corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
         acg, _ = corr.convert_acg_log(acg, 1, 2000)
@@ -242,7 +249,9 @@ def prepare_dataset_from_h5(data_path):
     return dataset, dataset_class.h5_ids.tolist()
 
 
-def aux_prepare_dataset(dp, u, again=False, fp_threshold=0.05, fn_threshold=0.05):
+def aux_prepare_dataset(dp, u, again=False,
+                        fp_threshold=0.05, fn_threshold=0.05,
+                        peak_sign="negative"):
     t = trn(dp, u)
     if len(t) < 100:
         # Bad units
@@ -271,7 +280,8 @@ def aux_prepare_dataset(dp, u, again=False, fp_threshold=0.05, fn_threshold=0.05
         wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=again)
     except (IndexError, pd.errors.EmptyDataError, ValueError, pickle.UnpicklingError):
         wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
-    waveforms = datasets.preprocess_template(wvf)
+    waveforms = datasets.preprocess_template(wvf,
+                                             peak_sign=peak_sign)
 
     _, acg = corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
     acg, _ = corr.convert_acg_log(acg, 1, 2000)
@@ -280,7 +290,9 @@ def aux_prepare_dataset(dp, u, again=False, fp_threshold=0.05, fn_threshold=0.05
     return [False, waveforms, acgs_3d]
 
 
-def prepare_dataset_from_binary_parallel(dp, units, again=False, fp_threshold=0.05, fn_threshold=0.05):
+def prepare_dataset_from_binary_parallel(dp, units, again=False,
+                                         fp_threshold=0.05, fn_threshold=0.05,
+                                         peak_sign="negative"):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -289,7 +301,7 @@ def prepare_dataset_from_binary_parallel(dp, units, again=False, fp_threshold=0.
 
     with redirect_stdout_fd(open(os.devnull, "w")):
         dataset_results = Parallel(n_jobs=num_cores, prefer="processes")(
-            delayed(aux_prepare_dataset)(dp, u, again, fp_threshold, fn_threshold)
+            delayed(aux_prepare_dataset)(dp, u, again, fp_threshold, fn_threshold, peak_sign)
             for u in tqdm(units, desc="Preparing waveforms and ACGs for classification")
         )
 
@@ -307,6 +319,8 @@ def prepare_dataset_from_binary_parallel(dp, units, again=False, fp_threshold=0.
 
     if len(acgs_3d) == 0:
         raise ValueError("No units were found with the provided parameter choices after quality checks.")
+    
+    # np.save("/home/maxime/Downloads/test_concat_data.npy", np.concatenate((acgs_3d, waveforms), axis=1))
 
     return np.concatenate((acgs_3d, waveforms), axis=1), bad_units
 
@@ -332,14 +346,24 @@ def prepare_dataset(args: ArgsNamespace) -> tuple:
     else:
         # First extract the units from the phy output folder
         if args.units is not None:
-            units = args.units
+            units = [int(u) for u in args.units]
         else:
             units = get_units(args.data_path, args.quality)
 
         if args.parallel:
-            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(args.data_path, units, args.again)
+            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(args.data_path,
+                                                                                 units,
+                                                                                 args.again,
+                                                                                 args.fp_threshold,
+                                                                                 args.fn_threshold,
+                                                                                 args.peak_sign)
         else:
-            prediction_dataset, bad_units = prepare_dataset_from_binary(args.data_path, units, args.again)
+            prediction_dataset, bad_units = prepare_dataset_from_binary(args.data_path,
+                                                                        units,
+                                                                        args.again,
+                                                                        args.fp_threshold,
+                                                                        args.fn_threshold,
+                                                                        args.peak_sign)
 
         good_units = [u for u in units if u not in bad_units]
 
@@ -445,6 +469,7 @@ def run_cell_types_classifier(
     again: bool = False,
     fp_threshold: float = 0.05,
     fn_threshold: float = 0.05,
+    waveform_peak_sign: str = "negative",
 ) -> None:
     """
     Predicts the cell types of units in a given dataset using a pre-trained ensemble of classifiers.
@@ -473,6 +498,7 @@ def run_cell_types_classifier(
         again=again,
         fp_threshold=fp_threshold,
         fn_threshold=fn_threshold,
+        peak_sign=waveform_peak_sign,
     )
 
     assert args.quality in [
@@ -484,6 +510,11 @@ def run_cell_types_classifier(
         "Invalid value for 'fp_threshold'. Must be within [0-1[."
     assert (args.fn_threshold >= 0) & (args.fn_threshold < 1),\
         "Invalid value for 'fn_threshold'. Must be within [0-1[."
+    
+    assert args.peak_sign in ["positive", "negative", "None"],\
+        "Invalid value for 'peak_sign'. Must be 'positive', 'negative', or 'None'."
+    if args.peak_sign == "None":
+        args.peak_sign = None
 
     # Perform some checks on the data folder
     directory_checks(args.data_path)
@@ -715,9 +746,9 @@ def main(c4=False):
     parser.add_argument(
         "--units",
         nargs="+",
-        type=int,
+        type=str,
         default=None,
-        help="Which units to classify. If not specified, falls back to all units of 'quality' (all good units by default). Specify the unit IDs as space-separated integers after the '--units' argument.",
+        help="List of units to classify '[u1, u2, u3...]'. If not specified, falls back to all units of 'quality' (all good units by default). Specify the unit IDs as space-separated integers after the '--units' argument.",
     )
     parser.add_argument(
         "--mli_clustering",
@@ -778,6 +809,13 @@ def main(c4=False):
         help="False negative rate (a.k.a. AUC fraction of amplitude clipping) threshold. To be deemed classifiable, a unit must feature three minutes of data with less than a fn_threshold fraction of false negative (and fp_threshold false positive) rate. To include more units despite their refractory period violations, increease this threshold. \nOptional argument, default is 0.05.",
     )
 
+    parser.add_argument(
+        "--waveform_peak_sign",
+        type=str,
+        default="negative",
+        help="Use at your own risk - sign of the waveform to make the prediction, among ['negative', 'positive', 'None']. The classifier was trained with waveforms whose peak was always negative. \nOptional argument, default is negative.",
+    )
+
     # Check if no arguments were provided, and if so, print help and exit
     if len(sys.argv) == 1:
         if c4:
@@ -792,7 +830,10 @@ def main(c4=False):
         sys.exit(0)
 
     args = parser.parse_args()
-    run_cell_types_classifier(**vars(args))
+    args = vars(args)
+    if args['units'] is not None:
+        args['units']=ale(args['units'][0])
+    run_cell_types_classifier(**args)
 
 
 def run_c4():

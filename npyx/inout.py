@@ -100,8 +100,11 @@ def metadata(dp):
                 "Neuropix-PXI":'1.0',
                 '?1':'2.0_singleshank', # do not know yet
                 '?2':'2.0_fourshanks'}, # do not know yet
-        'int':{'3A':1, '1.0':1,
-               '2.0_singleshank':2, '2.0_fourshanks':2,
+        'int':{'3A':1,
+               '1.0':1,
+               'NHP_long_primate':1,
+               '2.0_singleshank':2,
+               '2.0_fourshanks':2,
                'ultra_high_density':3}
         }
 

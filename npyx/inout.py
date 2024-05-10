@@ -94,7 +94,8 @@ def metadata(dp):
                0.0:'1.0',
                21:'2.0_singleshank',
                24:'2.0_fourshanks',
-               1123:'ultra_high_density'},
+               1123:'ultra_high_density',
+               1030:'NHP_long_primate'},
         'oe':{"Neuropix-3a":'3A', # source_processor_name keys
                 "Neuropix-PXI":'1.0',
                 '?1':'2.0_singleshank', # do not know yet
@@ -222,7 +223,7 @@ def metadata(dp):
             meta['probe_version'] = probe_versions['glx'][glx_probe_version]
             meta['probe_version_int'] = probe_versions['int'][meta['probe_version']]
         else:
-            print(f'WARNING probe version {glx_probe_version} not handled - post an issue at www.github.com/m-beau/NeuroPyxels')
+            print(f'WARNING probe version {glx_probe_version} not handled - post an issue at www.github.com/m-beau/NeuroPyxels and provide your .ap.meta file.')
             meta['probe_version'] = glx_probe_version
             meta['probe_version_int'] = 0
             
@@ -241,6 +242,8 @@ def metadata(dp):
                 print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
             bits_encoding=14
             ampFactor=80 # hardcoded
+        else:
+            raise ValueError(f"Probe version unhandled - bits_encoding unknown.")
         meta['bit_uV_conv_factor']=(Vrange/2**bits_encoding/ampFactor)
 
 
@@ -757,7 +760,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
 
     return rc
 
-def extract_channel_subset(directory_with_binary,
+def extract_binary_channel_subset(directory_with_binary,
                            chanmin,
                            chanmax,
                            batch_size_s=500,
@@ -778,7 +781,7 @@ def extract_channel_subset(directory_with_binary,
 
     ## Compute channels to export and define file names
     binary_fn = get_binary_file_path(directory_with_binary, filt_suffix)
-    assert binary_fn is not "not_found",\
+    assert binary_fn != "not_found",\
         f"Binary not found at {directory_with_binary}!"
     target_fname = f'_chan{chanmin}-{chanmax}'.join([binary_fn.name.split(f'.{filt_suffix}.bin')[0], f'.{filt_suffix}.bin'])
     target_fn = binary_fn.parent / target_fname

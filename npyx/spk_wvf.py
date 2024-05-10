@@ -10,13 +10,13 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import psutil
-from joblib import Memory
 from tqdm.notebook import tqdm
 
 import os.path as op; opj=op.join
 
-cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
-cache_memory = Memory(cachedir, verbose=0)
+from npyx.CONFIG import __cachedir__
+from joblib import Memory
+cache_memory = Memory(Path(__cachedir__).expanduser(), verbose=0)
 
 num_cores = multiprocessing.cpu_count()
 

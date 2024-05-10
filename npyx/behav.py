@@ -9,9 +9,9 @@ import os.path as op; opj=op.join
 from pathlib import Path
 import pickle
 
+from npyx.CONFIG import __cachedir__
 from joblib import Memory
-cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
-cache_memory = Memory(cachedir, verbose=0)
+cache_memory = Memory(Path(__cachedir__).expanduser(), verbose=0)
 
 import numpy as np
 import scipy as sp

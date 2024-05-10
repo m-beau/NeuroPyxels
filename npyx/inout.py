@@ -39,7 +39,7 @@ def read_metadata(dp):
                                   'probe2':meta_data_dataset_2, ...
 
     '''
-
+    
     if assert_multi(dp):
         meta = {}
         for dpx, probe in get_ds_table(dp).loc[:,'dp':'probe'].values:

@@ -18,9 +18,9 @@ from joblib import Parallel, delayed
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
 
+from npyx.CONFIG import __cachedir__
 from joblib import Memory
-cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
-cache_memory = Memory(cachedir, verbose=0)
+cache_memory = Memory(Path(__cachedir__).expanduser(), verbose=0)
 
 import numpy as np
 import pandas as pd

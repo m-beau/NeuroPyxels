@@ -18,6 +18,7 @@ except ImportError:
     C4_IMPORTED = False
     pass
 
+from .CONFIG import *
 from .utils import *
 from .inout import *
 from .gl import *
@@ -41,6 +42,7 @@ from .testing import *
 __doc__ = """
 
 npyx submodules:
+ .CONFIG
  .utils
  .io
  .gl
@@ -57,6 +59,7 @@ npyx submodules:
 """
 
 __version__ = "4.0.6"
+__cachedir__ = CONFIG.__cachedir__
 
 npyx_build = "npyx[c4]" if C4_IMPORTED else "npyx"
 

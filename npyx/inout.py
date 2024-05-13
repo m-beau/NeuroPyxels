@@ -95,14 +95,14 @@ def metadata(dp):
                21:'2.0_singleshank',
                24:'2.0_fourshanks',
                1123:'ultra_high_density',
-               1030:'NHP_long_primate'},
+               1030:'NHP_1.0'},
         'oe':{"Neuropix-3a":'3A', # source_processor_name keys
                 "Neuropix-PXI":'1.0',
                 '?1':'2.0_singleshank', # do not know yet
                 '?2':'2.0_fourshanks'}, # do not know yet
         'int':{'3A':1,
                '1.0':1,
-               'NHP_long_primate':1,
+               'NHP_1.0':1,
                '2.0_singleshank':2,
                '2.0_fourshanks':2,
                'ultra_high_density':3}
@@ -235,7 +235,7 @@ def metadata(dp):
         # Find the voltage range, gain, encoding
         # and deduce the conversion from units/bit to uV
         Vrange=(meta_glx["highpass"]['imAiRangeMax']-meta_glx["highpass"]['imAiRangeMin'])*1e6
-        if meta['probe_version'] in ['3A', '1.0', 'ultra_high_density']:
+        if meta['probe_version'] in ['3A', '1.0', 'ultra_high_density', 'NHP_1.0']:
             if Vrange!=1.2e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (1.2*10^6). Might be normal!')
             bits_encoding=10
             ampFactor=ale(meta_glx["highpass"]['~imroTbl'][1].split(' ')[3]) # typically 500

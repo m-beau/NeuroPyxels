@@ -10,10 +10,9 @@ from IPython.core.debugger import set_trace as breakpoint
 opj=op.join
 from pathlib import Path, PosixPath, WindowsPath
 
+from npyx.CONFIG import __cachedir__
 from joblib import Memory
-
-cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
-cache_memory = Memory(cachedir, verbose=0)
+cache_memory = Memory(Path(__cachedir__).expanduser(), verbose=0)
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -218,8 +217,7 @@ def inst_cv2(t):
 
     return 2 * np.abs(isint[1:] - isint[:-1]) / (isint[1:] + isint[:-1])
 
-@cache_memory.cache
-def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
+def isint_filtered(t, exclusion_quantile=0.005, fs=30000):
     """
     - t: array of time stamps, in samples
     - exclusion_quantile: float, quantiles beyond which we exclude too long interspike intervals
@@ -232,7 +230,37 @@ def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
     #quantil_low = np.quantile(isint, exclusion_quantile)
     isint = isint[(isint <= quantile_high)]
     isint = isint/fs
-    return np.round(1./np.mean(isint),2)
+    return isint
+
+@cache_memory.cache
+def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
+    """
+    - t: array of time stamps, in samples
+    - exclusion_quantile: float, quantiles beyond which we exclude too long interspike intervals
+    - fs: sampling frequency, in Hz
+    """
+    isint = isint_filtered(t, exclusion_quantile, fs)
+    return np.round(1. / np.mean(isint), 2)
+
+@cache_memory.cache
+def mean_inst_firing_rate(t, exclusion_quantile=0.005, fs=30000):
+    """
+    - t: array of time stamps, in samples
+    - exclusion_quantile: float, quantiles beyond which we exclude too long interspike intervals
+    - fs: sampling frequency, in Hz
+    """
+    isint = isint_filtered(t, exclusion_quantile, fs)
+    return np.round(np.mean(1. / isint), 2)
+
+@cache_memory.cache
+def coefficient_of_variation(t, exclusion_quantile=0.005, fs=30000):
+    """
+    - t: array of time stamps, in samples
+    - exclusion_quantile: float, quantiles beyond which we exclude too long interspike intervals
+    - fs: sampling frequency, in Hz
+    """
+    isint = isint_filtered(t, exclusion_quantile, fs)
+    return np.round(np.std(isint) / np.mean(isint), 2)
 
 def mfr(dp=None, U=None, exclusion_quantile=0.005, enforced_rp=0,
         periods='all', again=False, train=None, fs=None):

@@ -39,7 +39,7 @@ def read_metadata(dp):
                                   'probe2':meta_data_dataset_2, ...
 
     '''
-
+    
     if assert_multi(dp):
         meta = {}
         for dpx, probe in get_ds_table(dp).loc[:,'dp':'probe'].values:
@@ -68,7 +68,7 @@ def metadata(dp):
         - meta: dictionnary containing contents of meta file.
         the structure of meta is as follow:
         {
-        'probe_version':'3A', '1.0_staggered', '2.0_1shank', '2.0_4shanks',
+        'probe_version': either of '3A', '1.0_staggered', '2.0_1shank', '2.0_4shanks', 'ultra_high_density';
         'highpass':
             {
             'binary_relative_path':relative path to binary file from dp,
@@ -93,13 +93,19 @@ def metadata(dp):
         'glx':{3.0:'3A', # option 3
                0.0:'1.0',
                21:'2.0_singleshank',
-               24:'2.0_fourshanks'},
+               24:'2.0_fourshanks',
+               1123:'ultra_high_density',
+               1030:'NHP_1.0'},
         'oe':{"Neuropix-3a":'3A', # source_processor_name keys
                 "Neuropix-PXI":'1.0',
                 '?1':'2.0_singleshank', # do not know yet
                 '?2':'2.0_fourshanks'}, # do not know yet
-        'int':{'3A':1, '1.0':1,
-               '2.0_singleshank':2, '2.0_fourshanks':2}
+        'int':{'3A':1,
+               '1.0':1,
+               'NHP_1.0':1,
+               '2.0_singleshank':2,
+               '2.0_fourshanks':2,
+               'ultra_high_density':3}
         }
 
     # import params.py data
@@ -220,7 +226,7 @@ def metadata(dp):
             meta['probe_version'] = probe_versions['glx'][glx_probe_version]
             meta['probe_version_int'] = probe_versions['int'][meta['probe_version']]
         else:
-            print(f'WARNING probe version {glx_probe_version} not handled - post an issue at www.github.com/m-beau/NeuroPyxels')
+            print(f'WARNING probe version {glx_probe_version} not handled - post an issue at www.github.com/m-beau/NeuroPyxels and provide your .ap.meta file.')
             meta['probe_version'] = glx_probe_version
             meta['probe_version_int'] = 0
             
@@ -229,15 +235,18 @@ def metadata(dp):
         # Find the voltage range, gain, encoding
         # and deduce the conversion from units/bit to uV
         Vrange=(meta_glx["highpass"]['imAiRangeMax']-meta_glx["highpass"]['imAiRangeMin'])*1e6
-        if meta['probe_version'] in ['3A', '1.0']:
+        if meta['probe_version'] in ['3A', '1.0', 'ultra_high_density', 'NHP_1.0']:
             if Vrange!=1.2e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (1.2*10^6). Might be normal!')
             bits_encoding=10
             ampFactor=ale(meta_glx["highpass"]['~imroTbl'][1].split(' ')[3]) # typically 500
             #if ampFactor!=500: print(f'\u001b[31mHeads-up, the voltage amplification factor seems to be {ampFactor}, which is not the default (500). Might be normal!')
         elif meta['probe_version'] in ['2.0_singleshank', '2.0_fourshanks']:
-            if Vrange!=1e6: print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
+            if Vrange!=1e6:
+                print(f'\u001b[31mHeads-up, the voltage range seems to be {Vrange}, which is not the default (10^6). Might be normal!')
             bits_encoding=14
             ampFactor=80 # hardcoded
+        else:
+            raise ValueError(f"Probe version unhandled - bits_encoding unknown.")
         meta['bit_uV_conv_factor']=(Vrange/2**bits_encoding/ampFactor)
 
 
@@ -625,7 +634,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
     - times: list of boundaries of the time window, in seconds [t1, t2].
     - channels (default: np.arange(384)): list of channels of interest, in 0 indexed integers [c1, c2, c3...]
-    - filt_key: 'ap' or 'lf', whether to exxtract from the high-pass or low-pass filtered binary file
+    - filt_key: 'highpass' or 'lowpass', whether to extract from the high-pass or low-pass filtered binary file
     - save (default 0): save the raw chunk in the bdp directory as '{bdp}_t1-t2_c1-c2.npy'
     - whiten: whether to whiten the data across channels. If nRangeWhiten is not None,
               whitening matrix is computed with the nRangeWhiten closest channels.
@@ -651,7 +660,7 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     # Find binary file
     dp = Path(dp)
     meta = read_metadata(dp)
-    fname = get_binary_file_path(dp, filt_suffix='ap', absolute_path=True)
+    fname = get_binary_file_path(dp, filt_suffix='ap' if filt_key == 'highpass' else 'lf', absolute_path=True)
 
     fs = meta[filt_key]['sampling_rate']
     Nchans=meta[filt_key]['n_channels_binaryfile']
@@ -753,6 +762,100 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
         np.save(rcp, rc)
 
     return rc
+
+def extract_binary_channel_subset(directory_with_binary,
+                           chanmin,
+                           chanmax,
+                           batch_size_s=500,
+                           filt_suffix='ap'):
+    """Extract subset of channels from binary file into another binary file.
+
+    Saves the extracted subset of channels to another binary file in the same directory,
+    with the same name + the channel range appended to it.
+
+    Arguments:
+        - directory_with_binary: str, path to dataset (will find binary file in there)
+        - chanmin: minimum channel
+        - chanmax: end of channel range to extract, included
+        - batch_size_s: size of data batches loaded and saved, in seconds
+                        If memory error: decrease batch_size_s
+        - filt_suffix: str, 'ap' or 'lf', whether to extract channels from the ap or lfp binary.
+    """
+
+    ## Compute channels to export and define file names
+    binary_fn = get_binary_file_path(directory_with_binary, filt_suffix)
+    assert binary_fn != "not_found",\
+        f"Binary not found at {directory_with_binary}!"
+    target_fname = f'_chan{chanmin}-{chanmax}'.join([binary_fn.name.split(f'.{filt_suffix}.bin')[0], f'.{filt_suffix}.bin'])
+    target_fn = binary_fn.parent / target_fname
+    
+    ## Load binary metadata
+    meta = read_metadata(directory_with_binary)
+    filt_suffix_long = {'ap': 'highpass', 'lf': 'lowpass'}[filt_suffix]
+    fs = meta[filt_suffix_long]['sampling_rate']
+    dtype = np.dtype(meta[filt_suffix_long]['datatype'])
+    item_size = dtype.itemsize
+    Nchans = meta[filt_suffix_long]['n_channels_binaryfile']
+    assert (chanmin < Nchans - 1) & (chanmax < Nchans - 1)
+    
+    ## precompute binary batch time windows
+    filesize_bytes = os.path.getsize(binary_fn)
+    filesize_samples = filesize_bytes / Nchans / item_size
+    assert filesize_samples == int(filesize_samples),\
+        f"It doesn't seem like the binary file {binary_fn} holds a multiple of {Nchans} channels encoded as {item_size} bytes items...!"
+    filesize_samples = int(filesize_samples)
+    
+    batch_size_samples = int(batch_size_s * fs)
+    Nbatch = int(np.ceil(filesize_samples / batch_size_samples))
+    batch_windows = [[i * batch_size_samples,
+                      i * batch_size_samples + batch_size_samples]
+                     for i in range(Nbatch)]
+    batch_windows[-1][-1] = filesize_samples - 1
+
+    ## Run data extraction loop
+
+    # Memory-map binary data
+    memmap_f = np.memmap(binary_fn,
+                         dtype=dtype,
+                         offset=0,
+                         shape=(filesize_samples, Nchans),
+                         mode='r')
+    
+    with open(target_fn, 'wb') as fw:
+        for (t1, t2) in tqdm(batch_windows, desc="Extracting channels"):
+        
+            # Read binary data
+            rawData = memmap_f[t1:t2, chanmin:chanmax + 1]
+        
+            # Write binary data
+            rawData.tofile(fw)
+
+def read_custom_binary(fn, Nchans, dtype='int16'):
+    """
+    Returns a memory map of a neuropixels binary file with a custom number of channels.
+    
+    Arguments:
+    - fn: str, path to binary file
+    - Nchans: int, number of channels of binary file
+    - dtype: str, datatype of saved binary data (original neuropixels 1.0 data: int16)
+
+    Returns:
+    - memmap_f: memory mapped binary file of shape (n_samples, Nchans).
+                Index it as follow to extract data: memmap_f[time1:time2, channel1:channel2].
+                Sampling rate is typically 30_000 Hz, check with source binary file.
+    """
+    dtype = np.dtype(dtype)
+    item_size = dtype.itemsize
+    filesize_bytes = os.path.getsize(fn)
+    filesize_samples = int(filesize_bytes / Nchans / item_size)
+
+    memmap_f = np.memmap(fn,
+                     dtype=dtype,
+                     offset=0,
+                     shape=(filesize_samples, Nchans),
+                     mode='r')
+    
+    return memmap_f
 
 def assert_chan_in_dataset(dp, channels, ignore_ks_chanfilt=False):
     channels = np.array(channels)

@@ -9,10 +9,11 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import StandardScaler
 
+import npyx
 import npyx.feat as feat
 import npyx.plot as npyx_plot
 from npyx.datasets import CORRESPONDENCE_NO_GRC
-from npyx.plot import mplp
+from npyx.plot_utils import mplp
 from npyx.utils import npa
 
 from .dataset_init import BIN_SIZE, N_CHANNELS, WAVEFORM_SAMPLES, WIN_SIZE
@@ -314,7 +315,7 @@ def plot_results_from_threshold(
 
     for label in range(len(correspondence.keys())):
         cell_type = correspondence[label]
-        col = npyx_plot.to_hex(colors_dict[cell_type])
+        col = npyx.plot_utils.to_hex(colors_dict[cell_type])
         predictions = np.argmax(predicted_proba, axis=1)
 
         predicted_label_mask = predictions == label
@@ -530,10 +531,10 @@ def plot_cosine_similarity(
             -10,
             n,
             delimiters[i + 1],
-            color=npyx_plot.to_hex(colors_dict[cell_type]),
+            color=npyx.plot_utils.to_hex(colors_dict[cell_type]),
             linewidth=10,
         )
-    # npyx.mplp(fig, **plotkwargs)
+    # mplp(fig, **plotkwargs)
     plt.show()
 
 
@@ -576,7 +577,7 @@ def plot_waveforms(waveforms, title, col=None, central_range=WAVEFORM_SAMPLES, a
                 alpha=0.4,
             )
 
-    fig, ax = npyx_plot.mplp(
+    fig, ax = mplp(
         ax=ax,
         title=title,
         xlabel="Time (ms)",
@@ -616,7 +617,7 @@ def plot_acgs(acgs, title, col=None, win_size=WIN_SIZE, bin_size=BIN_SIZE, ax=No
 
     for acg in acgs:
         ax.plot(acg, color=col, alpha=0.4)
-    fig, ax = npyx_plot.mplp(
+    fig, ax = mplp(
         ax=ax,
         title=title,
         xlabel="Time (ms)",
@@ -756,7 +757,7 @@ def plot_features_1cell_vertical(
 
     # add scalebar
     # conveniently, the axis are already in ms and microvolts
-    npyx_plot.plot_scalebar(
+    npyx.plot_utils.plot_scalebar(
         ax2,
         xscalebar=1,
         yscalebar=None,
@@ -776,7 +777,7 @@ def plot_features_1cell_vertical(
 
     if saveDir is not None:
         fig_name = f"cell {i}" if fig_name is None else fig_name
-        npyx_plot.save_mpl_fig(fig, fig_name, saveDir, "pdf")
+        npyx.plot_utils.save_mpl_fig(fig, fig_name, saveDir, "pdf")
 
     if not plot:
         plt.close(fig)
@@ -858,7 +859,7 @@ def plot_survival_confidence(
     fig2, ax = mplp(xlabel=confidence_type, ylabel="% classified", xlim=xlim, show_legend=True)
 
     if saveDir is not None:
-        npyx_plot.save_mpl_fig(fig1, "survival_plot_Ncells", saveDir, "pdf")
-        npyx_plot.save_mpl_fig(fig2, "survival_plot_%cells", saveDir, "pdf")
+        npyx.plot_utils.save_mpl_fig(fig1, "survival_plot_Ncells", saveDir, "pdf")
+        npyx.plot_utils.save_mpl_fig(fig2, "survival_plot_%cells", saveDir, "pdf")
 
     return fig1, fig2

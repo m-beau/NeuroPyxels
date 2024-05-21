@@ -1,0 +1,1 @@
+__cachedir__ = "~/.NeuroPyxels"

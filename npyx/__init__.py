@@ -18,6 +18,7 @@ except ImportError:
     C4_IMPORTED = False
     pass
 
+from .CONFIG import *
 from .utils import *
 from .inout import *
 from .gl import *
@@ -26,6 +27,7 @@ from .spk_wvf import *
 from .corr import *
 from .stats import *
 from .plot import *
+from .plot_utils import *
 from .behav import *
 from .merger import *
 from .circuitProphyler import *
@@ -40,6 +42,7 @@ from .testing import *
 __doc__ = """
 
 npyx submodules:
+ .CONFIG
  .utils
  .io
  .gl
@@ -55,7 +58,8 @@ npyx submodules:
  .h5
 """
 
-__version__ = "4.0.0"
+__version__ = "4.0.6"
+__cachedir__ = CONFIG.__cachedir__
 
 npyx_build = "npyx[c4]" if C4_IMPORTED else "npyx"
 

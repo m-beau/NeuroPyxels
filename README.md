@@ -151,9 +151,10 @@ Older versions of numba did not feature the .core submodule. If you get this err
 
 - **core dumped when importing** <br/>
 This seems to be an issue related to PyQt5 required by opencv (opencv-python).
-Solution:
+Solution (from [post](https://stackoverflow.com/questions/71088095/opencv-could-not-load-the-qt-platform-plugin-xcb-in-even-though-it-was-fou)):
 ```
 # activate npyx environment first
+pip uninstall PyQt5
 pip uninstall opencv-python
 pip install opencv-python
 # pip install other missing dependencies
@@ -189,7 +190,7 @@ To do so, in your terminal, run "which python" on linux/mac or "where python" on
 
 If you find Neuropyxels useful in your work, we kindly request that you cite:
 
-> Maxime Beau, Federico D'Agostino, Ago Lajko, Gabriela Martínez, Michael Häusser & Dimitar Kostadinov. (2021). NeuroPyxels: loading, processing and plotting Neuropixels data in python. Zenodo. https://doi.org/10.5281/zenodo.5509733
+> Maxime Beau, Federico D'Agostino, Ago Lajko, Gabriela Martínez, Michael Häusser & Dimitar Kostadinov. NeuroPyxels: loading, processing and plotting Neuropixels data in python. Zenodo https://doi.org/10.5281/zenodo.5509733 (2021).
 
 You can additionally star this repo using the top-right star button to help it gain more visibility.
 
@@ -201,11 +202,13 @@ Npyx works with the data formatting employed by [SpikeGLX](https://billkarsh.git
 
 ### 💡 Design philosophy
 
-- [Memoization](https://en.wikipedia.org/wiki/Memoization)
+- [Memoization](https://en.wikipedia.org/wiki/Memoization) (a.k.a. caching)
 
   <ins>Npyx is fast because it rarely computes the same thing twice by relying heavily on caching (memoization as purists like to call it)</ins> - in the background, it saves most relevant outputs (spike trains, waveforms, correlograms...) at **npix_dataset/npyxMemory**, from where they are simply reloaded if called again.
 
   An important argument controlling this behaviour is **`again`** (boolean), by default set to False: if True, most npyx functions will recompute their output rather than loading it from npyxMemory. This is important to be aware of this behaviour, as it can lead to mind boggling bugs. For instance, if you load a spike train then re-curate your dataset, e.g. by splitting unit 56 into 504 and 505, the train of the old 'unit 56' will still exist at kilosort_dataset/npyxMemory and you will remain able to load it even though the unit is gone!
+
+  Under the hood, this caching is implemented in 2 ways: 1) 'home-made' caching inside the Neuropixels data directory itself `dp/npyxMemory`, 2) joblib-based caching in a hidden directory in the home folder, `./NeuroPyxels`. The latter can get quite big quite fast: it is possible to customize its location by simply editing the directory inside `npyx/CONFIG.py`. If you installed NeuroPyxels as an advanced user, it will be located where you cloned the git repo. If you pip-installed NeuroPyxels, it should be located where your python packages are stored: at `~/anaconda3/envs/npyx/lib/python3.1/site-packages/npyx/` for an installation inside a conda 'npyx' environment, for instance.
 
 - Ubiquitous arguments
 

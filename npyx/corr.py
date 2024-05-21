@@ -18,9 +18,9 @@ from joblib import Parallel, delayed
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
 
+from npyx.CONFIG import __cachedir__
 from joblib import Memory
-cachedir = Path(op.expanduser("~")) / ".NeuroPyxels"
-cache_memory = Memory(cachedir, verbose=0)
+cache_memory = Memory(Path(__cachedir__).expanduser(), verbose=0)
 
 import numpy as np
 import pandas as pd
@@ -82,9 +82,9 @@ def make_matrix_2xNevents(dic):
 
     return m
 
-@cache_memory.cache
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
 def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
-                           periods='all', verbose=False, trains=None, enforced_rp=0, log_window_end=None, n_log_bins=10):
+                           periods='all', verbose=False, trains=None, enforced_rp=0, log_window_end=None, n_log_bins=10, again=False):
     '''Returns the crosscorrelation function of two spike trains.
        - dp: (string): DataPath to the Neuropixels dataset.
        - win_size (float): window size, in milliseconds
@@ -314,7 +314,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
         if verbose: print("File {} not found in routines memory.".format(fn))
         crosscorrelograms = crosscorrelate_cyrille(dp, bin_size, win_size, sortedU, fs, True,
                                                 periods, verbose, trains, enforced_rp,
-                                                log_window_end, n_log_bins)
+                                                log_window_end, n_log_bins, again)
         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
         if crosscorrelograms.shape[0]<len(U): # no spikes were found in this period
             # Maybe if not any(crosscorrelograms.ravel()!=0):
@@ -356,7 +356,7 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
     return sortedC
 
-@cache_memory.cache
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
 def ccg_hz(dp, u1, u2, cbin, cwin,
            fs=30000, again = False,
            enforced_rp=0, periods='all', trains=None,
@@ -383,10 +383,9 @@ def ccg_hz(dp, u1, u2, cbin, cwin,
         if ci is True:
             - (low, high): (float, float), bimonial confidence interval of the expected CCG for alpha value of ci_alpha
     """
-    if ci:
-        if not rate_corrected:
-            rate_corrected = True
-            print("set rate_corrected to True next time when using ci.")
+    if ci and not rate_corrected:
+        rate_corrected = True
+        print("set rate_corrected to True next time when using ci.")
     if trains is not None:
         assert len(trains) == 2, "This function only works for two units at a time."
         t1 = trains[0]
@@ -595,45 +594,76 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
 
 def acg_3D(dp, u, cbin, cwin, normalize='Hertz',
             verbose=False, periods='all', again=False,
-            train=None, enforced_rp=0, num_firing_rate_bins=10, smooth=250):
+            train=None, enforced_rp=0, num_firing_rate_bins=10, smooth=250,
+            use_spikes_around_times1_for_deciles=True, firing_rate_bins=None):
     f"""
     Wrapper for 3D acg.
     
     See doc of crosscorr_vs_firing_rate:
     {crosscorr_vs_firing_rate.__doc__}"""
 
-    assert normalize in ['Probability', 'Hertz']
-
-    dp = get_source_dp_u(dp, u)[0]
-    fs = read_metadata(dp)['highpass']['sampling_rate']
-    dpnm = get_npyx_memory(dp)
-
-    periods_str = str(periods).replace(' ', '').replace('\n','')
-    periods_hash = hashlib.sha1(periods_str.encode()).hexdigest()[:20]
-    fn = f"acg3d_{u}_{cbin}_{cwin}_{normalize}_{periods_hash}_{enforced_rp}.npy"
-    if (dpnm/fn).exists() and not again:
-        bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
-        bins_f = np.load(dpnm/("f_"+fn))
-        acg_3d =  np.load(dpnm/fn)
-        return acg_3d, bins_t, bins_f
-
-    sav = False
     if train is None:
-        train = trn(dp, u, 1, verbose, periods, again, enforced_rp)
+        trains = None
+    else:
+        trains = [train, train]
+
+    return ccg_3D(dp, [u, u], cbin, cwin, normalize,
+            verbose, periods, again,
+            trains, enforced_rp, num_firing_rate_bins, smooth,
+            use_spikes_around_times1_for_deciles, firing_rate_bins)
+
+@cache_memory.cache(cache_validation_callback=cache_validation_again)
+def ccg_3D(dp, U, cbin, cwin, normalize='Hertz',
+            verbose=False, periods='all', again=False,
+            trains=None, enforced_rp=0, num_firing_rate_bins=10, smooth=250,
+            use_spikes_around_times1_for_deciles=True,firing_rate_bins=None):
+    f"""
+    Wrapper for 3D ccg.
+    
+    See doc of crosscorr_vs_firing_rate:
+    {crosscorr_vs_firing_rate.__doc__}"""
+
+    assert normalize in ['Probability', 'Hertz']
+    assert len(U) == 2, "ccg_3d only works for pairs of units. Call it pair by pair."
+
+    dp = get_source_dp_u(dp, U[0])[0]
+    fs = read_metadata(dp)['highpass']['sampling_rate']
+    
+    # attempt full joblib caching
+    # dpnm = get_npyx_memory(dp)
+
+    # periods_str = str(periods).replace(' ', '').replace('\n','')
+    # periods_hash = hashlib.sha1(periods_str.encode()).hexdigest()[:20]
+    # fn = f"ccg3d_{U}_{cbin}_{cwin}_{normalize}_{periods_hash}_{enforced_rp}_{use_spikes_around_times1_for_deciles}.npy"
+    # if (dpnm/fn).exists() and not again:
+    #     bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
+    #     bins_f = np.load(dpnm/("f_"+fn))
+    #     ccg_3d =  np.load(dpnm/fn)
+    #     return ccg_3d, bins_t, bins_f
+
+    # sav = False
+    if trains is None:
+        trains = [trn(dp, u, 1, verbose, periods, again, enforced_rp) for u in U]
         sav = True
-    bins_f, acg_3d = crosscorr_vs_firing_rate(train, train, cwin, cbin, fs, num_firing_rate_bins, smooth)
+    bins_f, ccg_3d = crosscorr_vs_firing_rate(trains[0], trains[1], cwin, cbin,
+                                              fs, num_firing_rate_bins, smooth,
+                                              use_spikes_around_times1_for_deciles,
+                                              firing_rate_bins)
     bins_t = np.arange(-cwin//2, cwin//2+cbin, cbin)
 
     if normalize == 'Hertz':
-        acg_3d = acg_3d / (cbin/1000)
+        ccg_3d = ccg_3d / (cbin/1000)
 
-    if sav:
-        np.save(dpnm/("f_"+fn), bins_f)
-        np.save(dpnm/fn, acg_3d)
+    # if sav:
+    #     np.save(dpnm/("f_"+fn), bins_f)
+    #     np.save(dpnm/fn, ccg_3d)
 
-    return acg_3d, bins_t, bins_f
+    return ccg_3d, bins_t, bins_f
 
-def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num_firing_rate_bins=10, smooth=250):
+def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size,
+                             fs=30000, num_firing_rate_bins=10, smooth=250,
+                             use_spikes_around_times1_for_deciles=True,
+                             firing_rate_bins=None):
     """
     Computes a "three dimensional" cross-correlogram that shows firing regularity when the neuron is
     firing at different firing rates. The output is a 2D matrix
@@ -663,6 +693,118 @@ def crosscorr_vs_firing_rate(times_1, times_2, win_size, bin_size, fs=30000, num
 
        :Authors:
        David J. Herzfeld <herzfeldd@gmail.com>
+    """
+    assert fs > 0.
+    bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
+    win_size = np.clip(win_size, 1e-2, 1e8)  # in milliseconds
+    winsize_bins = 2 * int(.5 * win_size *1./ bin_size) + 1 # Both in millisecond
+    assert winsize_bins >= 1
+    assert winsize_bins % 2 == 1
+    time_axis = np.linspace(-win_size / 2, win_size / 2, num=winsize_bins)
+
+    if firing_rate_bins is not None:
+        num_firing_rate_bins = len(firing_rate_bins)
+    spike_counts = np.zeros((num_firing_rate_bins, len(time_axis))) # Counts number of occurences of spikes in a given bin in time axis
+    times = np.zeros(num_firing_rate_bins, dtype=np.int64) # total occurence 
+
+    # Samples per bin
+    samples_per_bin = int(np.ceil(fs / (1000 / bin_size)))
+
+    # Convert times_1 and times_2 (which are in units of fs to units of bin_size)
+    times_1 = np.floor(times_1 / samples_per_bin).astype(np.int64)
+    times_2 = np.floor(times_2 / samples_per_bin).astype(np.int64)
+
+    # Convert times_1 into a binary spike train
+    max_indices = int(np.ceil(max(times_1[-1], times_2[-1]) + 1))
+    spiketrain = np.zeros(max_indices, dtype=bool)
+    spiketrain[times_2] = True
+
+    # Convert neuron_2 spikes to firing rate using the inverse ISI method
+    firing_rate = np.zeros(max_indices)
+    for i in range(1, len(times_2)-1):
+        start = 0 if i == 0 else (times_2[i-1] + (times_2[i] - times_2[i-1])//2)
+        stop = max_indices if i == len(times_2) - 1 else (times_2[i] + (times_2[i+1] - times_2[i])//2)
+        current_firing_rate = 1.0 / ((stop - start) * (bin_size / 1000))
+        firing_rate[start:stop] = current_firing_rate
+            
+    # Smooth the firing rate using numpy convolution function if requested
+    if (type(smooth) == int or type(smooth) == float) and smooth > 0:
+        kernel_size = int(np.ceil(smooth / bin_size))
+        half_kernel_size = kernel_size // 2
+        kernel = np.ones(kernel_size) / kernel_size
+        smoothed_firing_rate = np.convolve(firing_rate, kernel, mode='same')
+
+        # Correct manually for possible artefacts at the edges
+        for i in range(kernel_size):
+            start = max(0, i - half_kernel_size)
+            stop = min(len(firing_rate), i + half_kernel_size)
+            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
+        for i in range(len(firing_rate) - kernel_size, len(firing_rate)):
+            start = max(0, i - half_kernel_size)
+            stop = min(len(firing_rate), i + half_kernel_size)
+
+            smoothed_firing_rate[i] = np.mean(firing_rate[start:stop])
+        firing_rate = smoothed_firing_rate
+
+    # Get firing rate quantiles
+    if firing_rate_bins is None:
+        quantile_bins = np.linspace(0, 1, num_firing_rate_bins + 2)[1:-1]
+        if use_spikes_around_times1_for_deciles:
+            firing_rate_bins = np.quantile(firing_rate[times_1], quantile_bins)
+        else:
+            firing_rate_bins = np.quantile(firing_rate, quantile_bins)
+    for (i, spike_index) in enumerate(times_1):
+        start = spike_index + int(np.ceil(time_axis[0] / bin_size))
+        stop = start + len(time_axis)
+        if (start < 0) or (stop >= len(spiketrain)) or spike_index < times_2[0] or spike_index >= times_2[-1]:
+            continue # Skip these spikes to avoid edge artifacts
+        current_firing_rate = firing_rate[spike_index] # Firing of neuron 2 at neuron 1's spike index
+        current_firing_rate_bin_number = np.argmax(firing_rate_bins >= current_firing_rate)
+        if current_firing_rate_bin_number == 0 and current_firing_rate > firing_rate_bins[0]:
+            current_firing_rate_bin_number = len(firing_rate_bins) - 1
+        spike_counts[current_firing_rate_bin_number, :] += spiketrain[start:stop]
+        times[current_firing_rate_bin_number] += 1
+
+    
+    ccg_3d = spike_counts / (np.ones((len(time_axis), num_firing_rate_bins)) * times).T
+    # Divison by zero cases will return nans, so we fix this
+    ccg_3d = np.nan_to_num(ccg_3d)
+    # remove bin 0 if acg, which will always be 1
+    if len(times_1) == len(times_2):
+        ccg_3d[:, ccg_3d.shape[1]//2] = 0
+
+    return firing_rate_bins, ccg_3d
+
+def ccg_vs_fr(times_1, times_2, win_size, bin_size, fs=30000, num_firing_rate_bins=10, smooth=250):
+    """
+    Computes a "three dimensional" cross-correlogram that shows firing regularity when the neuron is
+    firing at different firing rates. The output is a 2D matrix
+    where the first dimensions is the number of bins specified (defaults to 10)
+    and the second dimension is the time axis. This function all returns
+    the binning used for the first dimension.
+    By default, we calculate the firing rate using a box-car smoothing
+    kernel, which provides a better estimate of the average firing rate.
+    This can be disabled by passing `smooth=None`.
+
+    Arguments:
+    - times_1: vector of spike indices for neuron 1 (samples)
+    - times_2: vector of spike indices for neuron 2 (samples)
+    - clusters: corresponding array of neuron indices
+    - win_size (float): window size, in milliseconds
+    - bin_size (float): bin size, in milliseconds
+    - U (list of integers): list of units indices.
+    - fs: sampling rate (Hertz). Default 30000.
+    - num_firing_rate_bins (integer): number of quantiles to use across firing rate, default = 10
+    - smooth (float): width of the boxcar filter to use for smoothing (in milliseconds). Default=250.
+
+    Returns:
+    - The bins of firing rate used for the first dimension
+    - 2D array with dimension (num_firing_rate_bins x num_timepoints), each point is
+      the probability of observing a spike for neuron 2 given a spike for neuron 1 
+      at t=0 and neuron 2's current firing rate (e.g., Pr(s_2(t) | s_1(0), fr_2(t))))
+
+       :Authors:
+       Maxime J. R. Beau, David J. Herzfeld
     """
     assert fs > 0.
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)  # in milliseconds
@@ -805,7 +947,7 @@ def convert_acg_log(lin_acg, cbin, cwin, n_log_bins=100,
         plt.scatter(t_log, alog,
                     color='k', marker='+',
                     zorder=100, alpha=0.8, s=60, lw=2)
-        npyx.plot.mplp(figsize=(20, 6), xlim=[-cwin//2, cwin//2], xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
+        npyx.plot_utils.mplp(figsize=(20, 6), xlim=[-cwin//2, cwin//2], xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
 
         plt.figure()
         plt.plot(original_bins, alin)
@@ -814,7 +956,7 @@ def convert_acg_log(lin_acg, cbin, cwin, n_log_bins=100,
                     color='k', marker='+',
                     zorder=100, alpha=0.8, s=60, lw=2)
         plt.xscale('symlog')
-        npyx.plot.mplp(figsize=(20, 6),
+        npyx.plot_utils.mplp(figsize=(20, 6),
              xlabel="Time (ms)", ylabel="Autocorr. (sp/s)")
 
     return log_acg, t_log
@@ -1339,7 +1481,9 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
                 pks=get_ccg_sig(c, cbin, cwin, p_th, n_consec_bins, sgn,
                                 fract_baseline, W_sd, test, ret_features=ret_features, only_max=only_max)
                 for p in pks:
-                    features=features.append(dict(zip(features.columns,np.append(sigustack[i, :], p))), ignore_index=True)
+                    new_row = pd.DataFrame([dict(zip(features.columns, np.append(sigustack[i, :], p)))])
+                    features = pd.concat([features, new_row], ignore_index=True)
+                    # features = features.append(dict(zip(features.columns,np.append(sigustack[i, :], p))), ignore_index=True)
             features.to_csv(feat_path, index=False)
             return sigstack, sigustack, features
 
@@ -1381,7 +1525,9 @@ def ccg_sig_stack(dp, U_src, U_trg, cbin=0.5, cwin=100, name=None,
             sigstack.append(stack[i, j, :])
             if ret_features:
                 for p in pks:
-                    features=features.append(dict(zip(features.columns,np.append(ustack[i, j, :], p))), ignore_index=True)
+                    new_row = pd.DataFrame([dict(zip(features.columns,np.append(ustack[i, j, :], p)))])
+                    features = pd.concat([features, new_row], ignore_index=True)
+                    # features = features.append(dict(zip(features.columns,np.append(ustack[i, j, :], p))), ignore_index=True)
 
     if np.any(sigustack):
         sigustack=npa(sigustack)
@@ -1456,6 +1602,7 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
                ['uSrc'', uTrg', 'l_ms', 'r_ms', 'amp_z', 't_ms', 'n_triplets', 'n_bincrossing', 'bin_heights', 'entropy']
                (see __doc__ of get_ccg_sig() for features description)
         - sfcm: np array, Nunits x Nunit with 0 if no significant correlation and metric if significant correlation.
+        - peakChs, sigstack, sigustack
     '''
     assert corr_type in ['all', 'main', 'synchrony', 'excitations', 'inhibitions', 'connections', 'cs_pause']
     # filter for main modulation irrespectively of sign
@@ -1560,13 +1707,15 @@ def gen_sfc(dp, corr_type='connections', metric='amp_z', cbin=0.5, cwin=100,
     if (pre_chanrange is not None)|(post_chanrange is not None):
         peakChs = npyx.spk_wvf.get_depthSort_peakChans(dp, use_template=use_template_for_peakchan)
         if pre_chanrange is not None:
-            pre_units=sfc.uSrc[sfc.t_ms_center>=0].append(sfc.uTrg[sfc.t_ms_center<0]).sort_index().values
+            pre_units = pd.concat([sfc.uSrc[sfc.t_ms_center >= 0], sfc.uTrg[sfc.t_ms_center < 0]]).sort_index().values
+            # pre_units=sfc.uSrc[sfc.t_ms_center>=0].append(sfc.uTrg[sfc.t_ms_center<0]).sort_index().values
             peak_m=(peakChs[:,1]>pre_chanrange[0])&(peakChs[:,1]<pre_chanrange[1])
             range_m=np.isin(pre_units,peakChs[peak_m,0])
             sfc.drop(index=sfc.index[~range_m], inplace=True)
             sfc.reset_index(inplace=True, drop=True)
         if post_chanrange is not None:
-            post_units=sfc.uSrc[sfc.t_ms_center<0].append(sfc.uTrg[sfc.t_ms_center>=0]).sort_index().values
+            post_units = pd.concat([sfc.uSrc[sfc.t_ms_center < 0], sfc.uTrg[sfc.t_ms_center >= 0]]).sort_index().values
+            # post_units=sfc.uSrc[sfc.t_ms_center<0].append(sfc.uTrg[sfc.t_ms_center>=0]).sort_index().values
             peak_m=(peakChs[:,1]>post_chanrange[0])&(peakChs[:,1]<post_chanrange[1])
             range_m=np.isin(post_units,peakChs[peak_m,0])
             sfc.drop(index=sfc.index[~range_m], inplace=True)
@@ -1821,8 +1970,8 @@ def get_cisi(spk1, spk2, direction=0, again=False, return_spk2_id=False, paralle
     Computes cross spike intervals i.e time differences between
     every spike of spk1 and the following/preceeding spike of spk2.
     Arguments:
-        - spk1: list/array, time series of spikes times
-        - spk2: list/array, time series of spike times
+        - spk1: list/array, time series of spikes times (returned array will be in same units - recommend samples for speed)
+        - spk2: list/array, time series of spike times (must be in same units as t1 - recommend samples for speed)
         - direction: 1, -1 or 0, whether to return following or preceeding interval
                     or for 0, the smallest interval of either
                     (in this case not only consecutive 1,2 or 2,1 ISIs are considered but all spikes of 1)

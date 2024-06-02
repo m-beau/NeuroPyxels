@@ -18,10 +18,6 @@ from joblib import Parallel, delayed
 import multiprocessing
 num_cores = multiprocessing.cpu_count()
 
-from npyx.CONFIG import __cachedir__
-from joblib import Memory
-cache_memory = Memory(Path(__cachedir__).expanduser(), verbose=0)
-
 import numpy as np
 import pandas as pd
 
@@ -33,7 +29,7 @@ from tqdm.auto import tqdm
 from npyx.utils import npa, sign, thresh_consec, zscore, split, get_bins, \
                     _as_array, _unique, _index_of, any_n_consec, \
                     assert_int, assert_float, assert_iterable, smooth,\
-                    docstring_decorator, cache_validation_again
+                    docstring_decorator, npyx_cacher
 
 import matplotlib.pyplot as plt
 
@@ -82,17 +78,23 @@ def make_matrix_2xNevents(dic):
 
     return m
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
+@npyx_cacher
 def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
-                           periods='all', verbose=False, trains=None, enforced_rp=0, log_window_end=None, n_log_bins=10, again=False):
+                           periods='all', verbose=False, trains=None, enforced_rp=0, log_window_end=None, n_log_bins=10,
+                           again=False, cache_results=True, cache_path=None):
     '''Returns the crosscorrelation function of two spike trains.
-       - dp: (string): DataPath to the Neuropixels dataset.
-       - win_size (float): window size, in milliseconds
-       - bin_size (float): bin size, in milliseconds
-       - U (list of integers): list of units indices.
-       - fs: sampling rate (Hertz). Default 30000.
-       - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-       - trains: list of spike trains, in samples.'''
+        - dp: (string): DataPath to the Neuropixels dataset.
+        - win_size (float): window size, in milliseconds
+        - bin_size (float): bin size, in milliseconds
+        - U (list of integers): list of units indices.
+        - fs: sampling rate (Hertz). Default 30000.
+        - symmetrize (bool): symmetrize the semi correlograms. Default=True.
+        - trains: list of spike trains, in samples.
+        - again: bool, whether to recompute results rather than loading them from cache.
+        - cache_results: bool, whether to cache results at local_cache_memory.
+        - cache_path: None|str, where to cache results.
+                        If None, dp/.NeuroPyxels will be used.
+    '''
 
     #### Get clusters and times
     U=list(U)
@@ -356,11 +358,12 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
     return sortedC
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
+@npyx_cacher
 def ccg_hz(dp, u1, u2, cbin, cwin,
            fs=30000, again = False,
            enforced_rp=0, periods='all', trains=None,
-           rate_corrected = False, ci = False, ci_alpha=0.05):
+           rate_corrected = False, ci = False, ci_alpha=0.05,
+           cache_results=True, cache_path=None):
     """
     Shorthand to get the ccg in Hertz,
     using u1 spikes actually overlapping with u2 spikes to normalize.
@@ -370,12 +373,15 @@ def ccg_hz(dp, u1, u2, cbin, cwin,
     - cbin: ccg bin size, ms
     - cwin: full ccg win size, ms
     - fs: sampling rate, Hz
-    - again: bool, whether to recompute array rather than loading it from npyxMemory
     - enforced_rp: float, enforced refractory period (in ms).
     - periods: [[t1,t2], [t3,t4...]], windows of time (in seconds) to use to compute ccg
     - trains: array (nspikes,), externally fed spike train (in SAMPLES, not seconds)
     - rate_corrected: bool, whether to subtract off the expected CCG given u2 mean firing rate (Herzfeld 2023 eq 4)
     - ci: bool, whether to return the CCG subtracted by the 95% confidence interval
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, dp/.NeuroPyxels will be used.
 
     Returns:
         - c: ccg in Hertz or in change in probability is rate corrected is True (multiply by cbin/1000 to get Hz)
@@ -612,13 +618,19 @@ def acg_3D(dp, u, cbin, cwin, normalize='Hertz',
             trains, enforced_rp, num_firing_rate_bins, smooth,
             use_spikes_around_times1_for_deciles, firing_rate_bins)
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
+@npyx_cacher
 def ccg_3D(dp, U, cbin, cwin, normalize='Hertz',
             verbose=False, periods='all', again=False,
             trains=None, enforced_rp=0, num_firing_rate_bins=10, smooth=250,
-            use_spikes_around_times1_for_deciles=True,firing_rate_bins=None):
+            use_spikes_around_times1_for_deciles=True,firing_rate_bins=None,
+            cache_results=True, cache_path=None):
     f"""
     Wrapper for 3D ccg.
+
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, dp/.NeuroPyxels will be used.
     
     See doc of crosscorr_vs_firing_rate:
     {crosscorr_vs_firing_rate.__doc__}"""
@@ -1964,8 +1976,10 @@ def cisi_chunk(i, chunk, n, spk2, direction, s):
 
     return slc, mins, argmins, min_nans
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
-def get_cisi(spk1, spk2, direction=0, again=False, return_spk2_id=False, parallel=False):
+@npyx_cacher
+def get_cisi(spk1, spk2, direction=0,
+             again=False, return_spk2_id=False, parallel=False,
+             cache_results=True, cache_path=None):
     '''
     Computes cross spike intervals i.e time differences between
     every spike of spk1 and the following/preceeding spike of spk2.
@@ -1977,8 +1991,12 @@ def get_cisi(spk1, spk2, direction=0, again=False, return_spk2_id=False, paralle
                     (in this case not only consecutive 1,2 or 2,1 ISIs are considered but all spikes of 1)
         - verbose: bool, whether to print rich information
         - return_spk2_id: bool, whether to return the id of the spk2 spike that correspond to each spk1's cisi
-        parellel: bool, whether to split computation over cores or not
+        - parallel: bool, whether to split computation over cores or not
                   (big overhead - only worth it if len(spk1) or len(spk2) >= 10^7 values
+        - again: bool, whether to recompute results rather than loading them from cache.
+        - cache_results: bool, whether to cache results at local_cache_memory.
+        - cache_path: None|str, where to cache results.
+                        If None, ~/.NeuroPyxels will be used (can be changed in npyx.CONFIG).
     Returns:
         - isi_1to2: shortest interspike intervals of spk1 to spk2 in same units as spk1 and spk2
         if return_spk2_id:
@@ -1986,8 +2004,8 @@ def get_cisi(spk1, spk2, direction=0, again=False, return_spk2_id=False, paralle
     '''
 
     assert direction in [1, 0, -1]
-    spk1     = np.sort(spk1)
-    spk2     = np.sort(spk2)
+    assert np.all(spk1 == np.sort(spk1)), "spk1 must be sorted!"
+    assert np.all(spk2 == np.sort(spk2)), "spk1 must be sorted!"
     spk1 = spk1.astype(np.float64)
     spk2 = spk2.astype(np.float64)
 

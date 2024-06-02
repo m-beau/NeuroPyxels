@@ -496,6 +496,114 @@ def check_periods(periods):
     ), "all pairs of periods must be in ascendent order (t1.1<t1.2 etc in [[t1.1,t1.2],...])!"
     return periods
 
+def export_new_trains_to_phy(dp, spike_times, spike_ids, tsv_label,
+                             tsv_column="re_sorted",
+                             target_subfolder="re_sorted"):
+    """
+    Function to embed arbitrary spikes trains into a phy-compatible dataset as new units.
+
+    Typical use case: refine spikesorting with home-made clustering procedure,
+    and save results as new units inside the phy files.
+
+    Example:
+        dp = 'path/to/spikesorted/data'
+        u = 100 # a unit I want to refine
+        train = npyx.trn(dp, u)
+        train_ids = npyx.ids(dp, u)
+        re_sorting_mask = slice(0, 1000) # the 're-sorting' is just taking 1000 first spikes here.
+        new_train = train[re_sorting_mask] 
+        new_train_ids = train_ids[re_sorting_mask]
+        export_new_trains_to_phy(dp, new_train, new_train_ids, f'1000_spikes_of_{u}',
+                                tsv_column="re_sorted",
+                                target_subfolder="re_sorted")
+
+        This will create a new subfolder dp.../re_sorted, where the 'augmented files'
+        spike_times.npy, spike_clusters.npy, amplitudes.npy, and spike_templates.npy will
+        contain all former data as well as a new unit whose spikes are 'spike_times' and whose
+        index is the greatest index already present + 1.
+        A new tsv file called 'cluster_re_sorted.tsv' is also conveninently created, and contains
+        metadata about this new unit (the string 'tsv_label' that you passed to the function).
+
+        Importantly, the function can be used iteratively and will update the 'augmented files'
+        every time a new cusom unit is added (they get created the first time, updated subsequent times).
+
+    Arguments:
+    dp: str, path to phy-compatible dataset
+    spike_times: list/array, spike times of re-sorted unit, in SAMPLES
+    spike_ids: list/array, indices matching the spikes in spike times
+               (i.e. rank of the spike in spike_times.npy, get them easily with npyx.ids(dp, u))
+    tsv_label: str, metadata anout this re-sorted unit to save in 'cluster_xxx.tsv'
+    tsv_column: str, 'xxx' name of tsv file and the phy column storing the metadata
+                (default "re_sorted")
+    target_subfolder: str, name of subfolder to save the re-sorted data (dp/target_subfolder).
+                      Different attempts can thus be stored in different places, e.g. 'resorting1', 'resorting2'...
+    """
+
+    assert target_subfolder != '',\
+        ("WARNING you cannot save the custom phy files in the original data directory, "
+        "as it would orverwrite the olds data! You need to swap the new files in the target "
+        "subfolder with the old files in the original folder.")
+    assert (len(spike_times) == len(spike_ids)),\
+        ("WARNING the spike_times and spike_ids arrays must have the same size, "
+        "with spike_ids the ids in the original spikesorter output matching the spike times in spike_times!")
+    n_spikes = len(spike_times)
+    
+    root = Path(dp)
+    subroot = root / target_subfolder
+    subroot.mkdir(exist_ok=True)
+    tsv_name = subroot / "cluster_recluster.tsv"
+    spiketimes_name = subroot / 'spike_times.npy'
+    spikeclusters_name = subroot / 'spike_clusters.npy'
+    amplitudes_name = subroot / 'amplitudes.npy'
+    templates_name = subroot / 'spike_templates.npy'
+    
+    if (spiketimes_name).exists():
+        spiketimes_new = np.load(spiketimes_name).squeeze().astype(np.int64)
+    else:
+        spiketimes_new = np.load(root / 'spike_times.npy').squeeze().astype(np.int64)
+        
+    if (spikeclusters_name).exists():
+        spikeclusters_new = np.load(spikeclusters_name).squeeze()
+    else:
+        spikeclusters_new = np.load(root / 'spike_clusters.npy').squeeze()
+        
+    if (amplitudes_name).exists():
+        amplitudes_new = np.load(amplitudes_name).squeeze()
+    else:
+        amplitudes_new = np.load(root / 'amplitudes.npy').squeeze()
+        
+    if (templates_name).exists():
+        templates_new = np.load(templates_name).squeeze()
+    else:
+        templates_new = np.load(root / 'spike_templates.npy').squeeze()
+        
+    last_cluster = np.unique(spikeclusters_new)[-1]
+    new_cluster_id = last_cluster + 1
+    new_cluster_array = np.zeros((n_spikes)) + new_cluster_id
+
+    if tsv_name.exists():
+        tsv_table = pd.read_csv(tsv_name, sep='\t')
+        tsv_rows = pd.DataFrame({"cluster_id": [new_cluster_id],
+                                  tsv_column: [tsv_label]})
+        tsv_table = pd.concat([tsv_table, tsv_rows], axis=0)
+    else:
+        tsv_table = pd.DataFrame({"cluster_id": [new_cluster_id],
+                                  tsv_column: [tsv_label]})
+
+    amplitudes_new = np.concatenate((amplitudes_new, amplitudes_new[spike_ids]), axis=0)[:, None]
+    templates_new = np.concatenate((templates_new, templates_new[spike_ids]), axis=0)[:, None]
+    spiketimes_new = np.concatenate((spiketimes_new, spike_times.astype('uint64')), axis=0)[:, None]
+    spikeclusters_new = np.concatenate((spikeclusters_new, new_cluster_array.astype('int32')), axis=0)
+
+    sortargs = np.argsort(spiketimes_new.squeeze())
+
+    tsv_table.to_csv(tsv_name, sep="\t", index=False)
+    np.save(spiketimes_name, spiketimes_new[sortargs])
+    np.save(spikeclusters_name, spikeclusters_new[sortargs])
+    np.save(amplitudes_name, amplitudes_new[sortargs])
+    np.save(templates_name, templates_new[sortargs])
+    print((f"Saved {spiketimes_name.name}, {spikeclusters_name.name}, {amplitudes_name.name}, and "
+           f"{templates_name.name} at {subroot}."))
 
 # circular imports
 from npyx.inout import read_metadata

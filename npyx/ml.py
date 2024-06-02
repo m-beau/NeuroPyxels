@@ -1,6 +1,7 @@
 import contextlib
 import os
 import random
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,13 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score
 from sklearn.model_selection import LeaveOneOut
 from tqdm.auto import tqdm
+
+from npyx.utils import npyx_cacher
+
+from npyx.plot_utils import get_ncolors_cmap
+from npyx.plot import DistinctColors20
+
+import matplotlib.pyplot as plt
 
 
 def set_seed(seed=None, seed_torch=False):
@@ -171,3 +179,81 @@ def run_cross_validation(
         results_dict["feature_importance_list"] = importances_list
 
     return results_dict
+
+
+# Dimentionality reduction utilities
+
+@npyx_cacher
+def umap_cached(X, n_neighbors=5, min_dist=0.01,
+                again=False, cache_results=True, cache_path=None):
+    """
+    A simple way to save UMAP results when running it many times on the same data.
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, ~/.NeuroPyxels will be used (can be changed in npyx.CONFIG).
+    """
+    import umap
+    fit    = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=5)
+    return fit.fit_transform(X)
+
+def get_cluster_colors(n_clusters, alpha=0.5, alpha_outliers=0.05):
+    # cluster_colors = get_ncolors_cmap(10, 'tab10')
+    # cluster_colors = cluster_colors + [c for i, c in enumerate(get_ncolors_cmap(20, 'tab20')) if i%2==1]
+    cluster_colors = DistinctColors20[1:]
+    cluster_colors = [c+[alpha] for c in cluster_colors]
+    outlier_color = [0,0,0,alpha_outliers]
+    return [cluster_colors[i%19] for i in range(n_clusters)] + [outlier_color]
+
+def labels_to_rgb_colors(labels, order=None, colormap='tab10'):
+    "order: unique list of labels, to choose order of colors from colormap"
+    if order is None:
+        order = np.unique(labels)
+    assert np.all(np.isin(labels, order)), "Missing labels from order."
+
+    palette = get_ncolors_cmap(10, colormap)
+    index_dict = {u: i for i, u in enumerate(order)}
+    return [palette[index_dict[u]] for u in labels]
+
+def red_dim_plot(X, dims_to_plot = [0,2,1], labels = None,
+                 title = None,
+                 xlim = None, ylim = None, zlim = None,
+                 xlabel = 'Dim 1', ylabel = 'Dim 3', zlabel = 'Dim 2',
+                 alpha = 1, alpha_outliers = 0.05):
+
+    elevation = 20
+
+    assert len(dims_to_plot) == 3, "Must provide 3 dimensions to plot."
+    assert X.ndim >= np.max(dims_to_plot), "X doesn't have the dimensions passed in dims_to_plot."
+
+    fig, axes = plt.subplots(1,3, subplot_kw=dict(projection='3d'), figsize=(25,8))
+    for i, azimuth in enumerate([200, 270, 330]):
+        ax = axes[i]
+
+        if labels is not None:
+            cluster_ids = np.unique(labels)
+            n_clusters = len(cluster_ids)
+            cluster_colors = get_cluster_colors(n_clusters, alpha, alpha_outliers)
+            for cluster_id in [-1]+list(np.arange(n_clusters)):
+                cluster_m = labels == cluster_id
+                ax.scatter(X[cluster_m,dims_to_plot[0]], X[cluster_m,dims_to_plot[1]], X[cluster_m, dims_to_plot[2]],
+                           color=cluster_colors[cluster_id], label=f"Cluster {cluster_id} ({int(cluster_m.sum())})",
+                           s=40, lw=0)
+            if i == 0: ax.legend()
+        else:
+            ax.scatter(X[:,dims_to_plot[0]], X[:,dims_to_plot[1]], X[:, dims_to_plot[2]],
+                           s=40, lw=0)
+
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_zlabel(zlabel)
+        if xlim is not None: ax.set_xlim(xlim)
+        if ylim is not None: ax.set_ylim(ylim)
+        if zlim is not None: ax.set_zlim(zlim)
+        
+        ax.view_init(elevation, azimuth)
+
+    fig.suptitle(title, va='top', fontsize=20)
+    fig.patch.set_facecolor('white')
+
+    return fig

@@ -8,15 +8,11 @@ import multiprocessing
 import os
 from collections.abc import Iterable
 from pathlib import Path
-
 import psutil
+
 from tqdm.notebook import tqdm
 
 import os.path as op; opj=op.join
-
-from npyx.CONFIG import __cachedir__
-from joblib import Memory
-cache_memory = Memory(Path(__cachedir__).expanduser(), verbose=0)
 
 num_cores = multiprocessing.cpu_count()
 
@@ -28,16 +24,17 @@ import numpy as np
 from npyx.gl import get_npyx_memory, get_units
 from npyx.inout import chan_map, get_binary_file_path, read_metadata
 from npyx.preprocess import apply_filter, bandpass_filter, med_substract, whitening
-from npyx.utils import cache_validation_again, npa, split, xcorr_1d_loop
+from npyx.utils import npyx_cacher, npa, split, xcorr_1d_loop
 
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
+@npyx_cacher
 def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', periods='all',
         spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
         save=True, verbose=False, again=False,
         whiten=False, med_sub=False, hpfilt=False, hpfiltf=300,
         nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=True,
-        return_corrupt_mask=False):
+        return_corrupt_mask=False,
+        cache_results=True, cache_path=None):
     '''
     ********
     Extracts a sample of waveforms from the raw data file.
@@ -57,7 +54,6 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
         - wvf_batch_size:     int, if >1 and 'regular' selection, selects ids as batches of spikes. | Default 10
         - save:               bool, whether to save to NeuroPyxels cache. | Default True
         - verbose:            bool, whether to print informaiton. | Default False
-        - again:              bool, whether to recompute waveforms even if ofund in routines memory. | Default False
         - ignore_nwvf:        bool, whether to ignore n_waveforms parameter when a list of times is provided as periods,
                                     to return all the spikes in the window instead. | Default True
         - whiten:             bool, whether to whiten across channels.
@@ -70,6 +66,10 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
         - nRangeMedSub:       int, number of channels to use to compute the local median. | Default None
         - ignore_ks_chanfilt: bool, whether to ignore kilosort channel filtering
                                     (if False, output shape will always be n_waveforms x t_waveforms x 384) | Default False
+        - again: bool, whether to recompute results rather than loading them from cache.
+        - cache_results: bool, whether to cache results at local_cache_memory.
+        - cache_path: None|str, where to cache results.
+                        If None, dp/.NeuroPyxels will be used.
     Returns:
         waveforms:            numpy array of shape (n_waveforms x t_waveforms x n_channels)
                                     where n_channels is defined by the channel map if ignore_ks_chanfilt is False.
@@ -94,12 +94,14 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
     if os.path.exists(Path(dpnm,fn)) and (not again) and (spike_ids is None):
         if verbose: print("File {} found in NeuroPyxels cache.".format(fn))
         return np.load(Path(dpnm,fn))
+    
 
     waveforms = get_waveforms(dp, u, n_waveforms, t_waveforms,
                  selection, periods, spike_ids, wvf_batch_size, ignore_nwvf,
                  whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
                  ignore_ks_chanfilt, verbose,
-                 True, return_corrupt_mask)
+                 True, return_corrupt_mask, again)
+
     if return_corrupt_mask:
         (waveforms, corrupt_mask) = waveforms
         
@@ -126,8 +128,8 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
 def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', periods='all',
                   spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
                   whiten=0, med_sub=0, hpfilt=0, hpfiltf=300,
-                  nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=0, verbose=False,
-                  med_sub_in_time=True, return_corrupt_mask=False):
+                  nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=True, verbose=False,
+                  med_sub_in_time=True, return_corrupt_mask=False, again=False):
     f"{wvf.__doc__}"
 
     # Extract and process metadata
@@ -155,7 +157,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     # Select subset of spikes
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
     if spike_ids is None:
-        spike_ids_subset = get_ids_subset(dp, u, n_waveforms, wvf_batch_size, selection, periods, ignore_nwvf, verbose)
+        spike_ids_subset = get_ids_subset(dp, u, n_waveforms, wvf_batch_size, selection, periods, ignore_nwvf, verbose, again)
     else:
         assert isinstance(spike_ids, Iterable), "WARNING spike_ids must be a list/array of ids!"
         spike_ids_subset = np.array(spike_ids)
@@ -222,7 +224,7 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     
     return waveforms.astype(np.float32)
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
+@npyx_cacher
 def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
                 wvf_batch_size=10, ignore_nwvf=True, med_sub = False, spike_ids = None,
                 save=True, verbose=False, again=False,
@@ -230,7 +232,8 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
                 n_waves_used_for_matching = 5000, peakchan_allowed_range=6,
                 use_average_peakchan = False, max_allowed_amplitude = 3000, max_allowed_shift=3,
                 n_waves_to_average=800, plot_debug=False, do_shift_match=True, n_waveforms_per_batch=10,
-                subselect_max_template=False, amp_max_percentile=0.95):
+                subselect_max_template=False, amp_max_percentile=0.95,
+                cache_results=True, cache_path=None):
     """
     ********
     Extract the drift and shift matched mean waveforms of the specified unit.
@@ -303,7 +306,12 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
                                   n_waveforms_per_batch consecutive waveforms have the same drift state)
         - subselect_max_template: bool, whether to only use the kilosort template with the largest amount of spikes to compute the waveform
                                   (less likely to average together waveforms looking different)
-        - amp_max_percentile: float, percentile of the amplitude distribution to use as the maximum amplitude for X-Y drift matching 
+        - amp_max_percentile: float, percentile of the amplitude distribution to use as the maximum amplitude for X-Y drift matching
+
+        - again: bool, whether to recompute results rather than loading them from cache.
+        - cache_results: bool, whether to cache results at local_cache_memory.
+        - cache_path: None|str, where to cache results.
+                        If None, dp/.NeuroPyxels will be used.
 
     Returns:
         - peak_dsmatched_waveform: (n_samples,) array (t_waveforms samples) storing the peak channel waveform
@@ -608,18 +616,20 @@ def shift_match(waves, alignment_channel,
 
 def across_channels_SNR(dp, u, n_waveforms=500, t_waveforms=90,
                         periods='all', spike_ids=None,
-                        c = 1, chan_range = 3, return_distributions = False):
+                        c = 1, chan_range = 3, return_distributions = False,
+                        again=False):
     
     dp = Path(dp)
     
     # load spike ids
     if spike_ids is None:
-        spike_ids = get_ids_subset(dp, u, n_waveforms, 10, 'regular', periods, True)
+        spike_ids = get_ids_subset(dp, u, n_waveforms, 10, 'regular', periods, True, again=again)
     n_spikes = len(spike_ids)
     
     # get waveforms
     waves = get_waveforms(dp, u, n_waveforms, t_waveforms, 'regular',
-                          periods, spike_ids, ignore_ks_chanfilt=True)
+                          periods, spike_ids, ignore_ks_chanfilt=True,
+                          again=again)
     
     # get random selection of voltage snippets in the vicinity of the waveforms
     meta           = read_metadata(dp)
@@ -681,8 +691,10 @@ def get_pc(waveforms):
     peak_chan = np.argmax(max_min_wvf)
     return peak_chan
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
-def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=True, periods='all', save=True):
+@npyx_cacher
+def get_peak_chan(dp, unit, use_template=True, again=False,
+                  ignore_ks_chanfilt=True,  periods='all', save=True,
+                  cache_results=True, cache_path=None):
     '''
     Returns index of peak channel, either according to the full probe channel map (0 through 383)
                                    or according to the kilosort channel map (0 through N with N<=383)
@@ -691,12 +703,15 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
         - datapath, string
         - unit, integer or float (if merged dataset)
         - use_template: bool, whether to use templates instead of raw waveform to find peak channel.
-        - again: whether to recompute the waveforms/templates
         - ignore_ks_chanfilt: bool, whether to return the channel rank on the full probe
                     rather than the channel rank on the kilosort cahnnel map (jumping some channels).
                     They will be the same if all channels are used for spike sorting.
                     E.g. if kilosort only used 380 channels (out of 384),
                     the last channel, 383, has the relative index 379.
+        - again: bool, whether to recompute results rather than loading them from cache.
+        - cache_results: bool, whether to cache results at local_cache_memory.
+        - cache_path: None|str, where to cache results.
+                        If None, dp/.NeuroPyxels will be used.
     Returns:
         - best_channel, integer indexing the channel
           where the unit averaged raw waveform (n=100 spanning the whole recording)
@@ -736,8 +751,10 @@ def get_peak_chan(dp, unit, use_template=True, again=False, ignore_ks_chanfilt=T
     return int(peak_chan)
 
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
-def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, again=False, verbose = False):
+@npyx_cacher
+def get_depthSort_peakChans(dp, units=[], quality='all',
+                            use_template=True, again=False, verbose = False,
+                            cache_results=True, cache_path=None):
     '''
     Usage:
         Either feed in a list of units - the function will return their indices/channels sorted by depth in a n_units x 2 array,
@@ -746,6 +763,10 @@ def get_depthSort_peakChans(dp, units=[], quality='all', use_template=True, agai
         - datapath, string
         - units, list of integers or strings
         - quality: string, 'all', 'mua' or 'good'
+        - again: bool, whether to recompute results rather than loading them from cache.
+        - cache_results: bool, whether to cache results at local_cache_memory.
+        - cache_path: None|str, where to cache results.
+                        If None, dp/.NeuroPyxels will be used.
     Returns:
         - best_channels, numpy array of shape (n_units, 2).
           Column 1: unit indices, column 2: respective peak channel indices.
@@ -861,11 +882,11 @@ def templates(dp, u, ignore_ks_chanfilt=False, again=False):
 
 #%% wvf utilities
 
-def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, selection, periods, ignore_nwvf, verbose=False):
+def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, selection, periods, ignore_nwvf, verbose=False, again=False):
     
     # if periods were provided
     if not isinstance(periods, str):
-        ids_subset = ids(dp, unit, periods=periods)
+        ids_subset = ids(dp, unit, periods=periods, again=again)
         if not ignore_nwvf:
             n_waveforms1=min(n_waveforms, len(ids_subset))
             ids_subset = np.unique(np.random.choice(ids_subset, n_waveforms1, replace=False))
@@ -873,10 +894,10 @@ def get_ids_subset(dp, unit, n_waveforms, batch_size_waveforms, selection, perio
     # if no periods were provided
     else:
         if n_waveforms in (None, 0):
-            ids_subset = ids(dp, unit)
+            ids_subset = ids(dp, unit, again=again)
         else:
             assert n_waveforms > 0
-            spike_ids = ids(dp, unit)
+            spike_ids = ids(dp, unit, again=again)
             assert any(spike_ids)
             assert selection in ['regular', 'random']
             if selection == 'regular':

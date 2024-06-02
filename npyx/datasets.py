@@ -983,7 +983,7 @@ def preprocess_template(
     necessary, and normalizing it.
 
     Args:
-      template (np.ndarray): A numpy array representing a waveform template.
+      template (np.ndarray): A (n_samples) or (n_channels, n_samples) ndarray representing a waveform template. The baseline of the waveform MUST be 0.
       original_sampling_rate (float): The original sampling rate of the input template waveform in Hz
     (Hertz). Defaults to 30000
       output_sampling_rate (float): The desired sampling rate of the output template. The function will
@@ -1118,7 +1118,7 @@ def preprocess_template(
             constant_values=template[-1],
         )
         if multi_chan:
-            padding = np.tile(waveform[:, -1], (num_indices - len(waveform), 1)).T
+            padding = np.tile(waveform[:, -1], (num_indices - waveform.shape[1], 1)).T # MB fixed predicted bug - make sure it is correct.
             waveform = np.concatenate((waveform, padding), axis=1)
 
     assert len(template) == num_indices
@@ -1143,6 +1143,233 @@ def preprocess_template(
 
     return template if not multi_chan else waveform
 
+def preprocess_template_singlewaveforms(
+    waveforms: np.ndarray,
+    original_sampling_rate: float = 30000,
+    output_sampling_rate: float = 30000,
+    clip_size: Tuple[float, float] = (1.5e-3, 1.5e-3),
+    source_peak_sign: Union[None, str] = "negative",
+    target_peak_sign: Union[None, str] = None,
+    normalize: bool = True,
+    return_parameters: bool = False,
+) -> np.ndarray:
+    """
+    This function generalizes npyx.datasets.preprocess_template to (n_samples, n_waveforms) and (n_channels, n_samples, n_waveforms) arrays. It computes the preprocessing parameters from the average across n_waveforms (like npyx.datasets.preprocess_template), but applies the preprocessing to the original full array.
+    - resampling
+    - peak detection - reference peak election (either min or max)
+    - alignment to peak
+    - flipping to make elected peak negative
+    - normalizing (elected peak is -1, baseline 0)
+
+    Note: not embedded in preprocess_template because the C4 classifier relies on preprocess_template, which has been thoroughly tested.
+
+    Args:
+      - template (np.ndarray): A (n_samples, n_waveforms) or (n_channels, n_samples, n_waveforms) ndarray representing a waveform template. The baseline of the waveform MUST be 0.
+      original_sampling_rate (float): The original sampling rate of the input template waveform in Hz
+    (Hertz). Defaults to 30000
+      - output_sampling_rate (float): The desired sampling rate of the output template. The function will
+    resample the input template to match this sampling rate if the original sampling rate is different.
+    Defaults to 30000
+      - clip_size (Tuple[float, float]): The clip_size parameter is a tuple of two floats representing the
+    start and end times (in seconds) of the desired clip from the original template waveform. The
+    preprocess_template function uses this parameter to construct an output template of a specific
+    length based on the desired sampling rate. WARNING: 'ZERO' is assumed to be the center of the original array.
+    Note: for no shifting, simply set the window to roughly match the original peak (e.g. -1.5e-3, 1.5e-3)
+      - source_peak_sign: [None, 'positive', 'negative'], used to specify the sign of the peak to use as extremum reference.
+      - target_peak_sign (Union[None, str]): The parameter "peak_sign" is used to specify whether the peak in the
+    template should be positive or negative. It can take on the values "positive", "negative", or None.
+    If it is set to "positive", the template will be flipped if the peak is negative, and if it is.
+    Defaults to negative
+      - normalize (bool): A boolean parameter that determines whether or not to normalize the output
+    template. If set to True, the output template will be normalized by dividing it by the absolute
+    value of the peak amplitude. Defaults to True
+      - return_parameters: bool, whether to return (waveform, parameters)
+       with parameters a dictionnary with the preprocessing parameters:
+        - shift_samples: the amount of total shift from the center of the original array, in output samples (<0: to the left, >0: to the right)
+        - peak_value: the value of the peak used to normalize the waveform, in uV (or whichever units were fed in)
+        - sampling_rate: output sampling rate of template (to convert shift_samples into ms)
+    Returns:
+      a preprocessed template as a numpy array.
+
+    Authors:
+       Original Julia Implementation by David J. Herzfeld <herzfeldd@gmail.com>
+       Adapted to Python and multi-channel waveforms by @fededagos
+       Generalized to single waveforms by Maxime Beau
+    """
+    assert original_sampling_rate >= output_sampling_rate
+    assert source_peak_sign in [None, "positive", "negative"]
+    assert target_peak_sign in [None, "positive", "negative"]
+
+    # Check if provided waveform is 2D
+    assert waveforms.ndim in [2, 3], "Input waveform array must be (n_samples, n_waveforms) or (n_channels, n_samples, n_waveforms)."
+
+    # waveforms: (n_samples, n_waveforms,) or (n_channels, n_samples, n_waveforms,) array
+    # waveform: (n_samples,) or (n_channels, n_samples,)
+    # template: (n_samples,) array
+    waveform = waveforms.mean(-1)
+    multi_chan = False
+    if waveforms.ndim == 3:
+        peak_channel = np.argmax(np.max(np.abs(waveform), axis=1))
+        template = waveform[peak_channel, :]
+        multi_chan = True
+    else:
+        template = waveform
+
+    if original_sampling_rate != output_sampling_rate:
+        template = resample(
+            template, int(output_sampling_rate / original_sampling_rate * len(template))
+        )
+    original_n_samples = len(template)
+    # Search through our template to find our desired alignment point
+    # We only align to peaks, so our goal is to find a set of local peaks
+    # first and then choose the optimal one
+
+    peaks, _ = npyx.feat.detect_peaks(template, margin=0.5, onset=0.2)
+    # If we don't find any peaks, we will search for them in a more brute force way
+    if len(peaks) == 0:
+        peaks = []
+        for i in range(1, len(template) - 1):
+            if (
+                (template[i] > template[i - 1])
+                and (template[i] >= template[i + 1])
+                and (template[i] > 0)
+            ):
+                peaks.append(i)  # Positive peak
+            elif (
+                (template[i] < template[i - 1])
+                and (template[i] <= template[i + 1])
+                and (template[i] < 0)
+            ):
+                peaks.append(i)  # Negative peak
+
+    # Given our list of peaks, our goal is to find the optimal peak,
+    # typically this will be the maximum value, but we align to the first
+    # peak that is at least 75% of the maximum value
+    if source_peak_sign is None:
+        peak_finder = np.abs(template)
+    elif source_peak_sign == "positive":
+        peak_finder = template
+    elif source_peak_sign == "negative":
+        peak_finder = template * -1
+    
+    peak_values = peak_finder[peaks]
+    extremum = np.max(peak_values)
+    reference_peak_idx = peaks[np.where(peak_values > 0.75 * extremum)[0][0]]
+    peak_val = template[reference_peak_idx]
+
+    alignment_idx = int(round(abs(clip_size[0]) * output_sampling_rate))
+
+    # Determine if we need to flip our template based on the value of the peak
+    # ensuring that the peak is negative
+    if (
+        target_peak_sign is not None
+        and target_peak_sign == "negative"
+        and template[reference_peak_idx] > 0
+    ):
+        template = template * -1
+        waveforms = waveforms * -1
+        if multi_chan:
+            waveform = waveform * -1
+    elif (
+        target_peak_sign is not None
+        and target_peak_sign == "positive"
+        and template[reference_peak_idx] < 0
+    ):
+        template = template * -1
+        waveforms = waveforms * -1
+        if multi_chan:
+            waveform = waveform * -1
+
+    # Construct our output template based on our desired clip_size
+    # There is a much better way to code that up... but don't fix what ain't broken
+    num_indices = int(
+        round((abs(clip_size[0]) + abs(clip_size[1])) * output_sampling_rate)
+    )
+    shift = reference_peak_idx - alignment_idx
+    if shift < 0:
+        template = np.concatenate((np.ones(alignment_idx - reference_peak_idx) * template[0], template))
+        if multi_chan:
+            padding = np.tile(waveform[:, 0:1], (1, alignment_idx - reference_peak_idx))
+            waveform = np.concatenate((padding, waveform), axis=1)
+            padding_ = np.tile(waveforms[:, 0:1, :], (1, alignment_idx - reference_peak_idx, 1))
+            waveforms = np.concatenate((padding_, waveforms), axis=1)
+        else:
+            padding_ = np.tile(waveforms[0:1, :], (alignment_idx - reference_peak_idx, 1))
+            waveforms = np.concatenate((padding_, waveforms), axis=0)
+    elif shift > 0:
+        template = np.concatenate((template[shift:], np.full(shift, template[-1])))
+        if multi_chan:
+            padding = np.tile(waveform[:, -2:-1], (1, shift))
+            waveform = np.concatenate((waveform[:, shift:], padding), axis=1)
+            padding_ = np.tile(waveforms[:, -2:-1, :], (1, shift, 1))
+            waveforms = np.concatenate((waveforms[:, shift:, :], padding_), axis=1)
+        else:
+            padding_ = np.tile(waveforms[-2:-1, :], (shift, 1))
+            waveforms = np.concatenate((waveforms[shift:, :], padding_), axis=0)
+
+    if multi_chan:
+        assert waveform[peak_channel, alignment_idx] == peak_val
+    else:
+        assert (
+            template[alignment_idx] == peak_val
+        ), f"Peak value is {peak_val}, but template value there is {template[alignment_idx]}"
+
+    if len(template) > num_indices:
+        template = template[:num_indices]
+        if multi_chan:
+            waveform = waveform[:, :num_indices]
+            waveforms = waveforms[:, :num_indices, :]
+        else:
+            waveforms = waveforms[:num_indices, :]
+
+    elif len(template) < num_indices:
+        padding = np.tile(template[-2:-1], (num_indices - len(template)))
+        template = np.concatenate((template, padding))
+        if multi_chan:
+            padding = np.tile(waveform[:, -2:-1], (1, num_indices - waveform.shape[1]))
+            waveform = np.concatenate((waveform, padding), axis=1)
+            padding_ = np.tile(waveforms[:, -2:-1, :], (1, num_indices - waveforms.shape[1], 1))
+            waveforms = np.concatenate((waveforms, padding_), axis=1)
+        else:
+            padding_ = np.tile(waveforms[-2:-1, :], (num_indices - waveforms.shape[0], 1))
+            waveforms = np.concatenate((waveforms, padding_), axis=0)
+
+    assert len(template) == num_indices
+    if multi_chan:
+        assert (
+            waveform.shape[1] == num_indices
+        ), f"Expected waveform shape to be {num_indices} after processing but got {waveform.shape[1]}"
+
+    # Remove any (noisy) offset
+    num_indices = int(round(abs(clip_size[0]) * output_sampling_rate))
+    w_median = np.median(template[:num_indices], keepdims=True)
+    template = template - w_median
+    if multi_chan:
+        w_medians = np.median(waveform[:, :num_indices], axis=1, keepdims=True)
+        waveform = waveform - w_medians
+        waveforms = waveforms - w_medians[:, :, None]
+    else:
+
+        waveforms = waveforms - w_median[:, None]
+
+    if normalize:
+        # Normalize the result
+        extremum = np.abs(template[alignment_idx])
+        template = template / extremum
+        if multi_chan:
+            extremum = np.abs(waveform[peak_channel, alignment_idx])
+            waveform = waveform / extremum
+            waveforms = waveforms / extremum
+        else:
+            waveforms = waveforms / extremum
+
+    if return_parameters:
+        alignment_idx_original_array = original_n_samples // 2 # 0 us the center of the array
+        total_shift = alignment_idx_original_array - reference_peak_idx
+        return waveforms, dict(shift_samples = total_shift,
+                               peak_value = extremum,
+                               sampling_rate = output_sampling_rate)
+    return waveforms
 
 def pad_matrix_with_decay(matrix, target_channels=10):
     n_channels, _ = matrix.shape

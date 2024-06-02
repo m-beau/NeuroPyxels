@@ -40,6 +40,7 @@ requirements = [
     "tqdm",
     "h5py",
     "seaborn",
+    "cachecache"
 ]
 
 c4_requirements = [

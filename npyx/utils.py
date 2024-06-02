@@ -2,7 +2,11 @@
 
 import os
 from pathlib import Path
-from tracemalloc import start
+import logging
+import functools
+from ast import literal_eval as ale
+from typing import Union
+import inspect
 
 from numba import njit
 from numba.typed import List
@@ -12,50 +16,68 @@ import warnings
 warnings.simplefilter("default", category=NumbaDeprecationWarning) #'ignore'
 warnings.simplefilter('default', category=NumbaPendingDeprecationWarning)#'ignore'
 
-from ast import literal_eval as ale
+from six import integer_types
+from math import pi, log
+
 import numpy as np
 from numpy.fft import rfft, irfft
 
-from six import integer_types
-from statsmodels.nonparametric.smoothers_lowess import lowess
-import scipy.stats as stt
-import scipy.signal as sgnl
-
-import logging
-from math import pi, log
 from scipy.fft import fft, ifft
 from scipy.optimize import curve_fit
 from scipy.signal import cspline1d_eval, cspline1d
+import scipy.stats as stt
+import scipy.signal as sgnl
+
+# Initialize NeuroPyxel's global joblib cache
+# with its size to the available memory minus 5GB
+from npyx.CONFIG import __cachedir__
+from cachecache import Cacher
+global_npyx_cacher = Cacher(__cachedir__)
 
 
 #%% function decoration utilities
 
-def cache_validation_again(metadata):
+def npyx_cacher(func):
     """
-    Argument to pass to a joblib caching decorator
-    to recompute the results rather than retrieve them from cache when 'again' is set to True.
-
-    To be used as follow:
-    ```
-    from joblib import Memory
-    import os.path as op
-    cachedir = Path(op.expanduser("~")) / ".my_caching_folder"
-    cache_memory = Memory(cachedir, verbose=0)
-
-    @cache_memory.cache(cache_validation_callback=cache_validation_again)
-    def my_cached_function(argument1, ..., again=False):
-        ...
-    ```
-    WARNING the cached function MUST have an argument named 'again' for this to work.
+    Decorator to cache npyx functions using the dp parameter
+    at dp/.NeuroPyxels.
     """
-    # Only retrieve cached results for calls that are not flagged with again
-    try:
-        again = ale(metadata["input_args"]["again"])
-        load_from_cache = (not bool(again))
-        return load_from_cache
-    except:
-        print(f"Joblib caching error (again argument missing?)! Not loading from cache.\n(see {metadata}")
-        return False
+
+    local_cache_folder = ".NeuroPyxels"
+    
+    @functools.wraps(func)
+    def npyx_cached_func(*args, **kwargs):
+
+        # Find whether dp is present in args or kwargs.
+        # If so, bypass the cache_path argument
+        # with Path(dp) / local_cache_folder
+        sig = inspect.signature(func)
+        arg_names = list(sig.parameters.keys())
+
+        dp = None
+        if 'dp' in kwargs:
+            dp = kwargs['dp']
+        elif arg_names and 'dp' in arg_names:
+            dp_idx = np.nonzero('dp' == np.array(arg_names))[0][0]
+            dp = args[dp_idx]
+
+        if isinstance(dp, Union[str, Path]):
+            cache_path = Path(dp) / local_cache_folder
+            if 'cache_path' not in kwargs:
+                kwargs['cache_path'] = None
+            if kwargs['cache_path'] is None:
+                kwargs['cache_path'] = cache_path
+
+        # the default cache is at '~/.NeuroPyxels' (can be changed in npyx.CONFIG)
+        # and only instantiated once as global_npyx_cacher,
+        # but if a function has the dp parameter,
+        # the decoration will reinstantiate a 'dp/.NeuroPyxels' path.
+        cached_func = global_npyx_cacher(func) # same as decorating func with @global_npyx_cacher
+        results = cached_func(*args, **kwargs)
+
+        return results
+
+    return npyx_cached_func
 
 def docstring_decorator(*args):
     """

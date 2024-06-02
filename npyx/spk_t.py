@@ -10,10 +10,6 @@ from IPython.core.debugger import set_trace as breakpoint
 opj=op.join
 from pathlib import Path, PosixPath, WindowsPath
 
-from npyx.CONFIG import __cachedir__
-from joblib import Memory
-cache_memory = Memory(Path(__cachedir__).expanduser(), verbose=0)
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -22,7 +18,7 @@ from npyx.inout import read_metadata
 from npyx.utils import (
     assert_float,
     assert_int,
-    cache_validation_again,
+    npyx_cacher,
     docstring_decorator,
     npa,
     smooth,
@@ -111,23 +107,29 @@ def load_amplitudes(dp, unit, verbose=False, periods='all', again=False, enforce
     unit_ids = ids(dp, unit, True, verbose, periods, again, enforced_rp)
     return np.load(dp/'amplitudes.npy')[unit_ids]
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
-def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=0):
+@npyx_cacher
+def trn(dp, unit, sav=True, verbose=False,
+        periods='all', again=False, enforced_rp=0,
+        cache_results=True, cache_path=None):
     '''
-    ********
-    routine from routines_spikes
-    computes spike train (1, Nspikes) - int64, in samples
-    ********
+    Computes spike train (1, Nspikes) - int64, in samples
 
+    Arguments:
     - dp (string): DataPath to the Neuropixels dataset.
     - u (int): unit index
     - ret (bool - default False): if True, train returned by the routine.
     if False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - periods: list [[t1,t2], [t3,t4],...] (in seconds) or 'all' for all periods.
-    - again: boolean, if True recomputes data from source files without checking routines memory.
     - enforced_rp: float, enforced refractory period (ms)- if 2 spikes are separated by less than enforced_rp ms, the first one only is kept.
                    By default 0, only removed pure duplicates (they happen!).
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, dp/.NeuroPyxels will be used.
+    
+    Returns:
+        - train: ndarray, spike train of unit at dp (in samples)
     '''
 
     # Search if the variable is already saved in dp/routinesMemory
@@ -175,8 +177,9 @@ def trn(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
 def duplicates_mask(t, enforced_rp=0, fs=30000):
     '''
-    - t: in samples,sampled at fs Hz
-    - enforced_rp: in ms'''
+    - t: in samples, sampled at fs Hz
+    - enforced_rp: in ms
+    '''
     return np.append([False], np.diff(t)<=enforced_rp*fs/1000)
 
 def enforce_rp(t, enforced_rp=0, fs=30000):
@@ -232,32 +235,47 @@ def isint_filtered(t, exclusion_quantile=0.005, fs=30000):
     isint = isint/fs
     return isint
 
-@cache_memory.cache
-def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000):
+@npyx_cacher
+def mean_firing_rate(t, exclusion_quantile=0.005, fs=30000,
+                     again=False, cache_results=True, cache_path=None):
     """
     - t: array of time stamps, in samples
     - exclusion_quantile: float, quantiles beyond which we exclude too long interspike intervals
     - fs: sampling frequency, in Hz
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, ~/.NeuroPyxels will be used (can be changed in npyx.CONFIG).
     """
     isint = isint_filtered(t, exclusion_quantile, fs)
     return np.round(1. / np.mean(isint), 2)
 
-@cache_memory.cache
-def mean_inst_firing_rate(t, exclusion_quantile=0.005, fs=30000):
+@npyx_cacher
+def mean_inst_firing_rate(t, exclusion_quantile=0.005, fs=30000,
+                          again=False, cache_results=True, cache_path=None):
     """
     - t: array of time stamps, in samples
     - exclusion_quantile: float, quantiles beyond which we exclude too long interspike intervals
     - fs: sampling frequency, in Hz
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, ~/.NeuroPyxels will be used (can be changed in npyx.CONFIG).
     """
     isint = isint_filtered(t, exclusion_quantile, fs)
     return np.round(np.mean(1. / isint), 2)
 
-@cache_memory.cache
-def coefficient_of_variation(t, exclusion_quantile=0.005, fs=30000):
+@npyx_cacher
+def coefficient_of_variation(t, exclusion_quantile=0.005, fs=30000,
+                             again=False, cache_results=True, cache_path=None):
     """
     - t: array of time stamps, in samples
     - exclusion_quantile: float, quantiles beyond which we exclude too long interspike intervals
     - fs: sampling frequency, in Hz
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, ~/.NeuroPyxels will be used (can be changed in npyx.CONFIG).
     """
     isint = isint_filtered(t, exclusion_quantile, fs)
     return np.round(np.std(isint) / np.mean(isint), 2)
@@ -328,8 +346,9 @@ def binarize(X, bin_size, fs, rec_len=None):
 
     return Xb
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
-def trnb(dp, u, b, periods='all', again=False):
+@npyx_cacher
+def trnb(dp, u, b, periods='all',
+         again=False, cache_results=True, cache_path=None):
     '''
     ********
     Computes binarized spike train (1, Nspikes) - int64, in samples
@@ -338,6 +357,10 @@ def trnb(dp, u, b, periods='all', again=False):
     - dp (string): DataPath to the Neuropixels dataset.
     - u (int): unit index
     - bin_size: size of binarized spike train bins, in milliseconds.
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, dp/.NeuroPyxels will be used.
     '''
     dp_source = npyx.merger.get_source_dp_u(dp, u)[0]
     fs=read_metadata(dp_source)['highpass']['sampling_rate']
@@ -418,8 +441,15 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
 
     return (periods, tbs) if return_smoothed_rate else periods
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
-def inst_firing_rate(t, fs, t_end, b=1, sd=1000, again=False):
+@npyx_cacher
+def inst_firing_rate(t, fs, t_end, b=1, sd=1000,
+                     again=False, cache_results=True, cache_path=None):
+    """
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, ~/.NeuroPyxels will be used (can be changed in npyx.CONFIG).
+    """
     assert 1<sd<100000
     assert t.ndim==1
     t     = np.asarray(t)
@@ -848,15 +878,22 @@ def good_sections_from_mask(good_times_m, time_series=None):
     else:
         return [[l,r] for l,r in zip(good_left, good_right) if r>l]
 
-@cache_memory.cache
-def get_common_good_sections(good_sections_list):
+@npyx_cacher
+def get_common_good_sections(good_sections_list,
+                             again=False, cache_results=True, cache_path=None):
     """
-    good_sections: list of lists of periods
-    [
-    [[t11, t12], [t13,t14], ...],
-    [[t21, t22], [t23,t24], ...],
-    ]
-    Must be in SAMPLES, INTEGERS.
+    Returns the intersection of sections (typically, [t1, t2] time windows) across N lists of sections.
+    Arguments:
+        - good_sections: list of lists of periods
+        [
+        [[t11, t12], [t13,t14], ...],
+        [[t21, t22], [t23,t24], ...],
+        ]
+        Must be in SAMPLES, INTEGERS.
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, ~/.NeuroPyxels will be used (can be changed in npyx.CONFIG).
 
     Returns:
         - common_good_sections: list of sections common to all the lists of periods.

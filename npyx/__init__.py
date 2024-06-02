@@ -18,7 +18,7 @@ except ImportError:
     C4_IMPORTED = False
     pass
 
-from .CONFIG import *
+from . import CONFIG
 from .utils import *
 from .inout import *
 from .gl import *
@@ -58,7 +58,7 @@ npyx submodules:
  .h5
 """
 
-__version__ = "4.0.6"
+__version__ = "4.1.0"
 __cachedir__ = CONFIG.__cachedir__
 
 npyx_build = "npyx[c4]" if C4_IMPORTED else "npyx"

@@ -9,10 +9,6 @@ import os.path as op; opj=op.join
 from pathlib import Path
 import pickle
 
-from npyx.CONFIG import __cachedir__
-from joblib import Memory
-cache_memory = Memory(Path(__cachedir__).expanduser(), verbose=0)
-
 import numpy as np
 import scipy as sp
 import pandas as pd
@@ -28,7 +24,7 @@ from numba import njit
 import cv2
 
 from npyx.utils import npa, thresh, thresh_consec, smooth,\
-                        sign, assert_int, assert_iterable, cache_validation_again
+                        sign, assert_int, assert_iterable, npyx_cacher
 
 from npyx.inout import read_metadata, get_npix_sync, paq_read, list_files
 from npyx.gl import get_rec_len
@@ -682,10 +678,11 @@ def get_wheelturn_df_dic(dp, paqdic, include_wheel_data=False, add_spont_licks=F
 
 # Find periods without motion
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
+@npyx_cacher
 def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_with_opto = True, 
                           speed_th_steer = 0.1, speed_th_run = 0.5, light_buffer = 0.5,
-                          again = False, again_behav = False, verbose = True, return_all=False):
+                          again = False, again_behav = False, verbose = True, return_all=False,
+                          cache_results=True, cache_path=None):
     """
     Function to calculate periods of undisturbed neural activity
     (no (monitored) behaviour or optostims).
@@ -698,9 +695,12 @@ def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_wi
         - speed_th_steer: threhsold to consider a 'steering' period (cm/s)
         - speed_th_run: threshold to consider a 'running' period (mm/s)
         - light_buffer: buffer to add before light onsets/after light offsets (s)
-        - again: bool, whether to reload behaviour and recalculate periods
         - verbose: bool, whether to print details.
-        - return_all: bool, whether to return all two or three arrays - baselin_periods, nomove_periods, noopto_periods
+        - return_all: bool, whether to return all two or three arrays - baselin_periods, nomove_periods, noopto_periods\
+        - again: bool, whether to recompute results rather than loading them from cache.
+        - cache_results: bool, whether to cache results at local_cache_memory.
+        - cache_path: None|str, where to cache results.
+                        If None, dp/.NeuroPyxels will be used.
     
     Returns:
         - baseline_periods: 2D array of shape (n_periods, 2), [[t1,t2], ...] in seconds.
@@ -863,8 +863,9 @@ def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remov
 
     return aligned_t, binned_variable
 
-@cache_memory.cache(cache_validation_callback=cache_validation_again)
-def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=False, again=False):
+@npyx_cacher
+def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=False,
+                again=False, cache_results=True, cache_path=None):
     '''
     Arguments:
         - times: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
@@ -875,6 +876,10 @@ def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=Fal
     Returns:
         - aligned_t: dictionnaries where each key is an event in absolute time and value the times aligned to this event within window.
         - aligned_tb: a len(events) x window/b matrix where the spikes have been aligned, in counts.
+        - again: bool, whether to recompute results rather than loading them from cache.
+        - cache_results: bool, whether to cache results at local_cache_memory.
+        - cache_path: None|str, where to cache results.
+                        If None, ~/.NeuroPyxels will be used (can be changed in npyx.CONFIG).
     '''
     assert np.any(events), 'You provided an empty array of events!'
     t          = np.sort(times)

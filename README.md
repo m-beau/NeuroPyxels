@@ -8,24 +8,24 @@
 
 ❓**Any questions or issues?**: [Create a github issue](https://github.com/Maxime-Beau/Neuropyxels/issues) to get support, or create a [pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request). Alternatively, you can email [us: maximebeaujeanroch047[at]gmail[dot]com](mailto:maximebeaujeanroch047@gmail.com). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com).
 
-- **[⬇️ Installation](https://github.com/m-beau/NeuroPyxels#%EF%B8%8F-installation)**
-- **[🤗 Support and citing ](https://github.com/m-beau/NeuroPyxels#-support-and-citing)**
-- **[🔍️ Documentation](https://github.com/m-beau/NeuroPyxels#%EF%B8%8F-documentation)**
-  - [💡 Design philosophy](https://github.com/m-beau/NeuroPyxels#-design-philosophy)
-  - [📁 Directory structure](https://github.com/m-beau/NeuroPyxels#-directory-structure)
-  - [👉 Common use cases](https://github.com/m-beau/NeuroPyxels#-common-use-cases)
-    - [Load recording metadata](https://github.com/m-beau/NeuroPyxels#load-recording-metadata)
-    - [Load synchronization channel](https://github.com/m-beau/NeuroPyxels#load-synchronization-channel)
-    - [Get good units from dataset](https://github.com/m-beau/NeuroPyxels#get-good-units-from-dataset)
-    - [Load spike times from unit u](https://github.com/m-beau/NeuroPyxels#load-spike-times-from-unit-u)
-    - [Load waveforms from unit u](https://github.com/m-beau/NeuroPyxels#load-waveforms-from-unit-u)
-    - [Compute auto/crosscorrelogram between 2 units](https://github.com/m-beau/NeuroPyxels#compute-autocrosscorrelogram-between-2-units)
-    - [Plot waveform and crosscorrelograms of unit u](https://github.com/m-beau/NeuroPyxels#plot-correlograms-and-waveforms-from-unit-u)
-    - [Preprocess your waveforms and spike trains](https://github.com/m-beau/NeuroPyxels#preprocess-your-waveforms-drift-shift-matching-and-spike-trains-detect-periods-with-few-false-positivenegative)
-    - [Plot chunk of raw data with overlaid units](https://github.com/m-beau/NeuroPyxels#plot-chunk-of-raw-data-with-overlaid-units)
-    - [Plot peri-stimulus time histograms across neurons and conditions](https://github.com/m-beau/NeuroPyxels#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
-    - [Merge datasets acquired on two probes simultaneously](https://github.com/m-beau/NeuroPyxels#merge-datasets-acquired-on-two-probes-simultaneously)
-  - [⭐ Bonus: matplotlib plot prettifier (mplp)](https://github.com/m-beau/NeuroPyxels#-bonus-matplotlib-plot-prettifier)
+- **[⬇️ Installation](#⬇️-installation)**
+- **[🤗 Support and citing ](#🤗-support-and-citing)**
+- **[🔍️ Documentation](#🔍️-documentation)**
+  - [💡 Design philosophy](#💡-design-philosophy)
+  - [📁 Directory structure](#📁-directory-structure)
+  - [👉 Common use cases](#👉-common-use-cases)
+    - [Load recording metadata](#load-recording-metadata)
+    - [Load synchronization channel](#load-synchronization-channel)
+    - [Get good units from dataset](#get-good-units-from-dataset)
+    - [Load spike times from unit u](#load-spike-times-from-unit-u)
+    - [Load waveforms from unit u](#load-waveforms-from-unit-u)
+    - [Compute auto/crosscorrelogram between 2 units](#compute-autocrosscorrelogram-between-2-units)
+    - [Plot waveform and crosscorrelograms of unit u](#plot-correlograms-and-waveforms-from-unit-u)
+    - [Preprocess your waveforms and spike trains](#preprocess-your-waveforms-drift-shift-matching-and-spike-trains-detect-periods-with-few-false-positivenegative)
+    - [Plot chunk of raw data with overlaid units](#plot-chunk-of-raw-data-with-overlaid-units)
+    - [Plot peri-stimulus time histograms across neurons and conditions](#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
+    - [Merge datasets acquired on two probes simultaneously](#merge-datasets-acquired-on-two-probes-simultaneously)
+  - [⭐ Bonus: matplotlib plot prettifier (mplp)](#⭐-bonus-matplotlib-plot-prettifier)
 
 ## ⬇️ Installation:
 
@@ -210,6 +210,8 @@ Npyx works with the data formatting employed by [SpikeGLX](https://billkarsh.git
 
   Under the hood, this caching is implemented in 2 ways: 1) 'home-made' caching inside the Neuropixels data directory itself `dp/npyxMemory`, 2) joblib-based caching in a hidden directory in the home folder, `./NeuroPyxels`. The latter can get quite big quite fast: it is possible to customize its location by simply editing the directory inside `npyx/CONFIG.py`. If you installed NeuroPyxels as an advanced user, it will be located where you cloned the git repo. If you pip-installed NeuroPyxels, it should be located where your python packages are stored: at `~/anaconda3/envs/npyx/lib/python3.1/site-packages/npyx/` for an installation inside a conda 'npyx' environment, for instance.
 
+  **General tip**: if your data loaded with NeuroPyxels seems incomprehensibly odd at times, try re-running the function with `again=True`. Joblib sometimes makes mistakes and I am yet to put my finger on what causes them - this is an ugly but quick and reliable fix.
+
 - Ubiquitous arguments
 
   Most npyx functions take at least one input: **`dp`**, which is the path to your Neuropixels-phy dataset. You can find a [full description of the structure of such datasets](https://phy.readthedocs.io/en/latest/sorting_user_guide/#installation) on the phy documentation.
@@ -269,6 +271,8 @@ myrecording/
 ```
 
 ### 👉 Common use cases
+
+**General tip**: if your data loaded with NeuroPyxels seems incomprehensibly odd at times, try re-running the function with `again=True`. Joblib sometimes makes mistakes and I am yet to put my finger on what causes them - this is an ugly but quick and reliable fix.
 
 #### Load recording metadata
 

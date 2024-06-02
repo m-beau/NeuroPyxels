@@ -10,6 +10,8 @@ from pathlib import Path
 import matplotlib
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.path import Path as mpl_path
+from matplotlib.widgets import LassoSelector
 import numpy as np
 
 from tqdm.auto import tqdm
@@ -2952,3 +2954,68 @@ def plot_filtered_times(dp, unit, first_n_minutes=20, consecutive_n_seconds = 18
         s_time, e_time = i ,(i+1)
         plt.hlines(2, s_time, e_time, color = 'blue')
     plt.show()
+
+
+#%% Notebook widgets
+
+class LassoWidget:
+    """
+    Matplotlib widget lasso selector.
+    Must be used in a notebook with %matplotlib widget at the top.
+
+    Example usage:
+
+    # in the first cell - will remain active
+    data = np.random.rand(100, 2)
+    lasso = LassoWidget(data)
+
+    # in the second cell - run after any lasso selection
+    ids = lasso.load_selection()
+    
+    Arguments:
+    - data: 2d numpy array.
+    - xlim, ylim: 2-element iterables.
+    - autoscale_on: bool, True by default
+    - buffer_path: str, path to save temporary vertices selected by lasso 'temporary_lasso_vertices.npy'.
+
+    Returns:
+    - inds: indices of data selected by lasso.
+    """
+    def __init__(self,
+                 data,
+                 xlim=None,
+                 ylim=None,
+                 autoscale_on=True,
+                 buffer_path = "~/Downloads",
+                 colors=None):
+
+        # format arguments
+        assert data.ndim == 2, "data should be 2-dimensional."
+        buffer_path = Path(buffer_path).expanduser()
+        self.buffer_file = buffer_path / "temporary_lasso_vertices.npy"
+    
+        # generate figure
+        subplot_kw = dict(xlim=xlim, ylim=ylim, autoscale_on=autoscale_on)
+        fig, ax = plt.subplots(subplot_kw=subplot_kw)
+        self.pts = ax.scatter(data[:, 0], data[:, 1], c=colors, s=20, alpha=0.6)
+    
+        # Start lasso and make it save selected points at buffer_path
+        def onselect(vertices):
+            print(f"Saved {len(vertices)} selected datapoints.")
+            np.save(self.buffer_file, vertices)
+
+        # important to attach the lassoSelector to an attribute,
+        # must be in the notebook namespace
+        self.lasso = LassoSelector(ax, onselect=onselect)
+    
+    def load_selection(self):
+    
+        # Find selected points located in lasso vertices
+        xys = self.pts.get_offsets()
+        verts = np.load(self.buffer_file)
+        
+        selection = np.nonzero(mpl_path(verts).contains_points(xys))[0]
+
+        print(f"Loaded {len(selection)} selected datapoints (from {self.buffer_file}).")
+    
+        return selection

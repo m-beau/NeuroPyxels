@@ -26,9 +26,12 @@ with contextlib.suppress(ImportError):
 
     from torchvision import transforms
 
-with contextlib.suppress(ImportError):
+try:
     from laplace import BaseLaplace, Laplace
     from laplace.utils import KronDecomposed
+except ImportError:
+    # Used for type hints, will be ignored if not installed
+    BaseLaplace = Laplace = KronDecomposed = None
 with contextlib.suppress(ImportError):
     from imblearn.over_sampling import RandomOverSampler
 from sklearn.compose import ColumnTransformer

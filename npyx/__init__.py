@@ -2,7 +2,7 @@
 
 from . import utils, inout, gl, spk_t, spk_wvf, corr, stats, plot,\
               behav, merger, circuitProphyler, feat, metrics,\
-              info, model, h5, testing, ml, datasets
+              info, model, h5, testing, ml, datasets, CONFIG
 
 from .c4 import dataset_init, misc
 

@@ -21,6 +21,8 @@ with contextlib.suppress(ImportError):
     import torch
     import torch.utils.data as data
 
+import ast
+
 from tqdm.auto import tqdm
 
 import npyx.corr as corr
@@ -29,7 +31,6 @@ from npyx.gl import get_units, load_units_qualities
 from npyx.spk_t import trn, trn_filtered
 from npyx.spk_wvf import wvf_dsmatch
 
-import ast
 ale = ast.literal_eval
 
 from .dataset_init import ArgsNamespace, download_file, extract_and_check
@@ -135,9 +136,7 @@ def directory_checks(data_path):
         os.remove(os.path.join(data_path, "cluster_cell_types.tsv"))
 
 
-def prepare_dataset_from_binary(dp, units, again=False,
-                                fp_threshold=0.05, fn_threshold=0.05,
-                                peak_sign="negative"):
+def prepare_dataset_from_binary(dp, units, again=False, fp_threshold=0.05, fn_threshold=0.05, peak_sign="negative"):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -153,18 +152,26 @@ def prepare_dataset_from_binary(dp, units, again=False,
             continue
         # We set period_m to None to use the whole recording
         try:
-            t, _ = trn_filtered(dp, u, period_m=None,
-                                fp_threshold=fp_threshold,
-                                fn_threshold=fn_threshold,
-                                consecutive_n_seconds=180,
-                                again=again)
+            t, _ = trn_filtered(
+                dp,
+                u,
+                period_m=None,
+                fp_threshold=fp_threshold,
+                fn_threshold=fn_threshold,
+                consecutive_n_seconds=180,
+                again=again,
+            )
         except (IndexError, pd.errors.EmptyDataError, ValueError):
-            t, _ = trn_filtered(dp, u, period_m=None,
-                                fp_threshold=fp_threshold,
-                                fn_threshold=fn_threshold,
-                                consecutive_n_seconds=180,
-                                again=True,
-                                enforced_rp=-1)
+            t, _ = trn_filtered(
+                dp,
+                u,
+                period_m=None,
+                fp_threshold=fp_threshold,
+                fn_threshold=fn_threshold,
+                consecutive_n_seconds=180,
+                again=True,
+                enforced_rp=-1,
+            )
         if len(t) < 10:
             bad_units.append(u)
             continue
@@ -173,8 +180,7 @@ def prepare_dataset_from_binary(dp, units, again=False,
             wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=again)
         except (IndexError, pd.errors.EmptyDataError, ValueError):
             wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
-        waveforms.append(datasets.preprocess_template(wvf,
-                                                      peak_sign=peak_sign))
+        waveforms.append(datasets.preprocess_template(wvf, peak_sign=peak_sign))
 
         _, acg = corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
         acg, _ = corr.convert_acg_log(acg, 1, 2000)
@@ -249,9 +255,7 @@ def prepare_dataset_from_h5(data_path):
     return dataset, dataset_class.h5_ids.tolist()
 
 
-def aux_prepare_dataset(dp, u, again=False,
-                        fp_threshold=0.05, fn_threshold=0.05,
-                        peak_sign="negative"):
+def aux_prepare_dataset(dp, u, again=False, fp_threshold=0.05, fn_threshold=0.05, peak_sign="negative"):
     t = trn(dp, u)
     if len(t) < 100:
         # Bad units
@@ -260,18 +264,26 @@ def aux_prepare_dataset(dp, u, again=False,
     # We set period_m to None to use the whole recording
     # We catch here and for the waveforms common errors that can be solved by setting again=True in npyx
     try:
-        t, _ = trn_filtered(dp, u, period_m=None,
-                            fp_threshold=fp_threshold,
-                            fn_threshold=fn_threshold,
-                            consecutive_n_seconds=180,
-                            again=again)
+        t, _ = trn_filtered(
+            dp,
+            u,
+            period_m=None,
+            fp_threshold=fp_threshold,
+            fn_threshold=fn_threshold,
+            consecutive_n_seconds=180,
+            again=again,
+        )
     except (IndexError, pd.errors.EmptyDataError, ValueError, pickle.UnpicklingError):
-        t, _ = trn_filtered(dp, u, period_m=None,
-                            fp_threshold=fp_threshold,
-                            fn_threshold=fn_threshold,
-                            consecutive_n_seconds=180,
-                            again=True,
-                            enforced_rp=-1)
+        t, _ = trn_filtered(
+            dp,
+            u,
+            period_m=None,
+            fp_threshold=fp_threshold,
+            fn_threshold=fn_threshold,
+            consecutive_n_seconds=180,
+            again=True,
+            enforced_rp=-1,
+        )
     if len(t) < 10:
         # Bad units
         return [True, [], []]
@@ -280,8 +292,7 @@ def aux_prepare_dataset(dp, u, again=False,
         wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=again)
     except (IndexError, pd.errors.EmptyDataError, ValueError, pickle.UnpicklingError):
         wvf, _, _, _ = wvf_dsmatch(dp, u, t_waveforms=120, again=True)
-    waveforms = datasets.preprocess_template(wvf,
-                                             peak_sign=peak_sign)
+    waveforms = datasets.preprocess_template(wvf, peak_sign=peak_sign)
 
     _, acg = corr.crosscorr_vs_firing_rate(t, t, 2000, 1)
     acg, _ = corr.convert_acg_log(acg, 1, 2000)
@@ -290,9 +301,9 @@ def aux_prepare_dataset(dp, u, again=False,
     return [False, waveforms, acgs_3d]
 
 
-def prepare_dataset_from_binary_parallel(dp, units, again=False,
-                                         fp_threshold=0.05, fn_threshold=0.05,
-                                         peak_sign="negative"):
+def prepare_dataset_from_binary_parallel(
+    dp, units, again=False, fp_threshold=0.05, fn_threshold=0.05, peak_sign="negative"
+):
     waveforms = []
     acgs_3d = []
     bad_units = []
@@ -319,8 +330,6 @@ def prepare_dataset_from_binary_parallel(dp, units, again=False,
 
     if len(acgs_3d) == 0:
         raise ValueError("No units were found with the provided parameter choices after quality checks.")
-    
-    # np.save("/home/maxime/Downloads/test_concat_data.npy", np.concatenate((acgs_3d, waveforms), axis=1))
 
     return np.concatenate((acgs_3d, waveforms), axis=1), bad_units
 
@@ -351,19 +360,13 @@ def prepare_dataset(args: ArgsNamespace) -> tuple:
             units = get_units(args.data_path, args.quality)
 
         if args.parallel:
-            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(args.data_path,
-                                                                                 units,
-                                                                                 args.again,
-                                                                                 args.fp_threshold,
-                                                                                 args.fn_threshold,
-                                                                                 args.peak_sign)
+            prediction_dataset, bad_units = prepare_dataset_from_binary_parallel(
+                args.data_path, units, args.again, args.fp_threshold, args.fn_threshold, args.peak_sign
+            )
         else:
-            prediction_dataset, bad_units = prepare_dataset_from_binary(args.data_path,
-                                                                        units,
-                                                                        args.again,
-                                                                        args.fp_threshold,
-                                                                        args.fn_threshold,
-                                                                        args.peak_sign)
+            prediction_dataset, bad_units = prepare_dataset_from_binary(
+                args.data_path, units, args.again, args.fp_threshold, args.fn_threshold, args.peak_sign
+            )
 
         good_units = [u for u in units if u not in bad_units]
 
@@ -506,13 +509,14 @@ def run_cell_types_classifier(
         "good",
     ], "Invalid value for 'quality'. Must be either 'all' or 'good'."
 
-    assert (args.fp_threshold >= 0) & (args.fp_threshold < 1),\
-        "Invalid value for 'fp_threshold'. Must be within [0-1[."
-    assert (args.fn_threshold >= 0) & (args.fn_threshold < 1),\
-        "Invalid value for 'fn_threshold'. Must be within [0-1[."
-    
-    assert args.peak_sign in ["positive", "negative", "None"],\
-        "Invalid value for 'peak_sign'. Must be 'positive', 'negative', or 'None'."
+    assert (args.fp_threshold >= 0) & (args.fp_threshold < 1), "Invalid value for 'fp_threshold'. Must be within [0-1[."
+    assert (args.fn_threshold >= 0) & (args.fn_threshold < 1), "Invalid value for 'fn_threshold'. Must be within [0-1[."
+
+    assert args.peak_sign in [
+        "positive",
+        "negative",
+        "None",
+    ], "Invalid value for 'peak_sign'. Must be 'positive', 'negative', or 'None'."
     if args.peak_sign == "None":
         args.peak_sign = None
 
@@ -831,8 +835,8 @@ def main(c4=False):
 
     args = parser.parse_args()
     args = vars(args)
-    if args['units'] is not None:
-        args['units']=ale(args['units'][0])
+    if args["units"] is not None:
+        args["units"] = ale(args["units"][0])
     run_cell_types_classifier(**args)
 
 

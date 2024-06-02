@@ -26,6 +26,7 @@ def get_lisberger_dataset(data_path):
             DATASETS_URL["lisberger"],
             corresponding_path,
             "Downloading lisberger dataset",
+            requires_password=True,
         )
         return corresponding_path
 

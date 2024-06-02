@@ -4,8 +4,10 @@ if __name__ == "__main__":
     __package__ = "npyx.c4"
 
 import argparse
+import base64
 import contextlib
 import datetime
+import hashlib
 import pickle
 import warnings
 from pathlib import Path
@@ -90,11 +92,11 @@ HULL_LINES_DICT = {
 }
 
 DATASETS_URL = {
-    "hausser": "https://figshare.com/ndownloader/files/43102990?private_link=9a9dfce1c64cb807fc96",
-    "lisberger": "https://figshare.com/ndownloader/files/41721090?private_link=9a9dfce1c64cb807fc96",
-    "medina": "https://figshare.com/ndownloader/files/42117129?private_link=9a9dfce1c64cb807fc96",
-    "hull_labelled": "https://figshare.com/ndownloader/files/43102996?private_link=9a9dfce1c64cb807fc96",
-    "hull_unlabelled": "https://figshare.com/ndownloader/files/41720901?private_link=9a9dfce1c64cb807fc96",
+    "hausser": "lBc08DX24Vq2QXESbpn+WbkMPOyceyM93X66wlpZpW3TBSnsI7/hQeMZJlM/wbwD5x0699JhIg3GebjGBg/5J5kGebYi9fxM5hogUjDI7gmi",
+    "lisberger": "lBc08DX24Vq2QXESbpn+WbkMPOyceyM93X66wlpZpW3TBSnsI7/hQeEfJFA2wbwD5x0699JhIg3GebjGBg/5J5kGebYi9fxM5hogUjDI7gmi",
+    "medina": "lBc08DX24Vq2QXESbpn+WbkMPOyceyM93X66wlpZpW3TBSnsI7/hQeIZJ1Y3yrUD5x0699JhIg3GebjGBg/5J5kGebYi9fxM5hogUjDI7gmi",
+    "hull_labelled": "lBc08DX24Vq2QXESbpn+WbkMPOyceyM93X66wlpZpW3TBSnsI7/hQeMZJlM/wboD5x0699JhIg3GebjGBg/5J5kGebYi9fxM5hogUjDI7gmi",
+    "hull_unlabelled": "lBc08DX24Vq2QXESbpn+WbkMPOyceyM93X66wlpZpW3TBSnsI7/hQeEfJFE/yL0D5x0699JhIg3GebjGBg/5J5kGebYi9fxM5hogUjDI7gmi",
 }
 
 
@@ -103,8 +105,26 @@ class ArgsNamespace:
         self.__dict__.update(kwargs)
 
 
+def xor_decrypt(encrypted_data, password):
+    key = hashlib.sha256(password.encode()).digest()
+    encrypted = base64.b64decode(encrypted_data.encode())
+    decrypted = bytearray(encrypted)
+    for i in range(len(decrypted)):
+        decrypted[i] ^= key[i % len(key)]
+    return decrypted.decode()
+
+
 @require_advanced_deps("requests")
-def download_file(url, output_path, description=None):
+def download_file(url, output_path, description=None, requires_password=False):
+    if requires_password:
+        while True:
+            try:
+                print("This file requires a password to download.")
+                password = input("Please enter the password to download the file: ")
+                url = xor_decrypt(url, password)
+                break
+            except UnicodeDecodeError:
+                print("Invalid password. Please try again.")
     response = requests.get(url, stream=True)
     total_size = int(response.headers.get("content-length", 0))
     block_size = 1024  # 1 KB
@@ -194,6 +214,7 @@ def get_paths_from_dir(path_to_dir, include_lisberger=False, include_medina=Fals
                 DATASETS_URL[dataset_name],
                 corresponding_path,
                 f"Downloading {dataset_name} dataset",
+                requires_password=True,
             )
             datasets_abs.append(corresponding_path)
     return sorted(datasets_abs, key=os.path.getsize)
@@ -733,7 +754,7 @@ def calc_snr(wvf, noise_samples=15, return_db=False):
     return 10 * np.log10(SNR_linear) if return_db else SNR_linear
 
 
-def main(data_folder=".", plot=True, name="feature_spaces"):
+def main(data_folder=".", plot=True, name="feature_spaces", save_raw=True):
     # Parse the arguments into a class to preserve compatibility
     args = ArgsNamespace(data_folder=data_folder, plot=plot, name=name)
 
@@ -795,7 +816,6 @@ def main(data_folder=".", plot=True, name="feature_spaces"):
     save_features(feat_df, "engineered_combined_features", args, bad_idx=unusable_features_idx)
 
     ### Generating raw features dataframes
-
     # 2d acgs and peak waveform feature spaces
     common_preprocessing = quality_checked_dataset.conformed_waveforms
     labels = quality_checked_dataset.labels_list
@@ -810,13 +830,14 @@ def main(data_folder=".", plot=True, name="feature_spaces"):
         columns=[f"raw_acg_{i}" for i in range(quality_checked_dataset.acg.shape[1])],
     )
 
-    save_features(
-        pd.concat([lab_df, raw_acgs_df, raw_wvf_single_common_preprocessing_df], axis=1),
-        "raw_2d_acg_peak_wvf",
-        args,
-        bad_idx=None,
-        drop_cols=["label"],
-    )
+    if save_raw:
+        save_features(
+            pd.concat([lab_df, raw_acgs_df, raw_wvf_single_common_preprocessing_df], axis=1),
+            "raw_2d_acg_peak_wvf",
+            args,
+            bad_idx=None,
+            drop_cols=["label"],
+        )
 
     #### After running the mouse init we also run the monkey
     print("\n Finished mouse init, running monkey init. \n")
@@ -848,40 +869,42 @@ def main(data_folder=".", plot=True, name="feature_spaces"):
         monkey_3d_acgs,
         columns=[f"acg_3d_logscale_{i}" for i in range(monkey_3d_acgs.shape[1])],
     )
-
-    save_features(
-        pd.concat(
-            [lab_df, mouse_3d_acgs_df, raw_wvf_single_common_preprocessing_df],
-            axis=1,
-        ),
-        "raw_log_3d_acg_peak_wvf",
-        args,
-        bad_idx=None,
-        drop_cols=["label"],
-    )
-
-    monkey_raw_df = pd.read_csv(
-        os.path.join(
-            args.data_folder,
-            "feature_spaces",
-            "raw_2d_acg_peak_wvf",
-            "features.csv",
+    if save_raw:
+        save_features(
+            pd.concat(
+                [lab_df, mouse_3d_acgs_df, raw_wvf_single_common_preprocessing_df],
+                axis=1,
+            ),
+            "raw_log_3d_acg_peak_wvf",
+            args,
+            bad_idx=None,
+            drop_cols=["label"],
         )
-    )
-    monkey_lab_df = pd.read_csv(os.path.join(args.data_folder, "feature_spaces", "raw_2d_acg_peak_wvf", "labels.csv"))
-    monkey_raw_wvf_df = monkey_raw_df.filter(regex="raw_wvf")
 
-    save_features(
-        pd.concat(
-            [monkey_lab_df, monkey_3d_acgs_df, monkey_raw_wvf_df],
-            axis=1,
-        ),
-        "raw_log_3d_acg_peak_wvf",
-        args,
-        bad_idx=None,
-        drop_cols=["label"],
-        monkey=True,
-    )
+        monkey_raw_df = pd.read_csv(
+            os.path.join(
+                args.data_folder,
+                "feature_spaces",
+                "raw_2d_acg_peak_wvf",
+                "features.csv",
+            )
+        )
+        monkey_lab_df = pd.read_csv(
+            os.path.join(args.data_folder, "feature_spaces", "raw_2d_acg_peak_wvf", "labels.csv")
+        )
+        monkey_raw_wvf_df = monkey_raw_df.filter(regex="raw_wvf")
+
+        save_features(
+            pd.concat(
+                [monkey_lab_df, monkey_3d_acgs_df, monkey_raw_wvf_df],
+                axis=1,
+            ),
+            "raw_log_3d_acg_peak_wvf",
+            args,
+            bad_idx=None,
+            drop_cols=["label"],
+            monkey=True,
+        )
 
 
 if __name__ == "__main__":

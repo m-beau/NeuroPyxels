@@ -547,7 +547,8 @@ def plot_wvf(dp, u=None, Nchannels=12, chStart=None, n_waveforms=300, t_waveform
              saveDir='~/Downloads', saveFig=False, saveData=False, _format='pdf',
              ignore_ks_chanfilt = True,
              ax_edge_um_x=22, ax_edge_um_y=18, margin=0.12, figw_inch=6, figh_inch=None,
-             as_heatmap=False, use_dsmatch=False, verbose=False):
+             as_heatmap=False, use_dsmatch=False, verbose=False,
+             **kwargs):
     '''
     To plot main channel alone: use Nchannels=1, chStart=None
     Arguments:
@@ -617,7 +618,8 @@ def plot_wvf(dp, u=None, Nchannels=12, chStart=None, n_waveforms=300, t_waveform
         waveforms=wvf(dp, u=u, n_waveforms=n_waveforms, t_waveforms=t_waveforms_s, selection='regular',
                         periods=periods, spike_ids=spike_ids, wvf_batch_size=wvf_batch_size, ignore_nwvf=ignore_nwvf, verbose=verbose, again=again,
                         whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf, nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub,
-                        ignore_ks_chanfilt = ignore_ks_chanfilt)
+                        ignore_ks_chanfilt = ignore_ks_chanfilt,
+                        **kwargs)
         assert waveforms.shape[0]!=0,'No waveforms were found in the provided periods!'
         assert waveforms.shape[1:]==(t_waveforms_s, cm.shape[0])
     else:
@@ -629,7 +631,8 @@ def plot_wvf(dp, u=None, Nchannels=12, chStart=None, n_waveforms=300, t_waveform
                   wvf_batch_size=wvf_batch_size, ignore_nwvf=True, spike_ids = None,
                   save=True, verbose=verbose, again=again,
                   whiten=whiten, med_sub=med_sub, hpfilt=hpfilt, hpfiltf=hpfiltf,
-                  nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub, plot_debug=plot_debug)[1]
+                  nRangeWhiten=nRangeWhiten, nRangeMedSub=nRangeMedSub, plot_debug=plot_debug,
+                  **kwargs)[1]
     n_samples = waveforms.shape[-2]
     n_channels = waveforms.shape[-1]
     assert (n_samples, n_channels)==(t_waveforms_s, cm.shape[0])

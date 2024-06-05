@@ -231,6 +231,7 @@ def get_log_bins_samples(log_window_end, n_log_bins, fs):
     log_bins = np.logspace(np.log10(1),np.log10(log_window_end), n_log_bins+1)
     return log_bins
 
+
 def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
        ret=True, sav=True, verbose=False, periods='all', again=False,
        trains=None, enforced_rp=0, log_window_end=None, n_log_bins=10):
@@ -288,7 +289,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
     # Search if the variable is already saved in dp/routinesMemory
-    dpnm = get_npyx_memory(dp)
+    # DEPRECATED - now caching with cachecache
+    # dpnm = get_npyx_memory(dp)
 
     ep_str='' if enforced_rp==0 else str(enforced_rp)
     per_str = str(periods)[0:50].replace(' ', '').replace('\n','')
@@ -304,12 +306,13 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
             log_window_end, normalize,
             per_str,
             ep_str)
-    if os.path.exists(Path(dpnm,fn)) and not again and trains is None:
-        if verbose: print("File {} found in routines memory.".format(fn))
-        try:  # handling of weird allow_picke=True error
-            crosscorrelograms = np.load(Path(dpnm,fn))
-            crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
-        except: pass
+    # DEPRECATED - now caching with cachecache
+    # if os.path.exists(Path(dpnm,fn)) and not again and trains is None:
+    #     if verbose: print("File {} found in routines memory.".format(fn))
+    #     try:  # handling of weird allow_picke=True error
+    #         crosscorrelograms = np.load(Path(dpnm,fn))
+    #         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
+    #     except: pass
 
     # if not, compute it
     if 'crosscorrelograms' not in locals(): # handling of weird allow_picke=True error
@@ -342,8 +345,9 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
 
         # Save it only if no custom trains were provided
-        if sav and trains is None:
-            np.save(Path(dpnm,fn), crosscorrelograms)
+        # DEPRECATED - now caching with cachecache
+        # if sav and trains is None:
+        #     np.save(Path(dpnm,fn), crosscorrelograms)
 
     # Structure the 3d array to return accordingly to the order of the inputed units U
     if crosscorrelograms.shape[0]>1:
@@ -2669,7 +2673,11 @@ def spike_time_tiling_coefficient(spiketrain_1, spiketrain_2, L, dt, dp):
 
 #%% Power spectrum of autocorrelograms
 
-def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=30000, ret=True, sav=True, verbose=False):
+@npyx_cacher
+def PSDxy(dp, U, bin_size, window='hann', nperseg=4096,
+          scaling='spectrum', fs=30000,
+          ret=True, sav=True, verbose=False,
+          cache_results=True, cache_path=None):
     '''
     ********
     routine from routines_spikes
@@ -2694,26 +2702,27 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
     sortedU=list(np.sort(np.array(U)))
 
     # Search if the variable is already saved in dp/routinesMemory
-    dpnm = get_npyx_memory(dp)
+    # DEPRECATED - now caching with cachecache
+    # dpnm = get_npyx_memory(dp)
 
-    if os.path.exists(Path(dpnm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_')))):
-        if verbose: print("File PSDxy{}_{}.npy found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
-        Pxy = np.load(Path(dpnm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_'))))
-        Pxy = Pxy.astype(np.float64)
+    # if os.path.exists(Path(dpnm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_')))):
+    #     if verbose: print("File PSDxy{}_{}.npy found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
+    #     Pxy = np.load(Path(dpnm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_'))))
+    #     Pxy = Pxy.astype(np.float64)
 
-    # if not, compute it
-    else:
-        if verbose: print("File ccg_{}_{}.npy not found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
-        Pxy = np.empty((len(sortedU), len(sortedU), int(nperseg/2)+1), dtype=np.float64)
-        for i, u1 in enumerate(sortedU):
-            trnb1 = trnb(dp, u1, bin_size)
-            for j, u2 in enumerate(sortedU):
-                trnb2 = trnb(dp, u2, bin_size)
-                (f, Pxy[i, j, :]) = sgnl.csd(trnb1, trnb2, fs=fs, window=window, nperseg=nperseg, scaling=scaling)
-        Pxy = Pxy.astype(np.float64)
-        # Save it
-        if sav:
-            np.save(Path(dpnm,'PSDxy{}_{}.npy'.format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_'))), Pxy)
+    if verbose: print("File ccg_{}_{}.npy not found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
+    Pxy = np.empty((len(sortedU), len(sortedU), int(nperseg/2)+1), dtype=np.float64)
+    for i, u1 in enumerate(sortedU):
+        trnb1 = trnb(dp, u1, bin_size)
+        for j, u2 in enumerate(sortedU):
+            trnb2 = trnb(dp, u2, bin_size)
+            (f, Pxy[i, j, :]) = sgnl.csd(trnb1, trnb2, fs=fs, window=window, nperseg=nperseg, scaling=scaling)
+    Pxy = Pxy.astype(np.float64)
+    
+    # DEPRECATED - now caching with cachecache
+    # Save it
+    # if sav:
+    #     np.save(Path(dpnm,'PSDxy{}_{}.npy'.format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_'))), Pxy)
 
     # Back to the original order
     sPxy = np.zeros(Pxy.shape)

@@ -604,6 +604,7 @@ def export_new_trains_to_phy(dp, spike_times, spike_ids, tsv_label,
     np.save(templates_name, templates_new[sortargs])
     print((f"Saved {spiketimes_name.name}, {spikeclusters_name.name}, {amplitudes_name.name}, and "
            f"{templates_name.name} at {subroot}."))
+    
 
 # circular imports
 from npyx.inout import read_metadata

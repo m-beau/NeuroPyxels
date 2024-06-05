@@ -86,14 +86,15 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
         u=u[0]
     dp, u = get_source_dp_u(dp, u)
 
-    dpnm = get_npyx_memory(dp)
+    # DEPRECATED - now caching with cachecache
+    # dpnm = get_npyx_memory(dp)
 
-    if isinstance(periods, str): assert periods=='all', "WARNING periods should either be 'all' or [[t1,t2],[t3,t4]...]."
-    per_str = str(periods)[0:50].replace(' ', '').replace('\n','')
-    fn=f"wvf{u}_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
-    if os.path.exists(Path(dpnm,fn)) and (not again) and (spike_ids is None):
-        if verbose: print("File {} found in NeuroPyxels cache.".format(fn))
-        return np.load(Path(dpnm,fn))
+    # if isinstance(periods, str): assert periods=='all', "WARNING periods should either be 'all' or [[t1,t2],[t3,t4]...]."
+    # per_str = str(periods)[0:50].replace(' ', '').replace('\n','')
+    # fn=f"wvf{u}_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{ignore_ks_chanfilt}.npy"
+    # if os.path.exists(Path(dpnm,fn)) and (not again) and (spike_ids is None):
+    #     if verbose: print("File {} found in NeuroPyxels cache.".format(fn))
+    #     return np.load(Path(dpnm,fn))
     
 
     waveforms = get_waveforms(dp, u, n_waveforms, t_waveforms,
@@ -105,9 +106,9 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
     if return_corrupt_mask:
         (waveforms, corrupt_mask) = waveforms
         
-    # Memoize
-    if (save and (spike_ids is None)):
-        np.save(Path(dpnm,fn), waveforms)
+    # Memoize - DEPRECATED: now caching with cachecache
+    # if (save and (spike_ids is None)):
+    #     np.save(Path(dpnm,fn), waveforms)
         
     if return_corrupt_mask:
         return waveforms, corrupt_mask
@@ -327,22 +328,23 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         raise ValueError('No support yet for passing multiple spike indices. Exiting.')
 
 
-    dpnm = get_npyx_memory(dp)
+    # DEPRECATED - now caching with cachecache
+    # dpnm = get_npyx_memory(dp)
 
-    per_str = str(periods)[0:50].replace(' ', '').replace('\n','')
-    fn=f"dsm_{u}_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{do_shift_match}.npy"
-    fn_all=f"dsm_{u}_all_waves_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{do_shift_match}.npy"
-    fn_spike_id=f"dsm_{u}_spike_id_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{do_shift_match}.npy"
-    fn_peakchan=f"dsm_{u}_peakchan_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{do_shift_match}.npy"
+    # per_str = str(periods)[0:50].replace(' ', '').replace('\n','')
+    # fn=f"dsm_{u}_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{do_shift_match}.npy"
+    # fn_all=f"dsm_{u}_all_waves_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{do_shift_match}.npy"
+    # fn_spike_id=f"dsm_{u}_spike_id_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{do_shift_match}.npy"
+    # fn_peakchan=f"dsm_{u}_peakchan_{n_waveforms}-{t_waveforms}_{per_str}_{hpfilt}{hpfiltf}-{whiten}{nRangeWhiten}-{med_sub}{nRangeMedSub}-{do_shift_match}.npy"
 
-    if Path(dpnm,fn).is_file() and (not again) and (spike_ids is None):
-        if verbose: print(f"File {fn} found in NeuroPyxels cache.")
-        drift_shift_matched_mean = np.load(Path(dpnm,fn_all))
-        if plot_debug:
-            w=wvf(dp, u, n_waveforms=n_waveforms, t_waveforms=t_waveforms)
-            fig = quickplot_n_waves(np.mean(w, 0))
-            fig = quickplot_n_waves(drift_shift_matched_mean, f'blue: 100 random waveforms\norange: dsmatched_waveforms (unit {u})', fig=fig)
-        return np.load(Path(dpnm,fn)),drift_shift_matched_mean,np.load(Path(dpnm,fn_spike_id)), np.load(Path(dpnm,fn_peakchan))
+    # if Path(dpnm,fn).is_file() and (not again) and (spike_ids is None):
+    #     if verbose: print(f"File {fn} found in NeuroPyxels cache.")
+    #     drift_shift_matched_mean = np.load(Path(dpnm,fn_all))
+    #     if plot_debug:
+    #         w=wvf(dp, u, n_waveforms=n_waveforms, t_waveforms=t_waveforms)
+    #         fig = quickplot_n_waves(np.mean(w, 0))
+    #         fig = quickplot_n_waves(drift_shift_matched_mean, f'blue: 100 random waveforms\norange: dsmatched_waveforms (unit {u})', fig=fig)
+    #     return np.load(Path(dpnm,fn)),drift_shift_matched_mean,np.load(Path(dpnm,fn_spike_id)), np.load(Path(dpnm,fn_peakchan))
 
     ## Extract spike ids so we can extract consecutive waveforms
     spike_ids_all = ids(dp, u, periods=periods, again=again)
@@ -501,11 +503,12 @@ def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',
         drift_shift_matched_mean = np.concatenate([drift_shift_matched_mean[shift:], drift_shift_matched_mean[:shift]], axis=0)
         drift_shift_matched_mean_peak = np.concatenate([drift_shift_matched_mean_peak[shift:], drift_shift_matched_mean_peak[:shift]], axis=0)
 
-    if save:
-        np.save(Path(dpnm,fn), drift_shift_matched_mean_peak)
-        np.save(Path(dpnm,fn_all), drift_shift_matched_mean)
-        np.save(Path(dpnm,fn_spike_id), drift_matched_spike_ids)
-        np.save(Path(dpnm, fn_peakchan), peak_channel)
+    # DEPRECATED - now caching with cachecache
+    # if save:
+    #     np.save(Path(dpnm,fn), drift_shift_matched_mean_peak)
+    #     np.save(Path(dpnm,fn_all), drift_shift_matched_mean)
+    #     np.save(Path(dpnm,fn_spike_id), drift_matched_spike_ids)
+    #     np.save(Path(dpnm, fn_peakchan), peak_channel)
 
     if plot_debug:
         if verbose: print(f'Total averaged waveform batches ({n_waveforms_per_batch}/batch) after drift-shift matching: {batch_peak_channels.shape[0]}')

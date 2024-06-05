@@ -31,53 +31,56 @@ import scipy.signal as sgnl
 # Initialize NeuroPyxel's global joblib cache
 # with its size to the available memory minus 5GB
 from npyx.CONFIG import __cachedir__
-from cachecache import Cacher
+from cachecache import Cacher, distributed_cacher
 global_npyx_cacher = Cacher(__cachedir__)
+# arguments of decorated functions altering caching behavior:
+# again, cache_results, cache_path
+npyx_cacher = distributed_cacher('dp', '.NeuroPyxels', global_npyx_cacher)
 
 
 #%% function decoration utilities
 
-def npyx_cacher(func):
-    """
-    Decorator to cache npyx functions using the dp parameter
-    at dp/.NeuroPyxels.
-    """
+# def npyx_cacher(func):
+#     """
+#     Decorator to cache npyx functions using the dp parameter
+#     at dp/.NeuroPyxels.
+#     """
 
-    local_cache_folder = ".NeuroPyxels"
+#     local_cache_folder = ".NeuroPyxels"
     
-    @functools.wraps(func)
-    def npyx_cached_func(*args, **kwargs):
+#     @functools.wraps(func)
+#     def npyx_cached_func(*args, **kwargs):
 
-        # Find whether dp is present in args or kwargs.
-        # If so, bypass the cache_path argument
-        # with Path(dp) / local_cache_folder
-        sig = inspect.signature(func)
-        arg_names = list(sig.parameters.keys())
+#         # Find whether dp is present in args or kwargs.
+#         # If so, bypass the cache_path argument
+#         # with Path(dp) / local_cache_folder
+#         sig = inspect.signature(func)
+#         arg_names = list(sig.parameters.keys())
 
-        dp = None
-        if 'dp' in kwargs:
-            dp = kwargs['dp']
-        elif arg_names and 'dp' in arg_names:
-            dp_idx = np.nonzero('dp' == np.array(arg_names))[0][0]
-            dp = args[dp_idx]
+#         dp = None
+#         if 'dp' in kwargs:
+#             dp = kwargs['dp']
+#         elif arg_names and 'dp' in arg_names:
+#             dp_idx = np.nonzero('dp' == np.array(arg_names))[0][0]
+#             dp = args[dp_idx]
 
-        if isinstance(dp, Union[str, Path]):
-            cache_path = Path(dp) / local_cache_folder
-            if 'cache_path' not in kwargs:
-                kwargs['cache_path'] = None
-            if kwargs['cache_path'] is None:
-                kwargs['cache_path'] = cache_path
+#         if isinstance(dp, Union[str, Path]):
+#             cache_path = Path(dp) / local_cache_folder
+#             if 'cache_path' not in kwargs:
+#                 kwargs['cache_path'] = None
+#             if kwargs['cache_path'] is None:
+#                 kwargs['cache_path'] = cache_path
 
-        # the default cache is at '~/.NeuroPyxels' (can be changed in npyx.CONFIG)
-        # and only instantiated once as global_npyx_cacher,
-        # but if a function has the dp parameter,
-        # the decoration will reinstantiate a 'dp/.NeuroPyxels' path.
-        cached_func = global_npyx_cacher(func) # same as decorating func with @global_npyx_cacher
-        results = cached_func(*args, **kwargs)
+#         # the default cache is at '~/.NeuroPyxels' (can be changed in npyx.CONFIG)
+#         # and only instantiated once as global_npyx_cacher,
+#         # but if a function has the dp parameter,
+#         # the decoration will reinstantiate a 'dp/.NeuroPyxels' path.
+#         cached_func = global_npyx_cacher(func) # same as decorating func with @global_npyx_cacher
+#         results = cached_func(*args, **kwargs)
 
-        return results
+#         return results
 
-    return npyx_cached_func
+#     return npyx_cached_func
 
 def docstring_decorator(*args):
     """

@@ -334,21 +334,48 @@ def thresh_fast(arr, th, sgn=1, pos=1):
 
 def thresh_consecutive(arr, th, sgn=1, n_consec=0,
                        exclude_edges=True, ret_values=True):
-    '''
-    Returns indices and values of threshold crosses lasting >= n_consec consecutive samples in arr.
+    """
+    Finds consecutive threshold crossings in a 1D array.
+
+    This function identifies consecutive elements in the input array `arr` that cross
+    a specified threshold `th` in a given direction (above or below) determined by `sgn`.
+    It returns the indices and, optionally, the values of the threshold crossings that
+    last for at least `n_consec` consecutive elements.
+
+    Usage example:
+        >>> arr = np.array([1, 2, 3, 4, 5, 4, 3, 2, 1, 2, 3, 4, 5])
+        >>> th = 3
+        >>> sgn = 1
+        >>> n_consec = 2
+        >>> exclude_edges = True
+        >>> ret_values = True
+        >>> crosses = thresh_consecutive(arr, th, sgn, n_consec, exclude_edges, ret_values)
+        >>> print(crosses)
+        [array([[3, 4, 5],
+                [3, 4, 5]]), array([[10, 11, 12],
+                                    [3, 4, 5]])]
+
     Arguments:
-        - arr: numpy array to threshold
-        - th: float, threshold
-        - sgn: 1 or -1, positive (for cases above threshold) or negative (below threshold)
-        - n_consec: optional int, minimum number of consecutive elements beyond threshold | Defult 0 (any cross)
-        - exclude_edges: bool, if true edges of arr are not considered as threshold crosses
-                            in cases where arr starts or ends beyond threshold
-        - ret_values: bool, whether to return crosses values (list of 2d np arrays [indices, array values] of len Ncrosses)
-                            rather than mere crosses indices (2d np array of shape (Ncrosses, 2))
+        - arr (numpy.ndarray): 1D input array to be thresholded.
+        - th (float): Threshold value.
+        - sgn (int, optional): Sign of the threshold crossing.
+            1 for positive crossings (default), -1 for negative crossings.
+        - n_consec (int, optional): Minimum number of consecutive elements required for a
+            valid threshold crossing (default: 0, any crossing).
+        - exclude_edges (bool, optional): If True, excludes threshold crossings that occur
+            at the edges of the array (default: True).
+        - ret_values (bool, optional): If True, returns the values of the threshold crossings
+            in addition to the indices (default: True).
+
     Returns:
-        - crosses values, list of 2d np arrays [indices, array values] if ret_values is True
-                or indices, 2d np array of shape (Ncrosses, 2) if ret_values is False
-    '''
+        - list: If `ret_values` is True, returns a list of 2D numpy arrays, where each array
+            represents a threshold crossing and contains the indices and values of the
+            crossing. The shape of each array is (2, n), where n is the number of elements
+            in the crossing.
+            If `ret_values` is False, returns a list of 2D numpy arrays, where each array
+            represents a threshold crossing and contains the start and end indices of the
+            crossing. The shape of each array is (2,).
+    """
     
     # argument processing
     arr = npa(arr)
@@ -360,10 +387,16 @@ def thresh_consecutive(arr, th, sgn=1, n_consec=0,
 
     # Simply flip the array around threshold if sgn is -1
     # and threshold positive crossings in every case!
-    arr = (arr - th) * sgn + th
+    # BUG DISCOVERED - if very small values (e.g. p values, e-30), array precision error.
+    # NOW, sgn handled at the crossing selection stage.
+    #arr = (arr - th) * sgn + th
 
     # find crossings
-    cross_thp, cross_thn = thresh(arr, th, 1, 1), thresh(arr, th, -1, -1)
+    # cross_thp, cross_thn = thresh(arr, th, 1, 1), thresh(arr, th, -1, -1)
+    if sgn == 1:
+        cross_thp, cross_thn = thresh(arr, th, 1, 1), thresh(arr, th, -1, -1)
+    else:
+        cross_thp, cross_thn = thresh(arr, th, -1, 1), thresh(arr, th, 1, -1)
     n_pos_crosses = len(cross_thp)
     n_neg_crosses = len(cross_thn)
     n_crosses_total = n_pos_crosses + n_neg_crosses
@@ -407,6 +440,7 @@ def thresh_consecutive(arr, th, sgn=1, n_consec=0,
                 ]
         
     return crosses
+
 
 def thresh_consec(arr, th, sgn=1, n_consec=0,
                   exclude_edges=True, only_max=False, ret_values=True):

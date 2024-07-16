@@ -831,7 +831,8 @@ def get_chan_pos(dp, chan):
 
     return chan_pos
 
-def get_peak_pos(dp, unit, use_template=False, periods='all'):
+@npyx_cacher
+def get_peak_pos(dp, unit, use_template=False, periods='all', again=False):
     "Returns [x,y] relative position on the probe in um (y=0 at probe tip)."
 
     dp, unit = get_source_dp_u(dp, unit)

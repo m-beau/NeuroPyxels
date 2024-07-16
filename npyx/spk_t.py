@@ -54,7 +54,11 @@ def ids(dp, unit, sav=True, verbose=False, periods='all',
     '''
 
     dp = Path(dp)
-    assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
+    err_mess = f'WARNING unit {unit} not found in dataset {dp}!'
+    try:
+        assert unit in get_units(dp), err_mess
+    except AssertionError:
+        assert unit in get_units(dp, again=True), err_mess
 
     # DEPRECATED now caching with cachecache
     # # Search if the variable is already saved in dp/routinesMemory
@@ -69,8 +73,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all',
     # if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
     if not (assert_int(unit)|assert_float(unit)):
         raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
-    assert unit in get_units(dp),\
-        f'WARNING unit {unit} not found in dataset {dp}!'
+
     # if assert_multi(dp):
     #     ds_table = get_ds_table(dp)
     #     if ds_table.shape[0]>1: # If merged dataset
@@ -164,7 +167,11 @@ def trn(dp, unit, sav=True, verbose=False,
         # DEPRECATED now caching with cachecache
         #if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
         if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
-        assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
+        err_mess = f'WARNING unit {unit} not found in dataset {dp}!'
+        try:
+            assert unit in get_units(dp), err_mess
+        except AssertionError:
+            assert unit in get_units(dp, again=True), err_mess
 
         spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
         spike_samples = np.load(Path(dp,'spike_times.npy'), mmap_mode='r')
@@ -190,7 +197,7 @@ def trn(dp, unit, sav=True, verbose=False,
             sec_bool = sec_bool|(train>=section[0])&(train<=section[1])
         train=train[sec_bool]
 
-    return train
+    return train.astype(np.int64)
 
 def duplicates_mask(t, enforced_rp=0, fs=30000):
     '''

@@ -28,7 +28,10 @@ from scipy.optimize import curve_fit
 from scipy.stats import iqr, norm
 
 
-def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_rp=-1):
+@npyx_cacher
+def ids(dp, unit, sav=True, verbose=False, periods='all',
+        again=False, enforced_rp=-1,
+        cache_results=True, cache_path=None):
     '''
     ********
     routine from routines_spikes
@@ -41,46 +44,58 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     - periods = 'all' or [(t1, t2), (t3, t4), ...] with t1, t2 in seconds.
-    - again: boolean, if True recomputes data from source files without checking routines memory.
     - enforced_rp: float, enforced refractory period - if 2 spikes are separated by less than enforced_rp ms, the first one only is kept.
                    By default -1, does not remove any spikes (unlike trn).
+
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, dp/.NeuroPyxels will be used.
     '''
 
     dp = Path(dp)
-    assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
-    # Search if the variable is already saved in dp/routinesMemory
-    dpnm = get_npyx_memory(dp)
+    err_mess = f'WARNING unit {unit} not found in dataset {dp}!'
+    try:
+        assert unit in get_units(dp), err_mess
+    except AssertionError:
+        assert unit in get_units(dp, again=True), err_mess
 
-    fn=f'ids{unit}_{enforced_rp}.npy'
-    if op.exists(Path(dpnm,fn)) and not again:
-        if verbose:
-            print(f"File {fn} found in routines memory.")
-        indices = np.asarray(np.load(Path(dpnm,fn)), dtype='int64')
-    else:
-        if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
-        if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
-        assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
-        # if assert_multi(dp):
-        #     ds_table = get_ds_table(dp)
-        #     if ds_table.shape[0]>1: # If merged dataset
-        #         spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
-        #         indices = np.nonzero(spike_clusters==unit)[0].ravel()
-        #     else:
-        #         ds_i, unt = get_dataset_id(unit)
-        #         spike_clusters = np.load(Path(ds_table.loc['dp'][ds_i],"spike_clusters.npy"), mmap_mode='r')
-        #         indices = np.nonzero(spike_clusters==unt)[0].ravel()
-        # else:
+    # DEPRECATED now caching with cachecache
+    # # Search if the variable is already saved in dp/routinesMemory
+    # dpnm = get_npyx_memory(dp)
 
-        spike_clusters = np.load(dp/"spike_clusters.npy", mmap_mode='r')
-        indices = np.nonzero(spike_clusters==unit)[0].ravel()
+    # fn=f'ids{unit}_{enforced_rp}.npy'
+    # if op.exists(Path(dpnm,fn)) and not again:
+    #     if verbose:
+    #         print(f"File {fn} found in routines memory.")
+    #     indices = np.asarray(np.load(Path(dpnm,fn)), dtype='int64')
+    # else:
+    # if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
+    if not (assert_int(unit)|assert_float(unit)):
+        raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
 
-        # Save it
-        if sav:
-            np.save(dpnm/fn, indices)
+    # if assert_multi(dp):
+    #     ds_table = get_ds_table(dp)
+    #     if ds_table.shape[0]>1: # If merged dataset
+    #         spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
+    #         indices = np.nonzero(spike_clusters==unit)[0].ravel()
+    #     else:
+    #         ds_i, unt = get_dataset_id(unit)
+    #         spike_clusters = np.load(Path(ds_table.loc['dp'][ds_i],"spike_clusters.npy"), mmap_mode='r')
+    #         indices = np.nonzero(spike_clusters==unt)[0].ravel()
+    # else:
 
-    # Optional selection of spies without duplicates
+    spike_clusters = np.load(dp/"spike_clusters.npy", mmap_mode='r')
+    indices = np.nonzero(spike_clusters==unit)[0].ravel()
+
+    # DEPRECATED now caching with cachecache
+    # # Save it
+    # if sav:
+    #     np.save(dpnm/fn, indices)
+
+    # Optional selection of spikes without duplicates
     dp_source = npyx.merger.get_source_dp_u(dp, unit)[0]
-    fs=read_metadata(dp_source)["highpass"]['sampling_rate']
+    fs = read_metadata(dp_source)["highpass"]['sampling_rate']
     train = trn(dp, unit, again=again, enforced_rp=-1)
     duplicates_m = duplicates_mask(train, enforced_rp, fs)
     train = train[~duplicates_m]
@@ -97,7 +112,8 @@ def ids(dp, unit, sav=True, verbose=False, periods='all', again=False, enforced_
 
     return indices
 
-def load_amplitudes(dp, unit, verbose=False, periods='all', again=False, enforced_rp=-1):
+def load_amplitudes(dp, unit, verbose=False,
+                    periods='all', again=False, enforced_rp=-1):
     f'''Load unit amplitudes
     i.e. kilosort template scaling factor for each spike.
     
@@ -132,23 +148,30 @@ def trn(dp, unit, sav=True, verbose=False,
         - train: ndarray, spike train of unit at dp (in samples)
     '''
 
+    # DEPRECATED now caching with cachecache
     # Search if the variable is already saved in dp/routinesMemory
-    dpnm = get_npyx_memory(dp)
+    # dpnm = get_npyx_memory(dp)
     dp_source = npyx.merger.get_source_dp_u(dp, unit)[0]
     fs=read_metadata(dp_source)['highpass']['sampling_rate']
 
-    fn=f'trn{unit}_{enforced_rp}+.npy'
-    if (dpnm/fn).exists() and not again:
-        if verbose:
-            print(f"File {fn} found in routines memory.")
-        try: train = np.load(dpnm/fn) # handling of weird allow_picke=True error
-        except: pass
+    # DEPRECATED now caching with cachecache
+    # fn=f'trn{unit}_{enforced_rp}+.npy'
+    # if (dpnm/fn).exists() and not again:
+    #     if verbose:
+    #         print(f"File {fn} found in routines memory.")
+    #     try: train = np.load(dpnm/fn) # handling of weird allow_picke=True error
+    #     except: pass
 
     # if not, compute it
     if 'train' not in locals(): # handling of weird allow_picke=True error when using joblib multiprocessing
-        if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
+        # DEPRECATED now caching with cachecache
+        #if verbose: print(f"File {fn} not found in routines memory. Will be computed from source files.")
         if not (assert_int(unit)|assert_float(unit)): raise TypeError(f'WARNING unit {unit} type ({type(unit)}) not handled!')
-        assert unit in get_units(dp), f'WARNING unit {unit} not found in dataset {dp}!'
+        err_mess = f'WARNING unit {unit} not found in dataset {dp}!'
+        try:
+            assert unit in get_units(dp), err_mess
+        except AssertionError:
+            assert unit in get_units(dp, again=True), err_mess
 
         spike_clusters = np.load(Path(dp,"spike_clusters.npy"), mmap_mode='r')
         spike_samples = np.load(Path(dp,'spike_times.npy'), mmap_mode='r')
@@ -159,9 +182,10 @@ def trn(dp, unit, sav=True, verbose=False,
         assert len(train)!=0, f'unit {unit} not found in spike_clusters.npy - probably a merger bug.'
         duplicates_m = duplicates_mask(train, enforced_rp, fs)
         train = train[~duplicates_m]
+        # DEPRECATED now caching with cachecache
         # Save it
-        if sav:
-            np.save(dpnm/fn, train)
+        # if sav:
+        #     np.save(dpnm/fn, train)
 
     # Optional selection of a section of the recording.
     # Always computed because cannot reasonably be part of file name.
@@ -173,7 +197,7 @@ def trn(dp, unit, sav=True, verbose=False,
             sec_bool = sec_bool|(train>=section[0])&(train<=section[1])
         train=train[sec_bool]
 
-    return train
+    return train.astype(np.int64)
 
 def duplicates_mask(t, enforced_rp=0, fs=30000):
     '''
@@ -369,7 +393,10 @@ def trnb(dp, u, b, periods='all',
     t_end = np.load(Path(dp,'spike_times.npy'), mmap_mode='r').ravel()[-1]
     return binarize(t, b, fs, t_end)
 
-def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs=None, t_end=None):
+@npyx_cacher
+def get_firing_periods(dp, u, b=1, sd=1000, th=0.02,
+                       again=False, train=None, fs=None, t_end=None,
+                       cache_results=True, cache_path=None):
     '''
     Arguments:
         - t: array of spike times, in samples
@@ -383,11 +410,12 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
     assert 0<=th<1
     sav=False
     if train is None:
-        sav=True
-        dpnm = get_npyx_memory(dp)
-        fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
-        if op.exists(Path(dpnm,fn)) and not again:
-            return np.load(Path(dpnm,fn))
+        # DEPRECATED, now caching with cachecache
+        # sav=True
+        # dpnm = get_npyx_memory(dp)
+        # fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
+        # if op.exists(Path(dpnm,fn)) and not again:
+        #     return np.load(Path(dpnm,fn))
         t = trn(dp, u, enforced_rp=1, again=again)
         dp_source = npyx.merger.get_source_dp_u(dp, u)[0]
         fs=read_metadata(dp_source)['highpass']['sampling_rate']
@@ -400,13 +428,17 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02, again=False, train=None, fs
 
     periods = firing_periods(t, fs, t_end, b=b, sd=sd, th=th)
 
-    if sav:
-        np.save(Path(dpnm,fn), periods)
+    # DEPRECATED, now caching with cachecache
+    # if sav:
+    #     np.save(Path(dpnm,fn), periods)
 
     return periods
 
+@npyx_cacher
 def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
-                   again=False, dp=None, u=None, return_smoothed_rate = False):
+                   again=False, dp=None, u=None,
+                   return_smoothed_rate = False,
+                   cache_results=True, cache_path=None):
     '''
     Arguments:
         - t: array of spike times, in samples
@@ -415,6 +447,10 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
         - b: float, bin size i.e. temporal resolution of presence periods, in ms | Default 1. minimum 0.01
         - sd: float, standard deviation of gaussian smoothing window, in ms | Default 1000
         - th: threshold to define presence, in fraction of mean firing rate
+        - again: bool, whether to recompute results rather than loading them from cache.
+        - cache_results: bool, whether to cache results at local_cache_memory.
+        - cache_path: None|str, where to cache results.
+                        If None, ~/.NeuroPyxels will be used (can be changed in npyx.CONFIG).
     Returns:
         - periods, in samples
     '''
@@ -423,10 +459,11 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
         sav=True
         assert dp is not None
         #assert len(trn(dp,u,0))==len(t), 'There seems to be a mismatch between the provided spike trains and the unit index.'
-        fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
-        dpnm = get_npyx_memory(dp)
-        if op.exists(Path(dpnm,fn)) and not again:
-            return np.load(Path(dpnm,fn))
+        # DEPRECATED, now caching with cachecache
+        # fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
+        # dpnm = get_npyx_memory(dp)
+        # if op.exists(Path(dpnm,fn)) and not again:
+        #     return np.load(Path(dpnm,fn))
 
     tbs = inst_firing_rate(t, fs, t_end, b, sd, again) # result is inst. firing rate in Hz - speed bottleneck
 
@@ -437,7 +474,9 @@ def firing_periods(t, fs, t_end, b=1, sd=1000, th=0.02,
 
     periods = (np.array(periods)*((b/1000)*fs)).astype(np.int64) # conversion from bins to samples
 
-    if sav: np.save(Path(dpnm,fn), periods)
+    # DEPRECATED, now caching with cachecache
+    # if sav:
+    #     np.save(Path(dpnm,fn), periods)
 
     return (periods, tbs) if return_smoothed_rate else periods
 
@@ -525,6 +564,8 @@ def find_stable_recording_period(t, fs, t_end, target_period = 30,
     return most_stable_period_trimmed
 
 
+# nested plotting functions relying on old caching,
+# TODO carefully implement npyx_cacher decoration.
 def train_quality(dp, unit, period_m=[0,20],
                   fp_chunk_span=3, fp_chunk_size = 10,
                   fn_chunk_span = 3, fn_chunk_size = 10,
@@ -803,6 +844,7 @@ def train_quality(dp, unit, period_m=[0,20],
             
         return good_spikes_m, [0], [0]
 
+
 @docstring_decorator(train_quality.__doc__)
 def trn_filtered(dp, unit, period_m=[0,20],
                   fp_chunk_span=3, fp_chunk_size = 10,
@@ -865,6 +907,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
     if verbose: print('No consecutive section passed the filters')
     return np.array([0]), (t*0).astype(bool)
 
+
 def good_sections_from_mask(good_times_m, time_series=None):
     """
     Returns a list of good sections [[t1,t2], ...] in units of 'time_series'
@@ -877,6 +920,7 @@ def good_sections_from_mask(good_times_m, time_series=None):
         return [[time_series[l], time_series[r]] for l,r in zip(good_left, good_right) if r>l]
     else:
         return [[l,r] for l,r in zip(good_left, good_right) if r>l]
+
 
 @npyx_cacher
 def get_common_good_sections(good_sections_list,
@@ -915,6 +959,7 @@ def get_common_good_sections(good_sections_list,
 
     return good_sections_from_mask(m)
 
+
 def gaussian_cut(x, a, mu, sigma, x_cut):
     g = a * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
     g[x < x_cut] = 0
@@ -923,6 +968,7 @@ def gaussian_cut(x, a, mu, sigma, x_cut):
 
 def curve_fit_(x, num, p1):
     return curve_fit(gaussian_cut, x, num, p1, maxfev=10000)
+
 
 def ampli_fit_gaussian_cut(x, n_bins):
     # inputs: vector we want to estimate where the missing values start

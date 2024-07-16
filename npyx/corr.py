@@ -12,6 +12,7 @@ import psutil
 import warnings
 warnings.simplefilter('ignore', category=RuntimeWarning)
 
+import numba as nb
 from numba import njit, prange
 from numba.typed import List
 from joblib import Parallel, delayed
@@ -78,7 +79,7 @@ def make_matrix_2xNevents(dic):
 
     return m
 
-@npyx_cacher
+
 def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
                            periods='all', verbose=False, trains=None, enforced_rp=0, log_window_end=None, n_log_bins=10,
                            again=False, cache_results=True, cache_path=None):
@@ -103,20 +104,49 @@ def crosscorrelate_cyrille(dp, bin_size, win_size, U, fs=30000, symmetrize=True,
 
     return crosscorr_cyrille(spike_times, spike_clusters, win_size, bin_size, fs, symmetrize, log_window_end, n_log_bins)
 
+@npyx_cacher
 def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=True,
                       log_window_end=None, n_log_bins=10):
     '''
-    Returns the crosscorrelation function of two spike trains.
-       - times: array of concatenated times of all neurons, sorted in time, in samples.
-       - clusters: corresponding array of neuron indices
-       - win_size (float): window size, in milliseconds
-       - bin_size (float): bin size, in milliseconds
-       - U (list of integers): list of units indices.
-       - fs: sampling rate (Hertz). Default 30000.
-       - symmetrize (bool): symmetrize the semi correlograms. Default=True.
-       - log_window_end: float, end of CCG window in ms (will yield a series of n_log_bins log10 bins between 0 and log_window_end)
-       - n_log_bins: int, number of log bins
+    Computes crosscorrelation histograms between all pairs of neuron spike trains.
+
+    Parameters:
+    -----------
+    times : array-like
+        Array of concatenated spike times for all neurons, in samples (non-negative integers!),
+        sorted by time.
+    clusters : array-like
+        Corresponding array of neuron indices for each spike time.
+    win_size : float
+        Window size for crosscorrelation, in milliseconds.
+    bin_size : float
+        Bin size for histogram, in milliseconds.
+    fs : int, optional
+        Sampling rate in Hertz. Default is 30000 Hz.
+    symmetrize : bool, optional
+        Whether to symmetrize the semi-correlograms (corr[i, j, half:] = corr[j, i, :half][::-1]).
+        Default is True.
+    log_window_end : float, optional
+        End of the crosscorrelation window for logarithmic binning, in milliseconds.
+        If provided, defines the end of the window, yielding `n_log_bins` logarithmic bins 
+        between 0 and `log_window_end`.
+    n_log_bins : int, optional
+        Number of logarithmic bins to use if `log_window_end` is provided. Default is 10.
+
+    Returns:
+    --------
+    correlograms : numpy.ndarray
+        A 3D array of shape (n_units, n_units, n_bins) containing the crosscorrelation 
+        histograms. Each entry (i, j, :) represents the histogram of spike train i to spike train j 
+        for each bin.
+
+    Notes:
+    ------
+    - When `log_window_end` is provided, logarithmic binning is used instead of linear binning.
+    - The correlograms are symmetrized to ensure that the crosscorrelations are consistent 
+      irrespective of the order of input neurons.
     '''
+
     phy_ss, spike_clusters = times, clusters
     units = _unique(spike_clusters)#_as_array(U) # Order of the correlogram: order of the inputted list U (replaced by its indices - see make_phy_like_spikeClustersTimes)
     n_units = len(units)
@@ -224,12 +254,14 @@ def crosscorr_cyrille(times, clusters, win_size, bin_size, fs=30000, symmetrize=
 
     return correlograms
 
+
 def get_log_bins_samples(log_window_end, n_log_bins, fs):
     "log_window_end in ms, fs is sampling rate - output in samples."
     log_window_end = log_window_end * fs/1000 # convert to samples
     assert assert_int(n_log_bins), "n_log_bins must be an integer!"
     log_bins = np.logspace(np.log10(1),np.log10(log_window_end), n_log_bins+1)
     return log_bins
+
 
 def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
        ret=True, sav=True, verbose=False, periods='all', again=False,
@@ -288,7 +320,8 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
     bin_size = np.clip(bin_size, 1000*1./fs, 1e8)
     # Search if the variable is already saved in dp/routinesMemory
-    dpnm = get_npyx_memory(dp)
+    # DEPRECATED - now caching with cachecache
+    # dpnm = get_npyx_memory(dp)
 
     ep_str='' if enforced_rp==0 else str(enforced_rp)
     per_str = str(periods)[0:50].replace(' ', '').replace('\n','')
@@ -304,12 +337,13 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
             log_window_end, normalize,
             per_str,
             ep_str)
-    if os.path.exists(Path(dpnm,fn)) and not again and trains is None:
-        if verbose: print("File {} found in routines memory.".format(fn))
-        try:  # handling of weird allow_picke=True error
-            crosscorrelograms = np.load(Path(dpnm,fn))
-            crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
-        except: pass
+    # DEPRECATED - now caching with cachecache
+    # if os.path.exists(Path(dpnm,fn)) and not again and trains is None:
+    #     if verbose: print("File {} found in routines memory.".format(fn))
+    #     try:  # handling of weird allow_picke=True error
+    #         crosscorrelograms = np.load(Path(dpnm,fn))
+    #         crosscorrelograms = np.asarray(crosscorrelograms, dtype='float64')
+    #     except: pass
 
     # if not, compute it
     if 'crosscorrelograms' not in locals(): # handling of weird allow_picke=True error
@@ -342,8 +376,9 @@ def ccg(dp, U, bin_size, win_size, fs=30000, normalize='Hertz',
 
 
         # Save it only if no custom trains were provided
-        if sav and trains is None:
-            np.save(Path(dpnm,fn), crosscorrelograms)
+        # DEPRECATED - now caching with cachecache
+        # if sav and trains is None:
+        #     np.save(Path(dpnm,fn), crosscorrelograms)
 
     # Structure the 3d array to return accordingly to the order of the inputed units U
     if crosscorrelograms.shape[0]>1:
@@ -427,7 +462,126 @@ def ccg_hz(dp, u1, u2, cbin, cwin,
             
     return c
 
+### 2D crosscorrelogram computation
 
+@nb.njit(parallel=True, fastmath=True)
+def ccg_2d_numba(t1, t2, binsize, windowsize):
+    """
+    Compute the (n_events, n_bins) crosscorrelogram between two time series,
+    usinf the time stamps of the first time serie t1 as reference.
+
+    Parameters:
+    -----------
+    t1 : numpy.ndarray
+        The time series, represented as an array of spike times.
+        SORTED, in SAMPLES (non negative integers).
+    t2 : numpy.ndarray
+        The second time series, represented as an array of spike times.
+        SORTED, in SAMPLES (non negative integers).
+    binsize : int
+        The size of each bin in the crosscorrelogram.
+    windowsize : int
+        The size of the window around each spike in t1 to consider.
+
+    Returns:
+    --------
+    C : numpy.ndarray
+        The crosscorrelogram between t1 and t2, with shape (len(t1), n_bins).
+
+    Notes:
+    -------
+    C.sum(0) is equivalent to crosscorr_cyrille(...)[0, 1, :] for values after 0,
+    and slightly different for values before 0. That is because crosscorr_cyrille uses
+    array[i, j, half:] = array[j, i, :half], and triggering t1>t2 and t2>t1 is not strictly equivalent
+    because of bin edge effects (and also, it seems like the symmetrization from cyrille shifts the bins slightly, not a big deal).
+    """
+    n_bins = 2 * int(.5 * windowsize / binsize) + 1 #int(windowsize / binsize)
+    half_window = windowsize // 2
+    C = np.zeros((len(t1), n_bins), dtype=np.int64)
+
+    left_cursor = 0
+    for i in nb.prange(len(t1)):
+
+        t = t1[i]
+        
+        win_left = t - half_window
+        win_right = t + half_window + binsize
+
+        while left_cursor < len(t2) and t2[left_cursor] < win_left:
+            left_cursor += 1
+
+        right_cursor = left_cursor
+        while right_cursor < len(t2) and t2[right_cursor] < win_right:
+            right_cursor += 1
+        
+        t2_stamps_in_window = t2[left_cursor:right_cursor]
+        hist = np.bincount((t2_stamps_in_window - win_left) // binsize, minlength=n_bins)
+        C[i] = hist
+        
+    return C
+
+@npyx_cacher
+def ccg_2d(t1, t2, binsize, windowsize,
+           again=False, cache_results=True, cache_path=None):
+    """
+    Compute the (n_events, n_bins) crosscorrelogram between two time series.
+
+    Parameters:
+    -----------
+    t1 : numpy.ndarray
+        The first spike train, represented as an array of spike times - in SAMPLES.
+    t2 : numpy.ndarray
+        The second spike train, represented as an array of spike times - in SAMPLES.
+    binsize : int
+        The size of each bin in the PSTH - in SAMPLES.
+    windowsize : int
+        The size of the window around each spike in t1 to consider - in SAMPLES.
+
+    Returns:
+    --------
+    numpy.ndarray
+        The PSTH between t1 and t2, with shape (len(t1), n_bins).
+
+    Notes:
+    -------
+    ccg_2d(...).sum(0) is equivalent to crosscorr_cyrille(...)[0, 1, :] for values after 0,
+    and slightly different for values before 0. That is because crosscorr_cyrille uses
+    array[i, j, half:] = array[j, i, :half], and triggering t1>t2 and t2>t1 is not strictly equivalent
+    because of bin edge effects (and also, it seems like the symmetrization from cyrille shifts the bins slightly, not a big deal).
+    """
+
+    # Make sure the time series are sorted
+    t1 = np.sort(t1)
+    t2 = np.sort(t2)
+
+    # Make sure the time series hold non negative integers
+    assert t1[0] >= 0, "t1 should be non negative integers!"
+    assert t2[0] >= 0, "t2 should be non negative integers!"
+    int_types = [
+        "int",
+        "int8",
+        "int16",
+        "int32",
+        "int64",
+        "uint8",
+        "uint16",
+        "uint32",
+        "uint64",
+    ]
+
+    assert str(t1.dtype) in int_types, "t1 dtype should be an integer type!"
+    assert str(t2.dtype) in int_types, "t2 dtype should be an integer type!"
+
+    assert isinstance(binsize, int), "binsize should be an integer!"
+    assert isinstance(windowsize, int), "windowsize should be an integer!"
+
+    return ccg_2d_numba(t1,
+                        t2,
+                        binsize,
+                        windowsize)
+
+
+### ACG
 
 def acg(dp, u, bin_size, win_size, fs=30000, normalize='Hertz',
         ret=True, sav=True, verbose=False, periods='all', again=False,
@@ -595,6 +749,7 @@ def scaled_acg(dp, units, cut_at = 150, bs = 0.5, fs=30000, normalize='Hertz',
 
 
     return np.vstack(return_acgs), np.array(return_isi_mode), np_isi_hist_counts, np_isi_hist_range_clipped, np_cut_acg_unnormed
+
 
 ### 3D ACG functions
 
@@ -1187,7 +1342,6 @@ def KopelowitzCohen2014_ccg_significance(CCG, cbin=0.2, cwin=100, p_th=0.01, n_c
     if plot:
         fig=npyx.plot.plot_pval_borders(CCG, p_th, dist='normal', gauss_baseline_fract=fract_baseline, x=np.arange(-(len(CCG)//2*cbin), len(CCG)//2*cbin+cbin, cbin),
                           xlabel='Time (ms)', ylabel='crosscorrelation (z-score)', title='Test: Kopelowitz et al. 2014'.format(p_th))
-        return fig
 
     if ret_values:
         return crosses
@@ -1323,9 +1477,16 @@ def StarkAbeles2009_ccg_significance(CCG, cbin, p_th, n_consec, sgn, W_sd, ret_v
         return fig
 
     if ret_values:
-        sig_pvals=thresh_consec(pvals, p_th, sgn=-1, n_consec=n_consec, only_max=only_max)
-        poisson_zscore=(CCG-pred)/np.sqrt(pred) # Poisson: mean = variance = std^2 (so take sqrt(mean) for std)
-        for sp in sig_pvals: sp[1,:]=poisson_zscore[sp[0,:].astype(np.int64)]
+        # DISCOVERED BUG: precision error - pvalues get too small and are rounded to 0.
+        # Must use poisson_zscore to tell who is actually the smallest when using only_max=True.
+        sig_pvals = thresh_consec(pvals, p_th, sgn=-1, n_consec=n_consec, only_max=False)
+        poisson_zscore = (CCG-pred)/np.sqrt(pred) # Poisson: mean = variance = std^2 (so take sqrt(mean) for std)
+        for sp in sig_pvals:
+            sp[1,:] = poisson_zscore[sp[0,:].astype(np.int64)]
+        if only_max and len(sig_pvals) > 0:
+            zscore_extrema = [np.max(np.abs(sp[1,:])) for sp in sig_pvals]
+            extremum_arg = np.argmax(zscore_extrema)
+            sig_pvals = [sig_pvals[extremum_arg]]
         return sig_pvals
 
     comp = (pvals<=p_th)
@@ -2669,7 +2830,11 @@ def spike_time_tiling_coefficient(spiketrain_1, spiketrain_2, L, dt, dp):
 
 #%% Power spectrum of autocorrelograms
 
-def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=30000, ret=True, sav=True, verbose=False):
+@npyx_cacher
+def PSDxy(dp, U, bin_size, window='hann', nperseg=4096,
+          scaling='spectrum', fs=30000,
+          ret=True, sav=True, verbose=False,
+          cache_results=True, cache_path=None):
     '''
     ********
     routine from routines_spikes
@@ -2694,26 +2859,27 @@ def PSDxy(dp, U, bin_size, window='hann', nperseg=4096, scaling='spectrum', fs=3
     sortedU=list(np.sort(np.array(U)))
 
     # Search if the variable is already saved in dp/routinesMemory
-    dpnm = get_npyx_memory(dp)
+    # DEPRECATED - now caching with cachecache
+    # dpnm = get_npyx_memory(dp)
 
-    if os.path.exists(Path(dpnm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_')))):
-        if verbose: print("File PSDxy{}_{}.npy found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
-        Pxy = np.load(Path(dpnm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_'))))
-        Pxy = Pxy.astype(np.float64)
+    # if os.path.exists(Path(dpnm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_')))):
+    #     if verbose: print("File PSDxy{}_{}.npy found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
+    #     Pxy = np.load(Path(dpnm,'PSDxy{}_{}.npy'.format(sortedU, str(bin_size).replace('.','_'))))
+    #     Pxy = Pxy.astype(np.float64)
 
-    # if not, compute it
-    else:
-        if verbose: print("File ccg_{}_{}.npy not found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
-        Pxy = np.empty((len(sortedU), len(sortedU), int(nperseg/2)+1), dtype=np.float64)
-        for i, u1 in enumerate(sortedU):
-            trnb1 = trnb(dp, u1, bin_size)
-            for j, u2 in enumerate(sortedU):
-                trnb2 = trnb(dp, u2, bin_size)
-                (f, Pxy[i, j, :]) = sgnl.csd(trnb1, trnb2, fs=fs, window=window, nperseg=nperseg, scaling=scaling)
-        Pxy = Pxy.astype(np.float64)
-        # Save it
-        if sav:
-            np.save(Path(dpnm,'PSDxy{}_{}.npy'.format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_'))), Pxy)
+    if verbose: print("File ccg_{}_{}.npy not found in routines memory.".format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_')))
+    Pxy = np.empty((len(sortedU), len(sortedU), int(nperseg/2)+1), dtype=np.float64)
+    for i, u1 in enumerate(sortedU):
+        trnb1 = trnb(dp, u1, bin_size)
+        for j, u2 in enumerate(sortedU):
+            trnb2 = trnb(dp, u2, bin_size)
+            (f, Pxy[i, j, :]) = sgnl.csd(trnb1, trnb2, fs=fs, window=window, nperseg=nperseg, scaling=scaling)
+    Pxy = Pxy.astype(np.float64)
+    
+    # DEPRECATED - now caching with cachecache
+    # Save it
+    # if sav:
+    #     np.save(Path(dpnm,'PSDxy{}_{}.npy'.format(str(sortedU).replace(" ", ""), str(bin_size).replace('.','_'))), Pxy)
 
     # Back to the original order
     sPxy = np.zeros(Pxy.shape)

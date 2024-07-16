@@ -211,7 +211,7 @@ def labels_to_rgb_colors(labels, order=None, colormap='tab10'):
         order = np.unique(labels)
     assert np.all(np.isin(labels, order)), "Missing labels from order."
 
-    palette = get_ncolors_cmap(10, colormap)
+    palette = DistinctColors20[1:]#get_ncolors_cmap(10, colormap)
     index_dict = {u: i for i, u in enumerate(order)}
     return [palette[index_dict[u]] for u in labels]
 
@@ -231,13 +231,16 @@ def red_dim_plot(X, dims_to_plot = [0,2,1], labels = None,
         ax = axes[i]
 
         if labels is not None:
-            cluster_ids = np.unique(labels)
+            cluster_ids = np.unique(labels).astype(int)
             n_clusters = len(cluster_ids)
             cluster_colors = get_cluster_colors(n_clusters, alpha, alpha_outliers)
-            for cluster_id in [-1]+list(np.arange(n_clusters)):
+            for cluster_id in cluster_ids:#[-1]+list(cluster_ids):
                 cluster_m = labels == cluster_id
-                ax.scatter(X[cluster_m,dims_to_plot[0]], X[cluster_m,dims_to_plot[1]], X[cluster_m, dims_to_plot[2]],
-                           color=cluster_colors[cluster_id], label=f"Cluster {cluster_id} ({int(cluster_m.sum())})",
+                ax.scatter(X[cluster_m,dims_to_plot[0]],
+                           X[cluster_m,dims_to_plot[1]],
+                           X[cluster_m, dims_to_plot[2]],
+                           color=cluster_colors[cluster_id],
+                           label=f"Cluster {cluster_id} ({int(cluster_m.sum())})",
                            s=40, lw=0)
             if i == 0: ax.legend()
         else:

@@ -25,7 +25,7 @@ except ImportError:
 
 import json
 
-from npyx.utils import list_files, npa, read_pyfile
+from npyx.utils import list_files, npa, read_pyfile, npyx_cacher
 
 #%% Load metadata and channel map
 
@@ -625,10 +625,13 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
 
         return onsets,offsets
 
-def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', save=0,
+@npyx_cacher
+def extract_rawChunk(dp, times, channels=np.arange(384),
+                     filt_key='highpass', save=0,
                      whiten=0, med_sub=0, hpfilt=0, hpfiltf=300, filter_forward=True, filter_backward=True,
                      nRangeWhiten=None, nRangeMedSub=None, use_ks_w_matrix=True,
-                     ignore_ks_chanfilt=True, center_chans_on_0=False, verbose=False, scale=True, again=False):
+                     ignore_ks_chanfilt=True, center_chans_on_0=False, verbose=False, scale=True,
+                     again=False, cache_results=False, cache_path=None):
     '''Function to extract a chunk of raw data on a given range of channels on a given time window.
     Arguments:
     - dp: datapath to folder with binary path (files must ends in .bin, typically ap.bin)
@@ -652,6 +655,11 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
                           which only uses channels with average events rate > ops.minfr to spike sort.
     - scale: A boolean variable specifying whether we should convert the resulting raw
              A2D samples to uV. Defaults to True
+    - again: bool, whether to recompute results rather than loading them from cache.
+    - cache_results: bool, whether to cache results at local_cache_memory.
+    - cache_path: None|str, where to cache results.
+                    If None, dp/.NeuroPyxels will be used.
+                    
     Returns:
     - rawChunk: numpy array of shape ((c2-c1), (t2-t1)*fs).
                 rawChunk[0,:] is channel 0; rawChunk[1,:] is channel 1, etc.
@@ -684,10 +692,12 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     rcn = (f"{bn}_t{times[0]}-{times[1]}_ch{channels[0]}-{channels[-1]}"
           f"_{whiten}{nRangeWhiten}_{med_sub}{nRangeMedSub}_{hpfilt}{hpfiltf}"
           f"_{ignore_ks_chanfilt}_{center_chans_on_0}_{scale}.npy") # raw chunk name
-    rcp = get_npyx_memory(dp) / rcn
+    
+    # DEPRECATED - now caching with cachecache
+    # rcp = get_npyx_memory(dp) / rcn
 
-    if os.path.isfile(rcp) and not again:
-        return np.load(rcp)
+    # if os.path.isfile(rcp) and not again:
+    #     return np.load(rcp)
 
     # Check that available memory is high enough to load the raw chunk
     vmem=dict(psutil.virtual_memory()._asdict())
@@ -758,8 +768,9 @@ def extract_rawChunk(dp, times, channels=np.arange(384), filt_key='highpass', sa
     if 'cp' in globals():
         rc = cp.asnumpy(rc)
 
-    if save: # sync chan saved in extract_syncChan
-        np.save(rcp, rc)
+    # DEPRECATED - now caching with cachecache
+    # if save: # sync chan saved in extract_syncChan
+    #     np.save(rcp, rc)
 
     return rc
 

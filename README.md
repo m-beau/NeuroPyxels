@@ -8,12 +8,12 @@
 
 ❓**Any questions or issues?**: [Create a github issue](https://github.com/Maxime-Beau/Neuropyxels/issues) to get support, or create a [pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request). Alternatively, you can email [us: maximebeaujeanroch047[at]gmail[dot]com](mailto:maximebeaujeanroch047@gmail.com). You can also use the [Neuropixels slack workgroup](neuropixelsgroup.slack.com).
 
-- **[⬇️ Installation](#⬇️-installation)**
-- **[🤗 Support and citing ](#🤗-support-and-citing)**
-- **[🔍️ Documentation](#🔍️-documentation)**
-  - [💡 Design philosophy](#💡-design-philosophy)
-  - [📁 Directory structure](#📁-directory-structure)
-  - [👉 Common use cases](#👉-common-use-cases)
+- **[⬇️ Installation](#%EF%B8%8F-installation)**
+- **[🤗 Support and citing ](#-support-and-citing)**
+- **[🔍️ Documentation](#%EF%B8%8F-documentation)**
+  - [💡 Design philosophy](#-design-philosophy)
+  - [📁 Directory structure](#-directory-structure)
+  - [👉 Common use cases](#-common-use-cases)
     - [Load recording metadata](#load-recording-metadata)
     - [Load synchronization channel](#load-synchronization-channel)
     - [Get good units from dataset](#get-good-units-from-dataset)
@@ -25,7 +25,7 @@
     - [Plot chunk of raw data with overlaid units](#plot-chunk-of-raw-data-with-overlaid-units)
     - [Plot peri-stimulus time histograms across neurons and conditions](#plot-peri-stimulus-time-histograms-across-neurons-and-conditions)
     - [Merge datasets acquired on two probes simultaneously](#merge-datasets-acquired-on-two-probes-simultaneously)
-  - [⭐ Bonus: matplotlib plot prettifier (mplp)](#⭐-bonus-matplotlib-plot-prettifier)
+  - [⭐ Bonus: matplotlib plot prettifier (mplp)](#-bonus-matplotlib-plot-prettifier)
 
 ## ⬇️ Installation:
 

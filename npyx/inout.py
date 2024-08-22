@@ -13,6 +13,7 @@ from ast import literal_eval as ale
 from math import ceil
 from pathlib import Path
 
+import multiprocessing
 import numpy as np
 import psutil
 from tqdm.auto import tqdm
@@ -20,8 +21,9 @@ from tqdm.auto import tqdm
 try:
     import cupy as cp
 except ImportError:
-    print(("cupy could not be imported - "
-    "some functions dealing with the binary file (filtering, whitening...) will not work."))
+    if multiprocessing.current_process().name == 'MainProcess':
+        print(("cupy could not be imported - "
+        "some functions dealing with the binary file (filtering, whitening...) will not work."))
 
 import json
 

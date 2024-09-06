@@ -21,8 +21,6 @@ from numpy import pi, cos, sin
 
 from numba import njit
 
-import cv2
-
 from npyx.utils import npa, thresh, thresh_consec, smooth,\
                         sign, assert_int, assert_iterable, npyx_cacher
 
@@ -1537,6 +1535,7 @@ def decode_rotary(A, B, fs=5000, n_ticks=1024, diam=200, gsd=25, med_filt=True):
     return d
 
 def get_nframes(video_path):
+    import cv2
     cap = cv2.VideoCapture(video_path)
     return int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -1553,6 +1552,7 @@ def frameid_vidpath(frameid, nframes, videos):
             return rel_id, vidpath
 
 def frame_from_vid(video_path, frame_i, plot=True):
+    import cv2
     cap = cv2.VideoCapture(video_path)
     totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     assert 0<=frame_i<totalFrames, 'Frame index too high!'

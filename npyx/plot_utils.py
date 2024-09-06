@@ -89,6 +89,7 @@ default_mplp_params = dict(
             clabel_w='regular',
             clabel_s=18,
             cticks_s=16,
+            cbar_pad=0.01,
 
             # horizontal and vertical lines default parameters
             hlines = None, # provide any iterable of values to plot horizontal lines along the y axis
@@ -174,6 +175,7 @@ def mplp(fig=None,
          clabel_w=None,
          clabel_s=None,
          cticks_s=None,
+         cbar_pad=None,
 
          hlines = None,
          vlines = None,
@@ -278,6 +280,7 @@ def mplp(fig=None,
         if clabel_w is None: clabel_w = default_mplp_params['clabel_w']
         if clabel_s is None: clabel_s = default_mplp_params['clabel_s']
         if cticks_s is None: cticks_s = default_mplp_params['cticks_s']
+        if cbar_pad is None: cbar_pad = default_mplp_params['cbar_pad']
 
     xscalebar_unit = default_mplp_params['xscalebar_unit']
     yscalebar_unit = default_mplp_params['yscalebar_unit']
@@ -429,7 +432,7 @@ def mplp(fig=None,
         assert vmin is not None and vmax is not None and cmap is not None,\
             "You must provide vmin, vmax and cmap to show a colorbar."
         fig = add_colorbar(fig, ax, None, vmin, vmax,
-                 cbar_w, cbar_h, cticks, clabel, clabel_w, clabel_s, cticks_s, ctickslabels, cmap,
+                 cbar_w, cbar_h, cticks, clabel, clabel_w, clabel_s, cticks_s, ctickslabels, cmap, pad=cbar_pad,
                  clim=clim) 
 
     if prettify:
@@ -845,7 +848,7 @@ def format_colors(colors):
 def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
                  width=0.01, height=0.5, cticks=None,
                  clabel=None, clabel_w='regular', clabel_s=20, cticks_s=16, ctickslabels=None,
-                 cmap=None, pad = 0.01, clim=None):
+                 cmap=None, pad = 0.01, clim=None, cbar_ax=None):
     """
     Add colorbar to figure with a predefined axis.
     
@@ -872,7 +875,8 @@ def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
 
     # create colorbar axis
     axpos   = ax.get_position()
-    cbar_ax = fig.add_axes([axpos.x1+pad*axpos.width, axpos.y0,
+    if cbar_ax is None:
+        cbar_ax = fig.add_axes([axpos.x1+pad*axpos.width, axpos.y0,
                             width*axpos.width, height*axpos.height])
 
     # add colorbar

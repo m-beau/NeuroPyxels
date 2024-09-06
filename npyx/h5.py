@@ -104,6 +104,7 @@ def add_unit_h5(
     n_waveforms_for_matching = 5000,
     n_raw_waveforms          = 1000,
     plot_debug               = False,
+    cache_data               = False,
     **kwargs,
 ):
     """
@@ -275,7 +276,7 @@ def add_unit_h5(
         # spike_times
         key = "spike_indices"
         if assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
-            t = trn(dp, unit_id, again=again_npyx).astype(np.uint32)
+            t = trn(dp, unit_id, again=again_npyx, cache_results=cache_data).astype(np.uint32)
             write_to_group(neuron_group, key, t)
 
         # optostims
@@ -334,7 +335,8 @@ def add_unit_h5(
             periods_m_range = [0, meta["recording_length_seconds"] / 60]
             fp_fn_good_spikes = trn_filtered(dp, unit_id,
                                              plot_debug=plot_debug, again=again_npyx,
-                                             period_m=periods_m_range)[1]
+                                             period_m=periods_m_range,
+                                             save=cache_data)[1]
             write_to_group(neuron_group, key, fp_fn_good_spikes)
 
 
@@ -365,7 +367,7 @@ def add_unit_h5(
                 t_waveforms=waveform_samples, periods=sane_periods,
                 again=again_npyx_wvf, plot_debug=plot_debug,
                 n_waves_used_for_matching=n_waveforms_for_matching,
-                med_sub=True, nRangeMedSub=None)
+                med_sub=True, nRangeMedSub=None, cache_results=cache_data)
             dsm_waveform, peak_chan = dsm_tuple[1], dsm_tuple[3]
             peak_chan          = int(peak_chan)
             chan_bottom        = np.max([0, peak_chan - mean_wvf_half_range])
@@ -408,7 +410,8 @@ def add_unit_h5(
                 med_sub           = False,
                 whiten            = False,
                 center_chans_on_0 = False,
-                hpfilt            = False) # already int16
+                hpfilt            = False,
+                cache_results=cache_data) # already int16
 
         # inclusion of voltage snippet
         keys = ["raw_voltage_snippet", "voltage_snippet_start_index", "fn_fp_filtered_spikes", "sane_spikes"]
@@ -424,7 +427,7 @@ def add_unit_h5(
         keys = ["raw_waveforms", "fn_fp_filtered_spikes", "sane_spikes"]
         if assert_recompute_any(keys, neuron_group, overwrite_h5, selective_overwrite) and include_raw_snippets:
             # relect spike ids
-            spike_ids  = ids(dp, unit_id, enforced_rp=0)
+            spike_ids  = ids(dp, unit_id, enforced_rp=0, cache_results=cache_data)
             spike_mask = neuron_group["fn_fp_filtered_spikes"][()] & neuron_group["sane_spikes"][()]
             if np.any(spike_mask):
                 spike_ids = spike_ids[spike_mask]
@@ -470,14 +473,14 @@ def add_unit_h5(
         # across channels SNR
         key = "acrosschan_SNR"
         if assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
-            acrosschan_SNR = across_channels_SNR(dp, unit_id)
+            acrosschan_SNR = across_channels_SNR(dp, unit_id, cache_results=cache_data)
             write_to_group(neuron_group, key, acrosschan_SNR)
 
         # amplitudes
         key = "amplitudes"
         if assert_recompute(key, neuron_group, overwrite_h5, selective_overwrite):
             amps = np.load(dp / "amplitudes.npy").squeeze()[
-                ids(dp, unit_id, enforced_rp=0)
+                ids(dp, unit_id, enforced_rp=0, cache_results=cache_data)
             ]
             write_to_group(neuron_group, key, amps)
 

@@ -49,6 +49,7 @@ c4_requirements = [
     "torchaudio==0.13.1",
     "asdfghjkl==0.1a2",
     "laplace-torch==0.1a2",
+    "backpack-for-pytorch==1.6.0",
     "requests",
     "dill",
     "tabulate",

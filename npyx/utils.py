@@ -3,10 +3,9 @@
 import os
 from pathlib import Path
 import logging
-import functools
 from ast import literal_eval as ale
 from typing import Union
-import inspect
+import shutil
 
 from numba import njit
 from numba.typed import List
@@ -39,48 +38,6 @@ npyx_cacher = distributed_cacher('dp', '.NeuroPyxels', global_npyx_cacher)
 
 
 #%% function decoration utilities
-
-# def npyx_cacher(func):
-#     """
-#     Decorator to cache npyx functions using the dp parameter
-#     at dp/.NeuroPyxels.
-#     """
-
-#     local_cache_folder = ".NeuroPyxels"
-    
-#     @functools.wraps(func)
-#     def npyx_cached_func(*args, **kwargs):
-
-#         # Find whether dp is present in args or kwargs.
-#         # If so, bypass the cache_path argument
-#         # with Path(dp) / local_cache_folder
-#         sig = inspect.signature(func)
-#         arg_names = list(sig.parameters.keys())
-
-#         dp = None
-#         if 'dp' in kwargs:
-#             dp = kwargs['dp']
-#         elif arg_names and 'dp' in arg_names:
-#             dp_idx = np.nonzero('dp' == np.array(arg_names))[0][0]
-#             dp = args[dp_idx]
-
-#         if isinstance(dp, Union[str, Path]):
-#             cache_path = Path(dp) / local_cache_folder
-#             if 'cache_path' not in kwargs:
-#                 kwargs['cache_path'] = None
-#             if kwargs['cache_path'] is None:
-#                 kwargs['cache_path'] = cache_path
-
-#         # the default cache is at '~/.NeuroPyxels' (can be changed in npyx.CONFIG)
-#         # and only instantiated once as global_npyx_cacher,
-#         # but if a function has the dp parameter,
-#         # the decoration will reinstantiate a 'dp/.NeuroPyxels' path.
-#         cached_func = global_npyx_cacher(func) # same as decorating func with @global_npyx_cacher
-#         results = cached_func(*args, **kwargs)
-
-#         return results
-
-#     return npyx_cached_func
 
 def docstring_decorator(*args):
     """
@@ -215,7 +172,54 @@ def list_files(directory, extension, full_path=False):
         return [Path('/'.join([directory,f])) for f in files]
     return files
 
+def has_write_permission(path: Union[str, Path]) -> bool:
+    """Check if the given path is writable without creating it."""
+    if isinstance(path, str):
+            path = Path(path)
+    if path.exists():
+        return os.access(path, os.W_OK)
+    elif path.parent.exists():
+        return os.access(path.parent, os.W_OK)
+    else:
+        print(f"WARNING: {path} or its parent does not exist - cannot assess write permissions.")
+        return False
+    
+def has_space_left(path: Union[str, Path],
+                   required_space_mb: float = 100) -> bool:
+    """
+    Check if there's enough space left at the given path.
+    
+    Parameters:
+    -----------
+    path : str
+        The path to check for available space.
+    required_space_mb : float
+        The required free space in megabytes.
+        
+    Returns:
+    --------
+    bool
+        True if there's enough free space, False otherwise.
+    """
+    if isinstance(path, str):
+            path = Path(path)
+    if path.exists():
+        _, _, free = shutil.disk_usage(path)
+        free_space_mb = free / (1024 * 1024)  # Convert bytes to megabytes
+        return free_space_mb >= required_space_mb
+    elif path.parent.exists():
+        _, _, free = shutil.disk_usage(path.parent)
+        free_space_mb = free / (1024 * 1024)  # Convert bytes to megabytes
+        return free_space_mb >= required_space_mb
+    else:
+        print(f"WARNING: {path} or its parent does not exist - cannot check leftover space.")
+        return False
 
+def is_writable(path: Union[str, Path],
+                required_space_mb: float = 100) -> bool:
+    
+    return has_space_left(path, required_space_mb) & has_write_permission(path)
+        
 #%% Text formatting utilities
 
 def pprint_dic(dic):

@@ -109,7 +109,7 @@ def get_neuron_attr(hdf5_file_path, id=None, file=None):
         for name in hdf5_file:
             if "neuron" not in name:
                 continue
-            pi = name.split("_")[0]
+            pi = name.split("neuron")[0][:-1]
             neuron_id = name.split("_")[-1]
             neuron_ids.append(neuron_id)
         if id is None:

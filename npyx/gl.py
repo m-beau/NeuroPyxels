@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from npyx.utils import npa
+from npyx.utils import npa, is_writable
 
 
 def get_npyx_memory(dp):
@@ -374,38 +374,50 @@ def load_units_qualities(dp, again=False):
     """
     f = "cluster_group.tsv"
     dp = Path(dp)
-    if (dp / f).exists():
-        qualities = pd.read_csv(dp / f, sep='\s+')
-        re_spikesorted = detect_new_spikesorting(dp)
-        regenerate = True if (again or re_spikesorted) else False
-        assert (
-            "cluster_id" in qualities.columns
-        ), f"WARNING the tsv file {str(dp/f)} should have a column called 'cluster_id'!"
-        if "group" not in qualities.columns:
-            print(
-                "WARNING there does not seem to be any group column in cluster_group.tsv - kilosort >2 weirdness. Making a fresh file."
-            )
-            qualities = generate_units_qualities(dp)
+    try:
+        if (dp / f).exists():
+            qualities = pd.read_csv(dp / f, sep='\s+')
+            re_spikesorted = detect_new_spikesorting(dp)
+            regenerate = True if (again or re_spikesorted) else False
+            assert (
+                "cluster_id" in qualities.columns
+            ), f"WARNING the tsv file {str(dp/f)} should have a column called 'cluster_id'!"
+            if "group" not in qualities.columns:
+                print(
+                    "WARNING there does not seem to be any group column in cluster_group.tsv - kilosort >2 weirdness. Making a fresh file."
+                )
+                qualities = generate_units_qualities(dp)
+            else:
+                if "unsorted" not in qualities["group"].values and re_spikesorted:
+                    # the file can only be 'not re_spikesorted' if it has been edited by npyx (or manually)
+                    # so in the rare case where all neurons are called 'mua' or 'good' or 'noise' with none left unsorted,
+                    # but npyx already regenerated the tsv file, we should NOT regenerate the file
+                    regenerate = True
+            if regenerate:
+                qualities_new = generate_units_qualities(dp)
+
+                sorted_clusters = qualities.loc[qualities["group"] != "unsorted", :]
+                unsorted_clusters_m = ~np.isin(qualities_new["cluster_id"], sorted_clusters["cluster_id"])
+                unsorted_clusters = qualities_new.loc[unsorted_clusters_m, :]
+
+                qualities = pd.concat((unsorted_clusters, sorted_clusters), axis=0)
+                qualities = qualities.sort_values("cluster_id")
+                try:
+                    if is_writable(dp): # not necessary, but double safety
+                        save_qualities(dp, qualities)
+                except:
+                    pass
         else:
-            if "unsorted" not in qualities["group"].values and re_spikesorted:
-                # the file can only be 'not re_spikesorted' if it has been edited by npyx (or manually)
-                # so in the rare case where all neurons are called 'mua' or 'good' or 'noise' with none left unsorted,
-                # but npyx already regenerated the tsv file, we should NOT regenerate the file
-                regenerate = True
-        if regenerate:
-            qualities_new = generate_units_qualities(dp)
-
-            sorted_clusters = qualities.loc[qualities["group"] != "unsorted", :]
-            unsorted_clusters_m = ~np.isin(qualities_new["cluster_id"], sorted_clusters["cluster_id"])
-            unsorted_clusters = qualities_new.loc[unsorted_clusters_m, :]
-
-            qualities = pd.concat((unsorted_clusters, sorted_clusters), axis=0)
-            qualities = qualities.sort_values("cluster_id")
-            save_qualities(dp, qualities)
-    else:
-        print("cluster groups table not found in provided data path. Generated from spike_clusters.npy.")
+            print(f"cluster groups table not found at {dp}. Generated from spike_clusters.npy.")
+            qualities = generate_units_qualities(dp)
+            try:
+                if is_writable(dp):
+                    save_qualities(dp, qualities)
+            except:
+                pass
+    except:
+        print(f"Error trying to load cluster_group.tsv at {dp}. Generated from spike_clusters.npy.")
         qualities = generate_units_qualities(dp)
-        save_qualities(dp, qualities)
 
     return qualities
 

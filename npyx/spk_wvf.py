@@ -101,7 +101,8 @@ def wvf(dp, u=None, n_waveforms=100, t_waveforms=82, selection='regular', period
                  selection, periods, spike_ids, wvf_batch_size, ignore_nwvf,
                  whiten, med_sub, hpfilt, hpfiltf, nRangeWhiten, nRangeMedSub,
                  ignore_ks_chanfilt, verbose,
-                 True, return_corrupt_mask, again)
+                 True, return_corrupt_mask, again,
+                 cache_results=cache_results, cache_path=cache_path)
 
     if return_corrupt_mask:
         (waveforms, corrupt_mask) = waveforms
@@ -130,7 +131,8 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
                   spike_ids=None, wvf_batch_size=10, ignore_nwvf=True,
                   whiten=0, med_sub=0, hpfilt=0, hpfiltf=300,
                   nRangeWhiten=None, nRangeMedSub=None, ignore_ks_chanfilt=True, verbose=False,
-                  med_sub_in_time=True, return_corrupt_mask=False, again=False):
+                  med_sub_in_time=True, return_corrupt_mask=False, again=False,
+                  cache_results=True, cache_path=None):
     f"{wvf.__doc__}"
 
     # Extract and process metadata
@@ -158,7 +160,10 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
     # Select subset of spikes
     spike_samples = np.load(Path(dp, 'spike_times.npy'), mmap_mode='r').squeeze()
     if spike_ids is None:
-        spike_ids_subset = get_ids_subset(dp, u, n_waveforms, wvf_batch_size, selection, periods, ignore_nwvf, verbose, again)
+        spike_ids_subset = get_ids_subset(dp, u,
+                                          n_waveforms, wvf_batch_size, selection, periods,
+                                          ignore_nwvf, verbose,
+                                          again, cache_results=cache_results, cache_path=cache_path)
     else:
         assert isinstance(spike_ids, Iterable), "WARNING spike_ids must be a list/array of ids!"
         spike_ids_subset = np.array(spike_ids)

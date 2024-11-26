@@ -2157,7 +2157,11 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000,
 
     # Eventually save figure
     if saveFig:
-        save_mpl_fig(fig, 'acg{}-{}_{:.2f}'.format(unit, cwin, cbin), saveDir, _format)
+        ttl = '' if (title is None) else (' ' + ''.join(ch for ch in title if ch is not '\n'))
+        save_mpl_fig(fig,
+                     f'acg{unit}-{cwin}_{cbin:.2f}' + ttl,
+                     saveDir,
+                     _format)
 
     return fig
 
@@ -2339,7 +2343,8 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
              saveDir='~/Downloads', saveFig=False, _format='pdf', figsize=None, verbose=False,
              color=0, labels=True, title=None, ref_per=True, ylim=[0, 0], ax=None,
              acg_mn=None, acg_std=None, again=False,
-             train=None, hide_axis=False, prettify=True, enforced_rp=0, **mplp_kwargs):
+             train=None, hide_axis=False, prettify=True, enforced_rp=0, fs=30_000,
+             **mplp_kwargs):
     """
     Plots precomputed autocorrelogram.
     Arguments:
@@ -2377,21 +2382,21 @@ def plot_acg(dp, unit, cbin=0.2, cwin=80, normalize='Hertz', periods='all',
     Returns:
         - fig: matplotlib figure object
     """
-    saveDir = op.expanduser(saveDir)
+
     if train is not None:
         bChs = None
     else:
         bChs = get_depthSort_peakChans(dp, units=[unit])[:, 1].flatten()
     ylim1, ylim2 = ylim[0], ylim[1]
 
-    ACG = acg(dp, unit, cbin, cwin, fs=30000, normalize=normalize,
+    ACG = acg(dp, unit, cbin, cwin, fs=fs, normalize=normalize,
               verbose=verbose, periods=periods, again=again, train=train, enforced_rp=enforced_rp)
     if normalize == 'zscore':
-        ACG_hertz = acg(dp, unit, cbin, cwin, fs=30000, normalize='Hertz', verbose=verbose, periods=periods)
+        ACG_hertz = acg(dp, unit, cbin, cwin, fs=fs, normalize='Hertz', verbose=verbose, periods=periods)
         acg25, acg35 = ACG_hertz[:int(len(ACG_hertz) * 2. / 5)], ACG_hertz[int(len(ACG_hertz) * 3. / 5):]
         acg_std = np.std(np.append(acg25, acg35))
         acg_mn = np.mean(np.append(acg25, acg35))
-    fig = plt_acg(unit, ACG, cbin, cwin, bChs, color, 30000, saveDir, saveFig, _format=_format,
+    fig = plt_acg(unit, ACG, cbin, cwin, bChs, color, fs, saveDir, saveFig, _format=_format,
                   labels=labels, title=title, ref_per=ref_per, ylim1=ylim1, ylim2=ylim2, ax=ax,
                   normalize=normalize, acg_mn=acg_mn, acg_std=acg_std, figsize=figsize, hide_axis=hide_axis,
                   prettify=prettify, **mplp_kwargs)
@@ -2405,7 +2410,8 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
              ylim_acg=None, ylim_ccg=None, share_y=False,
              ccg_means=None, ccg_deviations=None, again=False, trains=None, as_grid=False, show_hz=False,
              use_template=True, enforced_rp=0, style='line', hide_axis=False, pad=0,
-             prettify=True, **mplp_kwargs):
+             prettify=True, fs=30_000,
+             **mplp_kwargs):
     """
     Arguments:
         - dp: str, data path
@@ -2458,7 +2464,6 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
     units=npa(units)[np.sort(_idx)].tolist()
     assert normalize in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte'], "WARNING ccg() 'normalize' argument should be a string in ['Counts', 'Hertz', 'Pearson', 'zscore', 'mixte']."#
     if normalize=='mixte' and len(units)==2 and not as_grid: normalize='zscore'
-    saveDir=op.expanduser(saveDir)
 
     if trains is None:
         # order of channels is swapped - fix it
@@ -2468,11 +2473,11 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
 
     if CCG is None:
         normalize1 = normalize if normalize!='mixte' else 'Hertz'
-        CCG = ccg(dp, units, cbin, cwin, fs=30000, normalize=normalize1, verbose=0, periods=periods, again=again, trains=trains, enforced_rp=enforced_rp)
+        CCG = ccg(dp, units, cbin, cwin, fs=fs, normalize=normalize1, verbose=0, periods=periods, again=again, trains=trains, enforced_rp=enforced_rp)
     assert CCG is not None
 
     if normalize in ['mixte', 'zscore']:
-        CCG_hertz=ccg(dp, units, cbin, cwin, fs=30000, normalize='Hertz', verbose=0,
+        CCG_hertz=ccg(dp, units, cbin, cwin, fs=fs, normalize='Hertz', verbose=0,
                         periods=periods, again=again, trains=trains)
         nbins = CCG_hertz.shape[2]
         ccg25, ccg35 = CCG_hertz[:,:,:int(nbins*2./5)], CCG_hertz[:,:,int(nbins*3./5):]
@@ -2483,7 +2488,7 @@ def plot_ccg(dp, units, cbin=0.2, cwin=80, normalize='mixte',
     if CCG.shape[0]==2 and not as_grid:
         if ccg_means is not None: ccg_means = ccg_means[0,1]
         if ccg_deviations is not None: ccg_deviations = ccg_deviations[0,1]
-        fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, 30000, saveDir, saveFig, _format,
+        fig = plt_ccg(units, CCG[0,1,:], cbin, cwin, bChs, fs, saveDir, saveFig, _format,
                       labels=labels, title=title, color=color, ylim=ylim_ccg,
                       normalize=normalize, ccg_mn=ccg_means, ccg_std=ccg_deviations,
                       figsize=figsize, style=style, hide_axis=hide_axis, show_hz=show_hz, show_ttl=show_ttl,

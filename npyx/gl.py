@@ -209,15 +209,15 @@ def json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
                                 holds_no_sync = False
 
                             holds_no_behav = True  ## TODO
-                            pair_dicts.append({
-                                        "ds": dsname,
-                                        "dp": dp,
-                                        "ss": ss + 0.1 * probei,
-                                        "cs": cs + 0.1 * probei,
-                                        "nc": cnc + 0.1 * probei,
-                                        "holds_no_behav": holds_no_behav,
-                                        "holds_no_sync": holds_no_sync,
-                                    })
+                            pair_dicts.loc[len(pair_dicts)] = {
+                                "ds": dsname,
+                                "dp": dp,
+                                "ss": ss + 0.1 * probei,
+                                "cs": cs + 0.1 * probei,
+                                "nc": cnc + 0.1 * probei,
+                                "holds_no_behav": holds_no_behav,
+                                "holds_no_sync": holds_no_sync,
+                            }
 
     connected_pairs_df = pd.DataFrame(pair_dicts)
     return connected_pairs_df
@@ -447,7 +447,7 @@ def load_merged_units_qualities(dp_merged, ds_table=None):
     for ds_i in ds_table.index:
         cl_grp = load_units_qualities(ds_table.loc[ds_i, "dp"])
         cl_grp["cluster_id"] = cl_grp["cluster_id"] + 1e-1 * ds_i
-        qualities = qualities.append(cl_grp, ignore_index=True)
+        qualities = pd.concat([qualities, cl_grp], ignore_index=True)
 
     return qualities
 

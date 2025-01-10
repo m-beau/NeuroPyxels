@@ -310,7 +310,15 @@ def prepare_classification_dataset(
     _acg_multi_factor=1,
     _n_channels=N_CHANNELS,
 ):
-    acgs = [] if _acgs_path is None else np.load(_acgs_path)
+    if _acgs_path is not None:
+        try:
+            acgs = np.load(_acgs_path)
+        except FileNotFoundError:
+            print(f"Precomputed 3D ACGs file not found at `{_acgs_path}`. Generating new ACGs.")
+            acgs = []
+            _acgs_path = None
+    else:
+        acgs = []
     waveforms = []
     for i, spikes in tqdm(
         enumerate(dataset.spikes_list),

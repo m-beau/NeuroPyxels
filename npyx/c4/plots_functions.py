@@ -199,8 +199,7 @@ def plot_confusion_from_proba(
     sup_threshold = pred_values > threshold
 
     actual_predictions = predictions[sup_threshold]
-    unclassified = predictions[~sup_threshold]
-    label_unclass, count_unclass = np.unique(unclassified, return_counts=True)
+    label_unclass, count_unclass = np.unique(true_targets[~sup_threshold], return_counts=True)
 
     if len(count_unclass) == 0:
         count_unclass = np.zeros(len(correspondence.keys()))
@@ -668,7 +667,7 @@ def plot_features_1cell_vertical(
         color = [c / 255 for c in C4_COLORS[ct]]
         ttl = (
             f"Cell {i if unit_id is None else unit_id} | Prediction: {ct}\n"
-            f"Confidence: \u03BC = {confidence:.2f}, \u0394\u03BC = {delta_conf:.2f}, ratio = {confidence_ratio:.2f}, votes = {n_votes}/{n_models}\n"
+            f"Confidence: \u03bc = {confidence:.2f}, \u0394\u03bc = {delta_conf:.2f}, ratio = {confidence_ratio:.2f}, votes = {n_votes}/{n_models}\n"
             f" {pred_str}"
         )
     else:
@@ -762,7 +761,7 @@ def plot_features_1cell_vertical(
         xscalebar=1,
         yscalebar=None,
         x_unit="ms",
-        y_unit="\u03BCV",
+        y_unit="\u03bcV",
         scalepad=0.025,
         fontsize=14,
         lw=3,

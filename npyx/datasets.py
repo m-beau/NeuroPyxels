@@ -6,8 +6,10 @@ Authors: @fededagos
 This module contains the functions to load the data from the hdf5 files used
 in the C4 collaboration. It also contains the functions to preprocess the data.
 """
+
 import copy
 import pickle
+from contextlib import suppress
 from typing import Tuple, Union
 
 import h5py
@@ -57,9 +59,7 @@ LABELLING_MLI_CLUSTER = {
 }
 
 
-CORRESPONDENCE_MLI_CLUSTER = {
-    value: key for key, value in LABELLING_MLI_CLUSTER.items()
-}
+CORRESPONDENCE_MLI_CLUSTER = {value: key for key, value in LABELLING_MLI_CLUSTER.items()}
 
 LABELLING_MLI_CLUSTER_NO_GRC = {
     "PkC_cs": 5,
@@ -70,9 +70,7 @@ LABELLING_MLI_CLUSTER_NO_GRC = {
     "GoC": 0,
 }
 
-CORRESPONDENCE_MLI_CLUSTER_NO_GRC = {
-    value: key for key, value in LABELLING_MLI_CLUSTER_NO_GRC.items()
-}
+CORRESPONDENCE_MLI_CLUSTER_NO_GRC = {value: key for key, value in LABELLING_MLI_CLUSTER_NO_GRC.items()}
 
 
 LAYERS = {0: "unknown", 1: "GCL", 2: "PCL", 3: "ML"}
@@ -326,6 +324,7 @@ class NeuronsDataset:
         self.conformed_waveforms = []
         self.acg_list = []
         self.spikes_list = []
+        self.raw_spikes_list = []
         self.labels_list = []
         self.info = []
         self.chanmap_list = []
@@ -380,10 +379,8 @@ class NeuronsDataset:
                 spikes = get_neuron_attr(dataset, wf_n, "spike_indices")
 
                 if not _lisberger:
-                    sane_spikes = get_neuron_attr(dataset, wf_n, "sane_spikes")
-                    fn_fp_spikes = get_neuron_attr(
-                        dataset, wf_n, "fn_fp_filtered_spikes"
-                    )
+                    sane_spikes = get_neuron_attr(dataset, wf_n, "sane_spikes").astype(bool)
+                    fn_fp_spikes = get_neuron_attr(dataset, wf_n, "fn_fp_filtered_spikes").astype(bool)
                 else:
                     sane_spikes = np.ones_like(spikes, dtype=bool)
                     fn_fp_spikes = np.ones_like(spikes, dtype=bool)
@@ -392,11 +389,7 @@ class NeuronsDataset:
 
                 # if spikes is void after quality checks, skip this neuron (if quality checks are enabled)
                 if len(spikes[quality_mask].copy()) == 0 and quality_check:
-                    dataset_name = (
-                        get_neuron_attr(dataset, wf_n, "dataset_id")
-                        .ravel()[0]
-                        .decode("utf-8")
-                    )
+                    dataset_name = get_neuron_attr(dataset, wf_n, "dataset_id").ravel()[0].decode("utf-8")
                     discarded_df = pd.concat(
                         (
                             discarded_df,
@@ -433,14 +426,14 @@ class NeuronsDataset:
                     else:
                         self.quality_checks_mask.append(True)
 
+                self.raw_spikes_list.append(spikes.astype(int))
+
                 # Extract amplitudes if requested
                 if _use_amplitudes:
                     amplitudes = get_neuron_attr(dataset, wf_n, "amplitudes")
                     try:
                         self.amplitudes_list.append(
-                            amplitudes[sane_spikes]
-                            if not quality_check
-                            else amplitudes[quality_mask]
+                            amplitudes[sane_spikes] if not quality_check else amplitudes[quality_mask]
                         )
                     except IndexError:
                         # print(
@@ -448,14 +441,10 @@ class NeuronsDataset:
                         # )
                         # print("Enforcing them to be of equal size.")
                         if quality_check:
-                            amplitudes, quality_mask = force_amplitudes_length(
-                                amplitudes, quality_mask
-                            )
+                            amplitudes, quality_mask = force_amplitudes_length(amplitudes, quality_mask)
                             self.amplitudes_list.append(amplitudes[quality_mask])
                         else:
-                            amplitudes, sane_spikes = force_amplitudes_length(
-                                amplitudes, sane_spikes
-                            )
+                            amplitudes, sane_spikes = force_amplitudes_length(amplitudes, sane_spikes)
                             self.amplitudes_list.append(amplitudes[sane_spikes])
 
                 discard_wave = False
@@ -486,31 +475,23 @@ class NeuronsDataset:
                 # Extract the waveform conformed to the common preprocessing strategy in C4
                 peak_chan = np.argmax(np.ptp(wf, axis=1))
                 conformed_wave = preprocess_template(
-                    wf[peak_chan, :], self._sampling_rate,
-                    peak_sign = "negative" if self.flip_waveforms else None,
+                    wf[peak_chan, :],
+                    self._sampling_rate,
+                    peak_sign="negative" if self.flip_waveforms else None,
                 )
                 self.conformed_waveforms.append(conformed_wave)
 
                 if normalise_wvf:
-                    cropped_wave, peak_idx = crop_original_wave(
-                        normalise_wf(wf), central_range, n_channels
-                    )
+                    cropped_wave, peak_idx = crop_original_wave(normalise_wf(wf), central_range, n_channels)
                     self.wf_list.append(cropped_wave.ravel().astype(float))
                 else:
-                    cropped_wave, peak_idx = crop_original_wave(
-                        wf, central_range, n_channels
-                    )
+                    cropped_wave, peak_idx = crop_original_wave(wf, central_range, n_channels)
                     self.wf_list.append(cropped_wave.ravel().astype(float))
                 if (
-                    self.wf_list[-1].shape[0]
-                    != n_channels * central_range
+                    self.wf_list[-1].shape[0] != n_channels * central_range
                     # or discard_wave
                 ):
-                    dataset_name = (
-                        get_neuron_attr(dataset, wf_n, "dataset_id")
-                        .ravel()[0]
-                        .decode("utf-8")
-                    )
+                    dataset_name = get_neuron_attr(dataset, wf_n, "dataset_id").ravel()[0].decode("utf-8")
                     discarded_df = pd.concat(
                         (
                             discarded_df,
@@ -534,6 +515,7 @@ class NeuronsDataset:
                     del self.labels_list[-1]
                     del self.wf_list[-1]
                     del self.spikes_list[-1]
+                    del self.raw_spikes_list[-1]
                     del self.conformed_waveforms[-1]
 
                     if not quality_check:
@@ -546,20 +528,15 @@ class NeuronsDataset:
 
                 # Extract ACG. Even if we don't apply quality checks, we still want to use spikes from the spontaneous period
 
-                acg_spikes = (
-                    spikes[quality_mask] if quality_check else spikes[sane_spikes]
-                )
-
+                acg_spikes = spikes[quality_mask] if quality_check else spikes[sane_spikes]
                 if len(acg_spikes) == 0:
-                    self.acg_list.append(
-                        np.zeros(int(_win_size / _bin_size + 1)).astype(float)
-                    )
+                    self.acg_list.append(np.zeros(int(_win_size / _bin_size + 1)).astype(float))
 
                 else:
                     if normalise_acg:
                         acg = npyx.corr.acg(
-                            ".npyx_placeholder",
-                            4,
+                            "",
+                            0,
                             _bin_size,
                             _win_size,
                             fs=self._sampling_rate,
@@ -571,8 +548,8 @@ class NeuronsDataset:
                         self.acg_list.append(normal_acg.astype(float))
                     else:
                         acg = npyx.corr.acg(
-                            ".npyx_placeholder",
-                            4,
+                            "",
+                            0,
                             _bin_size,
                             _win_size,
                             fs=self._sampling_rate,
@@ -581,11 +558,7 @@ class NeuronsDataset:
                         self.acg_list.append(acg.astype(float))
 
                 # Extract useful metadata
-                dataset_name = (
-                    get_neuron_attr(dataset, wf_n, "dataset_id")
-                    .ravel()[0]
-                    .decode("utf-8")
-                )
+                dataset_name = get_neuron_attr(dataset, wf_n, "dataset_id").ravel()[0].decode("utf-8")
                 neuron_id = get_neuron_attr(
                     dataset,
                     wf_n,
@@ -619,11 +592,7 @@ class NeuronsDataset:
             except KeyError:
                 if _debug:
                     raise
-                dataset_name = (
-                    get_neuron_attr(dataset, wf_n, "dataset_id")
-                    .ravel()[0]
-                    .decode("utf-8")
-                )
+                dataset_name = get_neuron_attr(dataset, wf_n, "dataset_id").ravel()[0].decode("utf-8")
                 discarded_df = pd.concat(
                     (
                         discarded_df,
@@ -656,13 +625,9 @@ class NeuronsDataset:
         else:
             acg_list_resampled = acg_list_cut
 
-        self.targets = np.array(
-            (pd.Series(self.labels_list).replace(_labelling).values)
-        )
+        self.targets = np.array((pd.Series(self.labels_list).replace(_labelling).values))
         if len(self.wf_list) == 0:
-            raise NotImplementedError(
-                "No neurons could be extracted from the dataset with the provided parameters."
-            )
+            raise NotImplementedError("No neurons could be extracted from the dataset with the provided parameters.")
         self.wf = np.stack(self.wf_list, axis=0)
         self.acg = np.stack(acg_list_resampled, axis=0)
 
@@ -705,6 +670,7 @@ class NeuronsDataset:
         self.targets = self.targets[mask]
         self.info = np.array(self.info)[mask].tolist()
         self.spikes_list = np.array(self.spikes_list, dtype=object)[mask].tolist()
+        self.raw_spikes_list = np.array(self.raw_spikes_list, dtype=object)[mask].tolist()
         self.labels_list = np.array(self.labels_list)[mask].tolist()
         self.acg_list = np.array(self.acg_list)[mask].tolist()
         self.h5_ids = self.h5_ids[mask]
@@ -714,20 +680,14 @@ class NeuronsDataset:
         except ValueError:
             self.chanmap_list = [self.chanmap_list[i] for i in np.where(mask)[0]]
 
-        self.genetic_line_list = np.array(self.genetic_line_list, dtype=object)[
-            mask
-        ].tolist()
+        self.genetic_line_list = np.array(self.genetic_line_list, dtype=object)[mask].tolist()
 
         if hasattr(self, "amplitudes_list"):
-            self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[
-                mask
-            ].tolist()
+            self.amplitudes_list = np.array(self.amplitudes_list, dtype=object)[mask].tolist()
         if hasattr(self, "quality_checks_mask"):
             self.quality_checks_mask = self.quality_checks_mask[mask]
             self.fn_fp_list = np.array(self.fn_fp_list, dtype=object)[mask].tolist()
-            self.sane_spikes_list = np.array(self.sane_spikes_list, dtype=object)[
-                mask
-            ].tolist()
+            self.sane_spikes_list = np.array(self.sane_spikes_list, dtype=object)[mask].tolist()
         if hasattr(self, "full_dataset"):
             self.full_dataset = self.full_dataset[mask]
         if hasattr(self, "layer_list"):
@@ -782,16 +742,8 @@ class NeuronsDataset:
         self.targets[self.targets < 0] = -1  # Reset the label of unlabeled cells
 
         # To convert text labels to numbers
-        new_labelling = (
-            LABELLING_NO_GRC
-            if not self.mli_clustering
-            else LABELLING_MLI_CLUSTER_NO_GRC
-        )
-        new_correspondence = (
-            CORRESPONDENCE_NO_GRC
-            if not self.mli_clustering
-            else CORRESPONDENCE_MLI_CLUSTER_NO_GRC
-        )
+        new_labelling = LABELLING_NO_GRC if not self.mli_clustering else LABELLING_MLI_CLUSTER_NO_GRC
+        new_correspondence = CORRESPONDENCE_NO_GRC if not self.mli_clustering else CORRESPONDENCE_MLI_CLUSTER_NO_GRC
         if return_mask:
             return new_labelling, new_correspondence, granule_cell_mask
 
@@ -822,7 +774,7 @@ class NeuronsDataset:
 
         npyx.plot.plt_wvf(wvf.T)
         plt.show()
-        npyx.plot.plot_acg(".npyx_placeholder", 0, train=train)
+        npyx.plot.plot_acg("", 0, train=train)
         plt.show()
 
     def apply_quality_checks(self):
@@ -839,9 +791,7 @@ class NeuronsDataset:
         checked_dataset = copy.deepcopy(self)
         checked_dataset.spikes_list = [
             train[fn_fp_mask[sane_mask]]
-            for train, fn_fp_mask, sane_mask in zip(
-                self.spikes_list, self.fn_fp_list, self.sane_spikes_list
-            )
+            for train, fn_fp_mask, sane_mask in zip(self.spikes_list, self.fn_fp_list, self.sane_spikes_list)
         ]
         checked_dataset._apply_mask(checked_dataset.quality_checks_mask)
         del checked_dataset.quality_checks_mask
@@ -849,6 +799,20 @@ class NeuronsDataset:
         del checked_dataset.sane_spikes_list
 
         return checked_dataset
+
+    def filter_by_stability(self, std_threshold=3):
+        """
+        Filters out neurons whose first half of the recording has a firing rate that is more than `std_threshold`
+        standard deviations away from the second half.
+        """
+        assert hasattr(self, "quality_checks_mask"), "Quality checks must be applied after this step"
+        filtering_mask = np.array(
+            [
+                check_recording_stability(train, bin_width=50, std_threshold=std_threshold, fs=self._sampling_rate)
+                for train in self.raw_spikes_list
+            ]
+        ).astype(bool)
+        self.quality_checks_mask = self.quality_checks_mask.astype(bool) & filtering_mask
 
     def save(self, path):
         """
@@ -882,13 +846,9 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
                         merge_func((attr_value, other_attr_value)),
                     )
                 else:
-                    setattr(
-                        new_dataset, attr_name, merge_func(attr_value, other_attr_value)
-                    )
+                    setattr(new_dataset, attr_name, merge_func(attr_value, other_attr_value))
             else:
-                raise NotImplementedError(
-                    "Attempted to merge datasets with different attributes"
-                )
+                raise NotImplementedError("Attempted to merge datasets with different attributes")
 
     new_dataset = copy.deepcopy(args[0])
     for dataset in args[1:]:
@@ -897,22 +857,14 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
         new_dataset.acg = np.vstack((new_dataset.acg, dataset.acg))
         new_dataset.targets = np.hstack((new_dataset.targets, dataset.targets))
         new_dataset.chanmap_list += dataset.chanmap_list
-        new_dataset.conformed_waveforms = np.vstack(
-            (new_dataset.conformed_waveforms, dataset.conformed_waveforms)
-        )
+        new_dataset.conformed_waveforms = np.vstack((new_dataset.conformed_waveforms, dataset.conformed_waveforms))
         new_dataset.genetic_line_list += dataset.genetic_line_list
-        new_dataset.info = np.hstack(
-            (np.array(new_dataset.info), np.array(dataset.info))
-        ).tolist()
-        new_dataset.acg_list = np.vstack(
-            (np.array(new_dataset.acg_list), np.array(dataset.acg_list))
-        ).tolist()
+        new_dataset.info = np.hstack((np.array(new_dataset.info), np.array(dataset.info))).tolist()
+        new_dataset.acg_list = np.vstack((np.array(new_dataset.acg_list), np.array(dataset.acg_list))).tolist()
         new_dataset.h5_ids = np.hstack((new_dataset.h5_ids, dataset.h5_ids))
 
         merge_attributes("spikes_list", np.hstack, dtype=object)
-        new_dataset.discarded_df = pd.concat(
-            (new_dataset.discarded_df, dataset.discarded_df), axis=0
-        )
+        new_dataset.discarded_df = pd.concat((new_dataset.discarded_df, dataset.discarded_df), axis=0)
         new_dataset.labels_list += dataset.labels_list
 
         merge_attributes("amplitudes_list", lambda x, y: x + y)
@@ -926,9 +878,7 @@ def merge_h5_datasets(*args: NeuronsDataset) -> NeuronsDataset:
     return new_dataset
 
 
-def resample_waveforms(
-    dataset: NeuronsDataset, new_sampling_rate: int = 30_000
-) -> NeuronsDataset:
+def resample_waveforms(dataset: NeuronsDataset, new_sampling_rate: int = 30_000) -> NeuronsDataset:
     """
     It takes a dataset, resizes the waveforms to a new sampling rate, and returns a new dataset with the
     resized waveforms
@@ -1020,9 +970,7 @@ def preprocess_template(
         template = waveform
 
     if original_sampling_rate != output_sampling_rate:
-        template = resample(
-            template, int(output_sampling_rate / original_sampling_rate * len(template))
-        )
+        template = resample(template, int(output_sampling_rate / original_sampling_rate * len(template)))
 
     alignment_idx = int(round(abs(clip_size[0]) * output_sampling_rate))
 
@@ -1035,17 +983,9 @@ def preprocess_template(
     if len(peaks) == 0:
         peaks = []
         for i in range(1, len(template) - 1):
-            if (
-                (template[i] > template[i - 1])
-                and (template[i] >= template[i + 1])
-                and (template[i] > 0)
-            ):
+            if (template[i] > template[i - 1]) and (template[i] >= template[i + 1]) and (template[i] > 0):
                 peaks.append(i)  # Positive peak
-            elif (
-                (template[i] < template[i - 1])
-                and (template[i] <= template[i + 1])
-                and (template[i] < 0)
-            ):
+            elif (template[i] < template[i - 1]) and (template[i] <= template[i + 1]) and (template[i] < 0):
                 peaks.append(i)  # Negative peak
 
     # Given our list of peaks, our goal is to find the optimal peak,
@@ -1060,41 +1000,27 @@ def preprocess_template(
 
     # Determine if we need to flip our template based on the value of the peak
     # ensuring that the peak is negative
-    if (
-        peak_sign is not None
-        and peak_sign == "negative"
-        and template[reference_peak_idx] > 0
-    ):
+    if peak_sign is not None and peak_sign == "negative" and template[reference_peak_idx] > 0:
         template = template * -1
         if multi_chan:
             waveform = waveform * -1
-    elif (
-        peak_sign is not None
-        and peak_sign == "positive"
-        and template[reference_peak_idx] < 0
-    ):
+    elif peak_sign is not None and peak_sign == "positive" and template[reference_peak_idx] < 0:
         template = template * -1
         if multi_chan:
             waveform = waveform * -1
 
     # Construct our output template based on our desired clip_size
-    num_indices = int(
-        round((abs(clip_size[0]) + abs(clip_size[1])) * output_sampling_rate)
-    )
+    num_indices = int(round((abs(clip_size[0]) + abs(clip_size[1])) * output_sampling_rate))
     if reference_peak_idx < alignment_idx:
         if multi_chan:
             padding = np.tile(waveform[:, 0], (alignment_idx - reference_peak_idx, 1)).T
             waveform = np.concatenate((padding, waveform), axis=1)
         else:
-            template = np.concatenate(
-                (np.ones(alignment_idx - reference_peak_idx) * template[0], template)
-            )
+            template = np.concatenate((np.ones(alignment_idx - reference_peak_idx) * template[0], template))
     elif reference_peak_idx > alignment_idx:
         shift = reference_peak_idx - alignment_idx
         if multi_chan:
-            padding = np.tile(
-                waveform[:, -1], (reference_peak_idx - alignment_idx, 1)
-            ).T
+            padding = np.tile(waveform[:, -1], (reference_peak_idx - alignment_idx, 1)).T
             waveform = np.concatenate((waveform[:, shift:], padding), axis=1)
         else:
             template = np.concatenate((template[shift:], np.full(shift, template[-1])))
@@ -1118,7 +1044,9 @@ def preprocess_template(
             constant_values=template[-1],
         )
         if multi_chan:
-            padding = np.tile(waveform[:, -1], (num_indices - waveform.shape[1], 1)).T # MB fixed predicted bug - make sure it is correct.
+            padding = np.tile(
+                waveform[:, -1], (num_indices - waveform.shape[1], 1)
+            ).T  # MB fixed predicted bug - make sure it is correct.
             waveform = np.concatenate((waveform, padding), axis=1)
 
     assert len(template) == num_indices
@@ -1131,9 +1059,7 @@ def preprocess_template(
     num_indices = int(round(abs(clip_size[0]) * output_sampling_rate))
     template = template - np.median(template[:num_indices])
     if multi_chan:
-        waveform = waveform - np.median(
-            waveform[:, :num_indices], axis=1, keepdims=True
-        )
+        waveform = waveform - np.median(waveform[:, :num_indices], axis=1, keepdims=True)
 
     if normalize:
         # Normalize the result
@@ -1142,6 +1068,7 @@ def preprocess_template(
             waveform = waveform / np.abs(waveform[peak_channel, alignment_idx])
 
     return template if not multi_chan else waveform
+
 
 def preprocess_template_singlewaveforms(
     waveforms: np.ndarray,
@@ -1201,7 +1128,10 @@ def preprocess_template_singlewaveforms(
     assert target_peak_sign in [None, "positive", "negative"]
 
     # Check if provided waveform is 2D
-    assert waveforms.ndim in [2, 3], "Input waveform array must be (n_samples, n_waveforms) or (n_channels, n_samples, n_waveforms)."
+    assert waveforms.ndim in [
+        2,
+        3,
+    ], "Input waveform array must be (n_samples, n_waveforms) or (n_channels, n_samples, n_waveforms)."
 
     # waveforms: (n_samples, n_waveforms,) or (n_channels, n_samples, n_waveforms,) array
     # waveform: (n_samples,) or (n_channels, n_samples,)
@@ -1216,9 +1146,7 @@ def preprocess_template_singlewaveforms(
         template = waveform
 
     if original_sampling_rate != output_sampling_rate:
-        template = resample(
-            template, int(output_sampling_rate / original_sampling_rate * len(template))
-        )
+        template = resample(template, int(output_sampling_rate / original_sampling_rate * len(template)))
     original_n_samples = len(template)
     # Search through our template to find our desired alignment point
     # We only align to peaks, so our goal is to find a set of local peaks
@@ -1229,17 +1157,9 @@ def preprocess_template_singlewaveforms(
     if len(peaks) == 0:
         peaks = []
         for i in range(1, len(template) - 1):
-            if (
-                (template[i] > template[i - 1])
-                and (template[i] >= template[i + 1])
-                and (template[i] > 0)
-            ):
+            if (template[i] > template[i - 1]) and (template[i] >= template[i + 1]) and (template[i] > 0):
                 peaks.append(i)  # Positive peak
-            elif (
-                (template[i] < template[i - 1])
-                and (template[i] <= template[i + 1])
-                and (template[i] < 0)
-            ):
+            elif (template[i] < template[i - 1]) and (template[i] <= template[i + 1]) and (template[i] < 0):
                 peaks.append(i)  # Negative peak
 
     # Given our list of peaks, our goal is to find the optimal peak,
@@ -1251,7 +1171,7 @@ def preprocess_template_singlewaveforms(
         peak_finder = template
     elif source_peak_sign == "negative":
         peak_finder = template * -1
-    
+
     peak_values = peak_finder[peaks]
     extremum = np.max(peak_values)
     reference_peak_idx = peaks[np.where(peak_values > 0.75 * extremum)[0][0]]
@@ -1261,20 +1181,12 @@ def preprocess_template_singlewaveforms(
 
     # Determine if we need to flip our template based on the value of the peak
     # ensuring that the peak is negative
-    if (
-        target_peak_sign is not None
-        and target_peak_sign == "negative"
-        and template[reference_peak_idx] > 0
-    ):
+    if target_peak_sign is not None and target_peak_sign == "negative" and template[reference_peak_idx] > 0:
         template = template * -1
         waveforms = waveforms * -1
         if multi_chan:
             waveform = waveform * -1
-    elif (
-        target_peak_sign is not None
-        and target_peak_sign == "positive"
-        and template[reference_peak_idx] < 0
-    ):
+    elif target_peak_sign is not None and target_peak_sign == "positive" and template[reference_peak_idx] < 0:
         template = template * -1
         waveforms = waveforms * -1
         if multi_chan:
@@ -1282,9 +1194,7 @@ def preprocess_template_singlewaveforms(
 
     # Construct our output template based on our desired clip_size
     # There is a much better way to code that up... but don't fix what ain't broken
-    num_indices = int(
-        round((abs(clip_size[0]) + abs(clip_size[1])) * output_sampling_rate)
-    )
+    num_indices = int(round((abs(clip_size[0]) + abs(clip_size[1])) * output_sampling_rate))
     shift = reference_peak_idx - alignment_idx
     if shift < 0:
         template = np.concatenate((np.ones(alignment_idx - reference_peak_idx) * template[0], template))
@@ -1349,7 +1259,6 @@ def preprocess_template_singlewaveforms(
         waveform = waveform - w_medians
         waveforms = waveforms - w_medians[:, :, None]
     else:
-
         waveforms = waveforms - w_median[:, None]
 
     if normalize:
@@ -1364,12 +1273,11 @@ def preprocess_template_singlewaveforms(
             waveforms = waveforms / extremum
 
     if return_parameters:
-        alignment_idx_original_array = original_n_samples // 2 # 0 us the center of the array
+        alignment_idx_original_array = original_n_samples // 2  # 0 us the center of the array
         total_shift = alignment_idx_original_array - reference_peak_idx
-        return waveforms, dict(shift_samples = total_shift,
-                               peak_value = extremum,
-                               sampling_rate = output_sampling_rate)
+        return waveforms, dict(shift_samples=total_shift, peak_value=extremum, sampling_rate=output_sampling_rate)
     return waveforms
+
 
 def pad_matrix_with_decay(matrix, target_channels=10):
     n_channels, _ = matrix.shape
@@ -1398,13 +1306,44 @@ def pad_matrix_with_decay(matrix, target_channels=10):
     bottom_padding = padding_needed - top_padding
 
     # Create separate top and bottom padding rows with the decay pattern
-    top_padding_rows = (matrix[0] - closest_non_peak_value) * decay_pattern[
-        :top_padding, np.newaxis
-    ][::-1]
-    bottom_padding_rows = (matrix[-1] - closest_non_peak_value) * decay_pattern[
-        :bottom_padding, np.newaxis
-    ]
+    top_padding_rows = (matrix[0] - closest_non_peak_value) * decay_pattern[:top_padding, np.newaxis][::-1]
+    bottom_padding_rows = (matrix[-1] - closest_non_peak_value) * decay_pattern[:bottom_padding, np.newaxis]
 
     # Stack the padding and the original matrix vertically
     padded_matrix = np.vstack((top_padding_rows, matrix, bottom_padding_rows))
     return padded_matrix
+
+
+def check_recording_stability(spikes, bin_width=50, std_threshold=1, fs=30_000):
+    def get_binned_firing_rates(spikes, bin_width=10, fs=30_000):
+        bins = np.arange(0, max(spikes) / fs + bin_width, bin_width)
+
+        spike_counts, _ = np.histogram(spikes / fs, bins=bins)
+
+        firing_rates = spike_counts / bin_width
+
+        return firing_rates
+
+    if not len(spikes):
+        return False
+
+    len_recording = max(spikes) + 1
+
+    first_half = spikes[spikes < len_recording // 2]
+    second_half = spikes[spikes >= len_recording // 2]
+
+    if len(first_half) == 0 or len(second_half) == 0:
+        return False
+
+    first_half_rates = get_binned_firing_rates(first_half, bin_width=bin_width, fs=fs)
+    second_half_rates = get_binned_firing_rates(second_half, bin_width=bin_width, fs=fs)
+
+    first_half_mfr = np.mean(first_half_rates)
+    second_half_mfr = np.mean(second_half_rates)
+    std_first_half = np.std(first_half_rates)
+
+    return (
+        std_threshold * std_first_half - first_half_mfr
+        < second_half_mfr
+        < std_threshold * std_first_half + first_half_mfr
+    )

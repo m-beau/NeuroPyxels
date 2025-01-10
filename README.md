@@ -32,7 +32,7 @@
 We recommend using a conda environment. Pre-existing packages on a python installation might be incompatible with npyx and break your installation. You can find instructions on setting up a conda environment [here](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html).
 
 ```bash
-  conda create -n my_env python=3.10
+  conda create -n my_env python=3.11 £ # python 3.12 and above not supported
   conda activate my_env
   pip install npyx
   # optionally (see 'Dealing with cupy' section below):
@@ -464,7 +464,7 @@ dps = ['same_folder/lateralprobe_dataset',
        'same_folder/medialprobe_dataset',
        'same_folder/anteriorprobe_dataset']
 probenames = ['lateral','medial','anterior']
-dp_dict = {p:dp for p, dp in zip(dps, probenames)}
+dp_dict = {p:dp for p, dp in zip(probenames, dps)}
 
 # This will merge the 3 datasets (only relevant information, not the raw data) in a new folder at
 # dp_merged: same_folder/merged_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset
@@ -472,7 +472,7 @@ dp_dict = {p:dp for p, dp in zip(dps, probenames)}
 # The only difference is that units now need to be called as floats,
 # of format u.x (u=unit id, x=dataset id [0-2]).
 # lateralprobe, medial probe and anteriorprobe x will be respectively 0,1 and 2.
-dp_merged, datasets_table = merge_datasets(dp_dic)
+dp_merged, datasets_table = merge_datasets(dp_dict)
 
 
 --- Merged data (from 2 dataset(s)) will be saved here: /same_folder/merged_lateralprobe_dataset_medialprobe_dataset_anteriorprobe_dataset.

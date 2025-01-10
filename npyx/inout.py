@@ -27,7 +27,7 @@ except ImportError:
 
 import json
 
-from npyx.utils import list_files, npa, read_pyfile, npyx_cacher
+from npyx.utils import list_files, npa, read_pyfile, npyx_cacher, is_writable
 
 #%% Load metadata and channel map
 
@@ -92,12 +92,32 @@ def metadata(dp):
     assert dp.is_dir(), f"Provided path {dp} is a filename!"
 
     probe_versions = {
-        'glx':{3.0:'3A', # option 3
-               0.0:'1.0',
-               21:'2.0_singleshank',
-               24:'2.0_fourshanks',
-               1123:'ultra_high_density',
-               1030:'NHP_1.0'},
+        'glx':{3.0:  '3A', # option 3
+               0.0:  '1.0',
+               1.0:  '1.0', # precise type unknown
+
+               1020:  '1.0', # precise type unknown
+               1100:  '1.0', # precise type unknown
+               1200:  '1.0', # precise type unknown
+               1300:  '1.0', # precise type unknown
+
+               1110:  '1.0', # precise type unknown
+               1120:  '1.0', # precise type unknown
+               1121:  '1.0', # precise type unknown
+               1122:  '1.0', # precise type unknown
+               1123:  'ultra_high_density',
+
+               1030: 'NHP_1.0',
+
+               21:   '2.0_singleshank',
+               2003: '2.0_singleshank',
+               2004: '2.0_singleshank',
+
+               24:   '2.0_fourshanks',
+               2013: '2.0_fourshanks',
+               2014: '2.0_fourshanks', # assumed type
+               2020: '2.0_fourshanks', # assuned type
+               },
         'oe':{"Neuropix-3a":'3A', # source_processor_name keys
                 "Neuropix-PXI":'1.0',
                 '?1':'2.0_singleshank', # do not know yet
@@ -599,7 +619,8 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
             print(f'Unpacking bits from {dt} data ...')
             binary     = unpackbits(syncdat, 8*dt.itemsize).astype(np.int8)
             sync_fname = fname[:-4]+'_sync'
-            np.savez_compressed(sync_dp/(sync_fname+'.npz'), binary)
+            if is_writable(sync_dp):
+                np.savez_compressed(sync_dp/(sync_fname+'.npz'), binary)
 
         if output_binary:
             return binary
@@ -612,12 +633,14 @@ def get_npix_sync(dp, output_binary = False, filt_key='highpass', unit='seconds'
             ons = sync_idx_onset[0][
                 sync_idx_onset[1] == ichan]
             onsets[ichan] = ons
-            np.save(Path(sync_dp, sync_fname+'{}on_samples.npy'.format(ichan)), ons)
+            if is_writable(sync_dp):
+                np.save(Path(sync_dp, sync_fname+'{}on_samples.npy'.format(ichan)), ons)
         for ichan in np.unique(sync_idx_offset[1]):
             ofs = sync_idx_offset[0][
                 sync_idx_offset[1] == ichan]
             offsets[ichan] = ofs
-            np.save(Path(sync_dp, sync_fname+'{}of_samples.npy'.format(ichan)), ofs)
+            if is_writable(sync_dp):
+                np.save(Path(sync_dp, sync_fname+'{}of_samples.npy'.format(ichan)), ofs)
 
         onsets  = {ok:ov/srate for ok, ov in onsets.items()}
         offsets = {ok:ov/srate for ok, ov in offsets.items()}

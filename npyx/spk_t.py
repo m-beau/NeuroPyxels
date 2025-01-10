@@ -96,7 +96,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all',
     # Optional selection of spikes without duplicates
     dp_source = npyx.merger.get_source_dp_u(dp, unit)[0]
     fs = read_metadata(dp_source)["highpass"]['sampling_rate']
-    train = trn(dp, unit, again=again, enforced_rp=-1)
+    train = trn(dp, unit, again=again, enforced_rp=-1, cache_results=cache_results)
     duplicates_m = duplicates_mask(train, enforced_rp, fs)
     train = train[~duplicates_m]
     indices = indices[~duplicates_m]
@@ -113,14 +113,16 @@ def ids(dp, unit, sav=True, verbose=False, periods='all',
     return indices
 
 def load_amplitudes(dp, unit, verbose=False,
-                    periods='all', again=False, enforced_rp=-1):
+                    periods='all', again=False, enforced_rp=-1,
+                    cache_results=True, cache_path=None):
     f'''Load unit amplitudes
     i.e. kilosort template scaling factor for each spike.
     
     for parameters see doc of ids:
     {ids.__doc__}'''
     dp = Path(dp)
-    unit_ids = ids(dp, unit, True, verbose, periods, again, enforced_rp)
+    unit_ids = ids(dp, unit, True, verbose, periods, again, enforced_rp,
+                   cache_results=cache_results, cache_path=cache_path)
     return np.load(dp/'amplitudes.npy')[unit_ids]
 
 @npyx_cacher
@@ -228,7 +230,7 @@ def isi(dp, unit, enforced_rp=0, sav=True, verbose=False, periods='all', again=F
       If False, by definition of the routine, drawn to global namespace.
     - sav (bool - default True): if True, by definition of the routine, saves the file in dp/routinesMemory.
     '''
-    t=trn(dp, unit, sav, verbose, periods, again, enforced_rp)
+    t=trn(dp, unit, sav, verbose, periods, again, enforced_rp, cache_results=False)
     return np.diff(t) if len(t)>1 else None
 
 def inst_cv2(t):
@@ -335,7 +337,7 @@ def mfr(dp=None, U=None, exclusion_quantile=0.005, enforced_rp=0,
     U=npa([U]).flatten()
     MFR=[]
     for u in U:
-        t=trn(dp, u, periods=periods, again=again, enforced_rp=enforced_rp)
+        t=trn(dp, u, periods=periods, again=again, enforced_rp=enforced_rp, cache_results=False)
         dp_source = npyx.merger.get_source_dp_u(dp, u)[0]
         fs=read_metadata(dp_source)['highpass']['sampling_rate']
         MFR.append(mean_firing_rate(t, exclusion_quantile, fs))
@@ -389,7 +391,8 @@ def trnb(dp, u, b, periods='all',
     dp_source = npyx.merger.get_source_dp_u(dp, u)[0]
     fs=read_metadata(dp_source)['highpass']['sampling_rate']
     assert b>=1000/fs
-    t = trn(dp, u, enforced_rp=1, periods=periods, again=again)
+    t = trn(dp, u, enforced_rp=1, periods=periods,
+            again=again, cache_results=cache_results, cache_path=cache_path)
     t_end = np.load(Path(dp,'spike_times.npy'), mmap_mode='r').ravel()[-1]
     return binarize(t, b, fs, t_end)
 
@@ -416,7 +419,8 @@ def get_firing_periods(dp, u, b=1, sd=1000, th=0.02,
         # fn=f'firing_periods_{u}_{b}_{sd}_{th}.npy'
         # if op.exists(Path(dpnm,fn)) and not again:
         #     return np.load(Path(dpnm,fn))
-        t = trn(dp, u, enforced_rp=1, again=again)
+        t = trn(dp, u, enforced_rp=1,
+                again=again, cache_results=cache_results, cache_path=cache_path)
         dp_source = npyx.merger.get_source_dp_u(dp, u)[0]
         fs=read_metadata(dp_source)['highpass']['sampling_rate']
         t_end = np.load(Path(dp,'spike_times.npy'), mmap_mode='r').ravel()[-1]
@@ -664,9 +668,11 @@ def train_quality(dp, unit, period_m=[0,20],
     dpnm = get_npyx_memory(dp)
     
     # Load data
-    unit_amp = load_amplitudes(dp, unit, verbose, 'all', again, enforced_rp)
+    unit_amp = load_amplitudes(dp, unit, verbose, 'all', again, enforced_rp,
+                               cache_results=save)
     
-    unit_train = trn(dp, unit, enforced_rp=enforced_rp, again=again, verbose=verbose)/fs
+    unit_train = trn(dp, unit, enforced_rp=enforced_rp,
+                     again=again, verbose=verbose, cache_results=save)/fs
 
     if period_m is None:
         period_m = [0, unit_train[-1]//60]
@@ -875,7 +881,7 @@ def trn_filtered(dp, unit, period_m=[0,20],
     {0}
     """
     dp = Path(dp)
-    t = trn(dp,unit, enforced_rp=enforced_rp, again=again)
+    t = trn(dp,unit, enforced_rp=enforced_rp, again=again, cache_results=save)
     t_s=t/30000
     good_spikes_m, good_fp_start_end, good_fn_start_end = train_quality(dp, unit, period_m,
                     fp_chunk_span, fp_chunk_size, fn_chunk_span, fn_chunk_size, use_or_operator,

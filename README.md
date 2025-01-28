@@ -32,7 +32,7 @@
 We recommend using a conda environment. Pre-existing packages on a python installation might be incompatible with npyx and break your installation. You can find instructions on setting up a conda environment [here](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html).
 
 ```bash
-  conda create -n my_env python=3.11 £ # python 3.12 and above not supported
+  conda create -n my_env python=3.10 # python 3.11 and above not supported (work in progress)
   conda activate my_env
   pip install npyx
   # optionally (see 'Dealing with cupy' section below):

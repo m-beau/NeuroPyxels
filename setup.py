@@ -52,6 +52,9 @@ c4_requirements = [
     "requests",
     "dill",
     "tabulate",
+    "python-dateutil<3.11.0", # Constrain Python version for compatibility with pytorch pinned version
+    "scipy==1.10.0", # Constrain scipy version for compatibility with pytorch pinned version
+    "numpy<2.0.0" # Constrain numpy version for compatibility with pytorch pinned version
 ]
 dependency_links = ["https://download.pytorch.org/whl/cpu"]
 
@@ -62,14 +65,14 @@ setup(
     version=get_version("npyx/__init__.py"),
     author="Maxime Beau",
     author_email="maximebeaujeanroch047@gmail.com",
-    description="Python routines dealing with Neuropixels data.",
+    description="Utilities to load, process, and plot Neuropixels data in Python.",
     long_description=readme,
     long_description_content_type="text/markdown",
     url="https://github.com/Npix-routines/NeuroPyxels",
     packages=["npyx", "npyx.c4"],
     install_requires=requirements,
     extras_require={"c4": c4_requirements},
-    python_requires="<3.12",
+    python_requires="<3.11; extra == 'c4'", # Constrain Python version for compatibility with pytorch pinned version
     dependency_links=dependency_links,
     entry_points=entry_points,
     keywords="neuropixels,kilosort,phy,data analysis,electrophysiology,neuroscience",

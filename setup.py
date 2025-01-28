@@ -52,7 +52,6 @@ c4_requirements = [
     "requests",
     "dill",
     "tabulate",
-    "python-dateutil<3.11.0", # Constrain Python version for compatibility with pytorch pinned version
     "scipy==1.10.0", # Constrain scipy version for compatibility with pytorch pinned version
     "numpy<2.0.0" # Constrain numpy version for compatibility with pytorch pinned version
 ]
@@ -72,7 +71,7 @@ setup(
     packages=["npyx", "npyx.c4"],
     install_requires=requirements,
     extras_require={"c4": c4_requirements},
-    python_requires="<3.11; extra == 'c4'", # Constrain Python version for compatibility with pytorch pinned version
+    python_requires="<3.12",
     dependency_links=dependency_links,
     entry_points=entry_points,
     keywords="neuropixels,kilosort,phy,data analysis,electrophysiology,neuroscience",

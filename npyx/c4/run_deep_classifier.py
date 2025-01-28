@@ -129,6 +129,27 @@ def download_vaes():
         os.remove(vaes_archive)
 
 
+@require_advanced_deps("torch")
+def remove_dropout(model):
+    """
+    Removes or disables dropout layers in the given PyTorch model.
+
+    Parameters:
+    model (nn.Module): The PyTorch model from which to remove dropout layers.
+
+    Returns:
+    nn.Module: The model with dropout layers removed or disabled.
+    """
+    for name, module in model.named_children():
+        if isinstance(module, nn.Dropout) or isinstance(module, nn.Dropout2d) or isinstance(module, nn.Dropout3d):
+            # Replace dropout with nn.Identity (no-op) layer
+            setattr(model, name, nn.Identity())
+        else:
+            # Recursively apply to child modules
+            remove_dropout(module)
+    return model
+
+
 class CustomCompose:
     def __init__(self, spike_transforms, sample_transforms):
         self.spike_transforms = spike_transforms
@@ -823,6 +844,9 @@ def cross_validate(
                     spikes_val,
                     layer=layer_val,
                     multi_chan_wave=args.multi_chan_wave,
+                    wave_transform=waveform_augmentations.SelectWave(window=1)
+                    if args.augment_wvf and not args.multi_chan_wave
+                    else None,
                 ),
                 batch_size=len(dataset_val),
             )
@@ -860,6 +884,9 @@ def cross_validate(
                 use_layer=args.use_layer,
                 multi_chan_wave=args.multi_chan_wave,
             ).to(DEVICE)
+
+            if not args.dropout:
+                model = remove_dropout(model)
 
             optimizer = optim.AdamW(model.parameters(), lr=1e-3)
 
@@ -1158,6 +1185,7 @@ def main(
     use_layer: bool = False,
     loo: bool = False,
     multi_chan_wave: bool = False,
+    dropout: bool = True,
 ) -> None:
     """
     Runs a deep semi-supervised classifier on the C4 ground-truth datasets,
@@ -1173,6 +1201,7 @@ def main(
         use_layer: Whether to use layer information.
         loo: Whether to use leave-one-out cross-validation.
         multi_chan_wave: Whether to use multi-channel waveforms.
+        dropout: Whether to use dropout in the model.
 
     Returns:
         None
@@ -1188,6 +1217,7 @@ def main(
         loo=loo,
         multi_chan_wave=multi_chan_wave,
         pool_type="avg",
+        dropout=dropout,
     )
 
     global N_CHANNELS
@@ -1238,6 +1268,8 @@ def main(
         features_suffix += "_multi_channel"
     if args.VAE_random_init:
         suffix = "_VAE_random_init"
+    if not args.dropout:
+        suffix += "_no_dropout"
     if args.mli_clustering:
         features_suffix += "_mli_clustering"
     features_suffix += "_layer" if args.use_layer else ""
@@ -1435,6 +1467,18 @@ if __name__ == "__main__":
         help="Use multi-channel waveform data during training",
     )
     parser.set_defaults(multi_chan_wave=False)
+
+    parser.add_argument(
+        "--dropout",
+        action="store_true",
+        help="Use dropout during training",
+    )
+    parser.add_argument(
+        "--no_dropout",
+        action="store_false",
+        dest="dropout",
+    )
+    parser.set_defaults(dropout=True)
 
     # Parse arguments and set global variables
 

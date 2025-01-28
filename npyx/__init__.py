@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import multiprocessing
 from . import utils, inout, gl, spk_t, spk_wvf, corr, stats, plot,\
               behav, merger, circuitProphyler, feat, metrics,\
               info, model, h5, testing, ml, datasets, CONFIG
@@ -63,4 +63,6 @@ __cachedir__ = CONFIG.__cachedir__
 
 npyx_build = "npyx[c4]" if C4_IMPORTED else "npyx"
 
-print(f"\n\033[32;1m{npyx_build} version {__version__} imported.\033[0m")
+
+if multiprocessing.current_process().name == 'MainProcess':
+    print(f"\n\033[32;1m{npyx_build} version {__version__} imported.\033[0m")

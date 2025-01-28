@@ -211,7 +211,11 @@ class Make3DACG(object):
     def __call__(self, spikes, sample):
         # Handle the case where there was no transformation applied so the original ACG is returned
         if sample is not None:
-            sample = sample.reshape(10, int(self.window_size / self.bin_size + 1))
+            if self.log_acg:
+                # When log acg, bin_size is 10 times smaller
+                sample = sample.reshape(10, int((self.window_size / 10) / self.bin_size + 1))
+            else:
+                sample = sample.reshape(10, int(self.window_size / self.bin_size + 1))
             if self.normalise:
                 sample = sample / sample.max(axis=(0, 1), keepdims=True)
             if self.cut:

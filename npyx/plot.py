@@ -2157,7 +2157,7 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000,
 
     # Eventually save figure
     if saveFig:
-        ttl = '' if (title is None) else (' ' + ''.join(ch for ch in title if ch is not '\n'))
+        ttl = '' if (title is None) else (' ' + ''.join(ch for ch in title if ch != '\n'))
         save_mpl_fig(fig,
                      f'acg{unit}-{cwin}_{cbin:.2f}' + ttl,
                      saveDir,
@@ -2766,7 +2766,7 @@ def plot_cm(dp, units, cwin=100, cbin=0.2, b=5, corrEvaluator='CCG', vmax=5, vmi
         return
 
     # Sort units by depth
-    mainChans = get_depthSort_peakChans(dp, units)
+    mainChans = get_depthSort_peakChans(dp, units, use_template=False)
     units, channels = mainChans[:,0], mainChans[:,1]
 
     # make correlation matrix of units sorted by depth

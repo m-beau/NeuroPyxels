@@ -58,7 +58,7 @@ npyx submodules:
  .h5
 """
 
-__version__ = "4.1.1"
+__version__ = "4.1.2"
 __cachedir__ = CONFIG.__cachedir__
 
 npyx_build = "npyx[c4]" if C4_IMPORTED else "npyx"

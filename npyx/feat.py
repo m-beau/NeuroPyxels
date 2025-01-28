@@ -5,6 +5,7 @@ Authors: @fededagos, @agolajko
 
 Functions needed to extract temporal and waveform features from Neuropixels recordings.
 """
+
 from __future__ import annotations
 
 import json
@@ -1579,7 +1580,7 @@ def feature_extraction_json(
                     wvf_features = waveform_features_json(dp, u, plot_debug=_debug)
                     tmp_features = temporal_features_wrap(dp, u)
                     curr_feat = [label] + wvf_features[:2] + tmp_features[2:] + wvf_features[2:]
-                    feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
+                    feat_df = pd.concat([feat_df, pd.DataFrame([curr_feat], columns=columns)], ignore_index=True)
                 except Exception as e:
                     exc_type, _, exc_tb = sys.exc_info()
                     print(f"Something went wrong for the feature computation of neuron {u} in {dp}")
@@ -1589,7 +1590,7 @@ def feature_extraction_json(
                         raise
 
                     curr_feat = np.zeros(len(columns))
-                    feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
+                    feat_df = pd.concat([feat_df, pd.DataFrame([curr_feat], columns=columns)], ignore_index=True)
     finally:
         if save_path is not None:
             today = date.today().strftime("%b-%d-%Y")
@@ -1721,7 +1722,7 @@ def h5_feature_extraction(
         if _extract_layer:
             layer = dataset.layer_list[i]
             curr_feat = curr_feat + [layer]
-        feat_df = feat_df.append(dict(zip(columns, curr_feat)), ignore_index=True)
+        feat_df = pd.concat([feat_df, pd.DataFrame([curr_feat], columns=columns)], ignore_index=True)
 
     feat_df = feat_df.infer_objects()
     if save_path is None:

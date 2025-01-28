@@ -138,8 +138,11 @@ def get_datasets(ds_master, ds_paths_master, ds_behav_master=None, warnings=True
             )
             DSs[ds_name]["dp"] = dp
             for prb in DSs[ds_name].keys():
-                if "probe" in prb:
-                    dp_prb = dp / f"{ds_name}_{prb}"
+                if 'probe' in prb:
+                    if prb == "probe1" or prb == "probe2":
+                        dp_prb = dp / f"{ds_name}_{prb}"
+                    elif prb == "probe1_2":
+                        dp_prb = dp / f"merged_{ds_name}_probe1_{ds_name}_probe2"
                     if not dp_prb.exists():
                         if warnings:
                             print(

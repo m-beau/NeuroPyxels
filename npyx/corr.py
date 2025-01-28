@@ -2505,7 +2505,7 @@ def frac_pop_sync_old(t1, trains, fs, t_end,
     for it2, t2 in enumerate(trains):
         N_cell_firing=cofiring_tags(t1, t2, fs, t_end, b, sd, th, again, dp, U[it2]) # denominator
         N_pop_firing=N_pop_firing+N_cell_firing.astype(np.int64)
-        cell_sync=(get_cisi(t1, t2, direction=0, verbose=False)<=sync_win/2) # UNDERCOVER BUG, sync_win not originally converted in samples!!
+        cell_sync=(get_cisi(t1, t2, direction=0)<=sync_win/2) # UNDERCOVER BUG, sync_win not originally converted in samples!!
         pop_sync=pop_sync+(cell_sync&N_cell_firing).astype(np.int64) # cell_sync only counts when cell is considered to fire (single spikes ignored)
 
     # Last spike will be 0 if t1 last spike happens is the last to happen of the bunch
@@ -2580,7 +2580,7 @@ def frac_pop_sync(t1, trains, fs=30000, t_end=None,
                                             again=again, dp=dp, u=u2)
         
         N_pop_firing[i,       : ] = npyx.utils.get_timestamps_in_windows_mask(t1, periods_t2)
-        t1_cisi[i,            : ] = get_cisi(t1, t2, direction=0, verbose=False)
+        t1_cisi[i,            : ] = get_cisi(t1, t2, direction=0)
         N_pop_synchronized[i, : ] = (t1_cisi[i, :]<=sync_win/2)
 
         # ignore way too long cisi - clearly the other cell wasn't around
@@ -2608,8 +2608,9 @@ def frac_pop_sync(t1, trains, fs=30000, t_end=None,
             enough_firing_m)
 
 @docstring_decorator(frac_pop_sync.__doc__)
-def fraction_pop_sync(dp, u1, U,
-                      sync_win=2, b=1, sd=1000, th=0.02, again=False,
+def fraction_pop_sync(dp, u1, U, sync_win=2,
+                      firing_b=1, firing_sd=1000, firing_th=0.02,
+                      again=False,
                       t1=None, trains=None, fs=None, t_end=None):
     """
     Wrapper for frac_pop_sync:
@@ -2622,13 +2623,16 @@ def fraction_pop_sync(dp, u1, U,
         fs=read_metadata(dp_source)['highpass']['sampling_rate']
         t_end = np.load(Path(dp,'spike_times.npy')).ravel()[-1]
 
-        return frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02, again=again, dp=dp, U=U)
+        return frac_pop_sync(t1, trains, fs, t_end, sync_win=sync_win,
+                             firing_b=firing_b, firing_sd=firing_sd, firing_th=firing_th,
+                             again=again, dp=dp, U=U)
     else:
         assert trains is not None
         assert fs is not None
         assert t_end is not None
 
-        return frac_pop_sync(t1, trains, fs, t_end, sync_win=2, b=1, sd=1000, th=0.02)
+        return frac_pop_sync(t1, trains, fs, t_end, sync_win=sync_win,
+                             firing_b=firing_b, firing_sd=firing_sd, firing_th=firing_th)
 
 
 def get_cm(dp, units, cbin=0.2, cwin=100, b=5, corrEvaluator='CCG', periods='all'):

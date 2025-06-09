@@ -29,11 +29,11 @@ mpl.rcParams["svg.fonttype"] = 'none'
 mpl.rcParams['pdf.fonttype'] = 42 
 mpl.rcParams['ps.fonttype'] = 42
 
-# use Arial, damn it
-if 'Arial' in [f.name for f in mpl.font_manager.fontManager.ttflist]:
-    mpl.rcParams['font.family'] = 'Arial'
-else:
-    print("Oh no! Arial isn't on your system. We strongly recommend that you install Arial for your aesthetic sanity.")
+# # use Arial, damn it
+# if 'Arial' in [f.name for f in mpl.font_manager.fontManager.ttflist]:
+#     mpl.rcParams['font.family'] = 'Arial'
+# else:
+#     print("Oh no! Arial isn't on your system. We strongly recommend that you install Arial for your aesthetic sanity.")
 
 
 #######################################################

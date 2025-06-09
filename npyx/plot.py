@@ -63,11 +63,11 @@ mpl.rcParams['pdf.fonttype'] = 42
 mpl.rcParams['ps.fonttype'] = 42
 
 
-# use Arial, damn it
-if 'Arial' in [f.name for f in matplotlib.font_manager.fontManager.ttflist]:
-    matplotlib.rcParams['font.family'] = 'Arial'
-else:
-    print("Oh no! Arial isn't on your system. We strongly recommend that you install Arial for your aesthetic sanity.")
+# # use Arial, damn it
+# if 'Arial' in [f.name for f in matplotlib.font_manager.fontManager.ttflist]:
+#     matplotlib.rcParams['font.family'] = 'Arial'
+# else:
+#     print("Oh no! Arial isn't on your system. We strongly recommend that you install Arial for your aesthetic sanity.")
 
 
 #%% plotting utilities ##############################################################################################

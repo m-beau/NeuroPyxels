@@ -425,7 +425,7 @@ def mplp(fig=None,
             4,
         }, "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
     if show_legend: ax.legend(bbox_to_anchor=legend_loc, loc='lower left',
-                               prop={'family':'Arial'})
+                               prop={'family':'Arial', 'size': ticklab_s})
     elif hide_legend: ax.legend([],[], frameon=False)
 
     if colorbar:
@@ -610,13 +610,56 @@ def ceil_power10(x):
 def n_decimals(x):
     return len(str(x).split('.')[1])
 
+# def get_bestticks(start, end, step=None, light=False):
+#     """
+#     Returns the best ticks for a start and end tick.
+#     If step is specified, it will be the space between ticks.
+#     If light is True, the step will be multiplied by 2.
+#     """
+#     span = end - start
+#     if step is None:
+#         upper10 = ceil_power10(span)
+#         if span <= upper10/5:
+#             step = upper10*0.01
+#         elif span <= upper10/2:
+#             step = upper10*0.05
+#         else:
+#             step = upper10*0.1
+#     if light: step=2*step
+#     assert step < span, f'Step {step} is too large for array span {span}!'
+#     ticks = np.arange(myceil(start, step), myfloor(end, step) + step, step)
+#     ticks = np.round(ticks, n_decimals(step))
+#     if step == int(step): ticks = ticks.astype(np.int64)
+
+#     return ticks
+
+# def get_bestticks_from_array(arr, step=None, light=False):
+#     """
+#     Returns the best ticks for a given array of values (i.e. an sparser array of equally spaced values).
+#     If the array if np.arange(10), the returned array will be np.arange(0,10,1).
+#     If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
+#     """
+#     arr_sort = np.sort(arr)
+#     bestticks = get_bestticks(arr_sort[0], arr_sort[-1], step, light)
+
+#     if arr[0] > arr[-1]:
+#         bestticks = bestticks[::-1]
+
+#     return bestticks
+
 def get_bestticks(start, end, step=None, light=False):
+    """Generate evenly spaced ticks between start and end
+    (smartly spaced by 1, 5, or 10).
+
+    If start=0 and end=10, ticks will be np.arange(0,10,1),
+    If start=0 and end=50, ticks will be np.arange(0,50,5)...
+    
+    Arguments:
+    - start, end: Range bounds
+    - step: Tick spacing (auto-calculated if None) 
+    - light: If True, doubles the step size (sparser)
     """
-    Returns the best ticks for a start and end tick.
-    If step is specified, it will be the space between ticks.
-    If light is True, the step will be multiplied by 2.
-    """
-    span = end - start
+    span = abs(end - start)
     if step is None:
         upper10 = ceil_power10(span)
         if span <= upper10/5:
@@ -624,42 +667,121 @@ def get_bestticks(start, end, step=None, light=False):
         elif span <= upper10/2:
             step = upper10*0.05
         else:
-            step = upper10*0.1
-    if light: step=2*step
-    assert step < span, f'Step {step} is too large for array span {span}!'
+            step = upper10*0.1    
+    if light: step *= 2
+    assert step < span, f'Step {step} exceeds span {span}'
+        
+    # Round to step precision and handle integers
     ticks = np.arange(myceil(start, step), myfloor(end, step) + step, step)
-    ticks = np.round(ticks, n_decimals(step))
-    if step == int(step): ticks = ticks.astype(np.int64)
+    decimals = n_decimals(step)
+    ticks = ticks.astype(int) if decimals <= 0 else np.round(ticks, decimals)
 
-    return ticks
+    return ticks if start <= end else ticks[::-1]
 
 def get_bestticks_from_array(arr, step=None, light=False):
     """
-    Returns the best ticks for a given array of values (i.e. an sparser array of equally spaced values).
-    If the array if np.arange(10), the returned array will be np.arange(0,10,1).
-    If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
+    Returns the best ticks for a given array of values
+    (i.e. a sparser array of values spaced by 1, 5, or 10).
+    
+    If arr is 0 through 10, ticks will be np.arange(0,10,1),
+    If arr is 0 through 50, ticks will be np.arange(0,50,5)...
+    
+    Arguments:
+    - arr: Array or list
+    - step: Tick spacing (auto-calculated if None) 
+    - light: If True, doubles the step size (sparser)
     """
-    arr_sort = np.sort(arr)
-    bestticks = get_bestticks(arr_sort[0], arr_sort[-1], step, light)
+    return get_bestticks(np.min(arr), np.max(arr), step, light)
 
-    if arr[0] > arr[-1]:
-        bestticks = bestticks[::-1]
+def get_labels_from_ticks(ticks,
+                          max_decimals=4,
+                          trim_zeros=True):
+    """
+    Format numerical tick values into consistently formatted string labels.
+    
+    Arguments:
+    - ticks: Array of numerical values to format
+    - max_decimals: Maximum number of decimal places to consider
+    - trim_zeros: If True, remove trailing zeros after decimal point. If False,
+                maintain consistent decimal places across all numbers.
+    
+    Returns:
+    - list of formatted labels
+    - number of decimal places used
+    """
+    ticks = np.asarray(ticks)
 
-    return bestticks
+    # Find optimal decimal precision (up to max_decimals)
+    for d in range(max_decimals + 1):
+        if np.allclose(ticks, np.round(ticks, d)):
+            decimals_needed = d
+            break
 
-def get_labels_from_ticks(ticks):
-    ticks=npa(ticks)
-    nflt=0
-    for t in ticks:
-        t=round(t,4)
-        for roundi in range(4):
-            if t == round(t, roundi):
-                nflt = max(nflt, roundi)
-                break
-    ticks_labels=ticks.astype(np.int64) if nflt==0 else np.round(ticks.astype(float), nflt)
-    jump_n=1 if nflt==0 else 2
-    ticks_labels=[str(l)+'0'*(nflt+jump_n-len(str(l).replace('-',''))) for l in ticks_labels]
-    return ticks_labels, nflt
+    # Format tick labels
+    if decimals_needed == 0:
+        ticks_labels = list(ticks.astype(int))
+        string_shift = 1
+    else:
+        ticks_labels = list(np.round(ticks, decimals_needed))
+        string_shift = 2
+
+    for i, l in enumerate(ticks_labels):
+        l = str(l) + '0' * (decimals_needed + string_shift - len(str(l).replace('-','')))
+        if trim_zeros and '.' in l:
+            l = l.rstrip('0').rstrip('.')
+        ticks_labels[i] = l
+        
+    return ticks_labels, decimals_needed
+
+# def get_labels_from_ticks(ticks,
+#                           max_decimals = 4,
+#                           trim_zeros = True):
+#     """
+#     Format numerical tick values into consistently formatted string labels.
+    
+#     Arguments:
+#     - ticks: Array of numerical values to format
+#     - max_decimals: Maximum number of decimal places to consider
+#     - trim_zeros: If True, remove trailing zeros after decimal point. If False,
+#                 maintain consistent decimal places across all numbers.
+    
+#     Returns:
+#     - list of formatted labels
+#     - number of decimal places used
+#     """
+#     if not len(ticks):
+#         return [], 0
+        
+#     ticks = np.asarray(ticks)
+    
+#     # Find minimum decimals needed to represent numbers accurately
+#     decimals_needed = 0
+#     rounded = np.round(ticks, max_decimals)
+#     for d in range(max_decimals + 1):
+#         if np.allclose(rounded, np.round(ticks, d)):
+#             decimals_needed = d
+#             break
+            
+#     # Format numbers with consistent decimal places
+#     if decimals_needed == 0:
+#         formatted = [f"{int(t):d}0" for t in ticks]
+#     else:
+#         if trim_zeros:
+#             # Format each number and remove trailing zeros after decimal point
+#             formatted = []
+#             for t in ticks:
+#                 # Format with full decimals first
+#                 num_str = f"{t:.{decimals_needed}f}"
+#                 # Remove trailing zeros only after decimal point
+#                 if '.' in num_str:
+#                     num_str = num_str.rstrip('0').rstrip('.')
+#                 formatted.append(num_str)
+#         else:
+#             # Keep all decimal places consistent
+#             format_str = f"{{:.{decimals_needed}f}}"
+#             formatted = [format_str.format(t) for t in ticks]
+        
+#     return formatted, decimals_needed
 
 def sci_notation(num, decimal_digits=1, precision=None, exponent=None):
     """

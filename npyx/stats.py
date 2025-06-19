@@ -269,7 +269,7 @@ def split_distr_N(arr, N, bin_val, window_a=None, window_b=None, windows=None, e
         - list of N boolean masks, each corresponding to a distribution chunk.
         - list of windows used to 
     '''
-    assert type(N) in [int, np.int]
+    assert type(N) in [int, np.int8, np.int16, np.int32, np.int64]
     if windows is None:
         if window_a is None or window_b is None:
             window_a=np.percentile(arr, a_pc)

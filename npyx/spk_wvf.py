@@ -834,24 +834,29 @@ def get_depthSort_peakChans(dp, units=[], quality='all',
 
     return peak_chans # units, channels
 
-def get_chan_pos(dp, chan):
+def get_chan_pos(dp, chan, probe_version='local'):
     'Returns (x, y) position of channel on Neuropixels probe.'
-    pos = np.load(Path(dp,'channel_positions.npy'))
-    cm = chan_map(dp, probe_version='local')
+    cm = chan_map(dp, y_orig='surface', probe_version=probe_version)
+    if probe_version == 'local':
+        pos = np.load(Path(dp,'channel_positions.npy'))
+    else:
+        pos = cm[::-1, 1:]
     chan_pos = pos[cm[:,0]==chan].ravel()
-
+    assert any(chan_pos), (f"Channel {chan} excluded from sorting by kilosort"
+        " - set probe_version='your_version' e.g. 1.0, not 'local', to get around it.")
     return chan_pos
 
 @npyx_cacher
 def get_peak_pos(dp, unit, use_template=False, periods='all',
-                 again=False, cache_results=True, cache_path=None):
+                 again=False, cache_results=True, cache_path=None,
+                 probe_version='local'):
     "Returns [x,y] relative position on the probe in um (y=0 at probe tip)."
 
     dp, unit = get_source_dp_u(dp, unit)
     peak_chan=get_peak_chan(dp, unit, use_template, periods=periods,
                                        again=again, cache_results=cache_results, cache_path=cache_path)
 
-    return get_chan_pos(dp, peak_chan)
+    return get_chan_pos(dp, peak_chan, probe_version=probe_version)
 
 def get_chDis(dp, ch1, ch2):
     '''dp: datapath to dataset

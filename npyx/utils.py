@@ -231,6 +231,53 @@ def repr_string(self):
     return r_string.replace("'", "").replace("[","").replace("]","")
 
 
+#%% Dot-indexable dictionnary
+
+class DotDict(dict):
+    """
+    A dictionary subclass that allows for attribute-style (dot notation) access
+    to its items, including nested dictionaries.
+    
+    Example usage:
+        >>> d = DotDict({'a': 1, 'b': {'c': 2, 'd': 3}})
+        >>> d.a
+        1
+        >>> d.b.c
+        2
+        >>> d.b.e = {'f': 4}
+        >>> d.b.e.f
+        4
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__dict__ = self
+        
+        # Convert nested dicts to DotDict instances
+        for key, value in self.items():
+            if isinstance(value, dict) and not isinstance(value, DotDict):
+                self[key] = DotDict(value)
+    
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError as e:
+            raise AttributeError(str(e))
+    
+    def __setattr__(self, key, value):
+        if key == "__dict__":
+            super().__setattr__(key, value)
+        else:
+            # Convert dict to DotDict when setting via attribute
+            if isinstance(value, dict) and not isinstance(value, DotDict):
+                value = DotDict(value)
+            self[key] = value
+    
+    def __setitem__(self, key, value):
+        # Convert dict to DotDict when setting via item
+        if isinstance(value, dict) and not isinstance(value, DotDict):
+            value = DotDict(value)
+        super().__setitem__(key, value)
+
 #%% Threholding utilities
 
 def any_n_consec(X, n_consec, where=False):

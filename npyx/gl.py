@@ -212,7 +212,7 @@ def json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
                                 holds_no_sync = False
 
                             holds_no_behav = True  ## TODO
-                            pair_dicts.loc[len(pair_dicts)] = {
+                            pair_dicts.append({
                                 "ds": dsname,
                                 "dp": dp,
                                 "ss": ss + 0.1 * probei,
@@ -220,7 +220,7 @@ def json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master):
                                 "nc": cnc + 0.1 * probei,
                                 "holds_no_behav": holds_no_behav,
                                 "holds_no_sync": holds_no_sync,
-                            }
+                            })
 
     connected_pairs_df = pd.DataFrame(pair_dicts)
     return connected_pairs_df
@@ -237,19 +237,18 @@ def make_connected_pairs_df(
     n_pcs_firing_fraction_threshold=0.5,  # [0-1]
     cbin_inh=0.5,
     cwin_inh=100,
-    min_win=[0.5, 3],
-    min_win_nbins=3,
-    enforced_rp=0.3,  # ms
+    min_win=[0.5, 3.5], # [0.5, 3]
+    min_win_nbins=2, # 3
+    enforced_rp=1,  # 0.3 ms
     W_sd=10,
-):
+    pval_aggregation_strategy='max', # max or mean (min_win_nbins pvalues) = aggregated pvalue for a given pc-nc pair
+    ):
 
     df = json_connected_pairs_df(ds_master, ds_paths_master, ds_behav_master)
 
-    connected_pairs_df_fn = (
-        f"sync_df"
-        f"{pval_th}_{sync_win}_{cisi_upper_threshold}_{n_pcs_firing_fraction_threshold}"
-        f"_{cbin_inh}_{cwin_inh}_{min_win}_{min_win_nbins}_{enforced_rp}_{W_sd}_{upsample_sync}"
-    )
+    connected_pairs_df_fn = (f"sync_df"
+             f"{pval_th}_{sync_win}_{cisi_upper_threshold}_{n_pcs_firing_fraction_threshold}"
+             f"_{cbin_inh}_{cwin_inh}_{min_win}_{min_win_nbins}_{pval_aggregation_strategy}_{enforced_rp}_{W_sd}_{upsample_sync}")
 
     DPs = np.unique(df["dp"])
     connected_pairs_df = None
@@ -292,7 +291,7 @@ def make_connected_pairs_df(
         connected_pairs_df.loc[i, "cs"] = cs
 
     connected_pairs_df.to_pickle(Path(ds_master).parent / "connected_pairs_df.pkl")
-
+    
     return connected_pairs_df
 
 

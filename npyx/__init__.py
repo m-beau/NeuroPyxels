@@ -20,6 +20,7 @@ except ImportError:
 
 from . import CONFIG
 from .utils import *
+from .utils import DotDict # class not imported with '__all__' for some reason
 from .inout import *
 from .gl import *
 from .spk_t import *

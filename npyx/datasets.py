@@ -1151,8 +1151,7 @@ def preprocess_template_singlewaveforms(
     source_peak_sign: Union[None, str] = "negative",
     target_peak_sign: Union[None, str] = None,
     normalize: bool = True,
-    return_parameters: bool = False,
-) -> np.ndarray:
+    return_parameters: bool = False) -> np.ndarray:
     """
     This function generalizes npyx.datasets.preprocess_template to (n_samples, n_waveforms) and (n_channels, n_samples, n_waveforms) arrays. It computes the preprocessing parameters from the average across n_waveforms (like npyx.datasets.preprocess_template), but applies the preprocessing to the original full array.
     - resampling

@@ -7,7 +7,9 @@ import os
 from ast import literal_eval as ale
 import operator
 import time
-import imp
+import importlib
+import importlib.util
+import importlib.machinery
 import os.path as op; opj=op.join
 from pathlib import Path
 
@@ -739,7 +741,9 @@ class Prophyler:
         if draw_edges and edge_labels:
             nx.draw_networkx_edge_labels(g_plt, pos=self.peak_positions, edge_labels=e_labels,font_color='black', font_size=8, font_weight='bold')
 
-        hfont = {'fontname':'Arial'}
+        # Import font utilities from plot_utils
+        from .plot_utils import get_font_dict
+        hfont = get_font_dict()
         ax.set_ylabel('Depth (\u03BCm)', fontsize=40, fontweight='bold', **hfont)
         ax.set_xlabel('Lat. position (\u03BCm)', fontsize=40, fontweight='bold', **hfont)
         ax.set_ylim(ylim) # flips the plot upside down
@@ -878,7 +882,12 @@ class Dataset:
         self.ds_i=dataset_index
         self.name=self.dp.name if dataset_name is None else dataset_name
         self.prb_name=probe_name
-        self.params={}; params=imp.load_source('params', Path(self.dp,'params.py').absolute().as_posix())
+        self.params={}
+        params_path = Path(self.dp,'params.py').absolute().as_posix()
+        loader = importlib.machinery.SourceFileLoader("params", params_path)
+        spec = importlib.util.spec_from_file_location("params", params_path, loader=loader)
+        params = importlib.util.module_from_spec(spec)
+        loader.exec_module(params) # TODO check if this line is necessary.
         for p in dir(params):
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
         self.fs=self.meta['highpass']['sampling_rate']

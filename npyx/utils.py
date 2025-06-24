@@ -31,10 +31,76 @@ import scipy.signal as sgnl
 # with its size to the available memory minus 5GB
 from npyx.CONFIG import __cachedir__
 from cachecache import Cacher, distributed_cacher
-global_npyx_cacher = Cacher(__cachedir__)
-# arguments of decorated functions altering caching behavior:
-# again, cache_results, cache_path
-npyx_cacher = distributed_cacher('dp', '.NeuroPyxels', global_npyx_cacher)
+
+# Check if caching should be disabled via environment variable
+def _is_caching_enabled():
+    """Check if caching is enabled via ENABLE_NPYX_CACHE environment variable."""
+    cache_env = os.environ.get('ENABLE_NPYX_CACHE', '').lower()
+    # Disable caching if NPYX_CACHE is set to any falsy value
+    return cache_env not in ['false', 'f', '0', 'no', 'off', 'disable', 'disabled']
+
+def _no_op_cacher(func):
+    """No-op decorator that bypasses caching entirely."""
+    import inspect
+    
+    # Get function signature to check what parameters it accepts
+    sig = inspect.signature(func)
+    param_names = list(sig.parameters.keys())
+    
+    def wrapper(*args, **kwargs):
+        # Remove caching-related kwargs to prevent errors
+        kwargs.pop('cache_results', None) 
+        kwargs.pop('cache_path', None)
+        
+        # Convert args to a mutable list so we can modify positional arguments
+        args_list = list(args)
+        
+        # Force 'again' parameter to True (always recompute when caching disabled)
+        if 'again' in param_names:
+            again_idx = param_names.index('again')
+            if again_idx < len(args_list):
+                # Overwrite positional argument
+                args_list[again_idx] = True
+            else:
+                # Set as keyword argument
+                kwargs['again'] = True
+        else:
+            # Remove from kwargs if function doesn't accept it
+            kwargs.pop('again', None)
+            
+        # Force 'save' or 'sav' parameter to False (don't save when caching disabled)
+        for save_param in ['save', 'sav']:
+            if save_param in param_names:
+                save_idx = param_names.index(save_param)
+                if save_idx < len(args_list):
+                    # Overwrite positional argument
+                    args_list[save_idx] = False
+                else:
+                    # Set as keyword argument
+                    kwargs[save_param] = False
+                break  # Only handle the first one found
+        
+        return func(*tuple(args_list), **kwargs)
+    
+    # Preserve function metadata
+    wrapper.__name__ = func.__name__
+    wrapper.__doc__ = func.__doc__
+    wrapper.__module__ = func.__module__
+    wrapper.__qualname__ = getattr(func, '__qualname__', func.__name__)
+    wrapper.__annotations__ = getattr(func, '__annotations__', {})
+    
+    return wrapper
+
+# Set up caching based on environment variable
+if _is_caching_enabled():
+    global_npyx_cacher = Cacher(__cachedir__)
+    # arguments of decorated functions altering caching behavior:
+    # again, cache_results, cache_path
+    npyx_cacher = distributed_cacher('dp', '.NeuroPyxels', global_npyx_cacher)
+else:
+    # Disable caching - use no-op decorator
+    global_npyx_cacher = None
+    npyx_cacher = _no_op_cacher
 
 
 #%% function decoration utilities

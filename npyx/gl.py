@@ -7,6 +7,7 @@
 Dataset: Neuropixels dataset -> dp is phy directory (kilosort or spyking circus output)
 """
 import json
+import warnings
 import os
 from pathlib import Path
 
@@ -19,7 +20,21 @@ from npyx.utils import npa, is_writable
 def get_npyx_memory(dp):
     if dp is None:
         return ""
+    
+    # Check if caching is globally disabled
+    cache_env = os.environ.get('ENABLE_NPYX_CACHE', '').lower()
+    caching_enabled = cache_env not in ['false', 'f', '0', 'no', 'off', 'disable', 'disabled']
+    
     dpnm = Path(dp) / "npyxMemory"
+    
+    # If caching is disabled but some function still tries to use this path
+    if not caching_enabled:
+        # Create a temporary directory to prevent file operation errors
+        # but don't do the usual cache management
+        import tempfile
+        temp_dir = Path(tempfile.mkdtemp(prefix="npyx_nocache_"))
+        return temp_dir
+    
     old_dpnm = Path(dp) / "routinesMemory"
     if old_dpnm.exists() and not dpnm.exists():
         try:  # because of parallel proccessing, might have been renamed in the process!
@@ -386,9 +401,7 @@ def load_units_qualities(dp, again=False):
                 "cluster_id" in qualities.columns
             ), f"WARNING the tsv file {str(dp/f)} should have a column called 'cluster_id'!"
             if "group" not in qualities.columns:
-                print(
-                    "WARNING there does not seem to be any group column in cluster_group.tsv - kilosort >2 weirdness. Making a fresh file."
-                )
+                warnings.warn("There does not seem to be any group column in cluster_group.tsv - kilosort >2 weirdness. Making a fresh file.", stacklevel=2)
                 qualities = generate_units_qualities(dp)
             else:
                 if "unsorted" not in qualities["group"].values and re_spikesorted:

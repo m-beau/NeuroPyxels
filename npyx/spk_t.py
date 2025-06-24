@@ -30,7 +30,7 @@ from scipy.stats import iqr, norm
 
 @npyx_cacher
 def ids(dp, unit, sav=True, verbose=False, periods='all',
-        again=False, enforced_rp=-1,
+        again=False, enforced_rp=-1, fs=None,
         cache_results=True, cache_path=None):
     '''
     ********
@@ -95,8 +95,8 @@ def ids(dp, unit, sav=True, verbose=False, periods='all',
 
     # Optional selection of spikes without duplicates
     dp_source = npyx.merger.get_source_dp_u(dp, unit)[0]
-    fs = read_metadata(dp_source)["highpass"]['sampling_rate']
-    train = trn(dp, unit, again=again, enforced_rp=-1, cache_results=cache_results)
+    fs = fs if fs is not None else read_metadata(dp_source)["highpass"]['sampling_rate']
+    train = trn(dp, unit, again=again, enforced_rp=-1, fs=fs, cache_results=cache_results)
     duplicates_m = duplicates_mask(train, enforced_rp, fs)
     train = train[~duplicates_m]
     indices = indices[~duplicates_m]
@@ -113,7 +113,7 @@ def ids(dp, unit, sav=True, verbose=False, periods='all',
     return indices
 
 def load_amplitudes(dp, unit, verbose=False,
-                    periods='all', again=False, enforced_rp=-1,
+                    periods='all', again=False, enforced_rp=-1, fs=30_000,
                     cache_results=True, cache_path=None):
     f'''Load unit amplitudes
     i.e. kilosort template scaling factor for each spike.
@@ -121,13 +121,13 @@ def load_amplitudes(dp, unit, verbose=False,
     for parameters see doc of ids:
     {ids.__doc__}'''
     dp = Path(dp)
-    unit_ids = ids(dp, unit, True, verbose, periods, again, enforced_rp,
+    unit_ids = ids(dp, unit, True, verbose, periods, again, enforced_rp, fs,
                    cache_results=cache_results, cache_path=cache_path)
     return np.load(dp/'amplitudes.npy')[unit_ids]
 
 @npyx_cacher
 def trn(dp, unit, sav=True, verbose=False,
-        periods='all', again=False, enforced_rp=0,
+        periods='all', again=False, enforced_rp=0, fs=None,
         cache_results=True, cache_path=None):
     '''
     Computes spike train (1, Nspikes) - int64, in samples
@@ -154,7 +154,7 @@ def trn(dp, unit, sav=True, verbose=False,
     # Search if the variable is already saved in dp/routinesMemory
     # dpnm = get_npyx_memory(dp)
     dp_source = npyx.merger.get_source_dp_u(dp, unit)[0]
-    fs=read_metadata(dp_source)['highpass']['sampling_rate']
+    fs = fs if fs is not None else read_metadata(dp_source)['highpass']['sampling_rate']
 
     # DEPRECATED now caching with cachecache
     # fn=f'trn{unit}_{enforced_rp}+.npy'
@@ -575,6 +575,7 @@ def train_quality(dp, unit, period_m=[0,20],
                   fn_chunk_span = 3, fn_chunk_size = 10,
                   use_or_operator = True,
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold = 0.05,
+                  fs = 30_000,
                   again = False, save = True, verbose = False, plot_debug = False,
                   enforced_rp = 0, saveFig=False, saveDir=None, _format='png'):
     """
@@ -647,7 +648,6 @@ def train_quality(dp, unit, period_m=[0,20],
     # c_win = 100
     # n_bins_acg_baseline=80 # from start and end of acg window
     n_spikes_threshold = 300
-    fs = 30_000
     title = f"{unit}, {dp.name}" # for plot_debug
 
 
@@ -668,10 +668,10 @@ def train_quality(dp, unit, period_m=[0,20],
     dpnm = get_npyx_memory(dp)
     
     # Load data
-    unit_amp = load_amplitudes(dp, unit, verbose, 'all', again, enforced_rp,
+    unit_amp = load_amplitudes(dp, unit, verbose, 'all', again, enforced_rp, fs,
                                cache_results=save)
     
-    unit_train = trn(dp, unit, enforced_rp=enforced_rp,
+    unit_train = trn(dp, unit, enforced_rp=enforced_rp, fs = fs,
                      again=again, verbose=verbose, cache_results=save)/fs
 
     if period_m is None:
@@ -1056,7 +1056,7 @@ def estimate_bins(x, rule):
 
 
 def Freedman_Diaconis_bin_estimate(x):
-    data = np.asarray(x, dtype=np.float_)
+    data = np.asarray(x, dtype=np.float64)
     iqr_ = iqr(data, scale=1, nan_policy="omit")
     n = data.size
     bw = (2 * iqr_) / np.power(n, 1 / 3)

@@ -4,7 +4,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoLocator
 
-from IPython.core.display import HTML, display
+from IPython.display import HTML, display
 
 import os
 from pathlib import Path
@@ -29,12 +29,20 @@ mpl.rcParams["svg.fonttype"] = 'none'
 mpl.rcParams['pdf.fonttype'] = 42 
 mpl.rcParams['ps.fonttype'] = 42
 
-# # use Arial, damn it
-# if 'Arial' in [f.name for f in mpl.font_manager.fontManager.ttflist]:
-#     mpl.rcParams['font.family'] = 'Arial'
-# else:
-#     print("Oh no! Arial isn't on your system. We strongly recommend that you install Arial for your aesthetic sanity.")
+# Check if Arial is available and set global flag
+ARIAL_AVAILABLE = 'Arial' in [f.name for f in mpl.font_manager.fontManager.ttflist]
 
+# Set font preferences
+def get_font_dict():
+    """Return font dictionary with Arial if available, otherwise use default."""
+    if ARIAL_AVAILABLE:
+        return {'fontname': 'Arial'}
+    else:
+        return {}
+
+def get_font_family():
+    """Return font family string with Arial if available, otherwise use default."""
+    return 'Arial' if ARIAL_AVAILABLE else 'sans-serif'
 
 #######################################################
 ### mplp: MatPlotLib Prettifier (Make PLots Pretty) ###
@@ -286,7 +294,7 @@ def mplp(fig=None,
     yscalebar_unit = default_mplp_params['yscalebar_unit']
 
 
-    hfont = {'fontname':'Arial'}
+    hfont = get_font_dict()
     if figsize is not None:
         assert axsize is  None,\
             "You cannot set both the axes and figure size - the axes size is based on the figure size."
@@ -425,7 +433,7 @@ def mplp(fig=None,
             4,
         }, "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
     if show_legend: ax.legend(bbox_to_anchor=legend_loc, loc='lower left',
-                               prop={'family':'Arial'})
+                               prop={'family':get_font_family()})
     elif hide_legend: ax.legend([],[], frameon=False)
 
     if colorbar:
@@ -891,7 +899,7 @@ def add_colorbar(fig, ax, mappable=None, vmin=None, vmax=None,
         assert len(ctickslabels)==len(cticks),\
             f"ctickslabels should have the same length as cticks ({len(cticks)})!" 
     if clabel is not None:
-        cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family='arial', weight=clabel_w, size=clabel_s))
+        cbar_ax.yaxis.label.set_font_properties(mpl.font_manager.FontProperties(family=get_font_family(), weight=clabel_w, size=clabel_s))
         cbar_ax.yaxis.label.set_rotation(-90)
         cbar_ax.yaxis.label.set_va('bottom')
         cbar_ax.yaxis.label.set_ha('center')

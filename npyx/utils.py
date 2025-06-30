@@ -41,54 +41,64 @@ def _is_caching_enabled():
 
 def _no_op_cacher(func):
     """No-op decorator that bypasses caching entirely."""
+    import functools
     import inspect
-    
-    # Get function signature to check what parameters it accepts
-    sig = inspect.signature(func)
-    param_names = list(sig.parameters.keys())
-    
+
+    # Get function signature for parameter inspection
+    try:
+        sig = inspect.signature(func)
+        param_names = list(sig.parameters.keys())
+    except (ValueError, TypeError):
+        # Fallback for functions where signature inspection fails
+        param_names = []
+
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         # Remove caching-related kwargs to prevent errors
-        kwargs.pop('cache_results', None) 
-        kwargs.pop('cache_path', None)
-        
-        # Convert args to a mutable list so we can modify positional arguments
-        args_list = list(args)
-        
-        # Force 'again' parameter to True (always recompute when caching disabled)
-        if 'again' in param_names:
-            again_idx = param_names.index('again')
-            if again_idx < len(args_list):
-                # Overwrite positional argument
-                args_list[again_idx] = True
-            else:
-                # Set as keyword argument
-                kwargs['again'] = True
-        else:
-            # Remove from kwargs if function doesn't accept it
-            kwargs.pop('again', None)
-            
-        # Force 'save' or 'sav' parameter to False (don't save when caching disabled)
-        for save_param in ['save', 'sav']:
-            if save_param in param_names:
-                save_idx = param_names.index(save_param)
-                if save_idx < len(args_list):
-                    # Overwrite positional argument
-                    args_list[save_idx] = False
-                else:
-                    # Set as keyword argument
-                    kwargs[save_param] = False
-                break  # Only handle the first one found
-        
-        return func(*tuple(args_list), **kwargs)
-    
-    # Preserve function metadata
-    wrapper.__name__ = func.__name__
-    wrapper.__doc__ = func.__doc__
-    wrapper.__module__ = func.__module__
-    wrapper.__qualname__ = getattr(func, '__qualname__', func.__name__)
-    wrapper.__annotations__ = getattr(func, '__annotations__', {})
-    
+        kwargs.pop("cache_results", None)
+        kwargs.pop("cache_path", None)
+
+        # Use signature binding to properly handle positional vs keyword arguments
+        if param_names:
+            try:
+                # Bind arguments to get a cleaner view of what's positional vs keyword
+                bound_args = sig.bind_partial(*args, **kwargs)
+                bound_args.apply_defaults()
+
+                # Handle 'again' parameter - force to True when caching disabled
+                if "again" in param_names:
+                    bound_args.arguments["again"] = True
+
+                # Handle 'save'/'sav' parameters - force to False when caching disabled
+                for save_param in ["save", "sav"]:
+                    if save_param in param_names:
+                        bound_args.arguments[save_param] = False
+                        break  # Only handle the first one found
+
+                # Call function with bound arguments
+                return func(*bound_args.args, **bound_args.kwargs)
+
+            except (TypeError, ValueError):
+                # Fallback to simpler approach if binding fails
+                pass
+
+        # Fallback approach - only set in kwargs if not likely to be positional
+        # Handle 'again' parameter - set in kwargs only if not already there
+        if "again" in param_names and "again" not in kwargs:
+            kwargs["again"] = True
+        elif "again" not in param_names:
+            kwargs.pop("again", None)
+
+        # Handle 'save'/'sav' parameters
+        for save_param in ["save", "sav"]:
+            if save_param in param_names and save_param not in kwargs:
+                kwargs[save_param] = False
+                break
+            elif save_param not in param_names:
+                kwargs.pop(save_param, None)
+
+        return func(*args, **kwargs)
+
     return wrapper
 
 # Set up caching based on environment variable

@@ -394,7 +394,7 @@ def load_units_qualities(dp, again=False):
     dp = Path(dp)
     try:
         if (dp / f).exists():
-            qualities = pd.read_csv(dp / f, sep='\s+')
+            qualities = pd.read_csv(dp / f, sep=r"\s+")
             re_spikesorted = detect_new_spikesorting(dp)
             regenerate = True if (again or re_spikesorted) else False
             assert (

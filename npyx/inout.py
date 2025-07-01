@@ -91,7 +91,7 @@ def metadata(dp):
     assert dp.exists(), "Provided path does not exist!"
     assert dp.is_dir(), f"Provided path {dp} is a filename!"
 
-    probe_versions = {
+    probe_versions = { # see https://billkarsh.github.io/SpikeGLX/help/imroTables/
         'glx':{3.0:  '3A', # option 3
                0.0:  '1.0',
                1.0:  '1.0', # precise type unknown
@@ -115,8 +115,10 @@ def metadata(dp):
 
                24:   '2.0_fourshanks',
                2013: '2.0_fourshanks',
-               2014: '2.0_fourshanks', # assumed type
-               2020: '2.0_fourshanks', # assuned type
+               2014: '2.0_fourshanks',
+
+               2020: 'NXT',
+               2021: 'NXT',
                },
         'oe':{"Neuropix-3a":'3A', # source_processor_name keys
                 "Neuropix-PXI":'1.0',

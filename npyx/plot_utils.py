@@ -3,6 +3,15 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoLocator
+import matplotlib.backends.backend_pdf as pdf_backend
+from matplotlib.figure import Figure
+import numpy as np
+from contextlib import contextmanager
+from typing import Tuple, Optional
+import io
+from PIL import Image
+from IPython.display import display
+
 
 from IPython.core.display import HTML, display
 
@@ -1248,3 +1257,276 @@ def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Downl
     rotanimate(ax, width, height, angles,ttl, delay=delay)
 
     os.chdir(oldDir)
+
+
+#############################################
+#### Plot collator for Jupyter notebooks ####
+#############################################
+class PlotCollator:
+    """
+    Captures matplotlib figures during cell execution and collates them into A4 grids.
+    Designed for Jupyter notebook usage with inline display support.
+
+    Handles both explicit plt.show() calls and auto-displayed figures in notebooks.
+
+    Parameters:
+        grid_shape: (n_rows, n_cols) subplot arrangement per page
+        figsize: Page dimensions in inches (default A4 landscape: 11.7 x 8.3")
+        dpi: Resolution for saved outputs (200 default, 100 for display, 300 for print)
+
+    Basic Usage:
+        collator = PlotCollator((4, 5),           # 20 plots per grid
+                                (11.7, 8.3),       # A4 landscape inches
+                                200)               # print-quality DPI
+        with collator.capture_context():
+            # Your analysis code generating plots
+            for i in range(50):
+                plt.figure()
+                plt.plot(data[i])
+                # plt.show()  # Optional - works with or without
+        collator.display_grids()
+
+    Capture Options:
+        # Show original plots inline while capturing
+        with collator.capture_context(show_originals=True):
+            generate_plots()
+        
+        # Silent capture (clean notebook output)
+        with collator.capture_context(show_originals=False):  # default
+            generate_plots()
+
+    Display Options:
+        # Basic display in notebook (auto-clears after)
+        collator.display_grids()
+        
+        # Display with plot indices as titles
+        collator.display_grids(display_plot_index=True)
+        
+        # Display and save as PNG files
+        collator.display_grids(save_path="analysis_grids")
+        # → saves: analysis_grids_page_1.png, analysis_grids_page_2.png, ...
+        
+        # Keep plots in memory across runs / cells
+        # (use the collator as a persistent "plot bucket")
+        collator.display_grids(save_path="results", clear=False, display_plot_index=True)
+
+    PDF Export Options:
+        # Basic PDF export (auto-clears after)
+        collator.save_pdf("summary.pdf")
+        
+        # PDF with plot indices, keep in memory across runs / cells
+        # (use the collator as a persistent "plot bucket")
+        collator.save_pdf("report.pdf", clear=False, display_plot_index=True)
+
+    Memory Management:
+        # Plots are automatically cleared AFTER display_grids() or save_pdf()
+        # unless clear=False is explicitly set
+        
+        # Manual clearing anytime
+        collator.clear()
+        
+        # Check captured count
+        print(f"Captured {collator.n_captured} figures")
+
+    Workflow Examples:
+        # Single analysis session (auto-clear)
+        collator = PlotCollator((3, 4))  # 12 plots per page
+        with collator.capture_context():
+            run_experiment_1()
+        collator.save_pdf("experiment1.pdf")  # Clears after saving
+        
+        # Plot bucket mode - accumulate across multiple cells
+        collator = PlotCollator((2, 3))
+        with collator.capture_context():
+            preprocessing_plots()
+        with collator.capture_context():  # Accumulates with previous
+            analysis_plots()
+        collator.display_grids(clear=False)  # Plots persist in collator's memory...
+        with collator.capture_context():
+            validation_plots()
+        collator.save_pdf("full_analysis.pdf")  # Now clears all plots
+        
+        # Quick review and export
+        with collator.capture_context(show_originals=False):
+            generate_many_plots()
+        collator.display_grids()  # Review in grids, auto-clears
+        # Plots are gone from memory after display
+    """
+    
+    def __init__(self, grid_shape: Tuple[int, int] = (4, 5), 
+                 figsize: Tuple[float, float] = (11.7, 8.3),
+                 dpi: int = 200):
+        """
+        Args:
+            grid_shape: (n_rows, n_cols) for subplot arrangement
+            figsize: A4 landscape dimensions in inches
+            dpi: Resolution - 100 good for notebook display, 300 for print
+        """
+        self.grid_shape = grid_shape
+        self.figsize = figsize
+        self.dpi = dpi
+        self.captured_figures = []
+        self._original_show = None
+        
+    def _capture_figure(self, fig: Figure) -> bytes:
+        """Convert figure to PNG bytes"""
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=self.dpi, bbox_inches='tight')
+        buf.seek(0)
+        return buf.getvalue()
+    
+    @contextmanager
+    def capture_context(self, show_originals: bool = False):
+        # Track figures for non-show() case
+        initial_figs = set(plt.get_fignums())
+        
+        # Hook plt.show() for explicit show() case
+        self._original_show = plt.show
+        
+        def custom_show(*args, **kwargs):
+            current_fig = plt.gcf()
+            if current_fig.get_axes():
+                fig_data = self._capture_figure(current_fig)
+                self.captured_figures.append(fig_data)
+            
+            if show_originals:
+                return self._original_show(*args, **kwargs)
+            else:
+                plt.close(current_fig)
+        
+        plt.show = custom_show
+        
+        try:
+            yield self
+        finally:
+            # Restore original show
+            plt.show = self._original_show
+        
+        # Capture any remaining figures (for non-show() case)
+        current_figs = set(plt.get_fignums())
+        new_figs = current_figs - initial_figs
+        
+        for fig_num in new_figs:
+            fig = plt.figure(fig_num)
+            if fig.get_axes():
+                fig_data = self._capture_figure(fig)
+                self.captured_figures.append(fig_data)
+            
+            if not show_originals:
+                plt.close(fig)
+
+    def _get_all_figures(self):
+        """Get all currently active matplotlib figures"""
+        return [plt.figure(num) for num in plt.get_fignums()]
+            
+    def display_grids(self,
+                      save_path: Optional[str] = None,
+                      clear: bool = False,
+                      display_plot_index: bool = False) -> None:
+        """Create and display grids in notebook, optionally save to file. If clear, clear captured figures after saving."""
+        if not self.captured_figures:
+            print("No figures captured. Use within capture_context().")
+            return
+        
+        n_per_grid = self.grid_shape[0] * self.grid_shape[1]
+        n_grids = (len(self.captured_figures) + n_per_grid - 1) // n_per_grid
+        
+        print(f"📊 Collating {len(self.captured_figures)} plots into {n_grids} grid(s)")
+        
+        for grid_idx in range(n_grids):
+            fig = plt.figure(figsize=self.figsize)
+            # fig.suptitle(f'Plot Summary - Page {grid_idx + 1}/{n_grids}', 
+            #             fontsize=14, y=0.95)
+            
+            start_idx = grid_idx * n_per_grid
+            end_idx = min(start_idx + n_per_grid, len(self.captured_figures))
+            
+            for subplot_idx in range(n_per_grid):
+                ax = fig.add_subplot(self.grid_shape[0], self.grid_shape[1], 
+                                   subplot_idx + 1)
+                
+                if start_idx + subplot_idx < end_idx:
+                    img_data = self.captured_figures[start_idx + subplot_idx]
+                    img = Image.open(io.BytesIO(img_data))
+                    ax.imshow(img)
+                    if display_plot_index:
+                        ax.set_title(f'Plot {start_idx + subplot_idx + 1}', fontsize=9)
+                else:
+                    # Empty subplot for incomplete grids
+                    ax.text(0.5, 0.5, 'Empty', ha='center', va='center', 
+                           transform=ax.transAxes, fontsize=12, alpha=0.5)
+                
+                ax.set_xticks([])
+                ax.set_yticks([])
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
+            
+            plt.tight_layout()
+            plt.show()  # Display in notebook
+            
+            if save_path:
+                fig.savefig(f"{save_path}_page_{grid_idx + 1}.png", 
+                           dpi=self.dpi, bbox_inches='tight')
+                
+        if save_path:
+            print(f"💾 Grids saved as {save_path}_page_*.png")
+
+        if clear:
+            self.clear()  # Clear captured figures after displaying
+    
+    def save_pdf(self, output_path: str,
+                 clear: bool = False,
+                 display_plot_index: bool = False) -> None:
+        """Save all grids to single multi-page PDF. If clear, clear captured figures after saving."""
+        if not self.captured_figures:
+            print("No figures captured.")
+            return
+            
+        n_per_grid = self.grid_shape[0] * self.grid_shape[1]
+        n_grids = (len(self.captured_figures) + n_per_grid - 1) // n_per_grid
+        
+        with pdf_backend.PdfPages(output_path) as pdf:
+            for grid_idx in range(n_grids):
+                fig = plt.figure(figsize=self.figsize)
+                # fig.suptitle(f'Plot Summary - Page {grid_idx + 1}/{n_grids}', 
+                #             fontsize=14, y=0.95)
+                
+                start_idx = grid_idx * n_per_grid
+                end_idx = min(start_idx + n_per_grid, len(self.captured_figures))
+                
+                for subplot_idx in range(n_per_grid):
+                    ax = fig.add_subplot(self.grid_shape[0], self.grid_shape[1], 
+                                       subplot_idx + 1)
+                    
+                    if start_idx + subplot_idx < end_idx:
+                        img_data = self.captured_figures[start_idx + subplot_idx]
+                        img = Image.open(io.BytesIO(img_data))
+                        ax.imshow(img)
+                        if display_plot_index:
+                            ax.set_title(f'Plot {start_idx + subplot_idx + 1}', fontsize=9)
+                    
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    for spine in ax.spines.values():
+                        spine.set_visible(False)
+                
+                plt.tight_layout()
+                pdf.savefig(fig, bbox_inches='tight')
+                plt.close(fig)  # Don't display, just save
+                
+        print(f"📄 PDF summary saved: {output_path}")
+        if clear:
+            self.clear()  # Clear captured figures after saving
+    
+    def clear(self):
+        """Clear captured figures"""
+        self.captured_figures.clear()
+        print("🗑️ Cleared captured figures")
+    
+    @property 
+    def n_captured(self) -> int:
+        """Number of captured figures"""
+        return len(self.captured_figures)
+
+# Convenience instance for immediate use
+plot_collator = PlotCollator()

@@ -1,0 +1,181 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "npyx"
+dynamic = ["version"]
+description = "Utilities to load, process, and plot Neuropixels data in Python."
+readme = "README.md"
+requires-python = ">=3.9,<3.14"
+license = "GPL-3.0-only"
+authors = [
+    {name = "Maxime Beau", email = "maximebeaujeanroch047@gmail.com"},
+]
+maintainers = [
+    {name = "Maxime Beau", email = "maximebeaujeanroch047@gmail.com"},
+]
+keywords = [
+    "neuropixels",
+    "kilosort", 
+    "phy",
+    "data analysis",
+    "electrophysiology",
+    "neuroscience",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+dependencies = [
+    "ipython",
+    "numpy",
+    "scipy",
+    "pandas",
+    "numba",
+    "statsmodels",
+    "matplotlib",
+    "cmcrameri",
+    "scikit-learn>=1.3.0,<1.6.0",
+    "imbalanced-learn>=0.11.0",
+    "networkx",
+    "psutil",
+    "joblib>=1.3",
+    "tqdm",
+    "h5py",
+    "seaborn",
+    "cachecache",
+]
+
+[project.optional-dependencies]
+c4 = [
+    "torch==1.13.1",
+    "torchvision==0.14.1", 
+    "torchaudio==0.13.1",
+    "asdfghjkl==0.1a2",
+    "laplace-torch==0.1a2",
+    "backpack-for-pytorch==1.6.0",
+    "requests",
+    "dill",
+    "tabulate",
+    "scipy==1.10.0",  # Constrain scipy version for compatibility with pytorch pinned version
+    "numpy<2.0.0",    # Constrain numpy version for compatibility with pytorch pinned version
+]
+dev = [
+    "pip>=19.2",
+    "wheel>=0.38.1",
+    "twine>=4.0.0",
+    "build",
+    "pytest",
+    "pytest-cov",
+    "black",
+    "isort",
+    "flake8",
+    "mypy",
+]
+gpu = [
+    "cupy; sys_platform != 'darwin'",  # cupy not available on macOS
+]
+
+[project.urls]
+Homepage = "https://github.com/Npix-routines/NeuroPyxels"
+Repository = "https://github.com/Npix-routines/NeuroPyxels"
+Documentation = "https://github.com/Npix-routines/NeuroPyxels/blob/master/README.md"
+Issues = "https://github.com/Npix-routines/NeuroPyxels/issues"
+
+[project.scripts]
+predict_cell_types = "npyx.c4.predict_cell_types:main"
+c4 = "npyx.c4.predict_cell_types:run_c4"
+
+[tool.setuptools]
+packages = ["npyx", "npyx.c4"]
+
+[tool.setuptools.dynamic]
+version = {attr = "npyx.__version__"}
+
+[tool.setuptools.package-data]
+npyx = ["*.py"]
+"npyx.c4" = ["*.py"]
+
+# Modern development tools configuration
+[tool.black]
+line-length = 88
+target-version = ['py39']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["npyx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+# Ignore missing imports for scientific packages that may not have stubs
+[[tool.mypy.overrides]]
+module = [
+    "numpy.*",
+    "scipy.*", 
+    "pandas.*",
+    "matplotlib.*",
+    "seaborn.*",
+    "sklearn.*",
+    "numba.*",
+    "h5py.*",
+    "tqdm.*",
+    "joblib.*",
+    "networkx.*",
+    "psutil.*",
+    "statsmodels.*",
+    "cmcrameri.*",
+    "cachecache.*",
+    "imbalanced_learn.*",
+    "torch.*",
+    "torchvision.*",
+    "torchaudio.*",
+    "PIL.*",
+    "IPython.*",
+]
+ignore_missing_imports = true

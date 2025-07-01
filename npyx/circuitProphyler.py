@@ -7,7 +7,7 @@ import os
 from ast import literal_eval as ale
 import operator
 import time
-import imp
+import importlib.util
 import os.path as op; opj=op.join
 from pathlib import Path
 
@@ -878,7 +878,11 @@ class Dataset:
         self.ds_i=dataset_index
         self.name=self.dp.name if dataset_name is None else dataset_name
         self.prb_name=probe_name
-        self.params={}; params=imp.load_source('params', Path(self.dp,'params.py').absolute().as_posix())
+        self.params={}; 
+        params_path = Path(self.dp,'params.py').absolute().as_posix()
+        spec = importlib.util.spec_from_file_location('params', params_path)
+        params = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(params)
         for p in dir(params):
             exec("if '__'not in '{}': self.params['{}']=params.{}".format(p, p, p))
         self.fs=self.meta['highpass']['sampling_rate']

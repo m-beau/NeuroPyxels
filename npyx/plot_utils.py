@@ -10,10 +10,7 @@ from contextlib import contextmanager
 from typing import Tuple, Optional
 import io
 from PIL import Image
-from IPython.display import display
-
-
-from IPython.core.display import HTML, display
+from IPython.display import display, HTML
 
 import os
 from pathlib import Path

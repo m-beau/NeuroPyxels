@@ -32,7 +32,7 @@ requirements = [
     "matplotlib",
     "cmcrameri",
     "scikit-learn",
-    "imbalanced-learn",
+    "imbalanced-learn>=0.13.0",
     "networkx",
     "psutil",
     "joblib>=1.3",

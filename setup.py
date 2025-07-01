@@ -1,4 +1,3 @@
-import sys
 import codecs
 import os.path as op
 
@@ -25,7 +24,7 @@ with open("README.md", "r", encoding="utf-8") as readme_file:
 
 requirements = [
     "ipython",
-    "numpy",
+    "numpy<2.3.0",
     "scipy",
     "pandas",
     "numba",
@@ -40,7 +39,7 @@ requirements = [
     "tqdm",
     "h5py",
     "seaborn",
-    "cachecache"
+    "cachecache",
 ]
 
 c4_requirements = [
@@ -53,12 +52,17 @@ c4_requirements = [
     "requests",
     "dill",
     "tabulate",
-    "scipy==1.10.0", # Constrain scipy version for compatibility with pytorch pinned version
-    "numpy<2.0.0" # Constrain numpy version for compatibility with pytorch pinned version
+    "scipy==1.10.0",  # Constrain scipy version for compatibility with pytorch pinned version
+    "numpy<2.0.0",  # Constrain numpy version for compatibility with pytorch pinned version
 ]
 dependency_links = ["https://download.pytorch.org/whl/cpu"]
 
-entry_points = {"console_scripts": ["predict_cell_types = npyx.c4.predict_cell_types:main", "c4 = npyx.c4.predict_cell_types:run_c4"]}
+entry_points = {
+    "console_scripts": [
+        "predict_cell_types = npyx.c4.predict_cell_types:main",
+        "c4 = npyx.c4.predict_cell_types:run_c4",
+    ]
+}
 
 setup(
     name="npyx",
@@ -72,7 +76,7 @@ setup(
     packages=["npyx", "npyx.c4"],
     install_requires=requirements,
     extras_require={"c4": c4_requirements},
-    python_requires="<3.12",
+    python_requires="<3.13",
     dependency_links=dependency_links,
     entry_points=entry_points,
     keywords="neuropixels,kilosort,phy,data analysis,electrophysiology,neuroscience",

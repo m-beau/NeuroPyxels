@@ -1056,7 +1056,7 @@ def estimate_bins(x, rule):
 
 
 def Freedman_Diaconis_bin_estimate(x):
-    data = np.asarray(x, dtype=np.float_)
+    data = np.asarray(x, dtype=np.float64)
     iqr_ = iqr(data, scale=1, nan_policy="omit")
     n = data.size
     bw = (2 * iqr_) / np.power(n, 1 / 3)

@@ -1281,31 +1281,31 @@ class PlotCollator:
                 plt.figure()
                 plt.plot(data[i])
                 # plt.show()  # Optional - works with or without
-        collator.display_grids()
+        collator.show()
 
     Capture Options:
         # Show original plots inline while capturing
-        with collator.capture_context(show_originals=True):
+        with collator.capture_context(show_inline=True):
             generate_plots()
         
-        # Silent capture (clean notebook output)
-        with collator.capture_context(show_originals=False):  # default
+        # Silent capture (clean notebook output, need to use collator.show() to show figures)
+        with collator.capture_context(show_inline=False):  # default
             generate_plots()
 
     Display Options:
         # Basic display in notebook (auto-clears after)
-        collator.display_grids()
+        collator.show()
         
         # Display with plot indices as titles
-        collator.display_grids(display_plot_index=True)
+        collator.show(display_plot_index=True)
         
         # Display and save as PNG files
-        collator.display_grids(save_path="analysis_grids")
+        collator.show(save_path="analysis_grids")
         # → saves: analysis_grids_page_1.png, analysis_grids_page_2.png, ...
         
         # Keep plots in memory across runs / cells
         # (use the collator as a persistent "plot bucket")
-        collator.display_grids(save_path="results", clear=False, display_plot_index=True)
+        collator.show(save_path="results", clear=False, display_plot_index=True)
 
     PDF Export Options:
         # Basic PDF export (auto-clears after)
@@ -1316,7 +1316,7 @@ class PlotCollator:
         collator.save_pdf("report.pdf", clear=False, display_plot_index=True)
 
     Memory Management:
-        # Plots are automatically cleared AFTER display_grids() or save_pdf()
+        # Plots are automatically cleared AFTER show() or save_pdf()
         # unless clear=False is explicitly set
         
         # Manual clearing anytime
@@ -1338,15 +1338,15 @@ class PlotCollator:
             preprocessing_plots()
         with collator.capture_context():  # Accumulates with previous
             analysis_plots()
-        collator.display_grids(clear=False)  # Plots persist in collator's memory...
+        collator.show(clear=False)  # Plots persist in collator's memory...
         with collator.capture_context():
             validation_plots()
         collator.save_pdf("full_analysis.pdf")  # Now clears all plots
         
         # Quick review and export
-        with collator.capture_context(show_originals=False):
+        with collator.capture_context(show_inline=False):
             generate_many_plots()
-        collator.display_grids()  # Review in grids, auto-clears
+        collator.show()  # Review in grids, auto-clears
         # Plots are gone from memory after display
     """
     
@@ -1373,7 +1373,11 @@ class PlotCollator:
         return buf.getvalue()
     
     @contextmanager
-    def capture_context(self, show_originals: bool = False):
+    def capture_context(self, show_inline: bool = False):
+        """
+        If show_inline is True: Show original plots inline while capturing.
+        If False: Silent capture (clean notebook output, need to use collator.show() to show figures)
+        """
         # Track figures for non-show() case
         initial_figs = set(plt.get_fignums())
         
@@ -1386,7 +1390,7 @@ class PlotCollator:
                 fig_data = self._capture_figure(current_fig)
                 self.captured_figures.append(fig_data)
             
-            if show_originals:
+            if show_inline:
                 return self._original_show(*args, **kwargs)
             else:
                 plt.close(current_fig)
@@ -1409,18 +1413,24 @@ class PlotCollator:
                 fig_data = self._capture_figure(fig)
                 self.captured_figures.append(fig_data)
             
-            if not show_originals:
+            if not show_inline:
                 plt.close(fig)
 
     def _get_all_figures(self):
         """Get all currently active matplotlib figures"""
         return [plt.figure(num) for num in plt.get_fignums()]
             
-    def display_grids(self,
+    def show(self,
                       save_path: Optional[str] = None,
                       clear: bool = False,
                       display_plot_index: bool = False) -> None:
-        """Create and display grids in notebook, optionally save to file. If clear, clear captured figures after saving."""
+        """
+        Create and display grids in notebook.
+        Optionally save to PDFs at save_path.
+        If clear is True, clear captured figures after saving.
+        If display_plot_index is True, display plot indices as titles.
+        """
+
         if not self.captured_figures:
             print("No figures captured. Use within capture_context().")
             return

@@ -3,8 +3,14 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoLocator
-
-from IPython.core.display import HTML, display
+import matplotlib.backends.backend_pdf as pdf_backend
+from matplotlib.figure import Figure
+import numpy as np
+from contextlib import contextmanager
+from typing import Tuple, Optional
+import io
+from PIL import Image
+from IPython.display import display, HTML
 
 import os
 from pathlib import Path
@@ -425,7 +431,7 @@ def mplp(fig=None,
             4,
         }, "legend_loc must comply to the bbox_to_anchor format ( (x,y) or (x,y,width,height))."
     if show_legend: ax.legend(bbox_to_anchor=legend_loc, loc='lower left',
-                               prop={'family':'Arial'})
+                               prop={'family':'Arial', 'size': ticklab_s})
     elif hide_legend: ax.legend([],[], frameon=False)
 
     if colorbar:
@@ -610,13 +616,56 @@ def ceil_power10(x):
 def n_decimals(x):
     return len(str(x).split('.')[1])
 
+# def get_bestticks(start, end, step=None, light=False):
+#     """
+#     Returns the best ticks for a start and end tick.
+#     If step is specified, it will be the space between ticks.
+#     If light is True, the step will be multiplied by 2.
+#     """
+#     span = end - start
+#     if step is None:
+#         upper10 = ceil_power10(span)
+#         if span <= upper10/5:
+#             step = upper10*0.01
+#         elif span <= upper10/2:
+#             step = upper10*0.05
+#         else:
+#             step = upper10*0.1
+#     if light: step=2*step
+#     assert step < span, f'Step {step} is too large for array span {span}!'
+#     ticks = np.arange(myceil(start, step), myfloor(end, step) + step, step)
+#     ticks = np.round(ticks, n_decimals(step))
+#     if step == int(step): ticks = ticks.astype(np.int64)
+
+#     return ticks
+
+# def get_bestticks_from_array(arr, step=None, light=False):
+#     """
+#     Returns the best ticks for a given array of values (i.e. an sparser array of equally spaced values).
+#     If the array if np.arange(10), the returned array will be np.arange(0,10,1).
+#     If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
+#     """
+#     arr_sort = np.sort(arr)
+#     bestticks = get_bestticks(arr_sort[0], arr_sort[-1], step, light)
+
+#     if arr[0] > arr[-1]:
+#         bestticks = bestticks[::-1]
+
+#     return bestticks
+
 def get_bestticks(start, end, step=None, light=False):
+    """Generate evenly spaced ticks between start and end
+    (smartly spaced by 1, 5, or 10).
+
+    If start=0 and end=10, ticks will be np.arange(0,10,1),
+    If start=0 and end=50, ticks will be np.arange(0,50,5)...
+    
+    Arguments:
+    - start, end: Range bounds
+    - step: Tick spacing (auto-calculated if None) 
+    - light: If True, doubles the step size (sparser)
     """
-    Returns the best ticks for a start and end tick.
-    If step is specified, it will be the space between ticks.
-    If light is True, the step will be multiplied by 2.
-    """
-    span = end - start
+    span = abs(end - start)
     if step is None:
         upper10 = ceil_power10(span)
         if span <= upper10/5:
@@ -624,42 +673,121 @@ def get_bestticks(start, end, step=None, light=False):
         elif span <= upper10/2:
             step = upper10*0.05
         else:
-            step = upper10*0.1
-    if light: step=2*step
-    assert step < span, f'Step {step} is too large for array span {span}!'
+            step = upper10*0.1    
+    if light: step *= 2
+    assert step < span, f'Step {step} exceeds span {span}'
+        
+    # Round to step precision and handle integers
     ticks = np.arange(myceil(start, step), myfloor(end, step) + step, step)
-    ticks = np.round(ticks, n_decimals(step))
-    if step == int(step): ticks = ticks.astype(np.int64)
+    decimals = n_decimals(step)
+    ticks = ticks.astype(int) if decimals <= 0 else np.round(ticks, decimals)
 
-    return ticks
+    return ticks if start <= end else ticks[::-1]
 
 def get_bestticks_from_array(arr, step=None, light=False):
     """
-    Returns the best ticks for a given array of values (i.e. an sparser array of equally spaced values).
-    If the array if np.arange(10), the returned array will be np.arange(0,10,1).
-    If np.arange(50), the returned array will be np.arange(0,50,5). And so on.
+    Returns the best ticks for a given array of values
+    (i.e. a sparser array of values spaced by 1, 5, or 10).
+    
+    If arr is 0 through 10, ticks will be np.arange(0,10,1),
+    If arr is 0 through 50, ticks will be np.arange(0,50,5)...
+    
+    Arguments:
+    - arr: Array or list
+    - step: Tick spacing (auto-calculated if None) 
+    - light: If True, doubles the step size (sparser)
     """
-    arr_sort = np.sort(arr)
-    bestticks = get_bestticks(arr_sort[0], arr_sort[-1], step, light)
+    return get_bestticks(np.min(arr), np.max(arr), step, light)
 
-    if arr[0] > arr[-1]:
-        bestticks = bestticks[::-1]
+def get_labels_from_ticks(ticks,
+                          max_decimals=4,
+                          trim_zeros=True):
+    """
+    Format numerical tick values into consistently formatted string labels.
+    
+    Arguments:
+    - ticks: Array of numerical values to format
+    - max_decimals: Maximum number of decimal places to consider
+    - trim_zeros: If True, remove trailing zeros after decimal point. If False,
+                maintain consistent decimal places across all numbers.
+    
+    Returns:
+    - list of formatted labels
+    - number of decimal places used
+    """
+    ticks = np.asarray(ticks)
 
-    return bestticks
+    # Find optimal decimal precision (up to max_decimals)
+    for d in range(max_decimals + 1):
+        if np.allclose(ticks, np.round(ticks, d)):
+            decimals_needed = d
+            break
 
-def get_labels_from_ticks(ticks):
-    ticks=npa(ticks)
-    nflt=0
-    for t in ticks:
-        t=round(t,4)
-        for roundi in range(4):
-            if t == round(t, roundi):
-                nflt = max(nflt, roundi)
-                break
-    ticks_labels=ticks.astype(np.int64) if nflt==0 else np.round(ticks.astype(float), nflt)
-    jump_n=1 if nflt==0 else 2
-    ticks_labels=[str(l)+'0'*(nflt+jump_n-len(str(l).replace('-',''))) for l in ticks_labels]
-    return ticks_labels, nflt
+    # Format tick labels
+    if decimals_needed == 0:
+        ticks_labels = list(ticks.astype(int))
+        string_shift = 1
+    else:
+        ticks_labels = list(np.round(ticks, decimals_needed))
+        string_shift = 2
+
+    for i, l in enumerate(ticks_labels):
+        l = str(l) + '0' * (decimals_needed + string_shift - len(str(l).replace('-','')))
+        if trim_zeros and '.' in l:
+            l = l.rstrip('0').rstrip('.')
+        ticks_labels[i] = l
+        
+    return ticks_labels, decimals_needed
+
+# def get_labels_from_ticks(ticks,
+#                           max_decimals = 4,
+#                           trim_zeros = True):
+#     """
+#     Format numerical tick values into consistently formatted string labels.
+    
+#     Arguments:
+#     - ticks: Array of numerical values to format
+#     - max_decimals: Maximum number of decimal places to consider
+#     - trim_zeros: If True, remove trailing zeros after decimal point. If False,
+#                 maintain consistent decimal places across all numbers.
+    
+#     Returns:
+#     - list of formatted labels
+#     - number of decimal places used
+#     """
+#     if not len(ticks):
+#         return [], 0
+        
+#     ticks = np.asarray(ticks)
+    
+#     # Find minimum decimals needed to represent numbers accurately
+#     decimals_needed = 0
+#     rounded = np.round(ticks, max_decimals)
+#     for d in range(max_decimals + 1):
+#         if np.allclose(rounded, np.round(ticks, d)):
+#             decimals_needed = d
+#             break
+            
+#     # Format numbers with consistent decimal places
+#     if decimals_needed == 0:
+#         formatted = [f"{int(t):d}0" for t in ticks]
+#     else:
+#         if trim_zeros:
+#             # Format each number and remove trailing zeros after decimal point
+#             formatted = []
+#             for t in ticks:
+#                 # Format with full decimals first
+#                 num_str = f"{t:.{decimals_needed}f}"
+#                 # Remove trailing zeros only after decimal point
+#                 if '.' in num_str:
+#                     num_str = num_str.rstrip('0').rstrip('.')
+#                 formatted.append(num_str)
+#         else:
+#             # Keep all decimal places consistent
+#             format_str = f"{{:.{decimals_needed}f}}"
+#             formatted = [format_str.format(t) for t in ticks]
+        
+#     return formatted, decimals_needed
 
 def sci_notation(num, decimal_digits=1, precision=None, exponent=None):
     """
@@ -1126,3 +1254,286 @@ def make_mpl_animation(ax, Nangles, delay, width=10, height=10, saveDir='~/Downl
     rotanimate(ax, width, height, angles,ttl, delay=delay)
 
     os.chdir(oldDir)
+
+
+#############################################
+#### Plot collator for Jupyter notebooks ####
+#############################################
+class PlotCollator:
+    """
+    Captures matplotlib figures during cell execution and collates them into A4 grids.
+    Designed for Jupyter notebook usage with inline display support.
+
+    Handles both explicit plt.show() calls and auto-displayed figures in notebooks.
+
+    Parameters:
+        grid_shape: (n_rows, n_cols) subplot arrangement per page
+        figsize: Page dimensions in inches (default A4 landscape: 11.7 x 8.3")
+        dpi: Resolution for saved outputs (200 default, 100 for display, 300 for print)
+
+    Basic Usage:
+        collator = PlotCollator((4, 5),           # 20 plots per grid
+                                (11.7, 8.3),       # A4 landscape inches
+                                200)               # print-quality DPI
+        with collator.capture_context():
+            # Your analysis code generating plots
+            for i in range(50):
+                plt.figure()
+                plt.plot(data[i])
+                # plt.show()  # Optional - works with or without
+        collator.show()
+
+    Capture Options:
+        # Show original plots inline while capturing
+        with collator.capture_context(show_inline=True):
+            generate_plots()
+        
+        # Silent capture (clean notebook output, need to use collator.show() to show figures)
+        with collator.capture_context(show_inline=False):  # default
+            generate_plots()
+
+    Display Options:
+        # Basic display in notebook (auto-clears after)
+        collator.show()
+        
+        # Display with plot indices as titles
+        collator.show(display_plot_index=True)
+        
+        # Display and save as PNG files
+        collator.show(save_path="analysis_grids")
+        # → saves: analysis_grids_page_1.png, analysis_grids_page_2.png, ...
+        
+        # Keep plots in memory across runs / cells
+        # (use the collator as a persistent "plot bucket")
+        collator.show(save_path="results", clear=False, display_plot_index=True)
+
+    PDF Export Options:
+        # Basic PDF export (auto-clears after)
+        collator.save_pdf("summary.pdf")
+        
+        # PDF with plot indices, keep in memory across runs / cells
+        # (use the collator as a persistent "plot bucket")
+        collator.save_pdf("report.pdf", clear=False, display_plot_index=True)
+
+    Memory Management:
+        # Plots are automatically cleared AFTER show() or save_pdf()
+        # unless clear=False is explicitly set
+        
+        # Manual clearing anytime
+        collator.clear()
+        
+        # Check captured count
+        print(f"Captured {collator.n_captured} figures")
+
+    Workflow Examples:
+        # Single analysis session (auto-clear)
+        collator = PlotCollator((3, 4))  # 12 plots per page
+        with collator.capture_context():
+            run_experiment_1()
+        collator.save_pdf("experiment1.pdf")  # Clears after saving
+        
+        # Plot bucket mode - accumulate across multiple cells
+        collator = PlotCollator((2, 3))
+        with collator.capture_context():
+            preprocessing_plots()
+        with collator.capture_context():  # Accumulates with previous
+            analysis_plots()
+        collator.show(clear=False)  # Plots persist in collator's memory...
+        with collator.capture_context():
+            validation_plots()
+        collator.save_pdf("full_analysis.pdf")  # Now clears all plots
+        
+        # Quick review and export
+        with collator.capture_context(show_inline=False):
+            generate_many_plots()
+        collator.show()  # Review in grids, auto-clears
+        # Plots are gone from memory after display
+    """
+    
+    def __init__(self, grid_shape: Tuple[int, int] = (4, 5), 
+                 figsize: Tuple[float, float] = (11.7, 8.3),
+                 dpi: int = 200):
+        """
+        Args:
+            grid_shape: (n_rows, n_cols) for subplot arrangement
+            figsize: A4 landscape dimensions in inches
+            dpi: Resolution - 100 good for notebook display, 300 for print
+        """
+        self.grid_shape = grid_shape
+        self.figsize = figsize
+        self.dpi = dpi
+        self.captured_figures = []
+        self._original_show = None
+        
+    def _capture_figure(self, fig: Figure) -> bytes:
+        """Convert figure to PNG bytes"""
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=self.dpi, bbox_inches='tight')
+        buf.seek(0)
+        return buf.getvalue()
+    
+    @contextmanager
+    def capture_context(self, show_inline: bool = False):
+        """
+        If show_inline is True: Show original plots inline while capturing.
+        If False: Silent capture (clean notebook output, need to use collator.show() to show figures)
+        """
+        # Track figures for non-show() case
+        initial_figs = set(plt.get_fignums())
+        
+        # Hook plt.show() for explicit show() case
+        self._original_show = plt.show
+        
+        def custom_show(*args, **kwargs):
+            current_fig = plt.gcf()
+            if current_fig.get_axes():
+                fig_data = self._capture_figure(current_fig)
+                self.captured_figures.append(fig_data)
+            
+            if show_inline:
+                return self._original_show(*args, **kwargs)
+            else:
+                plt.close(current_fig)
+        
+        plt.show = custom_show
+        
+        try:
+            yield self
+        finally:
+            # Restore original show
+            plt.show = self._original_show
+        
+        # Capture any remaining figures (for non-show() case)
+        current_figs = set(plt.get_fignums())
+        new_figs = current_figs - initial_figs
+        
+        for fig_num in new_figs:
+            fig = plt.figure(fig_num)
+            if fig.get_axes():
+                fig_data = self._capture_figure(fig)
+                self.captured_figures.append(fig_data)
+            
+            if not show_inline:
+                plt.close(fig)
+
+    def _get_all_figures(self):
+        """Get all currently active matplotlib figures"""
+        return [plt.figure(num) for num in plt.get_fignums()]
+            
+    def show(self,
+                      save_path: Optional[str] = None,
+                      clear: bool = False,
+                      display_plot_index: bool = False) -> None:
+        """
+        Create and display grids in notebook.
+        Optionally save to PDFs at save_path.
+        If clear is True, clear captured figures after saving.
+        If display_plot_index is True, display plot indices as titles.
+        """
+
+        if not self.captured_figures:
+            print("No figures captured. Use within capture_context().")
+            return
+        
+        n_per_grid = self.grid_shape[0] * self.grid_shape[1]
+        n_grids = (len(self.captured_figures) + n_per_grid - 1) // n_per_grid
+        
+        print(f"📊 Collating {len(self.captured_figures)} plots into {n_grids} grid(s)")
+        
+        for grid_idx in range(n_grids):
+            fig = plt.figure(figsize=self.figsize)
+            # fig.suptitle(f'Plot Summary - Page {grid_idx + 1}/{n_grids}', 
+            #             fontsize=14, y=0.95)
+            
+            start_idx = grid_idx * n_per_grid
+            end_idx = min(start_idx + n_per_grid, len(self.captured_figures))
+            
+            for subplot_idx in range(n_per_grid):
+                ax = fig.add_subplot(self.grid_shape[0], self.grid_shape[1], 
+                                   subplot_idx + 1)
+                
+                if start_idx + subplot_idx < end_idx:
+                    img_data = self.captured_figures[start_idx + subplot_idx]
+                    img = Image.open(io.BytesIO(img_data))
+                    ax.imshow(img)
+                    if display_plot_index:
+                        ax.set_title(f'Plot {start_idx + subplot_idx + 1}', fontsize=9)
+                else:
+                    # Empty subplot for incomplete grids
+                    ax.text(0.5, 0.5, 'Empty', ha='center', va='center', 
+                           transform=ax.transAxes, fontsize=12, alpha=0.5)
+                
+                ax.set_xticks([])
+                ax.set_yticks([])
+                for spine in ax.spines.values():
+                    spine.set_visible(False)
+            
+            plt.tight_layout()
+            plt.show()  # Display in notebook
+            
+            if save_path:
+                fig.savefig(f"{save_path}_page_{grid_idx + 1}.png", 
+                           dpi=self.dpi, bbox_inches='tight')
+                
+        if save_path:
+            print(f"💾 Grids saved as {save_path}_page_*.png")
+
+        if clear:
+            self.clear()  # Clear captured figures after displaying
+    
+    def save_pdf(self, output_path: str,
+                 clear: bool = False,
+                 display_plot_index: bool = False) -> None:
+        """Save all grids to single multi-page PDF. If clear, clear captured figures after saving."""
+        if not self.captured_figures:
+            print("No figures captured.")
+            return
+            
+        n_per_grid = self.grid_shape[0] * self.grid_shape[1]
+        n_grids = (len(self.captured_figures) + n_per_grid - 1) // n_per_grid
+        
+        with pdf_backend.PdfPages(output_path) as pdf:
+            for grid_idx in range(n_grids):
+                fig = plt.figure(figsize=self.figsize)
+                # fig.suptitle(f'Plot Summary - Page {grid_idx + 1}/{n_grids}', 
+                #             fontsize=14, y=0.95)
+                
+                start_idx = grid_idx * n_per_grid
+                end_idx = min(start_idx + n_per_grid, len(self.captured_figures))
+                
+                for subplot_idx in range(n_per_grid):
+                    ax = fig.add_subplot(self.grid_shape[0], self.grid_shape[1], 
+                                       subplot_idx + 1)
+                    
+                    if start_idx + subplot_idx < end_idx:
+                        img_data = self.captured_figures[start_idx + subplot_idx]
+                        img = Image.open(io.BytesIO(img_data))
+                        ax.imshow(img)
+                        if display_plot_index:
+                            ax.set_title(f'Plot {start_idx + subplot_idx + 1}', fontsize=9)
+                    
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    for spine in ax.spines.values():
+                        spine.set_visible(False)
+                
+                plt.tight_layout()
+                pdf.savefig(fig, bbox_inches='tight')
+                plt.close(fig)  # Don't display, just save
+                
+        print(f"📄 PDF summary saved: {output_path}")
+        if clear:
+            self.clear()  # Clear captured figures after saving
+    
+    def clear(self):
+        """Clear captured figures"""
+        self.captured_figures.clear()
+        print("🗑️ Cleared captured figures")
+    
+    @property 
+    def n_captured(self) -> int:
+        """Number of captured figures"""
+        return len(self.captured_figures)
+
+# Convenience instance for immediate use
+plot_collator = PlotCollator()

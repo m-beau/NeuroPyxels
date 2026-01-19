@@ -19,7 +19,7 @@ from matplotlib.patches import Ellipse
 import scipy.stats as stats
 from numpy import pi, cos, sin
 
-from numba import njit
+from numba import njit, prange
 
 from npyx.utils import npa, thresh, thresh_consec, smooth,\
                         sign, assert_int, assert_iterable, npyx_cacher
@@ -34,7 +34,8 @@ from npyx.merger import assert_multi, get_ds_table
 
 def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, again_rawpaq=False,
                      lick_ili_th=0.075, n_ticks=1024, diam=200, gsd=25,
-                     plot=False, drop_raw=True, cam_paqi_to_use=None):
+                     plot=False, drop_raw=True, cam_paqi_to_use=None,
+                     video_format='avi'):
     '''
     Remove artefactual licking, processes rotary encoder and wheel turn trials.
 
@@ -66,7 +67,7 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
         print(f'Behavioural data found at {fn}.')
         return pickle.load(open(str(fn),"rb"))
 
-    paqdic=npix_aligned_paq(dp,f_behav=f_behav, again=again_align, again_rawpaq=again_rawpaq)
+    paqdic = npix_aligned_paq(dp,f_behav=f_behav, again=again_align, again_rawpaq=again_rawpaq)
     paq_fs=paqdic['paq_fs']
     fs=paqdic['npix_fs']
     if assert_multi(dp):
@@ -118,8 +119,13 @@ def behav_dic(dp, f_behav=None, vid_path=None, again=False, again_align=False, a
 
         # Process extra camera frames
         if vid_path is None:
-            vid_path = dp.parent/'videos'
-        videos = list_files(vid_path, 'avi', 1) if vid_path.exists() else []
+            vid_path = dp.parent / 'behavior'
+            # Find deeplabcut directory
+            for dir_path in vid_path.iterdir():
+                if dir_path.is_dir() and dp.parent.name in str(dir_path.name):
+                    vid_path = dir_path / 'videos'
+        videos = list_files(vid_path, video_format, 1) if vid_path.exists() else []
+        videos = [v for v in videos if 'labeled' not in str(v)]
 
         if not any(videos):
             print(f'No videos found at {vid_path} - camera triggers not processed.\n')
@@ -400,9 +406,14 @@ def load_PAQdata(paq_f, variables='all', again=False, unit='seconds', th_frac=0.
             rawPAQVariables[v] = data
             if variables[v]=='digital':
                 print('    Thresholding...')
-                th = min(data)+(max(data)-min(data))*th_frac
-                rawPAQVariables[v+'_ON'] = thresh(data, th, 1).astype(np.int64)
-                rawPAQVariables[v+'_OFF'] = thresh(data, th, -1).astype(np.int64)
+                robust_min = np.quantile(data, 0.01)
+                _max = np.max(data)
+                th = robust_min + (_max - robust_min) * th_frac
+                onsets = thresh(data, th, 1).astype(np.int64)
+                offsets = thresh(data, th, -1).astype(np.int64)
+                rawPAQVariables[v+'_ON'] = onsets
+                rawPAQVariables[v+'_OFF'] = offsets
+                print(f"    Found {len(onsets)} {v} events.")
 
         # Pickle it
         if np.all(list(variables.keys())==allVariables):
@@ -806,16 +817,19 @@ def load_baseline_periods(dp = None, behavdic = None, rec_len = None, dataset_wi
 
     if return_all:
         if dataset_with_opto:
-            return baseline_recording_periods, nomove_periods, no_light_periods
+            return baseline_recording_periods, move_periods, nomove_periods, light_periods, no_light_periods
         else:
-            return baseline_recording_periods, nomove_periods
+            return baseline_recording_periods, move_periods, nomove_periods
 
     return baseline_recording_periods
 
 
 #%% Alignement, binning and processing of time series
 
-def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remove_empty_trials=False):
+def align_variable(events, variable_t, variable,
+                   b=2, window=[-1000,1000],
+                   remove_empty_trials=False,
+                   tbins=None):
     '''
     Arguments:
         - events: list/array in seconds, events to align timestamps to
@@ -824,6 +838,7 @@ def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remov
         - bin: float, binarized train bin in millisecond
         - window: [w1, w2], where w1 and w2 are in milliseconds.
         - remove_empty_trials: boolean, remove from the output trials where there were no timestamps around event. | Default: True
+        - tbins: array; if passed, takes precedence over b and window (tbins = np.arange(window[0], window[1]+b, b))
     Returns:
         - aligned_t: dictionnaries where each key is an event in absolute time and value the times aligned to this event within window.
         - binned_variable: a len(events) x window/b matrix where the variable has been binned, in variable units.
@@ -837,15 +852,16 @@ def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remov
     sort_i = np.argsort(variable_t)
     variable_t = variable_t[sort_i]
     variable = variable[sort_i]
-    window_s=[window[0]/1000, window[1]/1000]
+    window_s = [window[0]/1000, window[1]/1000]
 
     aligned_t = {}
-    tbins=np.arange(window[0], window[1]+b, b)
+    if tbins is None:
+        tbins = np.arange(window[0], window[1]+b, b)
     binned_variable = np.zeros((len(events), len(tbins)-1)).astype(float)
     for i, e in enumerate(events):
         ts = variable_t-e # ts: t shifted
         ts_m = (ts>=window_s[0])&(ts<=window_s[1])
-        ts_win = ts[ts_m] # tsc: ts in widnow
+        ts_win = ts[ts_m] # ts_win: ts in window
         variable_win = variable[ts_m]
         if np.any(ts_win) or not remove_empty_trials:
             aligned_t[e]=ts_win.tolist()
@@ -860,6 +876,105 @@ def align_variable(events, variable_t, variable, b=2, window=[-1000,1000], remov
     if not np.any(binned_variable): binned_variable = np.zeros((len(events), len(tbins)-1))
 
     return aligned_t, binned_variable
+
+@njit
+def fast_histogram(values, bins):
+    n_bins = len(bins) - 1
+    hist = np.zeros(n_bins)
+    
+    for i in range(len(values)):
+        bin_idx = np.searchsorted(bins, values[i]) - 1
+        if 0 <= bin_idx < n_bins:
+            hist[bin_idx] += 1
+    
+    return hist
+    
+@njit
+def fast_histogram_weights(values, bins, weights):
+    n_bins = len(bins) - 1
+    weighted_hist = np.zeros(n_bins)
+    count_hist = np.zeros(n_bins)
+    
+    for i in range(len(values)):
+        bin_idx = np.searchsorted(bins, values[i]) - 1
+        if 0 <= bin_idx < n_bins:
+            weighted_hist[bin_idx] += weights[i]
+            count_hist[bin_idx] += 1
+    
+    return weighted_hist, count_hist
+
+@njit(parallel=True)
+def process_all_events(events, variable_t, variable, window_s_0, window_s_1, tbins):
+    
+    n_events = len(events)
+    n_bins = len(tbins) - 1
+    
+    binned_variable = np.empty((n_events, n_bins))
+    for i in prange(n_events):
+        e = events[i]
+        left_bound = e + window_s_0
+        right_bound = e + window_s_1
+        
+        start_idx = np.searchsorted(variable_t, left_bound)
+        end_idx = np.searchsorted(variable_t, right_bound)
+        
+        if end_idx > start_idx:
+            var_t_win = variable_t[start_idx:end_idx] - e
+            var_win = variable[start_idx:end_idx]
+            var_t_win_ms = var_t_win * 1000
+            
+            tscb, tscb_n = fast_histogram_weights(var_t_win_ms, tbins, var_win)
+
+            tscb_n[tscb_n == 0] = 1  # no 0 div
+            binned_variable[i, :] = tscb / tscb_n
+        else:
+            binned_variable[i, :] = tscb / tscb_n
+    
+    return binned_variable
+
+def align_variable_numba(events, variable_t, variable,
+                   b=2, window=[-1000,1000],
+                   remove_empty_trials=False,
+                   tbins=None):
+    '''
+    Arguments:
+        - events: list/array in seconds, events to align timestamps to
+        - variable_t: list/array in seconds, timestamps to align around events.
+        - variable: list/array, variable to bin around event.
+        - b: float, bin size in milliseconds. Default: 2
+        - window: [w1, w2], where w1 and w2 are in milliseconds. Default: [-1000,1000]
+        - remove_empty_trials: boolean, remove from the output trials where there were no timestamps around event. Default: False
+        - tbins: array; if passed, takes precedence over b and window (tbins = np.arange(window[0], window[1]+b, b))
+    Returns:
+        - binned_variable: a len(events) x window/b matrix where the variable has been binned, in variable units.
+    '''
+
+    events, variable_t, variable = npa(events), npa(variable_t), npa(variable)
+    assert np.any(events), 'You provided an empty array of events!'
+    assert variable_t.ndim==1
+    assert len(variable_t)==len(variable)
+    
+    # Sort data
+    sort_i = np.argsort(variable_t)
+    variable_t = variable_t[sort_i]
+    variable = variable[sort_i]
+    
+    # Convert window to seconds
+    window_s = np.array([window[0]/1000, window[1]/1000])
+    if tbins is None:
+        tbins = np.arange(window[0], window[1]+b, b)
+    
+    # Process all events in parallel
+    binned_variable = process_all_events(events, variable_t, variable, 
+                                        window_s[0], window_s[1], tbins)
+    
+    if remove_empty_trials:
+        binned_variable = binned_variable[~np.isnan(binned_variable).any(axis=1)]
+    
+    if not np.any(binned_variable):
+        binned_variable = np.zeros((len(events), len(tbins)-1))
+    
+    return binned_variable
 
 @npyx_cacher
 def align_times(times, events, b=2, window=[-1000,1000], remove_empty_trials=False,
@@ -957,6 +1072,105 @@ def fast_align_times(times, events, b=2, window=[-1000,1000]):
         aligned_tb[i,:] = tscb
 
     return aligned_t, aligned_tb
+
+@njit(parallel=True)
+def process_all_events_times(times, events, window_0, window_1, tbins):
+    n_events = len(events)
+    n_bins = len(tbins) - 1
+    aligned_tb = np.empty((n_events, n_bins))
+    
+    # Pre-convert window to seconds for efficiency
+    window_0_s = window_0 / 1000
+    window_1_s = window_1 / 1000
+    
+    for i in prange(n_events):
+        e = events[i]
+        has_data = False
+        
+        # Process timestamps for this event
+        for j in range(len(times)):
+            ts = times[j] - e
+            if window_0_s <= ts <= window_1_s:
+                has_data = True
+                break
+        
+        if has_data:
+            # Count valid timestamps and allocate array
+            count = 0
+            for j in range(len(times)):
+                ts = times[j] - e
+                if window_0_s <= ts <= window_1_s:
+                    count += 1
+            
+            # Fill array with valid timestamps
+            tsc_ms = np.empty(count)
+            idx = 0
+            for j in range(len(times)):
+                ts = times[j] - e
+                if window_0_s <= ts <= window_1_s:
+                    tsc_ms[idx] = ts * 1000
+                    idx += 1
+            
+            # Compute histogram
+            hist = fast_histogram(tsc_ms, tbins)
+            for k in range(n_bins):
+                aligned_tb[i, k] = hist[k]
+        else:
+            for k in range(n_bins):
+                aligned_tb[i, k] = np.nan
+    
+    return aligned_tb
+
+def align_times_numba(times, events, b=2, window=[-1000,1000], remove_empty_trials=False,
+                again=False, cache_results=True, cache_path=None):
+    '''
+    Arguments:
+        - times: list/array in seconds, timestamps to align around events. Concatenate several units for population rate!
+        - events: list/array in seconds, events to align timestamps to
+        - b: float, binarized train bin in millisecond
+        - window: [w1, w2], where w1 and w2 are in milliseconds.
+        - remove_empty_trials: boolean, remove from the output trials where there were no timestamps around event. | Default: True
+    Returns:
+        - aligned_t: dictionnaries where each key is an event in absolute time and value the times aligned to this event within window.
+        - aligned_tb: a len(events) x window/b matrix where the spikes have been aligned, in counts.
+        - again: bool, whether to recompute results rather than loading them from cache.
+        - cache_results: bool, whether to cache results at local_cache_memory.
+        - cache_path: None|str, where to cache results.
+                        If None, ~/.NeuroPyxels will be used (can be changed in npyx.CONFIG).
+    '''
+    assert np.any(events), 'You provided an empty array of events!'
+    
+    times = np.asarray(times)
+    events = np.asarray(events)
+    
+    t = np.sort(times)
+    tbins = np.arange(window[0], window[1]+b, b)
+    
+    # Parallel computation of aligned_tb
+    aligned_tb = process_all_events_times(t, events, window[0], window[1], tbins)
+    
+    # Create aligned_t dictionary (this part stays in Python as dict operations aren't numba-friendly)
+    aligned_t = {}
+    window_s = np.array([window[0]/1000, window[1]/1000])
+    
+    for i, e in enumerate(events):
+        ts = t - e
+        mask = (ts >= window_s[0]) & (ts <= window_s[1])
+        tsc = ts[mask]
+        
+        if len(tsc) > 0 or not remove_empty_trials:
+            aligned_t[e] = tsc.tolist()
+    
+    # Remove empty trials if requested
+    if remove_empty_trials:
+        aligned_tb = aligned_tb[~np.isnan(aligned_tb).any(axis=1)]
+    
+    if not np.any(aligned_tb):
+        aligned_tb = np.zeros((len(events), len(tbins)-1))
+    
+    return aligned_t, aligned_tb
+
+#%% jPSTH
 
 def jPSTH(spikes1, spikes2, events, b=2, window=[-1000,1000], convolve=False, method='gaussian', gsd=2):
     '''
@@ -1162,7 +1376,7 @@ def process_2d_trials_array(y, y_bsl, zscore=False, zscoretype='within',
 
     return y, y_p, y_p_var
 
-
+@npyx_cacher
 def get_processed_ifr(times, events, b=10, window=[-1000,1000], remove_empty_trials=False,
                       zscore=False, zscoretype='within',
                       convolve=False, gsd=1, method='gaussian',

@@ -1176,7 +1176,7 @@ def plot_raw_units(dp, times, units=[], channels=np.arange(384), offset=450,
     for iu, u in enumerate(units):
         print('plotting unit {}...'.format(u))
         if enforced_peakChan is None:
-            peakChan=get_peak_chan(dp,u, use_template=True)
+            peakChan=get_peak_chan(dp, u, use_template=False)
         else:
             peakChan=enforced_peakChan
         assert peakChan in channels, "WARNING the peak channel of {}, {}, is not in the set of channels plotted here!".format(u, peakChan)
@@ -1526,12 +1526,12 @@ def psth_plt(x, y_p, y_p_var, psthw, events_toplot=[0], events_color='r',
         ylabel='IFR\n(zscore)' if zscore else r'$\Delta$ FR (spk/s)' if bsl_subtract else 'IFR (spk/s)'
     if xlabel is None: xlabel=''
 
-    fig,ax=mplp(fig=fig, ax=ax, figsize=figsize,
+    fig, ax = mplp(fig=fig, ax=ax, figsize=figsize,
      xlim=psthw, ylim=yl, xlabel=xlabel, ylabel=ylabel,
      xticks=xticks, xtickslabels=xticklabels,
-     axlab_w='bold', axlab_s=16,
-     ticklab_w='regular',ticklab_s=14, lw=1,
-     title=title, title_w='bold', title_s=16,
+     axlab_w='bold', axlab_s=14,
+     ticklab_w='regular', ticklab_s=12, lw=1,
+     title=title, title_w='regular', title_s=16,
      hide_top_right=True, tight_layout=tight_layout, hspace=hspace, wspace=wspace,
      prettify=prettify, **mplp_kwargs)
 
@@ -1822,7 +1822,7 @@ def summary_psth(trains, trains_str, events, events_str, psthb=5, psthw=[-1000,1
         if overlap_events: (nrows, ncols) = (1,ncols) if not transpose else (nrows, 1)
 
         if figh is None: figh=nrows*1.5 # 10 for 7 is good
-        if figratio is None: figratio=3
+        if figratio is None: figratio=2
         figw=figh*(ncols/nrows)*figratio
         figsize=(figw,figh)
 
@@ -1995,7 +1995,8 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
     # plotting
     if style=='bar':
         #ax.step(x, y, color='black', alpha=1, where='mid', lw=1)
-        ax.bar(x=x, height=y+ abs(ylim[0]), width=cbin/2, color=color, edgecolor=color, bottom=ylim[0]) # Potentially: set bottom=0 for zscore
+        ax.bar(x=x, height=y+ abs(ylim[0]), width=cbin,
+               color=color, edgecolor=color, bottom=ylim[0]) # Potentially: set bottom=0 for zscore
     elif style=='line':
         ax.plot(x, y, color='black', alpha=1)
         if normalize in ['Hertz','Pearson','Counts']:
@@ -2024,10 +2025,17 @@ def plt_ccg(uls, CCG, cbin=0.04, cwin=5, bChs=None, fs=30000, saveDir='~/Downloa
         ylabel=None
 
     if figsize is None: figsize = (4.5, 4)
+    if 'axlab_s' not in mplp_kwargs:
+        mplp_kwargs['axlab_s'] = 16
+    if 'ticklab_s' not in mplp_kwargs:
+        mplp_kwargs['ticklab_s'] = 16
+    if 'title_s' not in mplp_kwargs:
+        mplp_kwargs['title_s'] = 16
+    if 'axlab_w' not in mplp_kwargs:
+        mplp_kwargs['axlab_w'] = 'regular'
     mplp(fig, ax, figsize=figsize,
          title=title,
          xlabel='Time (ms)', ylabel=ylabel,
-         title_s=20, axlab_s=20, ticklab_s=20, axlab_w = 'regular',
          xlim=[-cwin*1./2, cwin*1./2], ylim=ylim, hide_axis=hide_axis,
          prettify=prettify, **mplp_kwargs)
 
@@ -2149,9 +2157,14 @@ def plt_acg(unit, ACG, cbin=0.2, cwin=80, bChs=None, color=0, fs=30000,
     ylabel=f"Autocorrelation ({ylabdic[normalize]})" if labels else None
 
     if figsize is None: figsize = (4.5,4)
+    if 'title_s' not in mplp_kwargs:
+        mplp_kwargs['title_s'] = 16
+    if 'axlab_s' not in mplp_kwargs:
+        mplp_kwargs['axlab_s'] = 16
+    if 'ticklab_s' not in mplp_kwargs:
+        mplp_kwargs['ticklab_s'] = 16
     mplp(fig, figsize=figsize,
     title=title, xlabel='Time (ms)', ylabel=ylabel,
-    title_s=20, axlab_s=20, ticklab_s=20,
     xlim=[-cwin*1./2, cwin*1./2], ylim=[ylim1, ylim2],
     hide_axis=hide_axis, prettify=prettify, **mplp_kwargs)
 

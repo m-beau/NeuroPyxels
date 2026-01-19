@@ -3,6 +3,8 @@
 import numpy as np
 from pyparsing import CaselessLiteral
 
+from scipy.stats import gaussian_kde
+
 from npyx.utils import smooth
 from npyx.behav import get_processed_ifr
 
@@ -356,22 +358,38 @@ def correlation(x, y, axis=1):
 
 
 ### mutual information between population of PCs and NC
-def multivariate_mutual_information(signal_x, signal_y):
+def multivariate_mutual_information(X, y):
     """
-    signal_x is a B x T x N matrix
-    signal_y is a B x T matrix
-    """
-    p_joint_x = compute_p_joint(signal_x).mean(axis=-1).T
-    H_joint_x = entropy(p_joint_x)
+    X is a Bins x Trials x Neurons matrix
+    y is a Bins x Trials matrix
 
-    p_y = signal_y.mean(axis=-1)
+    Computes the mutual information between a population of N neurons X and a target neuron y,
+    in each bin.
+
+    H(X) = entropy of the joint probability of X (P(X1,...,Xn))
+    MI(X;y) = H(X) + H(y) - H(X,y)
+    """
+    p_X = compute_p_joint(X).mean(axis=-1).T
+    H_X = entropy(p_X)
+
+    p_y = y.mean(axis=-1)
     H_y = - p_y * cut_log(p_y) - (1-p_y) * cut_log(1-p_y)
 
-    signal_xy = np.concatenate([signal_x, signal_y[:,:,None]], axis=-1)
-    p_joint_xy = compute_p_joint(signal_xy).mean(axis=-1).T
-    H_joint_xy = entropy(p_joint_xy)
+    signal_xy = np.concatenate([X, y[:,:,None]], axis=-1)
+    p_Xy = compute_p_joint(signal_xy).mean(axis=-1).T
+    H_Xy = entropy(p_Xy)
 
-    return (H_joint_x + H_y - H_joint_xy)/(H_joint_x + H_y)
+    MI = H_X + H_y - H_Xy
+
+    # Normalize
+    # Minimum MI: X and Y indep, so H_Xy = H_X + H_y and MI = 0
+    # Maximum MI: X and Y perfectly dep, then H_Xy = max(H_X, H_y).
+    #   If X = Y, H_X = H_y = H_Xy and MI_norm = (a + a - a)/(a + a) = a/2a = 1/2!
+    #   Add factor 2, to get to 1/
+    # see https://journals.plos.org/plosone/article?id=10.1371%2Fjournal.pone.0195941
+    MI_normalized = 2 * MI / (H_X + H_y) 
+
+    return MI_normalized
 
 
 ### Total correlation i.e. generalization of mutual information
@@ -383,37 +401,52 @@ def total_correlation(signal, normalized=True):
 
     i.e. KL divergence from the joint distribution P(X1,...,Xn)
     to the product (=independant) distribution P(X1)*...*P(Xn).
+    They're the same if all neurons are independent - so the KL divergence is 0.
+
+    The total correlation measures how far apart these distributions are,
+    essentially quantifying how much the neurons are interdependent.
 
     If there are only 2 variables, this corresponds to the mutual information.
 
-    This reduces to the simpler difference of entropies,
-    sum_over_i(H(Xi)) - H(X1,...,Xn)
+    This reduces to the simpler difference of entropies, the same as in mutual information,
+    TC(X) = sum H(Xi) - H(X1,...,Xn)
+
+    If all neurons are independent, H(X1,...,Xn) = Σ H(Xi) so TC(X) = 0
+    When neurons are dependent, H(X1,...,Xn) < Σ H(Xi) so TC(X) > 0
+
     
     Returns the total_correlation normalised between 0 and 1
     for a B x T x N or T x N signal of probabilities between 0 and 1.
     
     If normalize=True, normalized between 0 and 1."""
-    # get joint entropy
-    # that is across neurons
+    # get joint entropy H(X1,...,Xn)
     p_joint = compute_p_joint(signal)
     p_joint_mean = p_joint.mean(axis=-1).T
-    joint_entropy = entropy(p_joint_mean)
+    joint_entropy = entropy(p_joint_mean) # 
 
-    neuron_fire_rate = signal.mean(axis=-2)
+    # Get sum of entropies Σ H(Xi)
+    neuron_fire_rate = signal.mean(axis=-2) # average across trials
     neuron_entropies = - neuron_fire_rate * cut_log(neuron_fire_rate) - (1-neuron_fire_rate) * cut_log(1-neuron_fire_rate)
 
+    # TC = Σ H(Xi) - H(X1,...,Xn)
     # this is equivalent to kullback_leibler(p_joint, p_product)
     C = neuron_entropies.sum(axis=-1) - joint_entropy
 
     if normalized:
+        # H(X1,...,Xn) max = all variables are the same = max(H(Xi))
+        # All neurons are "collapsed" into the behavior of the highest-entropy neuron.
+        # So C_max = Σ H(Xi) - max(H(Xi))
         C_max = neuron_entropies.sum(axis=-1) - neuron_entropies.max(axis=-1)
         C /= C_max
     
     return C
 
 def mutual_information(signal):
-    """KL divergence from the joint distribution P(X1,...,Xn)
+    """
+    KL divergence from the joint distribution P(X1,...,Xn)
     to the product (=independant) distribution P(X1)*...*P(Xn)
+
+    Equivalent to total_correlation = Σ H(Xi) - H(X1,...,Xn) above.
     
     returns the mutual information for a B x T x N or T x N signal of probabilities between 0 and 1"""
     p_joint = compute_p_joint(signal)
@@ -441,8 +474,6 @@ def multivariate_copula(signal, normalized=True):
         q = 1 - (entropy(q) / entropy(np.ones(2**N)/2**N))
 
     return q
-
-
 
 ### basic information theoretic functions ###
 

@@ -91,7 +91,7 @@ def metadata(dp):
     assert dp.exists(), "Provided path does not exist!"
     assert dp.is_dir(), f"Provided path {dp} is a filename!"
 
-    probe_versions = {
+    probe_versions = { # see https://billkarsh.github.io/SpikeGLX/help/imroTables/
         'glx':{3.0:  '3A', # option 3
                0.0:  '1.0',
                1.0:  '1.0', # precise type unknown
@@ -115,8 +115,10 @@ def metadata(dp):
 
                24:   '2.0_fourshanks',
                2013: '2.0_fourshanks',
-               2014: '2.0_fourshanks', # assumed type
-               2020: '2.0_fourshanks', # assuned type
+               2014: '2.0_fourshanks',
+
+               2020: 'NXT',
+               2021: 'NXT',
                },
         'oe':{"Neuropix-3a":'3A', # source_processor_name keys
                 "Neuropix-PXI":'1.0',
@@ -343,75 +345,76 @@ def chan_map(dp=None, y_orig='surface', probe_version=None):
         probe_version=read_metadata(dp)['probe_version']
 
     if probe_version in ['3A', '1.0', '2.0_singleshank']:
-        cm = predefined_chanmap(probe_version)
+        cm = predefined_chanmap(probe_version, y_orig='tip') # y_orig tip by default to match channel_positions.npy
+        # cm[:, 0] = cm[::-1, 0] # y_orig must be tip by default
+        # cm = cm[::-1] # and 0 in position 0
     else:
         probe_version='local'
 
     if probe_version=='local':
         if dp is None:
-            raise ValueError("dp argument is not provided - when channel map is \
-                             atypical and probe_version thus called 'local', \
+            raise ValueError("dp argument is not provided - when local channel map is \
+                             specified (rather than a predefined version), \
                              the datapath needs to be provided to load the channel map.")
         dp = Path(dp)
-        c_ind=np.load(dp/'channel_map.npy');cp=np.load(dp/'channel_positions.npy')
-        cm=npa(np.hstack([c_ind.reshape(max(c_ind.shape),1), cp]), dtype=np.int32)
+        c_ind = np.load(dp / 'channel_map.npy')
+        cp    = np.load(dp / 'channel_positions.npy')
+        cm    = np.concatenate([c_ind, cp], axis=1).astype(int)
 
-    if y_orig=='surface':
-        cm[:,1:]=cm[:,1:][::-1]
+    if y_orig == 'surface':
+        cm[:, 1:] = cm[::-1, 1:]
 
     return cm
 
-def predefined_chanmap(probe_version='1.0'):
+def predefined_chanmap(probe_version='1.0', y_orig='surface'):
     '''
     Returns predefined channel map.
     Arguments:
-        - probe_version: None, 'local', '3A', '1.0' or '2.0_singleshank' (other types not handled yet, reach out to give your own!).
+        - probe_version: None, 'local', '3A', '1.0' or '2.0_singleshank'
+        (other types not handled yet, reach out on github to give your own!).
+        - y_orig: 'surface' or 'tip'.
     Returns:
         - chan_map: array of shape (N_electrodes, 3).
                     1st column is channel indices, 2nd x position, 3rd y position
     '''
 
+    assert y_orig in ['surface', 'tip'],\
+        f"y_orig must be 'surface' or 'tip', not {y_orig}."
+
     if probe_version in ['3A', '1.0']:
-        Nchan=384
-        cm_el = npa([[  43,   0],
-                           [  11,   0],
-                           [  59,   20],
-                           [  27,   20]])
-        vert=npa([[  0,   40],
-                  [  0,   40],
-                  [  0,   40],
-                  [  0,   40]])
-
-        cm=cm_el.copy()
-        for i in range(int(Nchan/cm_el.shape[0])-1):
-            cm = np.vstack((cm, cm_el+vert*(i+1)))
-        cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
-
-    elif probe_version=='1.0':
-        Nchan=384
-        cm_el = npa([[  43,   0],
-                     [  11,   0]])
-        vert=npa([[  0,   20],
-                  [  0,   20]])
-
-        cm=cm_el.copy()
-        for i in range(int(Nchan/cm_el.shape[0])-1):
-            cm = np.vstack((cm, cm_el+vert*(i+1)))
-        cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
+        Nchan   = 384
+        period  = 4
+        element = np.array([[  43,   20],
+                            [  11,   20],
+                            [  59,   40],
+                            [  27,   40]])
+        z_step = np.array([[  0,   40],
+                        [  0,   40],
+                        [  0,   40],
+                        [  0,   40]])
 
     elif probe_version=='2.0_singleshank':
-        Nchan=384
-        cm_el = npa([[  32,   0],
-                     [  0,   0]])
-        vert=npa([[  0,   15],
-                  [  0,   15]])
+        Nchan   = 384
+        period  = 2
+        element = np.array([[  32,   0],
+                            [  0,   0]])
+        z_step = np.array([[  0,   15],
+                           [  0,   15]])
 
-        cm=cm_el.copy()
-        for i in range(int(Nchan/cm_el.shape[0])-1):
-            cm = np.vstack((cm, cm_el+vert*(i+1)))
-        cm=np.hstack([np.arange(Nchan).reshape(Nchan,1), cm])
+    else:
+        raise ValueError((f"Predefined channel map of version {probe_version} not implemented! "
+                          "Raise an issue at m-beau/NeuroPyxels"))
+    
+    chanmap = np.zeros((Nchan, 3)).astype(int)
+    chanmap[:, 0] = np.arange(Nchan)
+    for i in range(Nchan // period):
+        I = slice(i * period, i * period + period)
+        chanmap[I, 1:] = element + z_step * i
 
-    return cm
+    if y_orig == 'surface':
+        chanmap[:, 2] = chanmap[::-1, 2]
+
+    return chanmap
 
 
 #%% Binary file I/O, including sync channel

@@ -31,8 +31,20 @@
 
 We recommend using a conda environment. Pre-existing packages on a python installation might be incompatible with npyx and break your installation. You can find instructions on setting up a conda environment [here](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html).
 
+### Using uv (recommended - faster):
 ```bash
-  conda create -n my_env python=3.10 # python 3.11 and above not supported (work in progress)
+  conda create -n my_env python=3.13 # python <=3.13 supported
+  conda activate my_env
+  uv pip install npyx  # faster alternative to pip install npyx
+  # optionally (see 'Dealing with cupy' section below):
+  conda install -c conda-forge cupy cudatoolkit=11.0 # cupy isn't available for apple silicon macbooks
+  # test installation:
+  python -c 'import npyx' # should not return any error
+  ```
+
+### Using pip (also works but slower):
+```bash
+  conda create -n my_env python=3.13 # python <=3.13 supported
   conda activate my_env
   pip install npyx
   # optionally (see 'Dealing with cupy' section below):
@@ -46,7 +58,7 @@ We recommend using a conda environment. Pre-existing packages on a python instal
 
 - if you want the very latest version:
   ```bash
-  conda create -n my_env python=3.10
+  conda create -n my_env python=3.13
   conda activate my_env
   pip install git+https://github.com/m-beau/NeuroPyxels@master
   # optionally (see 'Dealing with cupy' section below):
@@ -58,7 +70,7 @@ We recommend using a conda environment. Pre-existing packages on a python instal
 - If you want to edit npyx locally and eventually contribute:
   > 💡 Tip: in an ipython/jupyter session, use `%load_ext autoreload` then `%autoreload 2` to make your local edits active in your session without having to restart your kernel. Amazing for development.
   ```bash
-  conda create -n my_env python=3.10
+  conda create -n my_env python=3.13
   conda activate my_env
   cd path/to/save_dir # any directory where your code will be accessible by your editor and safe. NOT downloads folder.
   git clone https://github.com/m-beau/NeuroPyxels
@@ -77,7 +89,7 @@ We recommend using a conda environment. Pre-existing packages on a python instal
   ```
 </details>
 </br>
-Npyx supports Python >=3.7.
+Npyx supports Python >=3.7, <=3.13.
 
 ### Dealing with cupy (GPU shenanigans)
 To run some preprocessing functions, you will need NVIDIA drivers and cuda-toolkit installed on your computer. It is a notorious source of bugs. To test your CUDA installation do the following:

@@ -1398,7 +1398,7 @@ def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, sgn=-1
 
     assert sgn in [1,-1]
 
-    assert sum(CCG<0) <= 0, 'CCG seems to contain negative integers!'
+    assert np.sum(CCG.flatten()<0) <= 0, 'CCG seems to contain negative integers!'
 
     if CCG.ndim==1: CCG=CCG.reshape((1, CCG.shape[0]))
     m, n = CCG.shape
@@ -1413,7 +1413,7 @@ def StarkAbeles2009_ccg_sig(CCG, W, WINTYPE='gauss', HF=None, CALCP=True, sgn=-1
     W=int(W)
     assert WINTYPE in winlist, "WINTYPE should be either 'gauss', 'rect' or 'triang', not {}.".format(WINTYPE)
     if HF is None: HF={'gauss':0.6, 'rect':0.42, 'triang':0.63}[WINTYPE]
-    assert 0<HF<1, 'HF should be between 0 and 1.'
+    assert 0<HF<1, 'HF (hollow fraction) should be between 0 and 1.'
 
     ## Compute the convolution window
     conv_wins = {

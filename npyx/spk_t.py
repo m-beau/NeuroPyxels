@@ -6,6 +6,7 @@
 import os.path as op
 
 from IPython.core.debugger import set_trace as breakpoint
+from joblib import Parallel, delayed
 
 opj=op.join
 from pathlib import Path, PosixPath, WindowsPath
@@ -568,76 +569,79 @@ def find_stable_recording_period(t, fs, t_end, target_period = 30,
     return most_stable_period_trimmed
 
 
-# nested plotting functions relying on old caching,
-# TODO carefully implement npyx_cacher decoration.
+# nested plotting functions rely on old caching
 def train_quality(dp, unit, period_m=[0,20],
                   fp_chunk_span=3, fp_chunk_size = 10,
                   fn_chunk_span = 3, fn_chunk_size = 10,
                   use_or_operator = True,
                   violations_ms = 0.8, fp_threshold = 0.05, fn_threshold = 0.05,
                   again = False, save = True, verbose = False, plot_debug = False,
-                  enforced_rp = 0, saveFig=False, saveDir=None, _format='png'):
+                  enforced_rp = 0, saveFig=False, saveDir=None, _format='png',
+                  cache_results=True, cache_path=None, return_all=False):
     """
-    Subselect spike times which meet two criteria:
-        low number of 'missed spikes' (false negatives)
-        and low number of 'extra spikes' (false positives).
-        
-    The recording within period_m is split in fp/fn_chunk_size seconds chunks,
-    and fp/fn_chunk_span chunks are used to estimate the fp and fn rates.
-    (e.g. 3 10s chunks means that the rates are estimated on 30s chunks, overlapping by 10s).
+    Subselect spike times meeting both low false positive (contamination spikes)
+    and low false negative (missed spikes) criteria.
 
-    - False negative rate estimation: for checking which sections of the recording
-        have too many spikes missing, by looking if the section is
-        approximately Gaussian. If the time section of the recording
-        has too much of the Gaussian distribution cut off (>5%) the section
-        has to be discarded
-    - False positive rate estimation: check if there are not too many spikes
-        occuring in the the refractory period of the autocorrelogram.
-        If there are too many spikes in the ACG the section of the
-        recording will be discarded.
-        
-    Finally, the spikes belonging to the intersection (use_or_operator=False) or union (use_or_operator=True)
-    of the chunks with low enough fp/fn rates are returned.
-    
-    E.g. if fp_chunk_span=3 and fp_chunk_size=10 anf use_or_operator=False,
-    for a given 10s "chunk_k" to be considered, ALL 3*10=30s chunk triplets
-    (chunk_k-2,chunk_k-1,chunk_k), (chunk_k-1,chunk_k,chunk_k+1) AND (chunk_k,chunk_k+1,chunk_k+2)
-    fp rate estimations must be below fp_threshold.
-    
-    ***********
-    
+    The recording within period_m is split into chunks of fp/fn_chunk_size seconds.
+    Sliding windows of fp/fn_chunk_span consecutive chunks are used to estimate
+    FP and FN rates (e.g. span=3, size=10 -> 30s windows sliding by 10s).
+
+    - False negative estimation: checks whether the amplitude distribution
+      of each chunk is a full Gaussian. If too much of the fitted
+      Gaussian is cut off (> fn_threshold), the chunk is discarded.
+    - False positive estimation: checks ISI refractory period violations within each chunk.
+      If the violation rate exceeds fp_threshold, the chunk is discarded.
+
+    Each elemental chunk inherits pass/fail from all overlapping windows:
+      - use_or_operator=True (default): a chunk passes if ANY overlapping
+        window passed (lenient — union).
+      - use_or_operator=False: a chunk passes only if ALL overlapping
+        windows passed (strict — intersection).
+
+    Finally, spikes belonging to chunks that pass BOTH FP and FN filters
+    are returned.
+
     Arguments:
-        - dp: str, path to dataset.
-        - unit: int/float, unit index.
-        - period_m: [t1, t2] list of floats in minutes, period to consider
-        - fp_chunk_span: int, number of recording chunks to concatenate to estimate fp rate.
-        - fp_chunk_size: int, size of recording chunks used to estimate fp rate.
-        
-        - fn_chunk_span: int, number of chunks to concatenate to estimate fp rate.
-        - fn_chunk_size: int, size of recording chunks used to estimate fn rate.
-        
-        - use_or_operator: bool, whether to use the union (True) or intersection (False)
-                        of stitched chunks (fp/fn_chunk_span)
-                        to state that a chunk passed the fp/fn threshold or not.
-                        E.g. if 
-        
-        - violations_ms: float, width of window in ms used to estimate refractory period violations (center of autocorrelogram)
-        - fp_threshold: [0-1] float, false positive rate (ratio of refractory periods violations/mean firing rate) threshold
-        - fn_threshold: [0-1] float, false negative rate (AUC of gaussian fit missing) threshold
-        
-        - again: bool, whether to recompute trn_filtered or simply load it from npyxMemory
-        - save: bool, whether to save result to npyxMemory for future fast reloading
-        - verbose: bool, whether to print extra information for debugging purposes.
-        - enforced_rp: float, enforced refractory period in ms (if 2 spikes are closer than enforced_rp ms, only the first one  is kept.)
-        - plot_debug: bool, whether to plot the fp/fn rates and the spikes that passed the filter.
-        - saveFig: bool, whether to save the debug plot.
-        - saveDir: str, path to save the debug plot.
-        - _format: str, format to save the debug plot.
-    
+        - dp: str or Path, path to dataset.
+        - unit: int, unit index.
+        - period_m: [t1, t2], period to consider in minutes. None = full recording.
+        - fp_chunk_span: int, number of consecutive chunks concatenated
+            to estimate FP rate.
+        - fp_chunk_size: int, duration in seconds of each FP chunk.
+        - fn_chunk_span: int, number of consecutive chunks concatenated
+            to estimate FN rate.
+        - fn_chunk_size: int, duration in seconds of each FN chunk.
+        - use_or_operator: bool, whether to use union (True, lenient)
+            or intersection (False, strict) across overlapping windows.
+        - violations_ms: float, ISI violation window in ms
+            (center of autocorrelogram).
+        - fp_threshold: float [0-1], maximum allowed FP rate
+            (ISI violations / expected).
+        - fn_threshold: float [0-1], maximum allowed FN rate
+            (fraction of Gaussian AUC missing).
+        - again: bool, recompute instead of loading from cache.
+        - save: bool, save results to npyxMemory.
+        - verbose: bool, print debug information.
+        - enforced_rp: float, enforced refractory period in ms.
+            If two spikes are closer than this, only the first is kept.
+        - plot_debug: bool, plot FP/FN rates and filtered spikes.
+        - saveFig: bool, save the debug plot.
+        - saveDir: str, directory for saving the debug plot.
+        - _format: str, image format for the debug plot.
+        - cache_results: bool, whether to cache results.
+        - cache_path: str or None, custom cache path.
+        - return_all: bool, if True also return FP/FN rates and
+            their time vectors.
+
     Returns:
-        - good_spikes_m: mask of spikes belonging to the intersection of the chunks with low enough fp/fn rates.
-        - good_fp_start_end: list of [start, end] of chunks with low enough fp rate (in seconds).
-        - good_fn_start_end: list of [start, end] of chunks with low enough fn rate (in seconds).
+        - good_spikes_m: bool array, mask of spikes passing both filters.
+        - good_fp_start_end: list of [start, end] in seconds for
+            chunks passing the FP filter (or [0] if none).
+        - good_fn_start_end: list of [start, end] in seconds for
+            chunks passing the FN filter (or [0] if none).
+        If return_all=True, additionally returns:
+        - fp_toplot, fn_toplot: FP/FN rates per chunk.
+        - chunk_fp_t, chunk_fn_t: chunk center times.
     """
     
     dp = Path(dp)
@@ -680,23 +684,36 @@ def train_quality(dp, unit, period_m=[0,20],
 
     # Attempt to reload if precomputed
     fn=(f"trn_qual_{unit}_{str(period_m).replace(' ','')}"
-        f"_{str(fp_chunk_span)}_{str(fp_chunk_size)}_{str(fn_chunk_span)}_{str(fn_chunk_size)}"
+        f"_{str(fp_chunk_span)}_{str(fp_chunk_size)}_{str(fn_chunk_span)}_{str(fn_chunk_size)}_{use_or_operator}"
         f"_{str(violations_ms)}_{str(fp_threshold)}_{str(fn_threshold)}_{enforced_rp}.npy")
-    fn_spikes = "spikes_"+fn
-    if (dpnm/fn).exists() and (dpnm/fn_spikes).exists() and (not again):
+    all_files_exit = ((dpnm / fn).exists() \
+                      and (dpnm / ("spikes_m_" + fn)).exists() \
+                      and (dpnm / ("fp_" + fn)).exists() \
+                      and (dpnm / ("fn_" + fn)).exists() \
+                      and (dpnm / ("fp_t_" + fn)).exists() \
+                      and (dpnm / ("fn_t_" + fn)).exists())
+    if all_files_exit and (not again):
         if verbose: print(f"File {fn} found in routines memory.")
         good_fp_start_end, good_fn_start_end = np.load(dpnm/fn, allow_pickle=True)
-        good_spikes_m = np.load(dpnm/fn_spikes)
+        good_spikes_m = np.load(dpnm / ("spikes_m_"+fn))
+        fp_toplot = np.load(dpnm / ("fp_"+fn))
+        fn_toplot = np.load(dpnm / ("fn_"+fn))
+        chunk_fp_t = np.load(dpnm / ("fp_t_"+fn))
+        chunk_fn_t = np.load(dpnm / ("fn_t_"+fn))
         
-        good_fp_start_end_plot=None if len(good_fp_start_end)==1 else good_fp_start_end
-        good_fn_start_end_plot=None if len(good_fn_start_end)==1 else good_fn_start_end
+        good_fp_start_end_plot = None if len(good_fp_start_end)==1 else good_fp_start_end
+        good_fn_start_end_plot = None if len(good_fn_start_end)==1 else good_fn_start_end
         if plot_debug:
             npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
-                     None, None, None,None,
+                     fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t,
                      fp_threshold, fn_threshold,
                      good_fp_start_end_plot, good_fn_start_end_plot, title,
                      saveFig=saveFig, saveDir=saveDir, _format=_format,
                      figname=f"fp_fn_{unit}_{period_m}")
+        
+        if return_all:
+            return (good_spikes_m, good_fp_start_end.tolist(), good_fn_start_end.tolist(),
+                    fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t)
         
         return good_spikes_m, good_fp_start_end.tolist(), good_fn_start_end.tolist()
     
@@ -714,59 +731,43 @@ def train_quality(dp, unit, period_m=[0,20],
     recording_span = period_s[1]-period_s[0]
     n_fn_chunks =  int(recording_span / fn_chunk_size)
     n_fp_chunks =  int(recording_span / fp_chunk_size)
-    passed_fn = np.zeros((n_fn_chunks,3)).astype('int')
-    passed_fp = np.zeros((n_fp_chunks,3)).astype('int')
+    passed_fn = np.zeros((n_fn_chunks,3)).astype('float')
+    passed_fp = np.zeros((n_fp_chunks,3)).astype('float')
     fn_chunks = [[period_s[0]+t*fn_chunk_size, period_s[0]+(t+fn_chunk_span)*fn_chunk_size] for t in range(n_fn_chunks)]
-    fp_chunks = [[period_s[0]+t*fp_chunk_size, period_s[0]+(t+fp_chunk_span)*fp_chunk_size] for t in range(n_fn_chunks)]
+    fp_chunks = [[period_s[0]+t*fp_chunk_size, period_s[0]+(t+fp_chunk_span)*fp_chunk_size] for t in range(n_fp_chunks)]
 
 
     fp_toplot, chunk_fp_t, fn_toplot, chunk_fn_t = [], [], [], []
     if len(unit_amp) > n_spikes_threshold:
         
-        # False negative estimation
-        for i, (t1,t2) in enumerate(fn_chunks):
-            chunk_mask = (t1 <= unit_train) & (unit_train < t2)
-            n_spikes_chunk=np.sum(chunk_mask)
+        # False negative estimation — parallel
+        fn_results = Parallel(n_jobs=-1, prefer="threads")(
+            delayed(_estimate_fn_chunk)(i, t1, t2, unit_train, unit_amp, fn_threshold)
+            for i, (t1, t2) in enumerate(fn_chunks)
+        )
+        for res in fn_results:
+            if res is not None:
+                i, t1, t2, fn_rate, t_mid, passed = res
+                fn_toplot.append(fn_rate)
+                chunk_fn_t.append(t_mid)
+                if passed:
+                    passed_fn[i] = [t1, t2, 1]
 
-            if n_spikes_chunk > 15:
-                amplitudes_chunk = unit_amp[chunk_mask].astype(np.float64)
-                chunk_bins = estimate_bins(amplitudes_chunk, rule='Fd')
-                if chunk_bins> 3:
-                    x_c, p0_c, min_amp_c, n_fit_c, n_fit_no_cut_c, chunk_spikes_missing = gaussian_amp_est(amplitudes_chunk, chunk_bins)
-                    fn_toplot.append(chunk_spikes_missing/100)
-                    chunk_fn_t.append(t1+(t2-t1)/2)
-                    if (~np.isnan(chunk_spikes_missing)) & (chunk_spikes_missing <= fn_threshold*100):
-                        passed_fn[i] = [t1, t2, 1]
-
-        # next loop through the chunks made for the ACG extraction
-        # get the periods where the ACG filter passed
-        
-        # Compute denominator of FP on total period
-        # acg_tot = npyx.corr.acg(dp, unit, c_bin, c_win, verbose = False,  periods=[period_s])
-        # x_block = np.round(np.arange(-c_win/2, c_win/2 + c_bin, c_bin), 8) # round to fix binary imprecisions
-        # # rp_mask = (x_block >= -violations_ms) & (x_block <= violations_ms)
-        # baseline_mask = (acg_tot*0).astype(bool)
-        # baseline_mask[:n_bins_acg_baseline] = True
-        # baseline_mask[-n_bins_acg_baseline:] = True
-        # # baseline_mean = np.mean(acg_tot[baseline_mask])
-        
-        # False positive estimation
-        for i, (t1,t2) in enumerate(fp_chunks):
-
-            chunk_mask = (t1 <= unit_train) & (unit_train < t2)
-            n_spikes_chunk=np.sum(chunk_mask)
-
-            if n_spikes_chunk > 15:
-
-                fp_rate = npyx.metrics.isi_violations(unit_train, min_time=t1, max_time=t2,
-                                         isi_threshold=violations_ms/1000, min_isi=0)[0]
+        # False positive estimation — parallel
+        fp_results = Parallel(n_jobs=-1, prefer="threads")(
+            delayed(_estimate_fp_chunk)(i, t1, t2, unit_train, fp_threshold, violations_ms)
+            for i, (t1, t2) in enumerate(fp_chunks)
+        )
+        for res in fp_results:
+            if res is not None:
+                i, t1, t2, fp_rate, t_mid, passed = res
                 fp_toplot.append(fp_rate)
-                chunk_fp_t.append(t1+(t2-t1)/2)
-                if (fp_rate <= fp_threshold):
+                chunk_fp_t.append(t_mid)
+                if passed:
                     passed_fp[i] = [t1, t2, 1]
 
     # Across all chunks, if at least 1 good chunk for both (else no spike can be called good)
-    if (np.sum(passed_fp[:,2])  > 1) & (np.sum(passed_fn[:,2]) > 1):
+    if (np.sum(passed_fp[:,2]) > 1) & (np.sum(passed_fn[:,2]) > 1):
 
         # Aggregate FP and FN masks for each elemental chunks
         # e.g. for 30s chunks overlapping at 33% (3 10s chunks),
@@ -812,17 +813,21 @@ def train_quality(dp, unit, period_m=[0,20],
         ## Finally, mask spikes meeting the FP AND FN rates
         fp_m = np.zeros(unit_train.shape[0]).astype(bool)
         for subchunk in good_fp_start_end:
-            m = (unit_train>subchunk[0])&(unit_train<subchunk[1])
-            fp_m = fp_m|m
+            m = (unit_train>subchunk[0]) & (unit_train<subchunk[1])
+            fp_m = fp_m | m
         fn_m = np.zeros(unit_train.shape[0]).astype(bool)
         for subchunk in good_fn_start_end:
-            m = (unit_train>subchunk[0])&(unit_train<subchunk[1])
-            fn_m = fn_m|m
-        good_spikes_m=fp_m&fn_m
+            m = (unit_train>subchunk[0]) & (unit_train<subchunk[1])
+            fn_m = fn_m | m
+        good_spikes_m = fp_m & fn_m
 
         if save:
             np.save(Path(dpnm,fn), np.array( (np.array(good_fp_start_end), np.array(good_fn_start_end)), dtype = object))
-            np.save(dpnm/fn_spikes, good_spikes_m)
+            np.save(dpnm / ("spikes_m_"+fn), good_spikes_m)
+            np.save(dpnm / ("fp_"+fn), fp_toplot)
+            np.save(dpnm / ("fn_"+fn), fn_toplot)
+            np.save(dpnm / ("fp_t_"+fn), chunk_fp_t)
+            np.save(dpnm / ("fn_t_"+fn), chunk_fn_t)
 
         if plot_debug:
             npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
@@ -831,14 +836,20 @@ def train_quality(dp, unit, period_m=[0,20],
                      good_fp_start_end, good_fn_start_end, title,
                      saveFig=saveFig, saveDir=saveDir, _format=_format,
                      figname=f"fp_fn_{unit}_{period_m}")
-
+        if return_all:
+            return (good_spikes_m, good_fp_start_end, good_fn_start_end,
+                    fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t)
         return good_spikes_m, good_fp_start_end, good_fn_start_end
     
     else:
         good_spikes_m=(unit_train*0).astype(bool)
         if save:
             np.save(Path(dpnm,fn), np.array(([0], [0]), dtype = object)  )
-            np.save(dpnm/fn_spikes, good_spikes_m)
+            np.save(dpnm / ("spikes_m_"+fn), good_spikes_m)
+            np.save(dpnm / ("fp_"+fn), fp_toplot)
+            np.save(dpnm / ("fn_"+fn), fn_toplot)
+            np.save(dpnm / ("fp_t_"+fn), chunk_fp_t)
+            np.save(dpnm / ("fn_t_"+fn), chunk_fn_t)
             
         if plot_debug and n_spikes>0:
             npyx.plot.plot_fp_fn_rates(unit_train, period_s, unit_amp, good_spikes_m,
@@ -847,9 +858,39 @@ def train_quality(dp, unit, period_m=[0,20],
                      None, None, title,
                      saveFig=saveFig, saveDir=saveDir, _format=_format,
                      figname=f"fp_fn_{unit}_{period_m}")
-            
+        if return_all:
+            return (good_spikes_m, [0], [0],
+                    fp_toplot, fn_toplot, chunk_fp_t, chunk_fn_t)
         return good_spikes_m, [0], [0]
 
+# --- FN helper ---
+def _estimate_fn_chunk(i, t1, t2, unit_train, unit_amp, fn_threshold):
+    """Estimate FN rate for a single chunk. Returns (i, t1, t2, fn_rate, passed)."""
+    chunk_mask = (t1 <= unit_train) & (unit_train < t2)
+    n_spikes_chunk = np.sum(chunk_mask)
+    if n_spikes_chunk > 15:
+        amplitudes_chunk = unit_amp[chunk_mask].astype(np.float64)
+        chunk_bins = estimate_bins(amplitudes_chunk, rule='Fd')
+        if chunk_bins > 3:
+            x_c, p0_c, min_amp_c, n_fit_c, n_fit_no_cut_c, chunk_spikes_missing = gaussian_amp_est(amplitudes_chunk, chunk_bins)
+            fn_rate = chunk_spikes_missing / 100
+            t_mid = t1 + (t2 - t1) / 2
+            passed = (~np.isnan(chunk_spikes_missing)) & (chunk_spikes_missing <= fn_threshold * 100)
+            return (i, t1, t2, fn_rate, t_mid, passed)
+    return None
+
+# --- FP helper ---
+def _estimate_fp_chunk(i, t1, t2, unit_train, fp_threshold, violations_ms):
+    """Estimate FP rate for a single chunk. Returns (i, t1, t2, fp_rate, passed)."""
+    chunk_mask = (t1 <= unit_train) & (unit_train < t2)
+    n_spikes_chunk = np.sum(chunk_mask)
+    if n_spikes_chunk > 15:
+        fp_rate = npyx.metrics.isi_violations(unit_train, min_time=t1, max_time=t2,
+                                              isi_threshold=violations_ms / 1000, min_isi=0)[0]
+        t_mid = t1 + (t2 - t1) / 2
+        passed = fp_rate <= fp_threshold
+        return (i, t1, t2, fp_rate, t_mid, passed)
+    return None
 
 @docstring_decorator(train_quality.__doc__)
 def trn_filtered(dp, unit, period_m=[0,20],

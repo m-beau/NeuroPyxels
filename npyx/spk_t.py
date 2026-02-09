@@ -779,14 +779,18 @@ def train_quality(dp, unit, period_m=[0,20],
         good_fp_bool = passed_fp[:,2].astype(bool)
         subchunks_fp_bool = np.zeros((subchunks_fp.shape[0], fp_chunk_span))*np.nan
         for i in range(fp_chunk_span):
-            subchunks_fp_bool[i:len(subchunks_fp_bool)-fp_chunk_span+i+1,i]=good_fp_bool
+            # subchunks_fp_bool[i:len(subchunks_fp_bool)-fp_chunk_span+i+1,i]=good_fp_bool
+            end_idx = min(i + len(good_fp_bool), len(subchunks_fp_bool) - fp_chunk_span + i + 1)
+            subchunks_fp_bool[i:end_idx, i] = good_fp_bool[:end_idx-i]
         
         subchunks_fn = np.unique(npa(fn_chunks).flatten())
         subchunks_fn = npa([[subchunks_fn[i], subchunks_fn[i+1]] for i in range(len(subchunks_fn)-1)])
         good_fn_bool = passed_fn[:,2].astype(bool)
         subchunks_fn_bool = np.zeros((subchunks_fn.shape[0], fn_chunk_span))*np.nan
         for i in range(fn_chunk_span):
-            subchunks_fn_bool[i:len(subchunks_fn_bool)-fn_chunk_span+i+1,i]=good_fn_bool
+            # subchunks_fn_bool[i:len(subchunks_fn_bool)-fn_chunk_span+i+1,i]=good_fn_bool
+            end_idx = min(i + len(good_fn_bool), len(subchunks_fn_bool) - fn_chunk_span + i + 1)
+            subchunks_fn_bool[i:end_idx, i] = good_fn_bool[:end_idx-i]
         
         # Find out if subchunks are good based on overlapping chunks 
         # (NaNs do not count in np/all/any -> decision on edges based on only 1 chunk)

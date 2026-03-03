@@ -11,6 +11,7 @@ import hashlib
 import pickle
 import warnings
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -125,7 +126,29 @@ def download_file(url, output_path, description=None, requires_password=False):
                 break
             except UnicodeDecodeError:
                 print("Invalid password. Please try again.")
-    response = requests.get(url, stream=True)
+    # Figshare links under figshare.com/ndownloader can hit an HTML challenge.
+    # Normalize them to the downloader host and preserve query params (e.g. private_link).
+    download_url = url
+    if "/ndownloader/files/" in url:
+        file_id = url.split("/ndownloader/files/")[-1].split("?")[0].split("#")[0]
+        parsed = urlsplit(url)
+        query_params = parse_qsl(parsed.query, keep_blank_values=True)
+        normalized_query = urlencode(query_params)
+        download_url = urlunsplit(("https", "ndownloader.figshare.com", f"/files/{file_id}", normalized_query, ""))
+
+    response = requests.get(download_url, stream=True)
+    response.raise_for_status()
+
+    content_type = (response.headers.get("content-type") or "").lower()
+    
+    # Raise error if the response is not a binary file instead of failing silently.
+    if "text/html" in content_type or "application/json" in content_type:
+        error_snippet = response.text[:500]
+        raise RuntimeError(
+            f"Unexpected response content-type '{content_type}' while downloading from {download_url}. "
+            f"Response starts with: {error_snippet}"
+        )
+
     total_size = int(response.headers.get("content-length", 0))
     block_size = 1024  # 1 KB
     progress_bar = tqdm(total=total_size, unit="B", unit_scale=True, desc=description)

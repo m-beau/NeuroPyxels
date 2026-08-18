@@ -169,43 +169,21 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
         spike_ids_subset = np.array(spike_ids)
     n_spikes = len(spike_ids_subset)
 
-    # Get waveforms times in bytes
-    # and check that, for this waveform width,
-    # they no not go beyond file limits
+    # extract waveforms
     waveforms_t  = spike_samples[spike_ids_subset].astype(np.int64)
-    waveforms_t1 = (waveforms_t-t_waveforms//2)*n_channels_dat*item_size
-    waveforms_t2 = (waveforms_t+t_waveforms//2)*n_channels_dat*item_size
-    wcheck_m=(0<=waveforms_t1)&(waveforms_t2<fileSizeBytes)
-    if not np.all(wcheck_m):
-        print(f"Invalid times: {waveforms_t[~wcheck_m]}")
-        waveforms_t1 = waveforms_t1[wcheck_m]
-        waveforms_t2 = waveforms_t2[wcheck_m]
+    waveforms, corrupt_mask = extract_waveforms(dat_path, waveforms_t,
+                                                t_waveforms, n_channels_dat, n_channels_rec,
+                                                dtype, fileSizeBytes)
 
-    # Iterate over waveforms
-    waveforms = np.zeros((n_spikes, t_waveforms, n_channels_rec), dtype=np.float32)
-    if verbose: print(f'Loading waveforms of unit {u} ({n_spikes})...')
-    with open(dat_path, "rb") as f:
-        for i,t1 in enumerate(waveforms_t1):
-            if n_spikes>10:
-                if i%(n_spikes//10)==0 and verbose: print(f'{round((i/n_spikes)*100)}%...', end=' ')
-            f.seek(t1, 0) # 0 for absolute file positioning
-            try:
-                wave = f.read(n_channels_dat*t_waveforms*item_size)
-                wave = np.frombuffer(wave, dtype=dtype).reshape((t_waveforms,n_channels_dat))
-                # get rid of sync channel
-                waveforms[i,:,:] = wave[:,:-1] if meta['acquisition_software']=='SpikeGLX' else wave
-            except:
-                print(f"WARNING it seems the binary file at {dp} is corrupted. Waveform {i} (at byte {t1}, {t1/n_channels_dat/item_size/sample_rate}s) could not be loaded.")
-                waveforms[i,:,:] = np.nan
-    corrupt_mask = np.isnan(waveforms[:,0,0])
-    waveforms = waveforms[~corrupt_mask,:,:]
-    n_spikes -= np.sum(corrupt_mask)
+    # median subtraction in time
     if med_sub_in_time:
         medians = np.median(waveforms, axis = 1)
         waveforms = waveforms - medians[:,np.newaxis,:]
-    if verbose: print('\n')
+    if verbose:
+        print('\n')
 
     # Preprocess waveforms
+    n_spikes = waveforms.shape[0]
     if hpfilt|med_sub|whiten:
         waveforms     = waveforms.reshape((n_spikes*t_waveforms, n_channels_rec))
         if hpfilt:
@@ -229,6 +207,85 @@ def get_waveforms(dp, u, n_waveforms=100, t_waveforms=82, selection='regular', p
         return waveforms, corrupt_mask
     
     return waveforms.astype(np.float32)
+
+def extract_waveforms(dat_path, waveforms_t, T, C_file, C_data, dtype, fileSizeBytes):
+    """
+    Extract spike waveforms from a flat binary electrophysiology file.
+
+    Reads T-sample windows centered on each spike time, sorted for
+    sequential disk access and using os.pread for atomic positioned reads.
+
+    Parameters
+    ----------
+    dat_path : str
+        Path to the binary file (samples x channels, no header).
+    waveforms_t : np.ndarray (n_spikes,)
+        Spike times in samples (will be centered ± T//2).
+    T : int
+        Waveform window width in samples.
+    C_file : int
+        Total number of channels in the binary file (including sync).
+    C_data : int
+        Number of data channels to keep (drops sync channel).
+    dtype : np.dtype
+        Sample data type (e.g. np.int16 for Neuropixels).
+    fileSizeBytes : int
+        Binary file size in bytes, used for bounds checking.
+
+    Returns
+    -------
+    waveforms : np.ndarray (n_valid, T, C_data), float32
+        Extracted waveforms, with out-of-bounds and corrupt entries removed.
+    corrupt_mask : np.ndarray (n_spikes,), bool
+        True for each entry in waveforms_t that was out of bounds or
+        could not be read (aligned to the original input array).
+    """
+    item_size = dtype.itemsize
+    n_samples_file = fileSizeBytes // (C_file * item_size)
+    half_T = T // 2
+    chunk_bytes = C_file * T * item_size
+
+    # Bounds check in sample space
+    t_start = waveforms_t - half_T
+    t_end = waveforms_t + half_T
+    valid = (t_start >= 0) & (t_end <= n_samples_file)
+    if not np.all(valid):
+        print(f"Invalid times: {waveforms_t[~valid]}")
+        t_start = t_start[valid]
+
+    # Sort for sequential disk access — big deal on HDD/NFS
+    sort_idx = np.argsort(t_start)
+    byte_offsets = t_start[sort_idx].astype(np.int64) * C_file * item_size
+
+    n_spikes = len(byte_offsets)
+    waveforms = np.empty((n_spikes, T, C_data), dtype=np.float32)
+
+    fd = os.open(dat_path, os.O_RDONLY)
+    try:
+        for i, offset in enumerate(byte_offsets):
+            # pread: atomic positioned read, no seek overhead
+            buf = os.pread(fd, chunk_bytes, int(offset))
+            if len(buf) < chunk_bytes:
+                waveforms[i] = np.nan
+                continue
+            wave = np.frombuffer(buf, dtype=dtype).reshape(T, C_file)
+            waveforms[i] = wave[:, :C_data]
+    finally:
+        os.close(fd)
+
+    # Unsort
+    unsort_idx = np.argsort(sort_idx)
+    waveforms = waveforms[unsort_idx]
+
+    corrupt_local = np.isnan(waveforms[:, 0, 0])
+    waveforms = waveforms[~corrupt_local]
+
+    # Build mask aligned to original waveforms_t
+    corrupt_mask = ~valid
+    corrupt_mask[valid] |= corrupt_local[unsort_idx]  # map back to pre-sort order within valid
+
+    return waveforms, corrupt_mask
+
 
 @npyx_cacher
 def wvf_dsmatch(dp, u, n_waveforms=100, t_waveforms=82, periods='all',

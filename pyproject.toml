@@ -58,17 +58,17 @@ dependencies = [
 
 [project.optional-dependencies]
 c4 = [
-    "torch==1.13.1",
-    "torchvision==0.14.1", 
-    "torchaudio==0.13.1",
-    "asdfghjkl==0.1a2",
-    "laplace-torch==0.1a2",
-    "backpack-for-pytorch==1.6.0",
-    "requests",
-    "dill",
-    "tabulate",
-    "scipy==1.10.0",  # Constrain scipy version for compatibility with pytorch pinned version
-    "numpy<2.0.0",    # Constrain numpy version for compatibility with pytorch pinned version
+    "torch==1.13.1; python_version < '3.12'",
+    "torchvision==0.14.1; python_version < '3.12'",
+    "torchaudio==0.13.1; python_version < '3.12'",
+    "asdfghjkl==0.1a2; python_version < '3.12'",
+    "laplace-torch==0.1a2; python_version < '3.12'",
+    "backpack-for-pytorch==1.6.0; python_version < '3.12'",
+    "requests; python_version < '3.12'",
+    "dill; python_version < '3.12'",
+    "tabulate; python_version < '3.12'",
+    "scipy==1.10.0; python_version < '3.12'",
+    "numpy<2.0.0; python_version < '3.12'",
 ]
 dev = [
     "pip>=19.2",
@@ -105,6 +105,14 @@ version = {attr = "npyx.__version__"}
 [tool.setuptools.package-data]
 npyx = ["*.py"]
 "npyx.c4" = ["*.py"]
+
+# uv configuration: c4 extra requires Python <3.12 (pinned PyTorch/scipy versions)
+[tool.uv]
+# Allow scipy to resolve to a newer version on Python >=3.12
+# while c4 extra still pins scipy==1.10.0 on Python <3.12 via env markers
+override-dependencies = [
+    "scipy>=1.10.0; python_version >= '3.12'",
+]
 
 # Modern development tools configuration
 [tool.black]
